@@ -1,0 +1,19 @@
+os: purestorage
+text: 'Pure Storage'
+type: storage
+icon: purestorage
+mib_dir: purestorage
+over:
+  - { graph: device_bits, text: 'Device Traffic' }
+  - { graph: device_processor, text: 'CPU Usage' }
+  - { graph: purestorage_bandwidth, text: 'Pure Storage Bandwidth' }
+  - { graph: purestorage_iops, text: 'Pure Storage IOPS' }
+  - { graph: purestorage_latency, text: 'Pure Storage Latency' }
+discovery:
+  - sysObjectID:
+    - .1.3.6.1.4.1.40482
+  - sysDescr:
+    - 'Pure Storage'
+    - 'Purity//FA'
+poller_modules:
+  purestorage: true
