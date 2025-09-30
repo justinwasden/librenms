@@ -1397,4 +1397,9 @@ class Device extends BaseModel
     {
         return $this->hasMany(WirelessSensor::class, 'device_id');
     }
+
+    public function restApiConnections(): HasMany
+    {
+        return $this->hasMany(RestApiConnection::class, 'device_id', 'device_id');
+    }
 }
