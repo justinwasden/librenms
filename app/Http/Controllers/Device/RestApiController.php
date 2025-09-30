@@ -29,20 +29,7 @@ class RestApiController extends Controller
 
         $template = RestApiTemplate::find($request->template_id);
 
-        // A simple string replacement for placeholders.
-        // A more advanced solution might use Blade or another templating engine.
-        $templateJsonString = json_encode($template->template_data);
-        $templateJsonString = Str::replace('{{ $device->hostname }}', $device->hostname, $templateJsonString);
-        $templateJsonString = Str::replace('{{ $device->ip }}', $device->ip, $templateJsonString);
-
-        // Regex to find all `getAttrib` placeholders
-        preg_match_all('/\{\{ \$device->getAttrib\(\'(.*?)\'\) \}\}/', $templateJsonString, $matches);
-        foreach ($matches[1] as $attribName) {
-            $attribValue = $device->getAttrib($attribName);
-            $templateJsonString = Str::replace("{{ \$device->getAttrib('$attribName') }}", $attribValue, $templateJsonString);
-        }
-
-        $templateData = json_decode($templateJsonString, true);
+        $templateData = $this->replacePlaceholdersInArray($template->template_data, $device);
 
         foreach ($templateData['connections'] as $connData) {
             $connection = $device->restApiConnections()->create([
@@ -67,5 +54,34 @@ class RestApiController extends Controller
         $connection->delete();
 
         return redirect()->route('device.rest-api.index', $device)->with('success', 'API Connection deleted successfully.');
+    }
+
+    private function replacePlaceholdersInArray(array &$data, Device $device): array
+    {
+        array_walk_recursive($data, function (&$value) use ($device) {
+            if (is_string($value)) {
+                $value = $this->replacePlaceholdersInString($value, $device);
+            }
+        });
+
+        return $data;
+    }
+
+    private function replacePlaceholdersInString(string $string, Device $device): string
+    {
+        $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
+        $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
+
+        preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
+
+        if (!empty($matches[2])) {
+            foreach ($matches[2] as $index => $attribName) {
+                $attribValue = $device->getAttrib($attribName);
+                $fullPlaceholder = $matches[0][$index];
+                $string = Str::replace($fullPlaceholder, $attribValue, $string);
+            }
+        }
+
+        return $string;
     }
 }
