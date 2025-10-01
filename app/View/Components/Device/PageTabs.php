@@ -74,7 +74,7 @@ class PageTabs extends Component
         'notes' => \App\Http\Controllers\Device\Tabs\NotesController::class,
         'edit' => \App\Http\Controllers\Device\Tabs\EditController::class,
         'capture' => \App\Http\Controllers\Device\Tabs\CaptureController::class,
-        'rest-api' => \App\Http\Controllers\Device\RestApiController::class,
+        'rest-api' => \App\Http\Controllers\Device\Tabs\RestApiController::class,
     ];
 
     public function __construct(

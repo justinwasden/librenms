@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Http\Controllers\Device\RestApiController;
+use App\Http\Controllers\Device\RestApiActionsController;
 use App\Models\Device;
 use App\Models\RestApiAuthenticationType;
 use App\Models\RestApiCredential;
@@ -35,7 +35,7 @@ class VerifyApiFeature extends Command
      *
      * @return int
      */
-    public function handle(RestApiController $controller)
+    public function handle(RestApiActionsController $controller)
     {
         $this->info('Starting REST API feature verification...');
 
