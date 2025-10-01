@@ -12,6 +12,8 @@ class RestApiCredential extends Model
 
     protected $fillable = ['name', 'authentication_type_id'];
 
+		protected $encryptable = [];
+
     public function authenticationType()
     {
         return $this->belongsTo(RestApiAuthenticationType::class, 'authentication_type_id');

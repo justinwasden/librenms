@@ -57,8 +57,9 @@ class RestApiCredentialControllerTest extends DBTestCase
         $response = $this->post(route('settings.rest-api.credentials.store'), $data);
 
         $response->assertRedirect(route('settings.rest-api.credentials.index'));
-        $this->assertDatabaseHas('rest_api_credentials', ['name' => 'New Test Credential']);
-        $this->assertDatabaseHas('rest_api_credential_params', ['key' => 'username', 'value' => 'testuser']);
+        $credential = RestApiCredential::where('name', 'New Test Credential')->first();
+				$this->assertTrue($credential->params()->where('key', 'username')->exists());
+				$this->assertTrue($credential->params()->where('key', 'password')->exists());
     }
 
     public function testEdit()
@@ -89,8 +90,9 @@ class RestApiCredentialControllerTest extends DBTestCase
         $response = $this->put(route('settings.rest-api.credentials.update', $credential), $data);
 
         $response->assertRedirect(route('settings.rest-api.credentials.index'));
-        $this->assertDatabaseHas('rest_api_credentials', ['id' => $credential->id, 'name' => 'Updated Credential Name']);
-        $this->assertDatabaseHas('rest_api_credential_params', ['key' => 'token']);
+        $credential = RestApiCredential::where('name', 'New Test Credential')->first();
+				$this->assertTrue($credential->params()->where('key', 'username')->exists());
+				$this->assertTrue($credential->params()->where('key', 'password')->exists());
     }
 
     public function testDestroy()

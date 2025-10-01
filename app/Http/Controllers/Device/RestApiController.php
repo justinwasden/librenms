@@ -15,7 +15,12 @@ class RestApiController extends Controller
     public function index(Device $device)
     {
         Gate::authorize('view', $device);
-        $device->load('restApiConnections.endpoints');
+
+        $device->load([
+            'restApiConnections.credential',
+            'restApiConnections.endpoints'
+        ]);
+
         $templates = RestApiTemplate::all();
 
         return view('devices.tabs.rest-api.index', compact('device', 'templates'));
@@ -25,13 +30,15 @@ class RestApiController extends Controller
     {
         Gate::authorize('update', $device);
 
-        $request->validate(['template_id' => 'required|exists:rest_api_templates,id']);
+        $request->validate([
+            'template_id' => 'required|exists:rest_api_templates,id'
+        ]);
 
-        $template = RestApiTemplate::find($request->template_id);
+        $template = RestApiTemplate::findOrFail($request->template_id);
 
         $templateData = $this->replacePlaceholdersInArray($template->template_data, $device);
 
-        foreach ($templateData['connections'] as $connData) {
+        foreach ($templateData['connections'] ?? [] as $connData) {
             $connection = $device->restApiConnections()->create([
                 'name' => $connData['name'],
                 'base_url' => $connData['base_url'],
@@ -39,48 +46,69 @@ class RestApiController extends Controller
                 'rate_limit' => $connData['rate_limit'] ?? 60,
             ]);
 
-            foreach ($connData['endpoints'] as $endpointData) {
-                $connection->endpoints()->create($endpointData);
+            foreach ($connData['endpoints'] ?? [] as $endpointData) {
+                $connection->endpoints()->create([
+                    'name' => $endpointData['name'],
+                    'path' => $endpointData['path'],
+                    'method' => $endpointData['method'] ?? 'GET',
+                    'query_params' => $endpointData['query_params'] ?? null,
+                    'headers' => $endpointData['headers'] ?? null,
+                    'body' => $endpointData['body'] ?? null,
+                    'metric_map' => $endpointData['metric_map'] ?? null,
+                ]);
             }
         }
 
-        return redirect()->route('device.rest-api.index', $device)->with('success', 'Template applied successfully.');
+        return redirect()->route('device.rest-api.index', $device)
+            ->with('success', 'Template applied successfully.');
     }
 
     public function destroyConnection(Device $device, RestApiConnection $connection)
     {
         Gate::authorize('update', $device);
 
+        // Security: Verify the connection belongs to this device
+        if ($connection->device_id !== $device->device_id) {
+            abort(403, 'This connection does not belong to the specified device.');
+        }
+
         $connection->delete();
 
-        return redirect()->route('device.rest-api.index', $device)->with('success', 'API Connection deleted successfully.');
+        return redirect()->route('device.rest-api.index', $device)
+            ->with('success', 'API Connection deleted successfully.');
     }
 
-    private function replacePlaceholdersInArray(array &$data, Device $device): array
+    private function replacePlaceholdersInArray(array $data, Device $device): array
     {
-        array_walk_recursive($data, function (&$value) use ($device) {
-            if (is_string($value)) {
-                $value = $this->replacePlaceholdersInString($value, $device);
-            }
-        });
+        $result = [];
 
-        return $data;
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $result[$key] = $this->replacePlaceholdersInArray($value, $device);
+            } elseif (is_string($value)) {
+                $result[$key] = $this->replacePlaceholdersInString($value, $device);
+            } else {
+                $result[$key] = $value;
+            }
+        }
+
+        return $result;
     }
 
     private function replacePlaceholdersInString(string $string, Device $device): string
     {
+        // Replace simple placeholders
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 
-        preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
-
-        if (!empty($matches[2])) {
-            foreach ($matches[2] as $index => $attribName) {
-                $attribValue = $device->getAttrib($attribName);
-                $fullPlaceholder = $matches[0][$index];
-                $string = Str::replace($fullPlaceholder, $attribValue, $string);
-            }
-        }
+        // Replace getAttrib placeholders with callback for better handling
+        $string = preg_replace_callback(
+            '/\{\{\s*\$device->getAttrib\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*\}\}/',
+            function ($matches) use ($device) {
+                return $device->getAttrib($matches[1]) ?? '';
+            },
+            $string
+        );
 
         return $string;
     }

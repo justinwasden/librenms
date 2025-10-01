@@ -34,7 +34,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // The controller will handle populating the form with existing data
-        const url = `{{ route('settings.rest-api.credentials.params', ['typeId' => 'TYPE_ID_PLACEHOLDER']) }}`.replace('TYPE_ID_PLACEHOLDER', typeId) + `?credential_id=${credentialId}`;
+        const url = `{{ route('settings.rest-api.credentials.params', ['typeId' => 'TYPE_ID_PLACEHOLDER']) }}`
+    .replace('TYPE_ID_PLACEHOLDER', typeId) + `?credential_id=${credentialId}`;
 
         fetch(url)
             .then(response => response.text())

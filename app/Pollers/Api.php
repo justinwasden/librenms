@@ -26,9 +26,15 @@ class Api
 
     public function poll()
     {
-        if (!$this->device->restApiConnections()->exists()) {
-            return;
-        }
+		    $this->device->load([
+		        'restApiConnections.credential.params',
+		        'restApiConnections.credential.authenticationType',
+		        'restApiConnections.endpoints'
+		    ]);
+
+		    if ($this->device->restApiConnections->isEmpty()) {
+		        return;
+		    }
 
         Log::info("Polling REST APIs for device {$this->device->hostname}");
 

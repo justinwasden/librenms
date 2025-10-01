@@ -31,7 +31,8 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const url = "{{ route('settings.rest-api.credentials.params', ['credential' => 'TYPE_PLACEHOLDER']) }}".replace('TYPE_PLACEHOLDER', typeId);
+        const url = "{{ route('settings.rest-api.credentials.params', ['typeId' => '__TYPE_ID__']) }}"
+    .replace('__TYPE_ID__', typeId);
 
         fetch(url)
             .then(response => response.text())

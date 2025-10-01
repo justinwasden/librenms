@@ -49,10 +49,11 @@ class VerifyApiFeature extends Command
 
 
         // We need an authenticated admin user for the Gate checks to pass
-        $admin = User::factory()->create(['email' => 'verification-admin@librenms.org']);
-        Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'web']);
-        $admin->assignRole('Admin');
-        Auth::setUser($admin);
+				$admin = User::factory()->create(['email' => 'verification-admin@librenms.org', 'level' => 10]);
+				$adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'web']);
+				$admin->assignRole($adminRole);
+				$admin->refresh(); // Ensure role is loaded
+				Auth::setUser($admin);
 
         DB::transaction(function () use ($controller, $admin) {
             // 1. Create Auth Type and Credential

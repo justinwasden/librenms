@@ -8,7 +8,8 @@ Route::prefix('settings/rest-api')
     ->middleware(['auth', 'can:admin'])
     ->as('settings.rest-api.')
     ->group(function () {
-        Route::resource('credentials', RestApiCredentialController::class);
-        Route::get('credentials/types/{typeId}/params', [RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+        Route::get('credentials/types/{typeId}/params', [RestApiCredentialController::class, 'getAuthTypeParams'])
+    ->name('credentials.params');
+				Route::resource('credentials', RestApiCredentialController::class);
         Route::resource('templates', RestApiTemplateController::class);
     });

@@ -49,24 +49,34 @@ class RestApiCredentialController extends Controller
     }
 
     public function update(Request $request, RestApiCredential $credential)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:rest_api_credentials,name,' . $credential->id,
-            'authentication_type_id' => 'required|exists:rest_api_authentication_types,id',
-            'params' => 'required|array',
-        ]);
+		{
+		    $validated = $request->validate([
+		        'name' => 'required|string|max:255|unique:rest_api_credentials,name,' . $credential->id,
+		        'authentication_type_id' => 'required|exists:rest_api_authentication_types,id',
+		        'params' => 'required|array',
+		    ]);
 
-        $credential->update($validated);
-        $credential->params()->delete(); // Easiest way to handle updates is to delete and re-create
+				$credential->update([
+				    'name' => $validated['name'],
+				    'authentication_type_id' => $validated['authentication_type_id'],
+				]);
 
-        foreach ($validated['params'] as $key => $value) {
-            if ($value !== null) {
-                $credential->params()->create(['key' => $key, 'value' => $value]);
-            }
-        }
+				foreach ($validated['params'] as $key => $value) {
+				    // Skip empty values (means keep existing)
+				    if ($value === '' || $value === null) {
+				        continue;
+				    }
 
-        return redirect()->route('settings.rest-api.credentials.index')->with('success', 'Credential updated successfully.');
-    }
+				    // Update or create with new value
+				    $credential->params()->updateOrCreate(
+				        ['key' => $key],
+				        ['value' => $value]
+				    );
+				}
+
+		    return redirect()->route('settings.rest-api.credentials.index')
+		        ->with('success', 'Credential updated successfully.');
+		}
 
     public function destroy(RestApiCredential $credential)
     {
