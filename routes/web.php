@@ -360,6 +360,3 @@ Route::any('/dummy_legacy_unauth/{path?}', [LegacyController::class, 'dummy']);
 Route::any('/{path?}', [LegacyController::class, 'index'])
     ->where('path', '^((?!_debugbar).)*')
     ->middleware('auth');
-
-require __DIR__ . '/web/settings/rest-api.php';
-require __DIR__ . '/web/device/rest-api.php';
