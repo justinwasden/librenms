@@ -21,7 +21,7 @@
                     <tr>
                         <th>{{ __('Name') }}</th>
                         <th>{{ __('Auth Type') }}</th>
-                        <th data-sortable="false">{{ __('Actions') }}</th>
+                        <th>{{ __('Actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -31,13 +31,13 @@
                             <td>{{ $credential->authenticationType->name }}</td>
                             <td>
                                 <a href="{{ route('settings.rest-api.credentials.edit', $credential) }}" class="btn btn-primary btn-sm">
-                                    <i class="fa fa-pencil"></i> {{ __('Edit') }}
+                                    <i class="fa fa-pencil"></i>
                                 </a>
-                                <form action="{{ route('settings.rest-api.credentials.destroy', $credential) }}" method="POST" style="display: inline-block;">
+                                <form action="{{ route('settings.rest-api.credentials.destroy', $credential) }}" method="POST" style="display: inline;">
                                     @csrf
                                     @method('DELETE')
-                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('{{ __('Are you sure?') }}')">
-                                        <i class="fa fa-trash"></i> {{ __('Delete') }}
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure?')">
+                                        <i class="fa fa-trash"></i>
                                     </button>
                                 </form>
                             </td>
