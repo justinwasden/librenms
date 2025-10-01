@@ -38,10 +38,21 @@ class Api
 
         Log::info("Polling REST APIs for device {$this->device->hostname}");
 
-        foreach ($this->device->restApiConnections as $connection) {
-            $this->device->load('restApiConnections.credential.params', 'restApiConnections.credential.authenticationType');
-
-            foreach ($connection->endpoints as $endpoint) {
+        // Load all relationships once before looping
+								$this->device->load([
+								    'restApiConnections.credential.params',
+								    'restApiConnections.credential.authenticationType',
+								    'restApiConnections.endpoints'
+								]);
+								
+								if ($this->device->restApiConnections->isEmpty()) {
+								    return;
+								}
+								
+								Log::info("Polling REST APIs for device {$this->device->hostname}");
+								
+								foreach ($this->device->restApiConnections as $connection) {
+								    foreach ($connection->endpoints as $endpoint) {
                 try {
                     $options = [];
                     // Handle Authentication
@@ -141,11 +152,16 @@ class Api
         $string = Str::replace('{{ $device->hostname }}', $this->device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $this->device->ip, $string);
 
-        preg_match_all('/\{\{ \$device->getAttrib\(\'(.*?)\'\) \}\}/', $string, $matches);
-        foreach ($matches[1] as $attribName) {
-            $attribValue = $this->device->getAttrib($attribName);
-            $string = Str::replace("{{ \$device->getAttrib('$attribName') }}", $attribValue, $string);
-        }
+        preg_match_all('/\{\{\s*\$device->getAttrib\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*\}\}/', $string, $matches);
+				foreach ($matches[1] as $attribName) {
+				    $attribValue = $this->device->getAttrib($attribName) ?? '';
+				    // Use preg_replace to handle both quote styles
+				    $string = preg_replace(
+				        '/\{\{\s*\$device->getAttrib\(\s*[\'"]' . preg_quote($attribName, '/') . '[\'"]\s*\)\s*\}\}/',
+				        $attribValue,
+				        $string
+				    );
+				}
 
         return $string;
     }

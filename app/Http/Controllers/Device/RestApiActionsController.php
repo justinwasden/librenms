@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
-class RestApiController extends Controller
+class RestApiActionsController extends Controller
 {
     public function index(Device $device)
     {
@@ -97,11 +97,9 @@ class RestApiController extends Controller
 
     private function replacePlaceholdersInString(string $string, Device $device): string
     {
-        // Replace simple placeholders
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 
-        // Replace getAttrib placeholders with callback for better handling
         $string = preg_replace_callback(
             '/\{\{\s*\$device->getAttrib\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*\}\}/',
             function ($matches) use ($device) {

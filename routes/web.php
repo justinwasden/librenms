@@ -195,6 +195,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
     });
+    
+    
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
     Route::redirect('plugin/view=admin', '/plugin/admin');
