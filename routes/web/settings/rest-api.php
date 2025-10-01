@@ -1,13 +1,18 @@
 <?php
 
-use App\Http\Controllers\Device\RestApiActionsController;
+use App\Http\Controllers\Settings\RestApiCredentialController;
+use App\Http\Controllers\Settings\RestApiTemplateController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('device/{device}/rest-api')
-    ->middleware(['auth', 'can.view.device'])
-    ->as('device.rest-api.')
+Route::prefix('settings/rest-api')
+    ->middleware(['auth', 'can:admin'])
+    ->as('settings.rest-api.')
     ->group(function () {
-        Route::get('/', [RestApiActionsController::class, 'index'])->name('index');
-        Route::post('/apply-template', [RestApiActionsController::class, 'applyTemplate'])->name('apply-template');
-        Route::delete('/connections/{connection}', [RestApiActionsController::class, 'destroyConnection'])->name('connections.destroy');
+        // IMPORTANT: Specific route MUST come BEFORE resource route
+        Route::get('credentials/types/{typeId}/params', [RestApiCredentialController::class, 'getAuthTypeParams'])
+            ->name('credentials.params');
+
+        // Resource routes
+        Route::resource('credentials', RestApiCredentialController::class);
+        Route::resource('templates', RestApiTemplateController::class);
     });
