@@ -10,10 +10,17 @@ use Illuminate\Http\Request;
 class RestApiCredentialController extends Controller
 {
     public function index()
-    {
-        $credentials = RestApiCredential::with('authenticationType')->get();
-        return view('settings.rest-api.credentials.index', compact('credentials'));
-    }
+		{
+		    \Log::info('=== RestApiCredentialController@index START ===');
+		    \Log::info('User: ' . auth()->user()->username);
+
+		    $credentials = RestApiCredential::with('authenticationType')->get();
+
+		    \Log::info('Credentials loaded: ' . $credentials->count());
+		    \Log::info('View path: settings.rest-api.credentials.index');
+
+		    return view('settings.rest-api.credentials.index', compact('credentials'));
+		}
 
     public function create()
     {
