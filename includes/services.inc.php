@@ -1,6 +1,7 @@
 <?php
 
 use App\Facades\LibrenmsConfig;
+use App\Models\Device;
 use App\Models\Eventlog;
 use LibreNMS\Alert\AlertRules;
 use LibreNMS\Enum\Severity;
@@ -42,13 +43,15 @@ function get_service_status($device = null)
 
 function add_service($device, $type, $desc, $ip = '', $param = '', $ignore = 0, $disabled = 0, $template_id = '', $name = '')
 {
-    $device = DeviceCache::get(is_array($device) ? $device['device_id'] : $device);
-
-    if (empty($ip)) {
-        $ip = $device->pollerTarget();
+    if (! is_array($device)) {
+        $device = device_by_id_cache($device);
     }
 
-    $insert = ['device_id' => $device->device_id, 'service_ip' => $ip, 'service_type' => $type, 'service_changed' => ['UNIX_TIMESTAMP(NOW())'], 'service_desc' => $desc, 'service_param' => $param, 'service_ignore' => $ignore, 'service_status' => 3, 'service_message' => 'Service not yet checked', 'service_ds' => '{}', 'service_disabled' => $disabled, 'service_template_id' => $template_id, 'service_name' => $name];
+    if (empty($ip)) {
+        $ip = Device::pollerTarget($device['hostname']);
+    }
+
+    $insert = ['device_id' => $device['device_id'], 'service_ip' => $ip, 'service_type' => $type, 'service_changed' => ['UNIX_TIMESTAMP(NOW())'], 'service_desc' => $desc, 'service_param' => $param, 'service_ignore' => $ignore, 'service_status' => 3, 'service_message' => 'Service not yet checked', 'service_ds' => '{}', 'service_disabled' => $disabled, 'service_template_id' => $template_id, 'service_name' => $name];
 
     return dbInsert($insert, 'services');
 }

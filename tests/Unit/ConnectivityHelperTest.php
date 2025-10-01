@@ -2,13 +2,12 @@
 
 namespace LibreNMS\Tests\Unit;
 
-use App\Actions\Device\CheckDeviceAvailability;
-use App\Actions\Device\DeviceIsSnmpable;
 use App\Facades\LibrenmsConfig;
 use App\Models\Device;
 use LibreNMS\Data\Source\Fping;
 use LibreNMS\Data\Source\FpingResponse;
 use LibreNMS\Data\Source\SnmpResponse;
+use LibreNMS\Polling\ConnectivityHelper;
 use LibreNMS\Tests\TestCase;
 use Mockery;
 use SnmpQuery;
@@ -59,23 +58,24 @@ final class ConnectivityHelperTest extends TestCase
         $device->snmp_disable = false;
 
         // ping up, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $ch = new ConnectivityHelper($device);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp up
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('icmp', $device->status_reason);
 
         // ping up, snmp down
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('snmp', $device->status_reason);
 
         // ping down, snmp down
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('icmp', $device->status_reason);
 
         /** ping disabled and snmp enabled */
@@ -83,23 +83,23 @@ final class ConnectivityHelperTest extends TestCase
         $device->snmp_disable = false;
 
         // ping up, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping up, snmp down
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('snmp', $device->status_reason);
 
         // ping down, snmp down
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('snmp', $device->status_reason);
 
         /** ping enabled and snmp disabled */
@@ -107,23 +107,23 @@ final class ConnectivityHelperTest extends TestCase
         $device->snmp_disable = true;
 
         // ping up, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp up
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('icmp', $device->status_reason);
 
         // ping up, snmp down
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp down
-        $this->assertFalse(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertFalse($device->status);
+        $this->assertFalse($ch->isUp());
+        $this->assertEquals(false, $device->status);
         $this->assertEquals('icmp', $device->status_reason);
 
         /** ping and snmp disabled */
@@ -131,23 +131,23 @@ final class ConnectivityHelperTest extends TestCase
         $device->snmp_disable = true;
 
         // ping up, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp up
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping up, snmp down
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
 
         // ping down, snmp down
-        $this->assertTrue(app(CheckDeviceAvailability::class)->execute($device));
-        $this->assertTrue($device->status);
+        $this->assertTrue($ch->isUp());
+        $this->assertEquals(true, $device->status);
         $this->assertEquals('', $device->status_reason);
     }
 
@@ -162,11 +162,11 @@ final class ConnectivityHelperTest extends TestCase
                 new SnmpResponse('', '', 1)
             );
 
-        $device = new Device;
+        $ch = new ConnectivityHelper(new Device());
 
-        $this->assertTrue((new DeviceIsSnmpable)->execute($device));
-        $this->assertTrue((new DeviceIsSnmpable)->execute($device));
-        $this->assertTrue((new DeviceIsSnmpable)->execute($device));
-        $this->assertFalse((new DeviceIsSnmpable)->execute($device));
+        $this->assertTrue($ch->isSNMPable());
+        $this->assertTrue($ch->isSNMPable());
+        $this->assertTrue($ch->isSNMPable());
+        $this->assertFalse($ch->isSNMPable());
     }
 }

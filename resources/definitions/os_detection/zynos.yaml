@@ -13,7 +13,6 @@ discovery:
         sysDescr_regex:
             - '/^ES/'
             - '/^GS/'
-            - '/^GES/'
             - '/^MES/'
             - '/^MGS/'
             - '/^XS/'

@@ -5,7 +5,7 @@ modules:
         serial: CHECKPOINT-MIB::svnApplianceSerialNumber.0
         version: CHECKPOINT-MIB::svnVersion.0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

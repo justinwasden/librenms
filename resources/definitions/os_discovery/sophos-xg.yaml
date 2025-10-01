@@ -8,7 +8,7 @@ modules:
       serial:
          - SFOS-FIREWALL-MIB::sfosDeviceAppKey.0
    sensors:
-      additional_oids:
+      pre-cache:
          data:
             -
                oid:

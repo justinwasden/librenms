@@ -1,7 +1,7 @@
 mib: AI-AP-MIB
 modules:
     mempools:
-        additional_oids:
+        pre-cache:
             oids:
                 - AI-AP-MIB::aiAPSerialNum
                 - AI-AP-MIB::aiAPName
@@ -14,7 +14,7 @@ modules:
     os:
         sysDescr_regex: '/\(MODEL: (?<hardware>\S+)\), Version (?<version>\S+)/'
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

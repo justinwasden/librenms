@@ -10,17 +10,10 @@ use Illuminate\Http\Request;
 class RestApiCredentialController extends Controller
 {
     public function index()
-		{
-		    \Log::info('=== RestApiCredentialController@index START ===');
-		    \Log::info('User: ' . auth()->user()->username);
-
-		    $credentials = RestApiCredential::with('authenticationType')->get();
-
-		    \Log::info('Credentials loaded: ' . $credentials->count());
-		    \Log::info('View path: settings.rest-api.credentials.index');
-
-		    return view('settings.rest-api.credentials.index', compact('credentials'));
-		}
+    {
+        $credentials = RestApiCredential::with('authenticationType')->get();
+        return view('settings.rest-api.credentials.index', compact('credentials'));
+    }
 
     public function create()
     {
@@ -56,34 +49,24 @@ class RestApiCredentialController extends Controller
     }
 
     public function update(Request $request, RestApiCredential $credential)
-		{
-		    $validated = $request->validate([
-		        'name' => 'required|string|max:255|unique:rest_api_credentials,name,' . $credential->id,
-		        'authentication_type_id' => 'required|exists:rest_api_authentication_types,id',
-		        'params' => 'required|array',
-		    ]);
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:rest_api_credentials,name,' . $credential->id,
+            'authentication_type_id' => 'required|exists:rest_api_authentication_types,id',
+            'params' => 'required|array',
+        ]);
 
-				$credential->update([
-				    'name' => $validated['name'],
-				    'authentication_type_id' => $validated['authentication_type_id'],
-				]);
+        $credential->update($validated);
+        $credential->params()->delete(); // Easiest way to handle updates is to delete and re-create
 
-				foreach ($validated['params'] as $key => $value) {
-				    // Skip empty values (means keep existing)
-				    if ($value === '' || $value === null) {
-				        continue;
-				    }
+        foreach ($validated['params'] as $key => $value) {
+            if ($value !== null) {
+                $credential->params()->create(['key' => $key, 'value' => $value]);
+            }
+        }
 
-				    // Update or create with new value
-				    $credential->params()->updateOrCreate(
-				        ['key' => $key],
-				        ['value' => $value]
-				    );
-				}
-
-		    return redirect()->route('settings.rest-api.credentials.index')
-		        ->with('success', 'Credential updated successfully.');
-		}
+        return redirect()->route('settings.rest-api.credentials.index')->with('success', 'Credential updated successfully.');
+    }
 
     public function destroy(RestApiCredential $credential)
     {

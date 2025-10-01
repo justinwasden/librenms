@@ -4,7 +4,7 @@ modules:
         sysDescr_regex:
             - '/(?<hardware>.*)SW:(?<version>\S+)/'
             - '/Ciena Corporation, (?<hardware>.*) SAOS Operating System, Version saos-(?<version>.*+)/'
-    additional_oids:
+    pre-cache:
         data:
             -
                 oid: nnOpticalPmRecentTable

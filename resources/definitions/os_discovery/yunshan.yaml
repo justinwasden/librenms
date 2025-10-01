@@ -28,7 +28,7 @@ modules:
                         op: '='
                         value: 0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

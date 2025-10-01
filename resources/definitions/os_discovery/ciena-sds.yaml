@@ -39,7 +39,7 @@ modules:
                 #low_limit: wwpLeosSystemCpuUtilizationLast60SecondsMinimum
                 #high_limit: wwpLeosSystemCpuUtilizationLast60SecondsMaximum
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 - oid:
                     - dot1dBasePortIfIndex

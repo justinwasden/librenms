@@ -16,7 +16,8 @@ class RestApiTemplateControllerTest extends DBTestCase
     public function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create(['level' => 10]); // Admin user
+        $this->user = User::factory()->create();
+        $this->user->assignRole('Admin');
         $this->actingAs($this->user);
     }
 

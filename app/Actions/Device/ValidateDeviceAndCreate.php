@@ -41,15 +41,29 @@ use SnmpQuery;
 
 class ValidateDeviceAndCreate
 {
-    private Device $device;
-    private bool $force;
-    private bool $ping_fallback;
+    /**
+     * @var Device
+     */
+    private $device;
+    /**
+     * @var bool
+     */
+    private $force;
+    /**
+     * @var bool
+     */
+    private $ping_fallback;
+    /**
+     * @var \LibreNMS\Polling\ConnectivityHelper
+     */
+    private $connectivity;
 
     public function __construct(Device $device, bool $force = false, bool $ping_fallback = false)
     {
         $this->device = $device;
         $this->force = $force;
         $this->ping_fallback = $ping_fallback;
+        $this->connectivity = new \LibreNMS\Polling\ConnectivityHelper($this->device);
     }
 
     /**
@@ -72,7 +86,7 @@ class ValidateDeviceAndCreate
         if (! $this->force) {
             $this->exceptIfIpExists();
 
-            if (! app(DeviceIsPingable::class)->execute($this->device)->success()) {
+            if (! $this->connectivity->isPingable()->success()) {
                 throw new HostUnreachablePingException($this->device->hostname);
             }
 
@@ -125,7 +139,7 @@ class ValidateDeviceAndCreate
                 foreach ($v3_credentials as $v3) {
                     $this->device->fill(Arr::only($v3, ['authlevel', 'authname', 'authpass', 'authalgo', 'cryptopass', 'cryptoalgo']));
 
-                    if (app(DeviceIsSnmpable::class)->execute($this->device)) {
+                    if ($this->connectivity->isSNMPable()) {
                         return;
                     } else {
                         $host_unreachable_exception->addReason($snmp_version, $this->device->authname . '/' . $this->device->authlevel);
@@ -135,7 +149,7 @@ class ValidateDeviceAndCreate
                 // try each community from config
                 foreach ($communities as $community) {
                     $this->device->community = $community;
-                    if (app(DeviceIsSnmpable::class)->execute($this->device)) {
+                    if ($this->connectivity->isSNMPable()) {
                         return;
                     } else {
                         $host_unreachable_exception->addReason($snmp_version, $this->device->community);

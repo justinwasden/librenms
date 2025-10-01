@@ -1,6 +1,6 @@
 modules:
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

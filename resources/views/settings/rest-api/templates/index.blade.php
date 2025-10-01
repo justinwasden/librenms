@@ -1,55 +1,43 @@
-@extends('layouts.librenmsv1')
-
-@section('title', __('REST API Templates'))
+@extends('layouts.app')
 
 @section('content')
-<div class="container-fluid">
-    <x-panel>
-        <x-slot name="title">
-            <i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
-        </x-slot>
-
-        <x-slot name="heading">
-            <a href="{{ route('settings.rest-api.templates.create') }}" class="btn btn-primary btn-sm">
-                <i class="fa fa-plus"></i> {{ __('Add Template') }}
-            </a>
-        </x-slot>
-
-        <div class="table-responsive">
-            <table class="table table-striped table-bordered table-condensed">
-                <thead>
-                    <tr>
-                        <th>{{ __('Name') }}</th>
-                        <th>{{ __('Vendor') }}</th>
-                        <th data-sortable="false">{{ __('Actions') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($templates as $template)
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">REST API Templates</h3>
+                <div class="card-tools">
+                    <a href="{{ route('settings.rest-api.templates.create') }}" class="btn btn-sm btn-primary">Add Template</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
                         <tr>
-                            <td>{{ $template->name }}</td>
-                            <td>{{ $template->vendor ?? __('N/A') }}</td>
-                            <td>
-                                <a href="{{ route('settings.rest-api.templates.edit', $template) }}" class="btn btn-primary btn-sm">
-                                    <i class="fa fa-pencil"></i> {{ __('Edit') }}
-                                </a>
-                                <form action="{{ route('settings.rest-api.templates.destroy', $template) }}" method="POST" style="display: inline-block;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('{{ __('Are you sure?') }}')">
-                                        <i class="fa fa-trash"></i> {{ __('Delete') }}
-                                    </button>
-                                </form>
-                            </td>
+                            <th>Name</th>
+                            <th>Vendor</th>
+                            <th>Actions</th>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="3" class="text-center">{{ __('No templates found') }}</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach($templates as $template)
+                            <tr>
+                                <td>{{ $template->name }}</td>
+                                <td>{{ $template->vendor }}</td>
+                                <td>
+                                    <a href="{{ route('settings.rest-api.templates.edit', $template) }}" class="btn btn-sm btn-info">Edit</a>
+                                    <form action="{{ route('settings.rest-api.templates.destroy', $template) }}" method="POST" style="display: inline-block;">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </x-panel>
+    </div>
 </div>
 @endsection

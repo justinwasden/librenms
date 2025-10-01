@@ -8,7 +8,7 @@ modules:
         serial: ENTITY-MIB::entPhysicalSerialNum.1
         version: ENTITY-MIB::entPhysicalSoftwareRev.1
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

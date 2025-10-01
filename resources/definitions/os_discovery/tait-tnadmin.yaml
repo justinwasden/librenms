@@ -12,7 +12,7 @@ modules:
                 descr: '{{ $TAIT-TNADMIN-MIB::tnAdminTaitServiceName }} CPU pct'
                 index: 'tnServiceCpu.{{ $index }}'
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

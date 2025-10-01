@@ -24,7 +24,7 @@ modules:
                 descr: '{{ $sysinfoBoardLoadName }} {{ $count }}'
 
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

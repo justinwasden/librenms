@@ -6,7 +6,7 @@ modules:
         serial: MIKROTIK-MIB::mtxrSerialNumber.0
         version: MIKROTIK-MIB::mtxrLicVersion.0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

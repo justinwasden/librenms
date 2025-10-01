@@ -168,9 +168,6 @@
                 "applications": {
                     "type": "boolean"
                 },
-                "api": {
-                    "type": "boolean"
-                },
                 "aruba-controller": {
                     "type": "boolean"
                 },

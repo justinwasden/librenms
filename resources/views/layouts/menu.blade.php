@@ -35,7 +35,14 @@
                                 </li>
                             </ul>
                         </li>
-                       <li role="presentation" class="divider"></li>
+                        <li class="dropdown-submenu">
+                            <a href="#"><i class="fa fa-cloud-download fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API') }}</a>
+                            <ul class="dropdown-menu">
+                                <li><a href="{{ route('settings.rest-api.credentials.index') }}"><i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('Credentials') }}</a></li>
+                                <li><a href="{{ route('settings.rest-api.templates.index') }}"><i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('Templates') }}</a></li>
+                            </ul>
+                        </li>
+                        <li role="presentation" class="divider"></li>
                         @if(auth()->user()->isAdmin() || $has_v1_plugins || $has_v2_plugins)
                         <li class="dropdown-submenu">
                             <a><i class="fa fa-plug fa-fw fa-lg" aria-hidden="true"></i> {{ __('Plugins') }}</a>
@@ -182,16 +189,6 @@
                                                               aria-hidden="true"></i> {{ __('Add Device') }}</a></li>
                         <li><a href="{{ url('delhost') }}"><i class="fa fa-trash fa-fw fa-lg"
                                                               aria-hidden="true"></i> {{ __('Delete Device') }}</a></li>
-
-                        {{-- Add separator and REST API section --}}
-						            <li role="presentation" class="divider"></li>
-						            <li class="dropdown-submenu">
-						                <a><i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API') }}</a>
-						                <ul class="dropdown-menu">
-						                    <li><a href="{{ route('settings.rest-api.credentials.index') }}"><i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('Credentials') }}</a></li>
-						                    <li><a href="{{ route('settings.rest-api.templates.index') }}"><i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('Templates') }}</a></li>
-						                </ul>
-						            </li>
                     @endadmin
 
                     </ul>
@@ -244,42 +241,28 @@
 
                         @if($custommaps->isNotEmpty())
                             <li role="presentation" class="divider"></li>
-                            @if($custommaps->count() == 1)
-                            <li class="dropdown-submenu"><a><i class="fa fa-th fa-fw fa-lg" aria-hidden="true"></i> {{__('Custom Maps') }}</a>
-                                <ul class="dropdown-menu scrollable-menu">
-                                    @foreach($custommaps as $map_group => $group_maps)
-                                        @foreach($group_maps as $map)
-                                        <li><a href="{{ route('maps.custom.show', ['map' => $map->custom_map_id]) }}"><i class="fa fa-map-marked fa-fw fa-lg" aria-hidden="true"></i>
-                                            {{ ucfirst($map->name) }}
-                                        </a></li>
-                                        @endforeach
-                                    @endforeach
-                                </ul>
-                            </li>
-                            @elseif($custommaps->count() < 20)
-                                @foreach($custommaps as $map_group => $group_maps)
-                                <li class="dropdown-submenu">
-                                    <a><i class="fa fa-map-marked fa-fw fa-lg"aria-hidden="true"></i> {{ $map_group  }}</a>
+                                @if($custommaps->count() == 1)
+                                <li class="dropdown-submenu"><a><i class="fa fa-th fa-fw fa-lg" aria-hidden="true"></i> {{__('Custom Maps') }}</a>
                                     <ul class="dropdown-menu scrollable-menu">
-                                    @foreach($group_maps as $map)
-                                    <li><a href="{{ route('maps.custom.show', ['map' => $map->custom_map_id]) }}"><i class="fa fa-map-marked fa-fw fa-lg" aria-hidden="true"></i>
-                                        {{ ucfirst($map->name) }}
-                                    </a></li>
-                                    @endforeach
+                                @endif
+                                        @foreach($custommaps as $map_group => $group_maps)
+                                            @if($map_group && $custommaps->count() > 1)
+                                            <li class="dropdown-submenu">
+                                            <a><i class="fa fa-map-marked fa-fw fa-lg"aria-hidden="true"></i> {{ $map_group  }}
+                                            </a>
+                                                <ul class="dropdown-menu scrollable-menu">
+                                            @endif
+                                            @foreach($group_maps as $map)
+                                            <li><a href="{{ route('maps.custom.show', ['map' => $map->custom_map_id]) }}"><i class="fa fa-map-marked fa-fw fa-lg" aria-hidden="true"></i>
+                                                    {{ ucfirst($map->name) }}
+                                                </a></li>
+                                            @endforeach
+                                            @if($map_group && $custommaps->count() > 1)</ul></li>@endif
+                                        @endforeach
+                                @if($custommaps->count() == 1)
                                     </ul>
                                 </li>
-                                @endforeach
-                            @else
-                            <li class="dropdown-submenu"><a href="{{ route('maps.custom.list') }}"><i class="fa fa-th fa-fw fa-lg" aria-hidden="true"></i> {{__('Custom Maps') }}</a>
-                                <ul class="dropdown-menu scrollable-menu">
-                                    @foreach($custommaps as $map_group => $group_maps)
-                                        <li><a href="{{ route('maps.custom.list', ['group' => $map_group]) }}"><i class="fa fa-map-marked fa-fw fa-lg" aria-hidden="true"></i>
-                                            {{ ucfirst($map_group) }}
-                                        </a></li>
-                                    @endforeach
-                                </ul>
-                            </li>
-                            @endif
+                                @endif
                         @endif
                         @admin
                         <li role="presentation" class="divider"></li>

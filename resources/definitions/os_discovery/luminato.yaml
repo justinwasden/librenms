@@ -16,7 +16,7 @@ modules:
                 descr: Chassis CPU
                 index: 0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

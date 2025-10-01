@@ -21,7 +21,6 @@ use App\Http\Controllers\Maps;
 use App\Http\Controllers\Maps\CustomMapBackgroundController;
 use App\Http\Controllers\Maps\CustomMapController;
 use App\Http\Controllers\Maps\CustomMapDataController;
-use App\Http\Controllers\Maps\CustomMapListController;
 use App\Http\Controllers\Maps\CustomMapNodeImageController;
 use App\Http\Controllers\Maps\DeviceDependencyController;
 use App\Http\Controllers\NacController;
@@ -141,7 +140,6 @@ Route::middleware(['auth'])->group(function () {
         Route::post('custom/{map}/background', [CustomMapBackgroundController::class, 'save'])->name('maps.custom.background.save');
         Route::get('custom/{map}/data', [CustomMapDataController::class, 'get'])->name('maps.custom.data');
         Route::post('custom/{map}/data', [CustomMapDataController::class, 'save'])->name('maps.custom.data.save');
-        Route::get('customlist', [CustomMapListController::class, 'index'])->name('maps.custom.list');
         Route::get('devicedependency', [DeviceDependencyController::class, 'dependencyMap']);
         Route::post('getdevices', [Maps\MapDataController::class, 'getDevices'])->name('maps.getdevices');
         Route::post('getdevicelinks', [Maps\MapDataController::class, 'getDeviceLinks'])->name('maps.getdevicelinks');
@@ -194,9 +192,26 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
+
+        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
+            Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+            Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+            Route::resource('templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
+        });
     });
-    
-    
+
+    Route::prefix('device/{device}')->name('device.')->group(function () {
+        Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
+        Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
+        Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
+        Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
+
+        Route::prefix('rest-api')->name('rest-api.')->group(function() {
+            Route::get('/', [\App\Http\Controllers\Device\RestApiController::class, 'index'])->name('index');
+            Route::post('/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('apply-template');
+            Route::delete('/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('connections.destroy');
+        });
+    });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
     Route::redirect('plugin/view=admin', '/plugin/admin');

@@ -8,7 +8,7 @@ modules:
         serial: SIAE-UNIT-MIB::unitParentSerialNumber.1
         version: SIAE-SOFT-MIB::softwareEquipmentReleaseBench1.0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

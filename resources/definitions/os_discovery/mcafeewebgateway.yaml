@@ -3,7 +3,7 @@ modules:
     os:
         version: MCAFEE-MWG-MIB::kProductVersion.0
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

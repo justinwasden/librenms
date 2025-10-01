@@ -26,7 +26,7 @@ namespace LibreNMS\Alert\Transport;
 use LibreNMS\Alert\Transport;
 use LibreNMS\Exceptions\AlertTransportDeliveryException;
 
-class Weechatbot extends Transport
+class WeechatBot extends Transport
 {
     protected string $name = 'Weechat Bot';
 

@@ -1,6 +1,6 @@
 mib: UNITRENDS-SNMP
 modules:
-    additional_oids:
+    pre-cache:
         data:
             -
                 oid:

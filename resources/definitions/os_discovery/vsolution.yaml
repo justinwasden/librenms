@@ -19,7 +19,7 @@ modules:
                 descr: 'CPU Load'
 
     sensors:
-        additional_oids:
+        pre-cache:
             data:
                 -
                     oid:

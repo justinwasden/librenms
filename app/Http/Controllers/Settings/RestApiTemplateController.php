@@ -21,29 +21,19 @@ class RestApiTemplateController extends Controller
     }
 
     public function store(Request $request)
-		{
-		    $validated = $request->validate([
-		        'name' => 'required|string|unique:rest_api_templates,name|max:255',
-		        'vendor' => 'nullable|string|max:255',
-		        'template_data' => 'required|string', // Will be JSON
-		    ]);
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|unique:rest_api_templates,name|max:255',
+            'vendor' => 'nullable|string|max:255',
+            'template_data' => 'required|json',
+        ]);
 
-		    // Validate JSON structure
-		    $templateData = json_decode($validated['template_data'], true);
+        $validated['template_data'] = json_decode($validated['template_data'], true);
 
-		    if (json_last_error() !== JSON_ERROR_NONE) {
-		        return back()->withErrors(['template_data' => 'Invalid JSON format.'])->withInput();
-		    }
+        RestApiTemplate::create($validated);
 
-		    RestApiTemplate::create([
-		        'name' => $validated['name'],
-		        'vendor' => $validated['vendor'],
-		        'template_data' => $templateData,
-		    ]);
-
-		    return redirect()->route('settings.rest-api.templates.index')
-		        ->with('success', 'Template created successfully.');
-		}
+        return redirect()->route('settings.rest-api.templates.index')->with('success', 'Template created successfully.');
+    }
 
     public function edit(RestApiTemplate $template)
     {

@@ -1,6 +1,5 @@
 <?php
 
-use App\Actions\Device\DeviceIsSnmpable;
 use App\Facades\LibrenmsConfig;
 use LibreNMS\Enum\PortAssociationMode;
 
@@ -49,7 +48,8 @@ if (isset($_POST['editing'])) {
         $device_updated = false;
 
         if ($force_save !== true && $snmp_enabled) {
-            $device_is_snmpable = app(DeviceIsSnmpable::class)->execute($device);
+            $helper = new \LibreNMS\Polling\ConnectivityHelper($device);
+            $device_is_snmpable = $helper->isSNMPable();
         }
 
         if ($force_save === true || ! $snmp_enabled || $device_is_snmpable) {

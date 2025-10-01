@@ -4,19 +4,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Sensors Language Lines
+    | Sesnors Language Lines
     |--------------------------------------------------------------------------
     |
     | The following language lines are used to translate names and units of sensors
     |
     */
 
-    'title' => '感測器',
     'airflow' => [
-        'short' => '風量',
-        'long' => '風量',
+        'short' => '氣流',
+        'long' => '氣流',
         'unit' => 'cfm',
-        'unit_long' => '每分鐘立方英尺',
+        'unit_long' => '每分鐘標準立方呎',
     ],
     'ber' => [
         'short' => 'BER',
@@ -32,19 +31,19 @@ return [
     ],
     'chromatic_dispersion' => [
         'short' => '色散',
-        'long' => '色度色散',
+        'long' => '色散',
         'unit' => 'ps/nm',
-        'unit_long' => '皮秒／奈米',
+        'unit_long' => 'Picoseconds per Nanometer',
     ],
     'cooling' => [
-        'short' => '冷卻功率',
-        'long' => '冷卻功率',
+        'short' => 'Cooling',
+        'long' => '',
         'unit' => 'W',
         'unit_long' => '瓦特',
     ],
     'count' => [
-        'short' => '計數',
-        'long' => '計數',
+        'short' => 'Count',
+        'long' => 'Count',
         'unit' => '',
         'unit_long' => '',
     ],
@@ -58,7 +57,7 @@ return [
         'short' => 'dBm',
         'long' => 'dBm',
         'unit' => 'dBm',
-        'unit_long' => '分貝毫瓦',
+        'unit_long' => '毫瓦分貝',
     ],
     'delay' => [
         'short' => '延遲',
@@ -68,7 +67,7 @@ return [
     ],
     'eer' => [
         'short' => 'EER',
-        'long' => '能源效率比',
+        'long' => '能效比',
         'unit' => '',
         'unit_long' => '',
     ],
@@ -76,7 +75,7 @@ return [
         'short' => '風扇轉速',
         'long' => '風扇轉速',
         'unit' => 'RPM',
-        'unit_long' => '每分鐘轉數',
+        'unit_long' => '每分鐘旋轉次數',
     ],
     'frequency' => [
         'short' => '頻率',
@@ -86,7 +85,7 @@ return [
     ],
     'humidity' => [
         'short' => '濕度',
-        'long' => '相對濕度',
+        'long' => '濕度百分比',
         'unit' => '%',
         'unit_long' => '百分比',
     ],
@@ -97,22 +96,22 @@ return [
         'unit_long' => '百分比',
     ],
     'loss' => [
-        'short' => '損失',
-        'long' => '損失百分比',
+        'short' => '百分比',
+        'long' => '遺失百分比',
         'unit' => '%',
         'unit_long' => '百分比',
     ],
     'power' => [
-        'short' => '功率',
-        'long' => '功率',
+        'short' => '電力',
+        'long' => '電力',
         'unit' => 'W',
         'unit_long' => '瓦特',
     ],
     'power_consumed' => [
-        'short' => '耗電量',
-        'long' => '耗電量',
+        'short' => '消耗功率',
+        'long' => '消耗功率',
         'unit' => 'kWh',
-        'unit_long' => '千瓦時',
+        'unit_long' => '千瓦小時',
     ],
     'power_factor' => [
         'short' => '功率因數',
@@ -127,44 +126,32 @@ return [
         'unit_long' => '千帕',
     ],
     'quality_factor' => [
-        'short' => '品質因數',
-        'long' => '品質因數',
+        'short' => '品質因子',
+        'long' => '品質因子',
         'unit' => '',
         'unit_long' => '',
     ],
     'runtime' => [
-        'short' => '運行時間',
-        'long' => '運行時間',
-        'unit' => 'Min',
+        'short' => 'Runtime',
+        'long' => 'Runtime',
+        'unit' => '分',
         'unit_long' => '分鐘',
     ],
     'signal' => [
         'short' => '訊號',
         'long' => '訊號',
         'unit' => 'dBm',
-        'unit_long' => '分貝毫瓦',
+        'unit_long' => '毫瓦分貝',
     ],
     'tv_signal' => [
         'short' => '訊號',
-        'long' => '電視訊號',
+        'long' => 'TV 訊號',
         'unit' => 'dBmV',
-        'unit_long' => '分貝毫伏',
-    ],
-    'printer-supply' => [
-        'short' => '印表機',
-        'long' => '印表機耗材',
-        'unit' => '%',
-        'unit_long' => '百分比',
-    ],
-    'bitrate' => [
-        'short' => '位元率',
-        'long' => '位元率',
-        'unit' => 'bps',
-        'unit_long' => '每秒位元數',
+        'unit_long' => '毫伏分貝',
     ],
     'snr' => [
         'short' => 'SNR',
-        'long' => '訊雜比',
+        'long' => '訊號雜訊比',
         'unit' => 'dB',
         'unit_long' => '分貝',
     ],
@@ -177,7 +164,7 @@ return [
         'short' => '溫度',
         'long' => '溫度',
         'unit' => '°C',
-        'unit_long' => '攝氏度',
+        'unit_long' => '° 攝氏',
     ],
     'voltage' => [
         'short' => '電壓',
@@ -186,21 +173,15 @@ return [
         'unit_long' => '伏特',
     ],
     'waterflow' => [
-        'short' => '水流量',
-        'long' => '水流量',
+        'short' => '水流',
+        'long' => '水流',
         'unit' => 'l/m',
-        'unit_long' => '每分鐘公升',
+        'unit_long' => '升每分鐘',
     ],
     'percent' => [
         'short' => '百分比',
         'long' => '百分比',
         'unit' => '%',
         'unit_long' => '百分比',
-    ],
-    'signal_loss' => [
-        'short' => 'SL',
-        'long' => '訊號損失',
-        'unit' => 'dB',
-        'unit_long' => '分貝',
     ],
 ];

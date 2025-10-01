@@ -259,5 +259,5 @@ such, if you do not get expected behaviour when completing the final
 check above, try removing the cache file first:
 
 ```bash
-lnms config:clear
+rm -f cache/os_defs.cache
 ```

@@ -26,33 +26,17 @@ class Api
 
     public function poll()
     {
-		    $this->device->load([
-		        'restApiConnections.credential.params',
-		        'restApiConnections.credential.authenticationType',
-		        'restApiConnections.endpoints'
-		    ]);
-
-		    if ($this->device->restApiConnections->isEmpty()) {
-		        return;
-		    }
+        if (!$this->device->restApiConnections()->exists()) {
+            return;
+        }
 
         Log::info("Polling REST APIs for device {$this->device->hostname}");
 
-        // Load all relationships once before looping
-								$this->device->load([
-								    'restApiConnections.credential.params',
-								    'restApiConnections.credential.authenticationType',
-								    'restApiConnections.endpoints'
-								]);
-								
-								if ($this->device->restApiConnections->isEmpty()) {
-								    return;
-								}
-								
-								Log::info("Polling REST APIs for device {$this->device->hostname}");
-								
-								foreach ($this->device->restApiConnections as $connection) {
-								    foreach ($connection->endpoints as $endpoint) {
+        // Eager load all necessary relationships to avoid N+1 queries in the loop
+        $this->device->load('restApiConnections.endpoints', 'restApiConnections.credential.params', 'restApiConnections.credential.authenticationType');
+
+        foreach ($this->device->restApiConnections as $connection) {
+            foreach ($connection->endpoints as $endpoint) {
                 try {
                     $options = [];
                     // Handle Authentication
@@ -79,7 +63,7 @@ class Api
                         $options['json'] = $endpoint->body;
                     }
 
-                    $url = $this->replacePlaceholders($connection->base_url . $endpoint->path);
+                    $url = $this->replacePlaceholders($connection->base_url . $endpoint->path, $this->device);
                     Log::debug("Polling URL: {$url} for device {$this->device->hostname}");
 
                     $response = $this->client->request($endpoint->method, $url, $options);
@@ -147,21 +131,20 @@ class Api
         ]);
     }
 
-    private function replacePlaceholders(string $string): string
+    private function replacePlaceholders(string $string, Device $device): string
     {
-        $string = Str::replace('{{ $device->hostname }}', $this->device->hostname, $string);
-        $string = Str::replace('{{ $device->ip }}', $this->device->ip, $string);
+        $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
+        $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 
-        preg_match_all('/\{\{\s*\$device->getAttrib\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*\}\}/', $string, $matches);
-				foreach ($matches[1] as $attribName) {
-				    $attribValue = $this->device->getAttrib($attribName) ?? '';
-				    // Use preg_replace to handle both quote styles
-				    $string = preg_replace(
-				        '/\{\{\s*\$device->getAttrib\(\s*[\'"]' . preg_quote($attribName, '/') . '[\'"]\s*\)\s*\}\}/',
-				        $attribValue,
-				        $string
-				    );
-				}
+        preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
+
+        if (!empty($matches[2])) {
+            foreach ($matches[2] as $index => $attribName) {
+                $attribValue = $device->getAttrib($attribName);
+                $fullPlaceholder = $matches[0][$index];
+                $string = Str::replace($fullPlaceholder, $attribValue, $string);
+            }
+        }
 
         return $string;
     }

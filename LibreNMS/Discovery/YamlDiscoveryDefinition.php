@@ -26,7 +26,6 @@
 
 namespace LibreNMS\Discovery;
 
-use App\Models\Eventlog;
 use App\View\SimpleTemplate;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -174,23 +173,17 @@ class YamlDiscoveryDefinition
 
     private function preFetch(array $yaml): array
     {
-        $data = $yaml['additional_oids'] ?? $yaml['pre-cache'] ?? [];
-
-        if (empty($data['oids'])) {
+        if (empty($yaml['pre-cache']['oids'])) {
             return [];
-        }
-
-        if (isset($yaml['pre-cache'])) {
-            Eventlog::log('This device discovery yaml is using deprecated pre-cache key, use additional_oids instead.  pre-cache will be removed in a future version.');
         }
 
         $query = SnmpQuery::enumStrings()->numericIndex();
 
-        if (isset($data['snmp_flags'])) {
-            $query->options($data['snmp_flags']);
+        if (isset($yaml['pre-cache']['snmp_flags'])) {
+            $query->options($yaml['pre-cache']['snmp_flags']);
         }
 
-        return $query->walk($data['oids'])->valuesByIndex();
+        return $query->walk($yaml['pre-cache']['oids'])->valuesByIndex();
     }
 
     private function fillNumericOids(array &$modelAttributes, array $yaml, int|string $index): bool
