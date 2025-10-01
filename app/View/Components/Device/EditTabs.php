@@ -52,9 +52,9 @@ class EditTabs extends Component
 				        'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=snmp/'),
 				    ],
 				    'rest-api' => [
-				        'text' => __('API Settings'),
-				        'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
-				    ],
+				    'text' => __('API Settings'),
+				    'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
+				],
 				];
 
         if (! $device->snmp_disable) {
