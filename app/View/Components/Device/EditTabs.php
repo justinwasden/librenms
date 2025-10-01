@@ -43,15 +43,19 @@ class EditTabs extends Component
         $this->tab = $tab ?? Request::segment(4, 'edit');
 
         $this->tabs = [
-            'edit' => [
-                'text' => __('Device Settings'),
-                'link' => route('device.edit', $this->device->device_id),
-            ],
-            'snmp' => [
-                'text' => 'SNMP',
-                'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=snmp/'),
-            ],
-        ];
+				    'edit' => [
+				        'text' => __('Device Settings'),
+				        'link' => route('device.edit', $this->device->device_id),
+				    ],
+				    'snmp' => [
+				        'text' => 'SNMP',
+				        'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=snmp/'),
+				    ],
+				    'rest-api' => [
+				        'text' => __('API Settings'),
+				        'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
+				    ],
+				];
 
         if (! $device->snmp_disable) {
             $this->tabs['ports'] = [

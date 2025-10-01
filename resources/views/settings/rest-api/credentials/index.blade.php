@@ -1,43 +1,55 @@
-@extends('layouts.app')
+@extends('layouts.librenmsv1')
+
+@section('title', __('REST API Credentials'))
 
 @section('content')
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">REST API Credentials</h3>
-                <div class="card-tools">
-                    <a href="{{ route('settings.rest-api.credentials.create') }}" class="btn btn-sm btn-primary">Add Credential</a>
-                </div>
-            </div>
-            <div class="card-body">
-                <table class="table table-striped">
-                    <thead>
+<div class="container-fluid">
+    <x-panel>
+        <x-slot name="title">
+            <i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
+        </x-slot>
+
+        <x-slot name="heading">
+            <a href="{{ route('settings.rest-api.credentials.create') }}" class="btn btn-primary btn-sm">
+                <i class="fa fa-plus"></i> {{ __('Add Credential') }}
+            </a>
+        </x-slot>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered table-condensed">
+                <thead>
+                    <tr>
+                        <th>{{ __('Name') }}</th>
+                        <th>{{ __('Auth Type') }}</th>
+                        <th data-sortable="false">{{ __('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($credentials as $credential)
                         <tr>
-                            <th>Name</th>
-                            <th>Auth Type</th>
-                            <th>Actions</th>
+                            <td>{{ $credential->name }}</td>
+                            <td>{{ $credential->authenticationType->name }}</td>
+                            <td>
+                                <a href="{{ route('settings.rest-api.credentials.edit', $credential) }}" class="btn btn-primary btn-sm">
+                                    <i class="fa fa-pencil"></i> {{ __('Edit') }}
+                                </a>
+                                <form action="{{ route('settings.rest-api.credentials.destroy', $credential) }}" method="POST" style="display: inline-block;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('{{ __('Are you sure?') }}')">
+                                        <i class="fa fa-trash"></i> {{ __('Delete') }}
+                                    </button>
+                                </form>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($credentials as $credential)
-                            <tr>
-                                <td>{{ $credential->name }}</td>
-                                <td>{{ $credential->authenticationType->name }}</td>
-                                <td>
-                                    <a href="{{ route('settings.rest-api.credentials.edit', $credential) }}" class="btn btn-sm btn-info">Edit</a>
-                                    <form action="{{ route('settings.rest-api.credentials.destroy', $credential) }}" method="POST" style="display: inline-block;">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+                    @empty
+                        <tr>
+                            <td colspan="3" class="text-center">{{ __('No credentials found') }}</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
-    </div>
+    </x-panel>
 </div>
 @endsection
