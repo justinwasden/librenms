@@ -62,7 +62,7 @@ class RestApiController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'base_url' => 'required|url|max:2048',
-            'rate_limit' => 'nullable|integer|min:1',
+            'rate_limit' => 'nullable|integer|min:1', // FIX: Set to nullable
         ]);
 
         $device->restApiConnections()->create(array_merge($validated, [
@@ -86,13 +86,10 @@ class RestApiController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'base_url' => 'required|url|max:2048',
-            'rate_limit' => 'nullable|integer|min:1',
-            // Handle checkboxes: presence indicates 'on' (true), absence indicates 'off' (false)
-            'enabled' => 'boolean',
-            'disable_ssl_verify' => 'boolean',
+            'rate_limit' => 'nullable|integer|min:1', // FIX: Set to nullable
         ]);
 
-        // Ensure checkboxes are explicitly set to false if missing from request
+        // Handle boolean fields from the modal checkboxes
         $validated['enabled'] = $request->has('enabled');
         $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
 
@@ -114,8 +111,7 @@ class RestApiController extends Controller
             'credential_id' => 'nullable|exists:rest_api_credentials,id',
         ]);
 
-        // Note: In a production system, this would involve complex logic to save
-        // the credential ID AND any custom parameters/secrets to a secure store.
+        // FIX: The update logic was here, using $validated
         $connection->update($validated);
 
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Credentials applied successfully.');
@@ -143,6 +139,13 @@ class RestApiController extends Controller
             abort(404);
         }
 
+        // FIX: Added logic to handle adding a new endpoint via the connection update method
+        if ($request->input('action_type') === 'add_endpoint') {
+            $connection = $endpoint->connection;
+            return $this->storeEndpoint($request, $device, $connection);
+        }
+
+        // Standard endpoint update validation
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'path' => 'required|string|max:2048',
@@ -158,6 +161,27 @@ class RestApiController extends Controller
         ]);
 
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Endpoint updated successfully.');
+    }
+
+    // NEW: Private helper method to store endpoints
+    private function storeEndpoint(Request $request, Device $device, RestApiConnection $connection)
+    {
+        // Validation for new endpoint creation
+        $validated = $request->validate([
+            'endpoint_name' => 'required|string|max:255',
+            'endpoint_path' => 'required|string|max:2048',
+            'endpoint_method' => 'required|in:GET,POST,PUT,DELETE',
+            'endpoint_metric_map_json' => 'required|json',
+        ]);
+
+        $connection->endpoints()->create([
+            'name' => $validated['endpoint_name'],
+            'path' => $validated['endpoint_path'],
+            'method' => $validated['endpoint_method'],
+            'metric_map' => json_decode($validated['endpoint_metric_map_json'], true),
+        ]);
+
+        return redirect()->route('device.edit.rest-api', $device)->with('success', 'New endpoint added successfully.');
     }
 
     public function destroyEndpoint(Device $device, RestApiEndpoint $endpoint)

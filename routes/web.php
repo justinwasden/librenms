@@ -125,7 +125,7 @@ Route::middleware(['auth'])->group(function () {
 			    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
 			    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
 
-			    // NEW: Connection/Endpoint Management Routes
+			    // Connection/Endpoint Management Routes
 			    Route::post('rest-api/connections', [\App\Http\Controllers\Device\RestApiController::class, 'storeConnection'])->name('rest-api.connections.store');
 			    Route::delete('rest-api/endpoints/{endpoint}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyEndpoint'])->name('rest-api.endpoints.destroy');
 			    Route::post('rest-api/connections/{connection}/credentials', [\App\Http\Controllers\Device\RestApiController::class, 'updateConnectionCredential'])->name('rest-api.connections.credentials.update');
@@ -142,13 +142,19 @@ Route::middleware(['auth'])->group(function () {
 			});
 
     // ---------------------------------------------------------------------
-    // Global Templates Page (Refactored Location)
+    // Global Management Pages
     // ---------------------------------------------------------------------
     Route::middleware('can:admin')->group(function () {
-        Route::prefix('devices')->name('devices.')->group(function () {
 
-            // FIX: Use the 'rest-api-templates' slug and explicitly name the resource
-            // to override the default and ensure the desired dot-separated name is used.
+        // REINSTATED: Global Credentials Management (Point 4)
+        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
+            Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+            Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+        });
+
+        // Templates Management (Moved under devices)
+        Route::prefix('devices')->name('devices.')->group(function () {
+            // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
             Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
                  ->names([
                     'index'   => 'rest-api.templates.index',
@@ -161,9 +167,9 @@ Route::middleware(['auth'])->group(function () {
                  ]);
         });
 
-        // ... existing admin routes ...
+
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
-        // ...
+
     });
 
     // fallback device routes

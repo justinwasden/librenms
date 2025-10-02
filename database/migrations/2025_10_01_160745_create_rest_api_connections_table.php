@@ -9,20 +9,26 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::create('rest_api_connections', function (Blueprint $table) {
-            $table->id();
-            $table->integer('device_id')->unsigned();
-            $table->foreign('device_id')->references('device_id')->on('devices')->onDelete('cascade');
-            $table->foreignId('credential_id')->nullable()->constrained('rest_api_credentials')->onDelete('set null');
-            $table->string('name');
-            $table->string('base_url');
-            $table->integer('rate_limit')->default(60);
-            $table->timestamps();
-        });
-    }
 
+		public function up(): void
+		{
+		    Schema::create('rest_api_connections', function (Blueprint $table) {
+		        $table->id();
+		        $table->integer('device_id')->unsigned();
+		        $table->foreign('device_id')->references('device_id')->on('devices')->onDelete('cascade');
+
+
+		        $table->unsignedBigInteger('credential_id')->nullable();
+		        $table->foreign('credential_id')->references('id')->on('rest_api_credentials')->onDelete('set null');
+
+		        $table->string('name');
+		        $table->string('base_url');
+		        $table->integer('rate_limit')->default(60);
+		        $table->boolean('enabled')->default(true);
+		        $table->boolean('disable_ssl_verify')->default(false);
+		        $table->timestamps();
+		    });
+		}
     /**
      * Reverse the migrations.
      */
