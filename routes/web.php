@@ -54,11 +54,6 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
 */
 
 // Auth
@@ -123,10 +118,13 @@ Route::middleware(['auth'])->group(function () {
         Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
         Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
- 		    // REST API Edit Routes
-		    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
-		    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
+        // REST API Edit Routes
+        Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
+        Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
 
+        // FIX: Corrected GET route for the Device Settings sub-tab.
+        Route::get('tab=edit/section=rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])
+             ->name('edit.rest-api'); // Resolves to 'device.edit.rest-api'
     });
 
     // fallback device routes
@@ -198,6 +196,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
 
+        // REST API Settings Routes (Credentials and Templates)
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
             Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
             Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
