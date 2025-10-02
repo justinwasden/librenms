@@ -53,11 +53,6 @@ class EditTabs extends Component
             ],
         ];
 
-				$this->tabs['rest-api'] = [
-				    'text' => __('Rest Api'),
-				    'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
-				];
-
         if (! $device->snmp_disable) {
             $this->tabs['ports'] = [
                 'text' => __('Port Settings'),
@@ -138,6 +133,11 @@ class EditTabs extends Component
                 'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=mempools/'),
             ];
         }
+
+        $this->tabs['rest-api'] = [
+				    'text' => __('Rest Api'),
+				    'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
+				];
 
         $this->tabs['misc'] = [
             'text' => __('Misc'),
