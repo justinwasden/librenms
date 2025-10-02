@@ -6,23 +6,16 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
-    {
         Schema::create('rest_api_templates', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
             $table->string('vendor')->nullable();
+            $table->text('description')->nullable();
             $table->text('template_data'); // JSON blob
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('rest_api_templates');
