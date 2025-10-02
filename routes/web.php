@@ -113,7 +113,7 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // ---------------------------------------------------------------------
-    // FIX/REFACTOR: Device-Level Routes
+    // Device-Level Routes
     // ---------------------------------------------------------------------
     Route::prefix('device/{device}')->name('device.')->group(function () {
         Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
@@ -136,21 +136,20 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // ---------------------------------------------------------------------
-    // REFACTOR: Global Templates Page (Goal 2)
-    // Removed from settings and moved under an administrative 'devices' scope
+    // Global Templates Page (Refactored Location)
     // ---------------------------------------------------------------------
     Route::middleware('can:admin')->group(function () {
-        // NEW TEMPLATES LOCATION (Moved from Settings, requested location is 'under Devices tab')
+        // NEW TEMPLATES LOCATION (under Devices tab)
         Route::prefix('devices')->name('devices.')->group(function () {
-            // Note: Renamed to avoid collision with existing 'templates' resource
-            // FIX: Add the index route explicitly BEFORE the resource definition
-				    Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
-				         ->name('rest-api-templates.index');
+            // FIX: Explicitly define the index route to prevent parameter conflicts
+            Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
+                 ->name('rest-api-templates.index');
 
-				    // Now define the resource route, excluding the index method to prevent duplication
-				    Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-				         ->except(['index']);
-				});
+            // Now define the resource route, excluding the index method
+            Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+                 ->except(['index']);
+        });
+
         // ... existing admin routes ...
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
         // ...
@@ -159,7 +158,6 @@ Route::middleware(['auth'])->group(function () {
     // fallback device routes
     Route::match(['get', 'post'], 'device/{device}/{tab?}/{vars?}', [DeviceController::class, 'index'])
         ->name('device')->where('vars', '.*');
-    // ... rest of web.php ...
     // Maps
     Route::get('fullscreenmap', [Maps\FullscreenMapController::class, 'fullscreenMap']);
     Route::get('availability-map', [Maps\AvailabilityMapController::class, 'availabilityMap']);
