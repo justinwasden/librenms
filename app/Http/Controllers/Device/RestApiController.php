@@ -13,7 +13,12 @@ use Illuminate\Support\Str;
 class RestApiController extends Controller
 {
 
-        public static function visible(Device $device): bool
+    public static function slug(): string
+    {
+        return 'rest-api';
+    }
+
+    public static function visible(Device $device): bool
     {
         // Show the tab if:
         // 1. User can update the device, OR
