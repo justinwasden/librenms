@@ -139,17 +139,15 @@ Route::middleware(['auth'])->group(function () {
     // Global Templates Page (Refactored Location)
     // ---------------------------------------------------------------------
     Route::middleware('can:admin')->group(function () {
-        // NEW TEMPLATES LOCATION (under Devices tab)
-        Route::prefix('devices')->name('devices.')->group(function () {
-            // FIX: Explicitly define the index route to prevent parameter conflicts
-            Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
-                 ->name('rest-api-templates.index');
+			Route::prefix('devices')->name('devices.')->group(function () {
+			    // FIX: Explicitly define the index route to prevent parameter conflicts
+			    Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
+			         ->name('rest-api-templates.index');
 
-            // Now define the resource route, excluding the index method
-            Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-                 ->except(['index']);
-        });
-
+			    // Now define the resource route, excluding the index method
+			    Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+			         ->except(['index']);
+			});
         // ... existing admin routes ...
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
         // ...
