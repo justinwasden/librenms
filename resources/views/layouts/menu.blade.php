@@ -190,7 +190,7 @@
                             </a>
                         </li>
 												<li>
-                            <a href="{{ route('devices.rest-api.credentials.index') }}">
+                            <a href="{{ route('settings.rest-api.credentials.index') }}">
                                 <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
                             </a>
                         </li>
