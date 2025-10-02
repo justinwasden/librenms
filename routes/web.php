@@ -124,7 +124,6 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
  		    // REST API Edit Routes
-		    Route::get('edit/rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])->name('edit.rest-api');
 		    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
 		    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
 
