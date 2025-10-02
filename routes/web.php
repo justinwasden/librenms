@@ -138,20 +138,25 @@ Route::middleware(['auth'])->group(function () {
     // ---------------------------------------------------------------------
     // Global Templates Page (Refactored Location)
     // ---------------------------------------------------------------------
-Route::middleware('can:admin')->group(function () {
-    // Correct administrative group prefix:
-    Route::prefix('devices')->name('devices.')->group(function () {
-        // FIX: Explicitly define the index route to prevent parameter conflicts
-        Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
-             ->name('rest-api-templates.index');
+    Route::middleware('can:admin')->group(function () {
+        Route::prefix('devices')->name('devices.')->group(function () {
 
-        // Now define the resource route, excluding the index method
-        Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-             ->except(['index']);
-    });
+            // FIX: Use the 'rest-api-templates' slug and explicitly name the resource
+            // to override the default and ensure the desired dot-separated name is used.
+            Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+                 ->names([
+                    'index'   => 'rest-api.templates.index',
+                    'create'  => 'rest-api.templates.create',
+                    'store'   => 'rest-api.templates.store',
+                    'show'    => 'rest-api.templates.show',
+                    'edit'    => 'rest-api.templates.edit',
+                    'update'  => 'rest-api.templates.update',
+                    'destroy' => 'rest-api.templates.destroy',
+                 ]);
+        });
 
-    // ... existing admin routes ...
-    Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
+        // ... existing admin routes ...
+        Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
         // ...
     });
 
