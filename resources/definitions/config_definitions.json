@@ -2327,6 +2327,13 @@
             "order": 3,
             "type": "text"
         },
+        "poller_modules.rest-api": {
+				    "order": 400,
+				    "group": "poller",
+				    "section": "poller_modules",
+				    "default": true,
+				    "type": "boolean"
+				}
         "front_page": {
             "default": "default",
             "group": "webui",

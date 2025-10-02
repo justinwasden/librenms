@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -21,7 +22,7 @@ class Api
     {
         $this->device = $device;
         $this->poller_options = $poller_options;
-        $this->client = $client ?? new Client(['timeout' => 10, 'connect_timeout' => 5]);
+        $this->client = $client ?? new Client(['timeout' => 30, 'connect_timeout' => 10]);
     }
 
     public function poll()
@@ -32,13 +33,20 @@ class Api
 
         Log::info("Polling REST APIs for device {$this->device->hostname}");
 
-        // Eager load all necessary relationships to avoid N+1 queries in the loop
+        // Eager load all necessary relationships to avoid N+1 queries
         $this->device->load('restApiConnections.endpoints', 'restApiConnections.credential.params', 'restApiConnections.credential.authenticationType');
 
         foreach ($this->device->restApiConnections as $connection) {
+            // Check rate limiting for this connection
+            if (!$this->checkRateLimit($connection)) {
+                Log::info("Rate limit reached for connection {$connection->name}, skipping");
+                continue;
+            }
+
             foreach ($connection->endpoints as $endpoint) {
                 try {
                     $options = [];
+                    
                     // Handle Authentication
                     if ($credential = $connection->credential) {
                         $authType = strtolower($credential->authenticationType->name);
@@ -67,11 +75,26 @@ class Api
                     Log::debug("Polling URL: {$url} for device {$this->device->hostname}");
 
                     $response = $this->client->request($endpoint->method, $url, $options);
+                    $statusCode = $response->getStatusCode();
 
-                    $body = json_decode($response->getBody()->getContents(), true);
+                    // Check for successful response
+                    if ($statusCode < 200 || $statusCode >= 300) {
+                        Log::warning("Non-successful status code {$statusCode} from {$url} for device {$this->device->hostname}");
+                        continue;
+                    }
 
+                    $bodyContent = $response->getBody()->getContents();
+                    
+                    // Validate JSON response
+                    $body = json_decode($bodyContent, true);
                     if (json_last_error() !== JSON_ERROR_NONE) {
-                        Log::warning("Invalid JSON response from {$url} for device {$this->device->hostname}");
+                        Log::warning("Invalid JSON response from {$url} for device {$this->device->hostname}: " . json_last_error_msg());
+                        continue;
+                    }
+
+                    // Validate response structure
+                    if (!is_array($body)) {
+                        Log::warning("API response is not an array for endpoint {$endpoint->name}, got: " . gettype($body));
                         continue;
                     }
 
@@ -80,12 +103,21 @@ class Api
                     }
 
                     $endpoint->update(['last_polled' => Carbon::now()]);
+                    
+                    // Update rate limit tracking
+                    $this->updateRateLimit($connection);
+                    
                 } catch (RequestException $e) {
                     $message = $e->getMessage();
                     if ($e->hasResponse()) {
-                        $message .= ' | Response: ' . Str::limit($e->getResponse()->getBody(), 200);
+                        $responseBody = $e->getResponse()->getBody();
+                        $message .= ' | Response: ' . Str::limit($responseBody, 200);
                     }
                     Log::error("Failed to poll REST API endpoint {$endpoint->name} for device {$this->device->hostname}: " . $message);
+                    
+                    // Implement exponential backoff for retries (optional)
+                    $this->handleFailedEndpoint($endpoint);
+                    
                 } catch (\Exception $e) {
                     Log::error("An unexpected error occurred while polling endpoint {$endpoint->name}: " . $e->getMessage());
                 }
@@ -93,56 +125,132 @@ class Api
         }
     }
 
+    /**
+     * Check if the connection has exceeded its rate limit
+     */
+    protected function checkRateLimit($connection): bool
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return true; // No rate limit set
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+        
+        // Clean up old requests (outside the rate limit window - assume per minute)
+        $windowStart = Carbon::now()->subMinute();
+        $requests = array_filter($requests, function ($timestamp) use ($windowStart) {
+            return Carbon::parse($timestamp)->isAfter($windowStart);
+        });
+
+        // Check if we're at the limit
+        if (count($requests) >= $connection->rate_limit) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Update rate limit tracking after a successful request
+     */
+    protected function updateRateLimit($connection): void
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return;
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+        $requests[] = Carbon::now()->toDateTimeString();
+        
+        // Store for 2 minutes to be safe
+        Cache::put($cacheKey, $requests, 120);
+    }
+
+    /**
+     * Handle failed endpoint polling with exponential backoff tracking
+     */
+    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
+    {
+        $cacheKey = "rest_api_failures:{$endpoint->id}";
+        $failures = Cache::get($cacheKey, 0);
+        $failures++;
+        
+        // Store failure count for 1 hour
+        Cache::put($cacheKey, $failures, 3600);
+        
+        Log::debug("Endpoint {$endpoint->name} has failed {$failures} times");
+    }
+
     protected function mapData(RestApiEndpoint $endpoint, array $data)
     {
         Log::debug("Mapping data for endpoint {$endpoint->name}", ['map' => $endpoint->metric_map]);
+        
         foreach ($endpoint->metric_map as $metricName => $apiPath) {
-            $values = data_get($data, $apiPath);
+            try {
+                $values = data_get($data, $apiPath);
 
-            if ($values === null) {
-                Log::debug("Metric '$metricName' with path '$apiPath' not found in API response for endpoint {$endpoint->name}.");
-                continue;
-            }
-
-            if (is_array($values) && Arr::isList($values)) {
-                foreach ($values as $index => $value) {
-                    $this->storeMetric($endpoint, "{$metricName}.{$index}", $value);
+                if ($values === null) {
+                    Log::debug("Metric '$metricName' with path '$apiPath' not found in API response for endpoint {$endpoint->name}.");
+                    continue;
                 }
-            } else {
-                $this->storeMetric($endpoint, $metricName, $values);
+
+                // Handle arrays of values
+                if (is_array($values) && Arr::isList($values)) {
+                    foreach ($values as $index => $value) {
+                        $this->storeMetric($endpoint, "{$metricName}.{$index}", $value);
+                    }
+                } else {
+                    $this->storeMetric($endpoint, $metricName, $values);
+                }
+            } catch (\Exception $e) {
+                Log::error("Error mapping metric {$metricName} for endpoint {$endpoint->name}: " . $e->getMessage());
             }
         }
     }
 
     protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
     {
-        $storageValue = is_scalar($value) ? $value : json_encode($value);
+        try {
+            // Validate metric value
+            if (!is_scalar($value) && !is_array($value) && !is_null($value)) {
+                Log::warning("Invalid metric value type for {$metricName}: " . gettype($value));
+                return;
+            }
 
-        Log::info("Storing metric for {$this->device->hostname}", [
-            'endpoint' => $endpoint->name,
-            'metric' => $metricName,
-            'value' => Str::limit((string)$storageValue, 100),
-        ]);
+            $storageValue = is_scalar($value) ? $value : json_encode($value);
 
-        $endpoint->metrics()->create([
-            'metric_name' => $metricName,
-            'metric_value' => $storageValue,
-            'collected_at' => Carbon::now(),
-        ]);
+            Log::info("Storing metric for {$this->device->hostname}", [
+                'endpoint' => $endpoint->name,
+                'metric' => $metricName,
+                'value' => Str::limit((string)$storageValue, 100),
+            ]);
+
+            $endpoint->metrics()->create([
+                'metric_name' => $metricName,
+                'metric_value' => $storageValue,
+                'collected_at' => Carbon::now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error storing metric {$metricName} for endpoint {$endpoint->name}: " . $e->getMessage());
+        }
     }
 
     private function replacePlaceholders(string $string, Device $device): string
     {
+        // Replace basic placeholders
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 
+        // Handle getAttrib placeholders with regex
         preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
 
         if (!empty($matches[2])) {
             foreach ($matches[2] as $index => $attribName) {
                 $attribValue = $device->getAttrib($attribName);
                 $fullPlaceholder = $matches[0][$index];
-                $string = Str::replace($fullPlaceholder, $attribValue, $string);
+                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
             }
         }
 
