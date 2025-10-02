@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.librenmsv1')
 
 @section('content')
 <div class="row">
