@@ -1,12 +1,23 @@
 @extends('layouts.librenmsv1')
 
 @section('content')
-{{-- Global Alerts for Success/Error --}}
+{{-- Global Alerts for Success/Error (Always placed at the top of content) --}}
 @if ($errors->any())
-    <div class="alert alert-danger alert-dismissible">... errors ...</div>
+    <div class="alert alert-danger alert-dismissible">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+        <ul class="mb-0">
+            @foreach ($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
 @endif
+
 @if(session('success'))
-    <div class="alert alert-success alert-dismissible">... success ...</div>
+    <div class="alert alert-success alert-dismissible">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+        {{ session('success') }}
+    </div>
 @endif
 
 <div class="row">
@@ -34,7 +45,7 @@
     </div>
 </div>
 
-{{-- Add Custom Connection Section (Updated to match controller method) --}}
+{{-- Add Custom Connection Section --}}
 <div class="row" style="margin-top: 20px;">
     <div class="col-md-12">
         <div class="panel panel-default">
@@ -73,12 +84,12 @@
                                     {{ $connection->credential ? 'Edit Creds' : 'Apply Creds' }}
                                 </button>
 
-                                {{-- NEW: Edit Connection Button --}}
+                                {{-- Edit Connection Button --}}
                                 <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#connectionEditModal{{ $connection->id }}">
                                     Edit Connection
                                 </button>
 
-                                {{-- Existing Delete Connection Form --}}
+                                {{-- Delete Connection Form --}}
                                 <form action="{{ route('device.rest-api.connections.destroy', [$device, $connection]) }}" method="POST" style="display: inline;">
                                     @csrf
                                     @method('DELETE')
@@ -109,10 +120,10 @@
                                             <td><code>{{ $endpoint->path }}</code></td>
                                             <td>{{ $endpoint->last_polled ? $endpoint->last_polled->diffForHumans() : 'Never' }}</td>
                                             <td>
-                                                {{-- NEW: Edit Endpoint Action --}}
+                                                {{-- Edit Endpoint Action --}}
                                                 <button type="button" class="btn btn-xs btn-info" data-toggle="modal" data-target="#endpointEditModal{{ $endpoint->id }}">Edit</button>
 
-                                                {{-- NEW: Delete Endpoint Action --}}
+                                                {{-- Delete Endpoint Action --}}
                                                 <form action="{{ route('device.rest-api.endpoints.destroy', [$device, $endpoint]) }}" method="POST" style="display: inline;">
                                                     @csrf
                                                     @method('DELETE')
@@ -136,7 +147,7 @@
 
 {{-- MODALS --}}
 @foreach($device->restApiConnections as $connection)
-    {{-- 1. Connection Edit Modal (Handles Issue 2, 5, 6) --}}
+    {{-- 1. Connection Edit Modal (Updated to pass existing required data) --}}
     <div class="modal fade" id="connectionEditModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
@@ -145,18 +156,19 @@
                     @method('PUT')
                     <div class="modal-header"><h5 class="modal-title">Edit Connection: {{ $connection->name }}</h5></div>
                     <div class="modal-body">
-                        <div class="form-group"><label>Name</label><input type="text" name="name" class="form-control" value="{{ $connection->name }}" required></div>
-                        <div class="form-group"><label>Base URL</label><input type="url" name="base_url" class="form-control" value="{{ $connection->base_url }}" required></div>
-                        <div class="form-group"><label>Rate Limit (reqs/min)</label><input type="number" name="rate_limit" class="form-control" value="{{ $connection->rate_limit ?? 60 }}" min="1"></div>
+                        {{-- CRITICAL FIX: Ensure required fields pass current values --}}
+                        <div class="form-group"><label>Name</label><input type="text" name="name" class="form-control" value="{{ old('name', $connection->name) }}" required></div>
+                        <div class="form-group"><label>Base URL</label><input type="url" name="base_url" class="form-control" value="{{ old('base_url', $connection->base_url) }}" required></div>
+                        <div class="form-group"><label>Rate Limit (reqs/min)</label><input type="number" name="rate_limit" class="form-control" value="{{ old('rate_limit', $connection->rate_limit ?? 60) }}" min="1"></div>
 
-                        {{-- New Feature: Enable/Disable Connection (Goal 6) --}}
+                        {{-- Enable/Disable Connection --}}
                         <div class="checkbox">
-                            <label><input type="checkbox" name="enabled" value="1" @if($connection->enabled) checked @endif> **Enable Connection** (Disable stops polling all endpoints)</label>
+                            <label><input type="checkbox" name="enabled" value="1" @if($connection->enabled) checked @endif> **Enable Connection**</label>
                         </div>
 
-                        {{-- New Feature: Disable SSL Verify (Goal 5) --}}
+                        {{-- Disable SSL Verify --}}
                         <div class="checkbox">
-                            <label><input type="checkbox" name="disable_ssl_verify" value="1" @if($connection->disable_ssl_verify) checked @endif> **Disable SSL Verification** (Use caution, insecure)</label>
+                            <label><input type="checkbox" name="disable_ssl_verify" value="1" @if($connection->disable_ssl_verify) checked @endif> **Disable SSL Verification**</label>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -168,7 +180,7 @@
         </div>
     </div>
 
-    {{-- 2. Credential Modal (For updateConnectionCredential logic) --}}
+    {{-- 2. Credential Modal (Global Credentials Assignment) --}}
     <div class="modal fade" id="credentialModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
@@ -177,7 +189,7 @@
                     <div class="modal-header"><h5 class="modal-title">Apply Credentials to {{ $connection->name }}</h5></div>
                     <div class="modal-body">
                         <div class="form-group">
-                            <label for="credential_id">Select Credential</label>
+                            <label for="credential_id">Select Global Credential</label>
                             <select name="credential_id" class="form-control">
                                 <option value="">None Applied</option>
                                 @foreach($credentials as $credential)
@@ -187,7 +199,6 @@
                                 @endforeach
                             </select>
                         </div>
-                        {{-- In a full implementation, detailed credential params editing would appear here --}}
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -198,20 +209,18 @@
         </div>
     </div>
 
-    {{-- 3. Endpoint Add Modal (For custom endpoints) --}}
+    {{-- 3. Endpoint Add Modal --}}
     <div class="modal fade" id="endpointAddModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
-                {{-- Form submission to updateConnection to add the endpoint --}}
                 <form action="{{ route('device.rest-api.connections.update', [$device, $connection]) }}" method="POST">
                     @csrf
                     @method('PUT')
                     <input type="hidden" name="action_type" value="add_endpoint">
                     <div class="modal-header"><h5 class="modal-title">Add Endpoint to {{ $connection->name }}</h5></div>
                     <div class="modal-body">
-                        {{-- Endpoint Fields (Name, Method, Path, Map) --}}
                         <div class="form-group"><label>Name</label><input type="text" name="endpoint_name" class="form-control" required></div>
-                        <div class="form-group"><label>Method</label><select name="endpoint_method" class="form-control"><option>GET</option><option>POST</option></select></div>
+                        <div class="form-group"><label>Method</label><select name="endpoint_method" class="form-control"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></div>
                         <div class="form-group"><label>Path</label><input type="text" name="endpoint_path" class="form-control" required></div>
                         <div class="form-group"><label>Metric Map (JSON)</label><textarea name="endpoint_metric_map_json" class="form-control" rows="5" placeholder='{"metric_name": "json.path"}' required></textarea></div>
                     </div>
@@ -223,38 +232,39 @@
             </div>
         </div>
     </div>
+@endforeach
 
-    {{-- 4. Endpoint Edit Modals (Goal 4) --}}
-    @foreach($connection->endpoints as $endpoint)
-    <div class="modal fade" id="endpointEditModal{{ $endpoint->id }}" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                {{-- This form points to the new updateEndpoint route --}}
-                <form action="{{ route('device.rest-api.update-endpoint', [$device, $endpoint]) }}" method="POST">
-                    @csrf
-                    @method('PUT')
-                    <div class="modal-header"><h5 class="modal-title">Edit Endpoint: {{ $endpoint->name }}</h5></div>
-                    <div class="modal-body">
-                        <div class="form-group"><label>Name</label><input type="text" name="name" class="form-control" value="{{ $endpoint->name }}" required></div>
-                        <div class="form-group"><label>Method</label>
-                            <select name="method" class="form-control">
-                                @foreach(['GET', 'POST', 'PUT', 'DELETE'] as $method)
-                                    <option value="{{ $method }}" @if($endpoint->method == $method) selected @endif>{{ $method }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="form-group"><label>Path</label><input type="text" name="path" class="form-control" value="{{ $endpoint->path }}" required></div>
-                        <div class="form-group"><label>Metric Map (JSON)</label>
-                            <textarea name="metric_map_json" class="form-control" rows="5" required>{{ json_encode($endpoint->metric_map, JSON_PRETTY_PRINT) }}</textarea>
-                        </div>
+{{-- 4. Endpoint Edit Modals --}}
+@foreach($device->restApiConnections->flatMap->endpoints as $endpoint)
+<div class="modal fade" id="endpointEditModal{{ $endpoint->id }}" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <form action="{{ route('device.rest-api.update-endpoint', [$device, $endpoint]) }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="modal-header"><h5 class="modal-title">Edit Endpoint: {{ $endpoint->name }}</h5></div>
+                <div class="modal-body">
+                    <div class="form-group"><label>Name</label><input type="text" name="name" class="form-control" value="{{ old('name', $endpoint->name) }}" required></div>
+                    <div class="form-group"><label>Method</label>
+                        <select name="method" class="form-control">
+                            @foreach(['GET', 'POST', 'PUT', 'DELETE'] as $method)
+                                <option value="{{ $method }}" @if($endpoint->method == $method) selected @endif>{{ $method }}</option>
+                            @endforeach
+                        </select>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        <button type="submit" class="btn btn-primary">Update Endpoint</button>
+                    <div class="form-group"><label>Path</label><input type="text" name="path" class="form-control" value="{{ old('path', $endpoint->path) }}" required></div>
+                    <div class="form-group"><label>Metric Map (JSON)</label>
+                        <textarea name="metric_map_json" class="form-control" rows="5" required>{{ old('metric_map_json', json_encode($endpoint->metric_map, JSON_PRETTY_PRINT)) }}</textarea>
                     </div>
-                </form>
-            </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Update Endpoint</button>
+                </div>
+            </form>
         </div>
     </div>
-    @endforeach
+</div>
 @endforeach
+
+@endsection
