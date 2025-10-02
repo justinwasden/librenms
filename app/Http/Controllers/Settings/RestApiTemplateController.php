@@ -11,7 +11,7 @@ class RestApiTemplateController extends Controller
     public function index()
     {
         $templates = RestApiTemplate::all();
-        return view('settings.rest-api.templates.index', compact('templates'));
+        return view('devices.rest-api.templates.index', compact('templates'));
     }
 
     public function create()
@@ -32,7 +32,7 @@ class RestApiTemplateController extends Controller
 
         RestApiTemplate::create($validated);
 
-        return redirect()->route('settings.rest-api.templates.index')->with('success', 'Template created successfully.');
+        return redirect()->route('devices.rest-api.templates.index')->with('success', 'Template created successfully.');
     }
 
     public function edit(RestApiTemplate $template)
@@ -52,12 +52,12 @@ class RestApiTemplateController extends Controller
 
         $template->update($validated);
 
-        return redirect()->route('settings.rest-api.templates.index')->with('success', 'Template updated successfully.');
+        return redirect()->route('devices.rest-api.templates.index')->with('success', 'Template updated successfully.');
     }
 
     public function destroy(RestApiTemplate $template)
     {
         $template->delete();
-        return redirect()->route('settings.rest-api.templates.index')->with('success', 'Template deleted successfully.');
+        return redirect()->route('devices.rest-api.templates.index')->with('success', 'Template deleted successfully.');
     }
 }
