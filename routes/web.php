@@ -200,17 +200,17 @@ Route::middleware(['auth'])->group(function () {
         });
     });
 
-    Route::prefix('device/{device}')->name('device.')->group(function () {
-        Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
-        Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
-        Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
-        Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
+		Route::prefix('device/{device}')->name('device.')->group(function () {
+		    Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
+		    Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
+		    Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
+		    Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
-        Route::prefix('rest-api')->name('rest-api.')->group(function() {
-            Route::get('{device}/edit/rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])->name('edit.rest-api');
-						Route::post('{device}/rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
-						Route::delete('{device}/rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
-				});
+		    // REST API Edit Routes
+		    Route::get('edit/rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])->name('edit.rest-api');
+		    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
+		    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
+		});
     });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
