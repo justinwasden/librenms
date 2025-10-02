@@ -52,10 +52,6 @@ class EditTabs extends Component
                 'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=snmp/'),
             ],
         ];
-				$this->tabs['rest-api'] = [
-				    'text' => __('REST API'),
-				    'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
-				];
 
         if (! $device->snmp_disable) {
             $this->tabs['ports'] = [

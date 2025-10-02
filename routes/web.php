@@ -207,10 +207,10 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
         Route::prefix('rest-api')->name('rest-api.')->group(function() {
-                Route::get('device={device}/tab=edit/section=rest-api/', [RestApiController::class, 'edit'])->name('device.edit.rest-api');
-						    Route::post('{device}/rest-api/apply-template', [RestApiController::class, 'applyTemplate'])->name('device.rest-api.apply-template');
-						    Route::delete('{device}/rest-api/connections/{connection}', [RestApiController::class, 'destroyConnection'])->name('device.rest-api.connections.destroy');
-				});
+            Route::get('/', [\App\Http\Controllers\Device\RestApiController::class, 'index'])->name('index');
+            Route::post('/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('apply-template');
+            Route::delete('/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('connections.destroy');
+        });
     });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);

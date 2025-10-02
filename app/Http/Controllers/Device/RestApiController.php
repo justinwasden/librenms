@@ -14,11 +14,11 @@ class RestApiController extends Controller
 {
     public function index(Device $device)
     {
-		    Gate::authorize('view', $device);
-		    $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
-		    $templates = RestApiTemplate::all();
+        Gate::authorize('view', $device);
+        $device->load('restApiConnections.endpoints');
+        $templates = RestApiTemplate::all();
 
-		    return view('devices.tabs.rest-api.index', compact('device', 'templates'));
+        return view('devices.tabs.rest-api.index', compact('device', 'templates'));
     }
 
     public function applyTemplate(Request $request, Device $device)
@@ -86,13 +86,4 @@ class RestApiController extends Controller
 
         return $string;
     }
-
-    public function edit(Device $device)
-		{
-		    Gate::authorize('update', $device);
-		    $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
-		    $templates = RestApiTemplate::all();
-
-		    return view('device.edit.rest-api', compact('device', 'templates'));
-		}
 }
