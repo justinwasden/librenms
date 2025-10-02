@@ -85,15 +85,14 @@ class RestApiController extends Controller
 		    $validated = $request->validate([
 		        'name' => 'required|string|max:255',
 		        'base_url' => 'required|url|max:2048',
-		        'rate_limit' => 'nullable|integer|min:1',
-		        // REMOVED 'enabled' => 'boolean', AND 'disable_ssl_verify' => 'boolean'
+		        'rate_limit' => 'nullable|integer|min:1', // Corrected to nullable
 		    ]);
 
-		    // This logic handles boolean fields correctly regardless of missing validation rules
+		    // This logic ensures 'enabled' and 'disable_ssl_verify' are correctly set to true or false.
 		    $validated['enabled'] = $request->has('enabled');
 		    $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
 
-
+		    // If validation passes, update the connection.
 		    $connection->update($validated);
 
 		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
