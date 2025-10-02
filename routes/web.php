@@ -115,25 +115,28 @@ Route::middleware(['auth'])->group(function () {
     // ---------------------------------------------------------------------
     // Device-Level Routes
     // ---------------------------------------------------------------------
-    Route::prefix('device/{device}')->name('device.')->group(function () {
-        Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
-        Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
-        Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
-        Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
+		Route::prefix('device/{device}')->name('device.')->group(function () {
+		    Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
+		    Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
+		    Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
+		    Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
-        // Core REST API Actions
-        Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
-        Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
+		    // Core REST API Actions
+		    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
+		    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
 
-        // NEW: Routes for Connection/Endpoint Management (Custom Connection/Endpoint routes)
-        Route::post('rest-api/connections', [\App\Http\Controllers\Device\RestApiController::class, 'storeConnection'])->name('rest-api.connections.store');
-        Route::delete('rest-api/endpoints/{endpoint}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyEndpoint'])->name('rest-api.endpoints.destroy');
-        Route::post('rest-api/connections/{connection}/credentials', [\App\Http\Controllers\Device\RestApiController::class, 'updateConnectionCredential'])->name('rest-api.connections.credentials.update');
+		    // NEW: Connection/Endpoint Management Routes
+		    Route::post('rest-api/connections', [\App\Http\Controllers\Device\RestApiController::class, 'storeConnection'])->name('rest-api.connections.store');
+		    Route::delete('rest-api/endpoints/{endpoint}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyEndpoint'])->name('rest-api.endpoints.destroy');
+		    Route::post('rest-api/connections/{connection}/credentials', [\App\Http\Controllers\Device\RestApiController::class, 'updateConnectionCredential'])->name('rest-api.connections.credentials.update');
 
-        // FIX: Corrected GET route for the Device Settings sub-tab.
-        Route::get('tab=edit/section=rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])
-             ->name('edit.rest-api'); // Resolves to 'device.edit.rest-api'
-    });
+		    // FIX: ADDED MISSING PUT ROUTE FOR CONNECTION UPDATE
+		    Route::put('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'updateConnection'])->name('rest-api.connections.update');
+
+		    // Corrected GET route for the Device Settings sub-tab.
+		    Route::get('tab=edit/section=rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])
+		         ->name('edit.rest-api'); // Resolves to 'device.edit.rest-api'
+		});
 
     // ---------------------------------------------------------------------
     // Global Templates Page (Refactored Location)
