@@ -181,14 +181,16 @@
                         <li><a href="{{ url('addhost') }}"><i class="fa fa-plus fa-fw fa-lg"
                                                               aria-hidden="true"></i> {{ __('Add Device') }}</a></li>
                         <li><a href="{{ url('delhost') }}"><i class="fa fa-trash fa-fw fa-lg"
-                        <li class="dropdown-submenu">
-                            <a href="#"><i class="fa fa-cloud-download fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API') }}</a>
-                            <ul class="dropdown-menu">
-                               <li><a href="{{ route('devices.rest-api.templates.index') }}"><i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('Templates') }}</a></li>
-                            </ul>
-                        </li>
                                                               aria-hidden="true"></i> {{ __('Delete Device') }}</a></li>
-                    @endadmin
+
+                    		                        <li role="presentation" class="divider"></li>
+                        <li>
+                            <a href="{{ route('devices.rest-api.templates.index') }}">
+                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
+                            </a>
+                        </li>
+
+										@endadmin
 
                     </ul>
                 </li>
