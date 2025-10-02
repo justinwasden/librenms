@@ -156,9 +156,7 @@ class EditTabs extends Component
         ];
     }
 
-    /**
-     * @inheritDoc
-     */
+
     public function render()
     {
         return view('components.device.edit-tabs');
