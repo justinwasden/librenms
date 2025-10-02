@@ -112,25 +112,52 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/device/{device}/rediscover', [DeviceController::class, 'rediscover'])->name('device.rediscover');
     });
 
+    // ---------------------------------------------------------------------
+    // FIX/REFACTOR: Device-Level Routes
+    // ---------------------------------------------------------------------
     Route::prefix('device/{device}')->name('device.')->group(function () {
         Route::get('popup', \App\Http\Controllers\DevicePopupController::class)->name('popup');
         Route::put('notes', [Device\Tabs\NotesController::class, 'update'])->name('notes.update');
         Route::put('module/{module}', [Device\Tabs\ModuleController::class, 'update'])->name('module.update');
         Route::delete('module/{module}', [Device\Tabs\ModuleController::class, 'delete'])->name('module.delete');
 
-        // REST API Edit Routes
+        // Core REST API Actions
         Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
         Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
+
+        // NEW: Routes for Connection/Endpoint Management (Custom Connection/Endpoint routes)
+        Route::post('rest-api/connections', [\App\Http\Controllers\Device\RestApiController::class, 'storeConnection'])->name('rest-api.connections.store');
+        Route::delete('rest-api/endpoints/{endpoint}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyEndpoint'])->name('rest-api.endpoints.destroy');
+        Route::post('rest-api/connections/{connection}/credentials', [\App\Http\Controllers\Device\RestApiController::class, 'updateConnectionCredential'])->name('rest-api.connections.credentials.update');
 
         // FIX: Corrected GET route for the Device Settings sub-tab.
         Route::get('tab=edit/section=rest-api', [\App\Http\Controllers\Device\RestApiController::class, 'edit'])
              ->name('edit.rest-api'); // Resolves to 'device.edit.rest-api'
     });
 
+    // ---------------------------------------------------------------------
+    // REFACTOR: Global Templates Page (Goal 2)
+    // Removed from settings and moved under an administrative 'devices' scope
+    // ---------------------------------------------------------------------
+    Route::middleware('can:admin')->group(function () {
+        // NEW TEMPLATES LOCATION (Moved from Settings, requested location is 'under Devices tab')
+        Route::prefix('devices')->name('devices.')->group(function () {
+            // Note: Renamed to avoid collision with existing 'templates' resource
+            Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
+        });
+
+        // The old settings/rest-api block is now fully removed here:
+        // Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () { /* DELETED */ });
+
+        // ... existing admin routes ...
+        Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
+        // ...
+    });
+
     // fallback device routes
     Route::match(['get', 'post'], 'device/{device}/{tab?}/{vars?}', [DeviceController::class, 'index'])
         ->name('device')->where('vars', '.*');
-
+    // ... rest of web.php ...
     // Maps
     Route::get('fullscreenmap', [Maps\FullscreenMapController::class, 'fullscreenMap']);
     Route::get('availability-map', [Maps\AvailabilityMapController::class, 'availabilityMap']);
@@ -177,10 +204,6 @@ Route::middleware(['auth'])->group(function () {
 
     // admin pages
     Route::middleware('can:admin')->group(function () {
-        Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
-        Route::put('settings/{name}', [SettingsController::class, 'update'])->name('settings.update');
-        Route::delete('settings/{name}', [SettingsController::class, 'destroy'])->name('settings.destroy');
-
         Route::post('alert/transports/{transport}/test', [AlertTransportController::class, 'test'])->name('alert.transports.test');
         Route::resource('alert-rule', AlertRuleController::class)->only(['show', 'store', 'update', 'destroy']);
         Route::put('alert-rule/{alert_rule}/toggle', [AlertRuleController::class, 'toggle'])->name('alert-rule.toggle');
@@ -195,13 +218,6 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
-
-        // REST API Settings Routes (Credentials and Templates)
-        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
-            Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
-            Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
-            Route::resource('templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
-        });
     });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
