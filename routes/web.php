@@ -143,7 +143,7 @@ Route::middleware(['auth'])->group(function () {
         // NEW TEMPLATES LOCATION (Moved from Settings, requested location is 'under Devices tab')
         Route::prefix('devices')->name('devices.')->group(function () {
             // Note: Renamed to avoid collision with existing 'templates' resource
-            Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
+            Route::resource('rest-api.templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
         });
 
         // The old settings/rest-api block is now fully removed here:
