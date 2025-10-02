@@ -152,6 +152,11 @@ Route::middleware(['auth'])->group(function () {
             Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
         });
 
+        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
+		        Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+		        Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+		    });
+
         // Templates Management (Moved under devices)
         Route::prefix('devices')->name('devices.')->group(function () {
             // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
