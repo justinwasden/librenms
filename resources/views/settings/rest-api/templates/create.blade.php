@@ -8,7 +8,8 @@
                 <h3 class="card-title">Create REST API Template</h3>
             </div>
             <div class="card-body">
-                <form action="{{ route('settings.rest-api.templates.store') }}" method="POST">
+                {{-- FIX: Use the new store route --}}
+                <form action="{{ route('devices.rest-api.templates.store') }}" method="POST">
                     @csrf
                     @include('settings.rest-api.templates._form')
                     <button type="submit" class="btn btn-primary">Create</button>

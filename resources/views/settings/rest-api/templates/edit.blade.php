@@ -8,7 +8,8 @@
                 <h3 class="card-title">Edit REST API Template</h3>
             </div>
             <div class="card-body">
-                <form action="{{ route('settings.rest-api.templates.update', $template) }}" method="POST">
+                {{-- FIX: Use the new update route --}}
+                <form action="{{ route('devices.rest-api.templates.update', $template) }}" method="POST">
                     @csrf
                     @method('PUT')
                     @include('settings.rest-api.templates._form')
