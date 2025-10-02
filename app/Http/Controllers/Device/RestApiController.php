@@ -12,6 +12,14 @@ use Illuminate\Support\Str;
 
 class RestApiController extends Controller
 {
+        public static function visible(Device $device): bool
+    {
+        // Show the tab if:
+        // 1. User can update the device, OR
+        // 2. Device has REST API connections configured
+        return Gate::allows('update', $device) || $device->restApiConnections()->exists();
+    }
+
     public function index(Device $device)
     {
 		    Gate::authorize('view', $device);
