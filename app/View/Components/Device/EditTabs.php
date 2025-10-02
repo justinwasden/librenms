@@ -40,7 +40,8 @@ class EditTabs extends Component
         public Device $device,
         ?string $tab = null,
     ) {
-        $this->tab = $tab ?? Request::segment(4, 'edit');
+        $currentSegment = Request::segment(4, 'edit');
+				$this->tab = $tab ?? str_replace('section=', '', $currentSegment);
 
         $this->tabs = [
             'edit' => [
