@@ -143,12 +143,14 @@ Route::middleware(['auth'])->group(function () {
         // NEW TEMPLATES LOCATION (Moved from Settings, requested location is 'under Devices tab')
         Route::prefix('devices')->name('devices.')->group(function () {
             // Note: Renamed to avoid collision with existing 'templates' resource
-            Route::resource('rest-api.templates', \App\Http\Controllers\Settings\RestApiTemplateController::class);
-        });
+            // FIX: Add the index route explicitly BEFORE the resource definition
+				    Route::get('rest-api-templates', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'index'])
+				         ->name('rest-api-templates.index');
 
-        // The old settings/rest-api block is now fully removed here:
-        // Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () { /* DELETED */ });
-
+				    // Now define the resource route, excluding the index method to prevent duplication
+				    Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+				         ->except(['index']);
+				});
         // ... existing admin routes ...
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
         // ...
