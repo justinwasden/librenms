@@ -1,5 +1,8 @@
 <?php
 
+error_log("Current tab: " . ($_GET['section'] ?? 'unknown'));
+error_log("Request segments: " . print_r(request()->segments(), true));
+
 use App\Models\RestApiTemplate;
 use Illuminate\Support\Facades\Gate;
 
@@ -14,7 +17,9 @@ if (!$device_model) {
 Gate::authorize('update', $device_model);
 
 $device_model->load('restApiConnections.endpoints', 'restApiConnections.credential');
-$templates = RestApiTemplate::all();
+
+// Filter templates for this device
+$templates = RestApiTemplate::forDevice($device_model)->get();
 
 echo view('device.edit.rest-api-content', [
     'device' => $device_model,
