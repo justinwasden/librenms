@@ -28,11 +28,13 @@
                                 <td>
                                     {{-- FIX: Use the new edit route name --}}
                                     <a href="{{ route('devices.rest-api.templates.edit', $template) }}" class="btn btn-sm btn-info">Edit</a>
-                                    <form action="{{ route('devices.rest-api.templates.destroy', $template) }}" method="POST" style="display: inline-block;">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
-                                    </form>
+																			{{-- REMOVED DELETE BUTTON: 
+																			<form action="{{ route('devices.rest-api.templates.destroy', $template) }}" method="POST" style="display: inline-block;">
+																			    @csrf
+																			    @method('DELETE')
+																			    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
+																			</form>
+																			--}}
                                 </td>
                             </tr>
                         @endforeach

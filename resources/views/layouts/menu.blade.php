@@ -191,7 +191,7 @@
                         </li>
 												<li>
                             <a href="{{ route('settings.rest-api.credentials.index') }}">
-                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
+                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
                             </a>
                         </li>
 										@endadmin
