@@ -54,7 +54,7 @@ class EditTabs extends Component
         ];
 
 				$this->tabs['rest-api'] = [
-				    'text' => __('REST API'),
+				    'text' => __('Rest Api'),
 				    'link' => route('device.edit.rest-api', $this->device->device_id),
 				];
 
