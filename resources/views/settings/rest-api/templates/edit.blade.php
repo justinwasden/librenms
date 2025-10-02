@@ -8,13 +8,12 @@
                 <h3 class="card-title">Edit REST API Template</h3>
             </div>
             <div class="card-body">
-                {{-- FIX: Use the new update route --}}
-               <form action="{{ route('devices.rest-api.templates.update', ['rest_api_template' => $template->id]) }}" method="POST">
-							    @csrf
-							    @method('PUT')
-							    @include('settings.rest-api.templates._form')
-							    <button type="submit" class="btn btn-primary">Update</button>
-							</form>
+                <form action="{{ route('devices.rest-api.templates.update', ['rest_api_template' => $template->id]) }}" method="POST">
+                    @csrf
+                    @method('PUT')
+                    @include('settings.rest-api.templates._form')
+                    <button type="submit" class="btn btn-primary">Update</button>
+                </form>
             </div>
         </div>
     </div>
