@@ -55,7 +55,7 @@ class EditTabs extends Component
 
 				$this->tabs['rest-api'] = [
 				    'text' => __('Rest Api'),
-				    'link' => route('device.edit.rest-api', $this->device->device_id),
+				    'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=rest-api/'),
 				];
 
         if (! $device->snmp_disable) {
