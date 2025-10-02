@@ -15,6 +15,13 @@ class RestApiConnection extends Model
         'name',
         'base_url',
         'rate_limit',
+        'enabled',
+        'disable_ssl_verify',
+    ];
+
+    protected $casts = [
+        'enabled' => 'boolean',
+        'disable_ssl_verify' => 'boolean',
     ];
 
     public function device()

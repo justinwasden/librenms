@@ -37,6 +37,12 @@ class Api
         $this->device->load('restApiConnections.endpoints', 'restApiConnections.credential.params', 'restApiConnections.credential.authenticationType');
 
         foreach ($this->device->restApiConnections as $connection) {
+            // Skip disabled connections
+            if (!$connection->enabled) {
+                Log::debug("Connection {$connection->name} is disabled, skipping");
+                continue;
+            }
+            
             // Check rate limiting for this connection
             if (!$this->checkRateLimit($connection)) {
                 Log::info("Rate limit reached for connection {$connection->name}, skipping");
@@ -46,6 +52,11 @@ class Api
             foreach ($connection->endpoints as $endpoint) {
                 try {
                     $options = [];
+                    
+                    // Configure SSL verification
+                    if ($connection->disable_ssl_verify) {
+                        $options['verify'] = false;
+                    }
                     
                     // Handle Authentication
                     if ($credential = $connection->credential) {
