@@ -75,29 +75,29 @@ class RestApiController extends Controller
     }
 
     public function updateConnection(Request $request, Device $device, RestApiConnection $connection)
-    {
-        Gate::authorize('update', $device);
+		{
+		    Gate::authorize('update', $device);
 
-        // Ensure the connection belongs to this device
-        if ($connection->device_id !== $device->device_id) {
-            abort(404);
-        }
+		    if ($connection->device_id !== $device->device_id) {
+		        abort(404);
+		    }
 
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'base_url' => 'required|url|max:2048',
-            'rate_limit' => 'nullable|integer|min:1', // FIX: Set to nullable
-        ]);
+		    $validated = $request->validate([
+		        'name' => 'required|string|max:255',
+		        'base_url' => 'required|url|max:2048',
+		        'rate_limit' => 'nullable|integer|min:1',
+		        // REMOVED 'enabled' => 'boolean', AND 'disable_ssl_verify' => 'boolean'
+		    ]);
 
-        // Handle boolean fields from the modal checkboxes
-        $validated['enabled'] = $request->has('enabled');
-        $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
+		    // This logic handles boolean fields correctly regardless of missing validation rules
+		    $validated['enabled'] = $request->has('enabled');
+		    $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
 
 
-        $connection->update($validated);
+		    $connection->update($validated);
 
-        return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
-    }
+		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
+		}
 
     public function updateConnectionCredential(Request $request, Device $device, RestApiConnection $connection)
     {
