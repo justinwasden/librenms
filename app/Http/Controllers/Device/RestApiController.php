@@ -12,7 +12,18 @@ use Illuminate\Support\Str;
 
 class RestApiController extends Controller
 {
-        public static function visible(Device $device): bool
+    /**
+     * Get the slug identifier for this tab
+     */
+    public static function slug(): string
+    {
+        return 'rest-api';
+    }
+
+    /**
+     * Determine if the REST API tab should be visible for this device
+     */
+    public static function visible(Device $device): bool
     {
         // Show the tab if:
         // 1. User can update the device, OR
@@ -20,13 +31,38 @@ class RestApiController extends Controller
         return Gate::allows('update', $device) || $device->restApiConnections()->exists();
     }
 
+    /**
+     * Get the display name for this tab
+     */
+    public static function name(): string
+    {
+        return __('REST API');
+    }
+
+    /**
+     * Get the icon for this tab
+     */
+    public static function icon(): string
+    {
+        return 'fa-cloud-download';
+    }
+
     public function index(Device $device)
     {
-		    Gate::authorize('view', $device);
-		    $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
-		    $templates = RestApiTemplate::all();
+        Gate::authorize('view', $device);
+        $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
+        $templates = RestApiTemplate::all();
 
-		    return view('devices.tabs.rest-api.index', compact('device', 'templates'));
+        return view('devices.tabs.rest-api.index', compact('device', 'templates'));
+    }
+
+    public function edit(Device $device)
+    {
+        Gate::authorize('update', $device);
+        $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
+        $templates = RestApiTemplate::all();
+
+        return view('device.edit.rest-api', compact('device', 'templates'));
     }
 
     public function applyTemplate(Request $request, Device $device)
@@ -54,7 +90,7 @@ class RestApiController extends Controller
             }
         }
 
-        return redirect()->route('device.rest-api.index', $device)->with('success', 'Template applied successfully.');
+        return redirect()->back()->with('success', 'Template applied successfully.');
     }
 
     public function destroyConnection(Device $device, RestApiConnection $connection)
@@ -63,7 +99,7 @@ class RestApiController extends Controller
 
         $connection->delete();
 
-        return redirect()->route('device.rest-api.index', $device)->with('success', 'API Connection deleted successfully.');
+        return redirect()->back()->with('success', 'API Connection deleted successfully.');
     }
 
     private function replacePlaceholdersInArray(array $data, Device $device): array
@@ -94,13 +130,4 @@ class RestApiController extends Controller
 
         return $string;
     }
-
-    public function edit(Device $device)
-		{
-		    Gate::authorize('update', $device);
-		    $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
-		    $templates = RestApiTemplate::all();
-
-		    return view('device.edit.rest-api', compact('device', 'templates'));
-		}
 }
