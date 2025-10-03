@@ -177,9 +177,55 @@ class Api
         $this->storeCustomMetrics();
     }
 
-    /**
-     * Maps data paths to metric names and delegates storage.
-     */
+    protected function checkRateLimit($connection): bool
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return true; // No rate limit set
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+
+        // Clean up old requests (outside the rate limit window - assume per minute)
+        $windowStart = Carbon::now()->subMinute();
+        $requests = array_filter($requests, function ($timestamp) use ($windowStart) {
+            return Carbon::parse($timestamp)->isAfter($windowStart);
+        });
+
+        // Check if we're at the limit
+        if (count($requests) >= $connection->rate_limit) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function updateRateLimit($connection): void
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return;
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+        $requests[] = Carbon::now()->toDateTimeString();
+
+        // Store for 2 minutes to be safe
+        Cache::put($cacheKey, $requests, 120);
+    }
+
+    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
+    {
+        $cacheKey = "rest_api_failures:{$endpoint->id}";
+        $failures = Cache::get($cacheKey, 0);
+        $failures++;
+
+        // Store failure count for 1 hour
+        Cache::put($cacheKey, $failures, 3600);
+
+        Log::debug("Endpoint {$endpoint->name} has failed {$failures} times");
+    }
+
     protected function mapData(RestApiEndpoint $endpoint, array $data)
     {
         Log::debug("Mapping data for endpoint {$endpoint->name}", ['map' => $endpoint->metric_map]);
@@ -217,7 +263,8 @@ class Api
      * @param mixed $value
      * @return void
      */
-    protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
+
+		protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
     {
         // 1. Basic Validation and preparation
         if (!is_scalar($value) && !is_array($value) && !is_null($value)) {
@@ -249,10 +296,7 @@ class Api
         ];
     }
 
-    /**
-     * Batch inserts all custom metrics collected during the poll run.
-     */
-    protected function storeCustomMetrics(): void
+		protected function storeCustomMetrics(): void
     {
         if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
             $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
@@ -270,10 +314,7 @@ class Api
         }
     }
 
-    /**
-     * Simple helper to check if a metric name typically belongs to a core LibreNMS entity.
-     */
-    protected function isCoreMetric(string $lowerMetricName): bool
+		protected function isCoreMetric(string $lowerMetricName): bool
     {
         // --- EXPANDED CORE METRICS LIST ---
         $coreNames = [
@@ -301,10 +342,108 @@ class Api
         return false;
     }
 
+    private function replacePlaceholders(string $string, Device $device): string
+    {
+        // Replace basic placeholders
+        $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
+        $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 
-    protected function checkRateLimit($connection): bool { /* implementation remains the same */ return true; }
-    protected function updateRateLimit($connection): void { /* implementation remains the same */ }
-    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void { /* implementation remains the same */ }
-    private function replacePlaceholders(string $string, Device $device): string { /* implementation remains the same */ return $string; }
-    protected function getSessionToken($connection): ?string { /* implementation remains the same */ return null; }
+        // Handle getAttrib placeholders with regex
+        preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
+
+        if (!empty($matches[2])) {
+            foreach ($matches[2] as $index => $attribName) {
+                $attribValue = $device->getAttrib($attribName);
+                $fullPlaceholder = $matches[0][$index];
+                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
+            }
+        }
+
+        return $string;
+    }
+
+    protected function getSessionToken($connection): ?string
+    {
+        // Only attempt session token auth if the authentication type is "Session Token"
+        if (!$connection->credential || strtolower($connection->credential->authenticationType->name) !== 'session token') {
+            return null;
+        }
+
+        // Check if we already have a cached session token for this connection
+        $cacheKey = "rest_api_session_token:{$connection->id}";
+        $cachedToken = Cache::get($cacheKey);
+        if ($cachedToken) {
+            Log::debug("Using cached session token for connection {$connection->name}");
+            return $cachedToken;
+        }
+
+        try {
+            $params = $connection->credential->params->pluck('value', 'key');
+
+            // Required parameters for session-based auth
+            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
+            $loginPath = $params['login_path'] ?? null;
+            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+
+            if (!$apiToken || !$loginPath) {
+                Log::warning("Session token authentication configured but missing required parameters (api_token, login_path) for connection {$connection->name}");
+                return null;
+            }
+
+            // Build the login URL
+            $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
+            $loginUrl = $this->replacePlaceholders($loginUrl, $this->device);
+
+            Log::info("Obtaining session token from {$loginUrl} for connection {$connection->name}");
+
+            // Prepare login request options
+            $loginOptions = [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Content-Type' => 'application/json',
+                ],
+            ];
+
+            // Apply SSL verification setting
+            if ($connection->disable_ssl_verify) {
+                $loginOptions['verify'] = false;
+            }
+
+            // Make the login request (usually POST, but check params for method)
+            $loginMethod = strtoupper($params['login_method'] ?? 'POST');
+            $response = $this->client->request($loginMethod, $loginUrl, $loginOptions);
+
+            // Extract the session token from response headers
+            $sessionToken = null;
+            if ($response->hasHeader($tokenHeader)) {
+                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
+            }
+
+            if (!$sessionToken) {
+                Log::warning("Login successful but no {$tokenHeader} header found in response for connection {$connection->name}");
+                return null;
+            }
+
+            Log::info("Successfully obtained session token for connection {$connection->name}");
+
+            // Cache the session token for 1 hour (or use TTL from params)
+            $ttl = (int)($params['session_ttl'] ?? 3600);
+            Cache::put($cacheKey, $sessionToken, $ttl);
+
+            return $sessionToken;
+
+        } catch (RequestException $e) {
+            $message = $e->getMessage();
+            if ($e->hasResponse()) {
+                $responseBody = $e->getResponse()->getBody();
+                $message .= ' | Response: ' . Str::limit($responseBody, 200);
+            }
+            Log::error("Failed to obtain session token for connection {$connection->name}: " . $message);
+            return null;
+        } catch (\Exception $e) {
+            Log::error("Unexpected error obtaining session token for connection {$connection->name}: " . $e->getMessage());
+            return null;
+        }
+    }
 }
