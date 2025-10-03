@@ -13,9 +13,8 @@ if ($argc < 2) {
 
 $deviceId = $argv[1];
 
-require __DIR__.'/../bootstrap/autoload.php';
-$app = require_once __DIR__.'/../bootstrap/app.php';
-$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$init_modules = [];
+require __DIR__ . '/../includes/init.php';
 
 use App\Models\Device;
 use App\Models\RestApiConnection;
@@ -184,7 +183,7 @@ if (empty($issues)) {
     echo "✓ All checks passed! Ready to poll.\n\n";
     echo "Next steps:\n";
     echo "1. Run polling: php lnms device:poll {$deviceId} -m rest-api -vv\n";
-    echo "2. Check metrics: php artisan tinker --execute=\"DB::table('device_api_metrics')->where('device_id', {$deviceId})->count()\"\n";
+    echo "2. Check metrics: mysql -u librenms -p librenms -e \"SELECT COUNT(*) FROM device_api_metrics WHERE device_id={$deviceId};\"\n";
 } else {
     echo "✗ Issues found:\n";
     foreach ($issues as $issue) {
