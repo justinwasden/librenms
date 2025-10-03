@@ -52,6 +52,18 @@ class Api
 
             // Attempt to obtain session token if using session-based auth
             $sessionToken = $this->getSessionToken($connection);
+            
+            // Debug logging for authentication
+            if ($connection->credential) {
+                Log::debug("Connection {$connection->name} using auth type: {$connection->credential->authenticationType->name}");
+                if ($sessionToken) {
+                    Log::debug("Session token obtained and will be used for connection {$connection->name}");
+                } else {
+                    Log::debug("No session token obtained for connection {$connection->name}");
+                }
+            } else {
+                Log::debug("Connection {$connection->name} has no credential configured");
+            }
 
             foreach ($connection->endpoints as $endpoint) {
                 try {
@@ -67,15 +79,22 @@ class Api
                         $authType = strtolower($credential->authenticationType->name);
                         $params = $credential->params->pluck('value', 'key');
 
+                        Log::debug("Applying authentication type '{$authType}' for endpoint {$endpoint->name}");
+
                         if ($authType === 'basic auth' && isset($params['username'], $params['password'])) {
                             $options['auth'] = [$params['username'], $params['password']];
+                            Log::debug("Applied Basic Auth for endpoint {$endpoint->name}");
                         } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
                             $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
                             $options['headers'][$params['header']] = $scheme . $params['token'];
+                            Log::debug("Applied Token auth with header {$params['header']} for endpoint {$endpoint->name}");
                         } elseif ($authType === 'session token' && $sessionToken) {
                             // Use the session token obtained from the login endpoint
                             $tokenHeader = $params['token_header'] ?? 'x-auth-token';
                             $options['headers'][$tokenHeader] = $sessionToken;
+                            Log::debug("Applied Session Token auth with header {$tokenHeader} for endpoint {$endpoint->name}");
+                        } elseif ($authType === 'session token' && !$sessionToken) {
+                            Log::warning("Session Token auth type selected but no session token available for endpoint {$endpoint->name}");
                         }
                     }
 
