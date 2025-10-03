@@ -17,6 +17,7 @@ class Api
     protected Device $device;
     protected array $poller_options;
     protected Client $client;
+    protected array $sessionTokens = []; // Store session tokens per connection
 
     public function __construct(Device $device, array $poller_options = [], Client $client = null)
     {
@@ -49,6 +50,9 @@ class Api
                 continue;
             }
 
+            // Attempt to obtain session token if using session-based auth
+            $sessionToken = $this->getSessionToken($connection);
+
             foreach ($connection->endpoints as $endpoint) {
                 try {
                     $options = [];
@@ -68,6 +72,10 @@ class Api
                         } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
                             $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
                             $options['headers'][$params['header']] = $scheme . $params['token'];
+                        } elseif ($authType === 'session token' && $sessionToken) {
+                            // Use the session token obtained from the login endpoint
+                            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                            $options['headers'][$tokenHeader] = $sessionToken;
                         }
                     }
 
@@ -266,5 +274,94 @@ class Api
         }
 
         return $string;
+    }
+
+    /**
+     * Get or create a session token for session-based authentication
+     * This handles APIs like PureStorage that require a login step to get a session token
+     */
+    protected function getSessionToken($connection): ?string
+    {
+        // Only attempt session token auth if the authentication type is "Session Token"
+        if (!$connection->credential || strtolower($connection->credential->authenticationType->name) !== 'session token') {
+            return null;
+        }
+
+        // Check if we already have a cached session token for this connection
+        $cacheKey = "rest_api_session_token:{$connection->id}";
+        $cachedToken = Cache::get($cacheKey);
+        if ($cachedToken) {
+            Log::debug("Using cached session token for connection {$connection->name}");
+            return $cachedToken;
+        }
+
+        try {
+            $params = $connection->credential->params->pluck('value', 'key');
+            
+            // Required parameters for session-based auth
+            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
+            $loginPath = $params['login_path'] ?? null;
+            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+
+            if (!$apiToken || !$loginPath) {
+                Log::warning("Session token authentication configured but missing required parameters (api_token, login_path) for connection {$connection->name}");
+                return null;
+            }
+
+            // Build the login URL
+            $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
+            $loginUrl = $this->replacePlaceholders($loginUrl, $this->device);
+
+            Log::info("Obtaining session token from {$loginUrl} for connection {$connection->name}");
+
+            // Prepare login request options
+            $loginOptions = [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Content-Type' => 'application/json',
+                ],
+            ];
+
+            // Apply SSL verification setting
+            if ($connection->disable_ssl_verify) {
+                $loginOptions['verify'] = false;
+            }
+
+            // Make the login request (usually POST, but check params for method)
+            $loginMethod = strtoupper($params['login_method'] ?? 'POST');
+            $response = $this->client->request($loginMethod, $loginUrl, $loginOptions);
+
+            // Extract the session token from response headers
+            $sessionToken = null;
+            if ($response->hasHeader($tokenHeader)) {
+                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
+            }
+
+            if (!$sessionToken) {
+                Log::warning("Login successful but no {$tokenHeader} header found in response for connection {$connection->name}");
+                return null;
+            }
+
+            Log::info("Successfully obtained session token for connection {$connection->name}");
+
+            // Cache the session token for 1 hour (or use TTL from params)
+            $ttl = (int)($params['session_ttl'] ?? 3600);
+            Cache::put($cacheKey, $sessionToken, $ttl);
+
+            return $sessionToken;
+
+        } catch (RequestException $e) {
+            $message = $e->getMessage();
+            if ($e->hasResponse()) {
+                $responseBody = $e->getResponse()->getBody();
+                $message .= ' | Response: ' . Str::limit($responseBody, 200);
+            }
+            Log::error("Failed to obtain session token for connection {$connection->name}: " . $message);
+            return null;
+        } catch (\Exception $e) {
+            Log::error("Unexpected error obtaining session token for connection {$connection->name}: " . $e->getMessage());
+            return null;
+        }
     }
 }
