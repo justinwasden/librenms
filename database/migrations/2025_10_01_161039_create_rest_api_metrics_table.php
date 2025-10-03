@@ -14,7 +14,8 @@ return new class extends Migration
         if (!Schema::hasTable('device_api_metrics')) {
             Schema::create('device_api_metrics', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('device_id');
+                // Match the exact type from devices table - device_id is unsignedInteger, not bigInteger
+                $table->unsignedInteger('device_id');
                 $table->unsignedBigInteger('api_endpoint_id');
                 $table->unsignedBigInteger('api_connection_id')->nullable();
 
