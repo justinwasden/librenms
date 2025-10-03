@@ -256,14 +256,6 @@ class Api
         }
     }
 
-    /**
-     * Determines where to store the metric: core poll state or custom table.
-     * * @param RestApiEndpoint $endpoint
-     * @param string $metricName
-     * @param mixed $value
-     * @return void
-     */
-
 		protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
     {
         // 1. Basic Validation and preparation
@@ -297,22 +289,28 @@ class Api
     }
 
 		protected function storeCustomMetrics(): void
-    {
-        if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
-            $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
+{
+    if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
+        $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
 
-            $now = Carbon::now();
-            $metricsToInsert = array_map(function ($metric) use ($now) {
-                $metric['created_at'] = $now;
-                $metric['updated_at'] = $now;
-                return $metric;
-            }, $metricsToInsert);
+        $now = Carbon::now();
+        $metricsToInsert = array_map(function ($metric) use ($now) {
+            $metric['created_at'] = $now;
+            $metric['updated_at'] = $now;
+            // collected_at is already in the Carbon format from storeMetric
+            return $metric;
+        }, $metricsToInsert);
 
-            // Execute the batch insert
+        try {
+            // CRITICAL SECTION: This is where the database write happens
             RestApiMetric::insert($metricsToInsert);
             Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
+        } catch (\Illuminate\Database\QueryException $e) {
+            // LOG THE EXCEPTION TO FIND THE ROOT CAUSE (Missing column, wrong data type, etc.)
+            Log::error("Failed to insert custom REST API metrics: " . $e->getMessage(), ['metrics' => $metricsToInsert]);
         }
     }
+}
 
 		protected function isCoreMetric(string $lowerMetricName): bool
     {
