@@ -296,11 +296,10 @@ class Api
 		        $now = Carbon::now();
 		        $metricsToInsert = array_map(function ($metric) use ($now) {
 
-		            // CRITICAL FIX: Explicitly format collected_at to database timestamp string
+		            // CRITICAL FIX: Explicitly convert the Carbon object to a database string
+		            // This ensures consistency across all timestamp fields for the batch insert.
 		            $metric['collected_at'] = $metric['collected_at']->toDateTimeString();
 
-		            // Eloquent handles created_at/updated_at automatically on insert,
-		            // but for a raw batch insert, we must provide them as database strings.
 		            $metric['created_at'] = $now->toDateTimeString();
 		            $metric['updated_at'] = $now->toDateTimeString();
 
@@ -308,17 +307,13 @@ class Api
 		        }, $metricsToInsert);
 
 		        try {
-		            // CRITICAL SECTION: Execute the batch insert
+		            // This is the batch insert that will now run with correctly formatted strings
 		            \App\Models\RestApiMetric::insert($metricsToInsert);
 
-		            // This log now confirms successful insertion if the line above executes
 		            Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
-		        } catch (\Illuminate\Database\QueryException $e) {
-		            // LOG THE EXCEPTION TO FIND THE ROOT CAUSE
-		            Log::error("Failed to insert custom REST API metrics (Query Exception): " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
 		        } catch (\Exception $e) {
-		            // LOG ANY OTHER PHP EXCEPTIONS
-		             Log::error("Failed to insert custom REST API metrics (General Exception): " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+		            // Log the exception to the debug log, just in case
+		            Log::error("CRITICAL DB FAILURE in storeCustomMetrics: " . $e->getMessage());
 		        }
 		    }
 		}
