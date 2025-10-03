@@ -289,28 +289,39 @@ class Api
     }
 
 		protected function storeCustomMetrics(): void
-{
-    if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
-        $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
+		{
+		    if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
+		        $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
 
-        $now = Carbon::now();
-        $metricsToInsert = array_map(function ($metric) use ($now) {
-            $metric['created_at'] = $now;
-            $metric['updated_at'] = $now;
-            // collected_at is already in the Carbon format from storeMetric
-            return $metric;
-        }, $metricsToInsert);
+		        $now = Carbon::now();
+		        $metricsToInsert = array_map(function ($metric) use ($now) {
 
-        try {
-            // CRITICAL SECTION: This is where the database write happens
-            RestApiMetric::insert($metricsToInsert);
-            Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
-        } catch (\Illuminate\Database\QueryException $e) {
-            // LOG THE EXCEPTION TO FIND THE ROOT CAUSE (Missing column, wrong data type, etc.)
-            Log::error("Failed to insert custom REST API metrics: " . $e->getMessage(), ['metrics' => $metricsToInsert]);
-        }
-    }
-}
+		            // CRITICAL FIX: Explicitly format collected_at to database timestamp string
+		            $metric['collected_at'] = $metric['collected_at']->toDateTimeString();
+
+		            // Eloquent handles created_at/updated_at automatically on insert,
+		            // but for a raw batch insert, we must provide them as database strings.
+		            $metric['created_at'] = $now->toDateTimeString();
+		            $metric['updated_at'] = $now->toDateTimeString();
+
+		            return $metric;
+		        }, $metricsToInsert);
+
+		        try {
+		            // CRITICAL SECTION: Execute the batch insert
+		            \App\Models\RestApiMetric::insert($metricsToInsert);
+
+		            // This log now confirms successful insertion if the line above executes
+		            Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
+		        } catch (\Illuminate\Database\QueryException $e) {
+		            // LOG THE EXCEPTION TO FIND THE ROOT CAUSE
+		            Log::error("Failed to insert custom REST API metrics (Query Exception): " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+		        } catch (\Exception $e) {
+		            // LOG ANY OTHER PHP EXCEPTIONS
+		             Log::error("Failed to insert custom REST API metrics (General Exception): " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+		        }
+		    }
+		}
 
 		protected function isCoreMetric(string $lowerMetricName): bool
     {
