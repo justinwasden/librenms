@@ -11,8 +11,9 @@ class RestApiCredentialController extends Controller
 {
     public function index()
     {
-        $credentials = RestApiCredential::with('authenticationType')->get();
-        return view('settings.rest-api.credentials.index', compact('credentials'));
+        $credentials = RestApiCredential::with('authenticationType', 'params')->get();
+        $authTypes = RestApiAuthenticationType::all();
+        return view('settings.rest-api.credentials.index', compact('credentials', 'authTypes'));
     }
 
     public function create()
