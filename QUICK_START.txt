@@ -1,0 +1,83 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    REST API POLLING - QUICK START                        ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+📁 FILES CREATED/MODIFIED:
+  ✓ /app/Pollers/Api.php (UPDATED - backup at Api.php.backup)
+  ✓ /database/migrations/2025_10_02_230000_create_device_api_metrics_table.php
+  ✓ /database/migrations/2025_10_02_230100_add_resource_fields_to_rest_api_endpoints.php
+  ✓ /scripts/diagnostic_rest_api.php
+  ✓ /scripts/update_purestorage_endpoints.php
+  ✓ /REST_API_SETUP.md
+  ✓ /IMPLEMENTATION_SUMMARY.txt
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                         INSTALLATION COMMANDS                            ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+# 1. Run migrations
+php artisan migrate
+
+# 2. Make scripts executable
+chmod +x scripts/diagnostic_rest_api.php scripts/update_purestorage_endpoints.php
+
+# 3. Update PureStorage endpoints
+php scripts/update_purestorage_endpoints.php
+
+# 4. Run diagnostic (replace 1 with your device_id)
+php scripts/diagnostic_rest_api.php 1
+
+# 5. Test polling
+php lnms device:poll 1 -m rest-api -vv
+
+# 6. Verify data
+php artisan tinker --execute="DB::table('device_api_metrics')->where('device_id', 1)->count()"
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                         TROUBLESHOOTING                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+No data stored?
+  → php scripts/diagnostic_rest_api.php <device_id>
+  → Check logs: tail -f /opt/librenms/logs/librenms.log | grep "REST API"
+
+Getting NULL values?
+  → See API response: php lnms device:poll <device_id> -m rest-api -vv | grep -A 20 "API Response"
+  → Update metric_map paths to match actual structure
+
+Table doesn't exist?
+  → php artisan migrate:status
+  → php artisan migrate
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    VERIFY EVERYTHING WORKS                               ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+php artisan tinker
+
+// Check table exists
+Schema::hasTable('device_api_metrics')
+
+// Count metrics
+DB::table('device_api_metrics')->where('device_id', 1)->count()
+
+// View recent metrics
+DB::table('device_api_metrics')
+  ->where('device_id', 1)
+  ->orderBy('collected_at', 'desc')
+  ->limit(5)
+  ->get(['resource_type', 'resource_name', 'metric_name', 'value'])
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                         SUCCESS INDICATORS                               ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+✓ Migration completes without errors
+✓ Diagnostic shows "All checks passed!"
+✓ Poll shows "Processing X items for endpoint..."
+✓ Poll shows "Stored X metrics for [resource_type] 'resource_name'"
+✓ Database query returns metrics count > 0
+
+For complete documentation, see:
+  - /REST_API_SETUP.md
+  - /IMPLEMENTATION_SUMMARY.txt

@@ -1,0 +1,161 @@
+===============================================================================
+REST API POLLING - IMPLEMENTATION SUMMARY
+===============================================================================
+
+DATE: October 2, 2025
+LIBRENMS PATH: /Users/justinwasden/Documents/GitHub/librenms
+
+===============================================================================
+WHAT WAS DONE
+===============================================================================
+
+1. FIXED CORE POLLER
+   - Updated: /app/Pollers/Api.php
+   - Backup: /app/Pollers/Api.php.backup
+   - Changes:
+     * Fixed table name from rest_api_metrics to device_api_metrics
+     * Added proper resource-based metric storage
+     * Handles PureStorage API format {items: [...]}
+     * Separates numeric and string values
+
+2. CREATED DATABASE MIGRATIONS
+   - /database/migrations/2025_10_02_230000_create_device_api_metrics_table.php
+     * Creates device_api_metrics table with proper structure
+   
+   - /database/migrations/2025_10_02_230100_add_resource_fields_to_rest_api_endpoints.php
+     * Adds resource_type, resource_id_path, resource_name_path columns
+
+3. CREATED HELPER SCRIPTS
+   - /scripts/diagnostic_rest_api.php
+     * Checks configuration and connectivity
+     * Run: php scripts/diagnostic_rest_api.php <device_id>
+   
+   - /scripts/update_purestorage_endpoints.php
+     * Updates PureStorage endpoint configurations
+     * Run: php scripts/update_purestorage_endpoints.php
+
+4. CREATED DOCUMENTATION
+   - /REST_API_SETUP.md
+     * Complete setup and troubleshooting guide
+
+===============================================================================
+NEXT STEPS TO COMPLETE SETUP
+===============================================================================
+
+1. RUN MIGRATIONS
+   cd /Users/justinwasden/Documents/GitHub/librenms
+   php artisan migrate
+
+2. MAKE SCRIPTS EXECUTABLE
+   chmod +x scripts/diagnostic_rest_api.php
+   chmod +x scripts/update_purestorage_endpoints.php
+
+3. UPDATE PURESTORAGE ENDPOINTS
+   php scripts/update_purestorage_endpoints.php
+
+4. RUN DIAGNOSTICS
+   php scripts/diagnostic_rest_api.php 1
+   (Replace 1 with your device_id)
+
+5. TEST POLLING
+   php lnms device:poll 1 -m rest-api -vv
+
+6. VERIFY DATA
+   php artisan tinker
+   DB::table('device_api_metrics')->where('device_id', 1)->count();
+
+===============================================================================
+KEY DATABASE CHANGES
+===============================================================================
+
+NEW TABLE: device_api_metrics
+  - device_id (FK to devices)
+  - api_endpoint_id (FK to rest_api_endpoints)
+  - api_connection_id (FK to rest_api_connections)
+  - resource_type (array, volume, interface, host)
+  - resource_id (UUID or unique identifier)
+  - resource_name (human-readable name)
+  - metric_name (capacity, speed, etc.)
+  - metric_type (gauge, counter)
+  - value (numeric values)
+  - string_value (text/JSON values)
+  - collected_at, created_at, updated_at
+
+MODIFIED TABLE: rest_api_endpoints
+  + resource_type VARCHAR(50)
+  + resource_id_path VARCHAR(255)
+  + resource_name_path VARCHAR(255)
+
+===============================================================================
+PURESTORAGE ENDPOINT MAPPINGS
+===============================================================================
+
+ARRAY INFO (/api/2.26/arrays)
+  resource_type: array
+  resource_id_path: id
+  resource_name_path: name
+  metrics: name, version, capacity, space.*
+
+VOLUMES (/api/2.26/volumes)
+  resource_type: volume
+  resource_id_path: id
+  resource_name_path: name
+  metrics: provisioned, connection_count, space.*, serial
+
+NETWORK INTERFACES (/api/2.26/network-interfaces)
+  resource_type: interface
+  resource_id_path: name
+  resource_name_path: name
+  metrics: enabled, speed, eth.*, services
+
+HOSTS (/api/2.26/hosts)
+  resource_type: host
+  resource_id_path: name
+  resource_name_path: name
+  metrics: personality, connection_count, space.*, wwns
+
+===============================================================================
+TROUBLESHOOTING QUICK REFERENCE
+===============================================================================
+
+NO METRICS STORED:
+  1. php scripts/diagnostic_rest_api.php <device_id>
+  2. tail -f /opt/librenms/logs/librenms.log | grep -i "rest api"
+  3. php lnms device:poll <device_id> -m rest-api -vv
+
+NULL VALUES:
+  - Check API response structure
+  - Verify metric_map paths match actual response
+  - Use: php lnms device:poll <device_id> -m rest-api -vv | grep "API Response"
+
+DUPLICATE METRICS:
+  - Check resource_id extraction
+  - Verify resource_id_path is correct
+
+DATABASE ERRORS:
+  - Ensure migrations ran: php artisan migrate:status
+  - Check foreign keys exist
+  - Verify data types match
+
+===============================================================================
+FILES REFERENCE
+===============================================================================
+
+CORE:
+  /app/Pollers/Api.php (MODIFIED)
+  /app/Pollers/Api.php.backup (BACKUP)
+
+MIGRATIONS:
+  /database/migrations/2025_10_02_230000_create_device_api_metrics_table.php
+  /database/migrations/2025_10_02_230100_add_resource_fields_to_rest_api_endpoints.php
+
+SCRIPTS:
+  /scripts/diagnostic_rest_api.php
+  /scripts/update_purestorage_endpoints.php
+
+DOCS:
+  /REST_API_SETUP.md
+
+===============================================================================
+END OF SUMMARY
+===============================================================================
