@@ -11,8 +11,8 @@ use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB; // <-- REQUIRED FACADE
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB; // Ensure this facade is included
 
 class Api
 {
@@ -20,7 +20,6 @@ class Api
     protected array $poller_options;
     protected Client $client;
     protected array $sessionTokens = [];
-// ... (rest of class properties) ...
 
     public function __construct(Device $device, array $poller_options = [], Client $client = null)
     {
@@ -31,32 +30,172 @@ class Api
 
     public function poll()
     {
-        // ... (poll execution logic remains the same) ...
+        if (!$this->device->restApiConnections()->exists()) {
+            return;
+        }
 
+        Log::info("Polling REST APIs for device {$this->device->hostname}");
+
+        $this->device->load('restApiConnections.endpoints', 'restApiConnections.credential.params', 'restApiConnections.credential.authenticationType');
+
+        // Initialize global poll state arrays
         $GLOBALS['poll_state']['rest_api']['metrics'] = [];
         $GLOBALS['poll_state']['rest_api']['custom_metrics'] = [];
 
         foreach ($this->device->restApiConnections as $connection) {
-            // ... (rest of polling loop remains the same) ...
+            if (!$connection->enabled) {
+                Log::debug("Connection {$connection->name} is disabled, skipping");
+                continue;
+            }
+
+            if (!$this->checkRateLimit($connection)) {
+                Log::info("Rate limit reached for connection {$connection->name}, skipping");
+                continue;
+            }
+
+            $sessionToken = $this->getSessionToken($connection);
+
+            if ($connection->credential) {
+                Log::debug("Connection {$connection->name} using auth type: {$connection->credential->authenticationType->name}");
+                if ($sessionToken) {
+                    Log::debug("Session token obtained and will be used for connection {$connection->name}");
+                } else {
+                    Log::debug("No session token obtained for connection {$connection->name}");
+                }
+            } else {
+                Log::debug("Connection {$connection->name} has no credential configured");
+            }
+
 
             foreach ($connection->endpoints as $endpoint) {
-                // ... (API call and mapping logic remains the same) ...
+                try {
+                    $options = [];
 
-                if ($body && $endpoint->metric_map) {
-                    $this->mapData($endpoint, $body);
+                    if ($connection->disable_ssl_verify) {
+                        $options['verify'] = false;
+                    }
+
+                    if ($credential = $connection->credential) {
+                        $authType = strtolower($credential->authenticationType->name);
+                        $params = $credential->params->pluck('value', 'key');
+
+                        Log::debug("Applying authentication type '{$authType}' for endpoint {$endpoint->name}");
+
+                        if ($authType === 'basic auth' && isset($params['username'], $params['password'])) {
+                            $options['auth'] = [$params['username'], $params['password']];
+                            Log::debug("Applied Basic Auth for endpoint {$endpoint->name}");
+                        } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
+                            $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
+                            $options['headers'][$params['header']] = $scheme . $params['token'];
+                            Log::debug("Applied Token auth with header {$params['header']} for endpoint {$endpoint->name}");
+                        } elseif ($authType === 'session token' && $sessionToken) {
+                            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                            $options['headers'][$tokenHeader] = $sessionToken;
+                            Log::debug("Applied Session Token auth with header {$tokenHeader} for endpoint {$endpoint->name}");
+                        } elseif ($authType === 'session token' && !$sessionToken) {
+                            Log::warning("Session Token auth type selected but no session token available for endpoint {$endpoint->name}");
+                        }
+                    }
+
+                    if ($endpoint->headers) {
+                        $options['headers'] = array_merge($options['headers'] ?? [], $endpoint->headers);
+                    }
+                    if ($endpoint->query_params) {
+                        $options['query'] = $endpoint->query_params;
+                    }
+                    if ($endpoint->body) {
+                        $options['json'] = $endpoint->body;
+                    }
+
+                    $url = $this->replacePlaceholders($connection->base_url . $endpoint->path, $this->device);
+                    Log::debug("Polling URL: {$url} for device {$this->device->hostname}");
+
+                    $response = $this->client->request($endpoint->method, $url, $options);
+                    $statusCode = $response->getStatusCode();
+
+                    if ($statusCode < 200 || $statusCode >= 300) {
+                        Log::warning("Non-successful status code {$statusCode} from {$url} for device {$this->device->hostname}");
+                        continue;
+                    }
+
+                    $bodyContent = $response->getBody()->getContents();
+
+                    $body = json_decode($bodyContent, true);
+                    if (json_last_error() !== JSON_ERROR_NONE) {
+                        Log::warning("Invalid JSON response from {$url} for device {$this->device->hostname}: " . json_last_error_msg());
+                        continue;
+                    }
+
+                    Log::debug("API Response for endpoint {$endpoint->name}", [
+                        'url' => $url,
+                        'response_keys' => is_array($body) ? array_keys($body) : 'not an array',
+                        'response_sample' => Str::limit(json_encode($body, JSON_PRETTY_PRINT), 2000),
+                    ]);
+
+                    if (!is_array($body)) {
+                        Log::warning("API response is not an array for endpoint {$endpoint->name}, got: " . gettype($body));
+                        continue;
+                    }
+
+                    if ($body && $endpoint->metric_map) {
+                        $this->mapData($endpoint, $body);
+                    }
+
+                    $endpoint->update(['last_polled' => Carbon::now()]);
+
+                    $this->updateRateLimit($connection);
+
+                } catch (RequestException $e) {
+                    $message = $e->getMessage();
+                    if ($e->hasResponse()) {
+                        $responseBody = $e->getResponse()->getBody();
+                        $message .= ' | Response: ' . Str::limit($responseBody, 200);
+                    }
+                    Log::error("Failed to poll REST API endpoint {$endpoint->name} for device {$this->device->hostname}: " . $message);
+
+                    $this->handleFailedEndpoint($endpoint);
+
+                } catch (\Exception $e) {
+                    Log::error("An unexpected error occurred while polling endpoint {$endpoint->name} for device {$this->device->hostname}: " . $e->getMessage());
                 }
-
-                $endpoint->update(['last_polled' => Carbon::now()]);
-
-                $this->updateRateLimit($connection);
             }
         }
 
         $this->storeCustomMetrics();
     }
 
-    // ... (mapData and storeMetric remain the same, but ensuring custom_metrics has Carbon object for collected_at) ...
 
+    protected function mapData(RestApiEndpoint $endpoint, array $data)
+    {
+        Log::debug("Mapping data for endpoint {$endpoint->name}", ['map' => $endpoint->metric_map]);
+
+        foreach ($endpoint->metric_map as $metricName => $apiPath) {
+            try {
+                $values = data_get($data, $apiPath);
+
+                if ($values === null) {
+                    Log::debug("Metric '$metricName' with path '$apiPath' not found in API response for endpoint {$endpoint->name}.");
+                    continue;
+                }
+
+                if (is_array($values) && Arr::isList($values)) {
+                    foreach ($values as $index => $value) {
+                        $indexedMetricName = "{$metricName}.{$index}";
+                        $this->storeMetric($endpoint, $indexedMetricName, $value);
+                    }
+                } else {
+                    $this->storeMetric($endpoint, $metricName, $values);
+                }
+            } catch (\Exception $e) {
+                Log::error("Error mapping metric {$metricName} for endpoint {$endpoint->name}: " . $e->getMessage());
+            }
+        }
+    }
+
+
+    /**
+     * Determines where to store the metric: core poll state or custom table.
+     */
     protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
     {
         try {
@@ -68,15 +207,19 @@ class Api
             $lowerMetricName = Str::lower($metricName);
             $storageValue = is_scalar($value) ? $value : json_encode($value);
 
+            // Ensure value is never NULL if the column is NOT NULL
             if ($storageValue === null) {
                  $storageValue = '';
             }
 
+            // --- 2. TRY TO MATCH EXISTING CORE METRICS ---
             if ($this->isCoreMetric($lowerMetricName)) {
                 $GLOBALS['poll_state']['rest_api']['metrics'][$metricName] = $value;
                 Log::debug("[REST API STORE] Metric '{$metricName}' (Core Match).");
                 return;
             }
+
+            // --- 3. FALLBACK TO CUSTOM TABLE (rest_api_metrics) ---
 
             $collectedAt = Carbon::now();
 
@@ -84,7 +227,7 @@ class Api
                 'endpoint_id' => $endpoint->id,
                 'metric_name' => $metricName,
                 'metric_value' => $storageValue,
-                'collected_at' => $collectedAt, // Store Carbon object
+                'collected_at' => $collectedAt, // Store Carbon object here, formatted later
             ];
 
             Log::debug("[REST API STORE] Metric '{$metricName}' (Custom Fallback).");
@@ -95,7 +238,7 @@ class Api
     }
 
     /**
-     * Batch inserts all custom metrics collected during the poll run using DB::insert.
+     * Batch inserts all custom metrics collected during the poll run.
      */
     protected function storeCustomMetrics(): void
     {
@@ -105,43 +248,55 @@ class Api
             $now = Carbon::now();
             $nowString = $now->toDateTimeString();
 
-            $values = [];
+            $metricsToInsert = array_map(function ($metric) use ($nowString) {
+
+                // CRITICAL FIX: Explicitly convert the Carbon object to string for raw SQL insert
+                if ($metric['collected_at'] instanceof Carbon) {
+                    $metric['collected_at'] = $metric['collected_at']->toDateTimeString();
+                }
+
+                // Add mandatory created_at and updated_at fields as strings
+                $metric['created_at'] = $nowString;
+                $metric['updated_at'] = $nowString;
+
+                return $metric;
+            }, $metricsToInsert);
+
+            // Prepare for raw insertion
             $columns = ['endpoint_id', 'metric_name', 'metric_value', 'collected_at', 'created_at', 'updated_at'];
             $placeholders = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
-
-            foreach ($metricsToInsert as $metric) {
-                // Ensure collected_at is a string
-                $collectedAtString = $metric['collected_at'] instanceof Carbon
-                                     ? $metric['collected_at']->toDateTimeString()
-                                     : $metric['collected_at'];
-
-                $values[] = $metric['endpoint_id'];
-                $values[] = $metric['metric_name'];
-                $values[] = $metric['metric_value'];
-                $values[] = $collectedAtString;
-                $values[] = $nowString; // created_at
-                $values[] = $nowString; // updated_at
-            }
-
-            // Build the SQL insert query
             $insert_query = 'INSERT INTO rest_api_metrics (' . implode(', ', $columns) . ') VALUES ';
             $insert_query .= implode(', ', array_fill(0, count($metricsToInsert), $placeholders));
 
+            $values = [];
+            foreach ($metricsToInsert as $metric) {
+                $values[] = $metric['endpoint_id'];
+                $values[] = $metric['metric_name'];
+                $values[] = $metric['metric_value'];
+                $values[] = $metric['collected_at'];
+                $values[] = $metric['created_at'];
+                $values[] = $metric['updated_at'];
+            }
+
             try {
-                // Execute the raw query
+                // Execute the raw query using the DB facade for maximum reliability
                 DB::insert($insert_query, $values);
 
-                Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics using DB::insert.");
-            } catch (\Illuminate\Database\QueryException $e) {
-                Log::error("CRITICAL DB FAILURE IN BATCH INSERT: " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+                Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
             } catch (\Exception $e) {
-                 Log::error("CRITICAL DB FAILURE (General Exception): " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+                 // Log the generic error and the critical SQL error if possible
+                 Log::error("CRITICAL DB FAILURE IN BATCH INSERT: " . $e->getMessage(), [
+                     'SQL_STATE' => $e instanceof \Illuminate\Database\QueryException ? $e->getCode() : 'N/A',
+                     'metrics_count' => count($metricsToInsert),
+                     'sql_sample' => Str::limit($insert_query, 500)
+                 ]);
             }
         }
     }
 
-    // ... (All other helper functions must be present here: isCoreMetric, checkRateLimit, updateRateLimit, etc.) ...
-
+    /**
+     * Simple helper to check if a metric name typically belongs to a core LibreNMS entity.
+     */
     protected function isCoreMetric(string $lowerMetricName): bool
     {
         $coreNames = [
@@ -169,9 +324,60 @@ class Api
         return false;
     }
 
-    protected function checkRateLimit($connection): bool { return true; }
-    protected function updateRateLimit($connection): void { }
-    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void { }
+    /**
+     * Check if the connection has exceeded its rate limit
+     */
+    protected function checkRateLimit($connection): bool
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return true;
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+
+        $windowStart = Carbon::now()->subMinute();
+        $requests = array_filter($requests, function ($timestamp) use ($windowStart) {
+            return Carbon::parse($timestamp)->isAfter($windowStart);
+        });
+
+        if (count($requests) >= $connection->rate_limit) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Update rate limit tracking after a successful request
+     */
+    protected function updateRateLimit($connection): void
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return;
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+        $requests[] = Carbon::now()->toDateTimeString();
+
+        Cache::put($cacheKey, $requests, 120);
+    }
+
+    /**
+     * Handle failed endpoint polling with exponential backoff tracking
+     */
+    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
+    {
+        $cacheKey = "rest_api_failures:{$endpoint->id}";
+        $failures = Cache::get($cacheKey, 0);
+        $failures++;
+
+        Cache::put($cacheKey, $failures, 3600);
+
+        Log::debug("Endpoint {$endpoint->name} has failed {$failures} times");
+    }
+
     private function replacePlaceholders(string $string, Device $device): string
     {
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
@@ -190,6 +396,9 @@ class Api
         return $string;
     }
 
+    /**
+     * Get or create a session token for session-based authentication
+     */
     protected function getSessionToken($connection): ?string
     {
         if (!$connection->credential || strtolower($connection->credential->authenticationType->name) !== 'session token') {
