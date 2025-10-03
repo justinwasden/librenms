@@ -257,40 +257,46 @@ class Api
     }
 
 		protected function storeMetric(RestApiEndpoint $endpoint, string $metricName, $value)
-    {
-        // 1. Basic Validation and preparation
-        if (!is_scalar($value) && !is_array($value) && !is_null($value)) {
-            Log::warning("Invalid metric value type for {$metricName}: " . gettype($value));
-            return;
-        }
-
-        $lowerMetricName = Str::lower($metricName);
-        $storageValue = is_scalar($value) ? $value : json_encode($value);
-
-        // --- 2. TRY TO MATCH EXISTING CORE METRICS ---
-        if ($this->isCoreMetric($lowerMetricName)) {
-            // Push metric to the core poll state for LibreNMS to process RRDs/tables.
-            // This relies on the core poller using the global $poll_state array.
-            $GLOBALS['poll_state']['rest_api']['metrics'][$metricName] = $value;
-            Log::debug("Metric '{$metricName}' matched core schema. Pushed to poll state.");
-            return;
-        }
-
-        // --- 3. FALLBACK TO CUSTOM TABLE (rest_api_metrics) ---
-        Log::debug("Metric '{$metricName}' storing in custom table.");
-
-        // Store insertion data globally until the end of poll() to execute a batch insert
-        $GLOBALS['poll_state']['rest_api']['custom_metrics'][] = [
-            'endpoint_id' => $endpoint->id,
-            'metric_name' => $metricName,
-            'metric_value' => $storageValue,
-            'collected_at' => Carbon::now(),
-        ];
-    }
-
-		protected function storeCustomMetrics(): void
 		{
-		    // Check if the global array was populated during the poll run
+		    try {
+		        // 1. Basic Validation and preparation
+		        if (!is_scalar($value) && !is_array($value) && !is_null($value)) {
+		            Log::warning("Invalid metric value type for {$metricName}: " . gettype($value));
+		            return;
+		        }
+
+		        $lowerMetricName = Str::lower($metricName);
+		        $storageValue = is_scalar($value) ? $value : json_encode($value);
+
+		        // --- 2. TRY TO MATCH EXISTING CORE METRICS ---
+		        if ($this->isCoreMetric($lowerMetricName)) {
+		            // Push metric to the core poll state for LibreNMS to process RRDs/tables.
+		            $GLOBALS['poll_state']['rest_api']['metrics'][$metricName] = $value;
+		            Log::debug("Metric '{$metricName}' matched core schema. Pushed to poll state.");
+		            return;
+		        }
+
+		        // --- 3. FALLBACK TO CUSTOM TABLE (rest_api_metrics) ---
+
+		        // CRITICAL FIX: Convert Carbon object to database string immediately.
+		        $collectedAtString = Carbon::now()->toDateTimeString();
+
+		        $GLOBALS['poll_state']['rest_api']['custom_metrics'][] = [
+		            'endpoint_id' => $endpoint->id,
+		            'metric_name' => $metricName,
+		            'metric_value' => $storageValue,
+		            'collected_at' => $collectedAtString, // Passed as formatted string
+		        ];
+
+		        Log::debug("Metric '{$metricName}' storing in custom table. Ready to insert.");
+
+		    } catch (\Exception $e) {
+		        Log::error("Error in storeMetric {$metricName}: " . $e->getMessage());
+		    }
+		}
+
+				protected function storeCustomMetrics(): void
+		{
 		    if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
 		        $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
 
@@ -298,20 +304,11 @@ class Api
 
 		        $metricsToInsert = array_map(function ($metric) use ($nowString) {
 
-		            // CRITICAL FIX 1: Ensure collected_at is converted from Carbon object to string
-		            // $metric['collected_at'] is a Carbon object from storeMetric, convert it to string
-		            $metric['collected_at'] = $metric['collected_at']->toDateTimeString();
-
-		            // CRITICAL FIX 2: Ensure metric_value is a JSON string if it's not scalar
-		            // This prevents the batch insert from failing on complex data types
-		            if (!is_scalar($metric['metric_value'])) {
-		                $metric['metric_value'] = json_encode($metric['metric_value']);
-		            }
-
-		            // Add mandatory created_at and updated_at fields as strings
+		            // Ensure mandatory created_at and updated_at fields are present as strings
 		            $metric['created_at'] = $nowString;
 		            $metric['updated_at'] = $nowString;
 
+		            // collected_at is already a string from storeMetric, no need to re-convert
 		            return $metric;
 		        }, $metricsToInsert);
 
@@ -319,11 +316,11 @@ class Api
 		            // Execute the batch insert with fully serialized data
 		            \App\Models\RestApiMetric::insert($metricsToInsert);
 
-		            // This confirms successful insertion in the log
+		            // Confirmation log
 		            Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
 		        } catch (\Exception $e) {
 		            // Log the exception to the debug log
-		            Log::error("CRITICAL DB FAILURE in storeCustomMetrics: " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
+		            Log::error("CRITICAL DB FAILURE in storeCustomMetrics: " . $e->getMessage());
 		        }
 		    }
 		}
