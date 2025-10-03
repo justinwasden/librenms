@@ -149,13 +149,28 @@ class Api
 
         Log::debug("Processing " . count($items) . " items for endpoint {$endpoint->name}");
 
+        // Track resource IDs from current API response
+        $currentResourceIds = [];
+
         foreach ($items as $item) {
+            $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
+            $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
+            $resourceId = $resourceId ?? $resourceName;
+            
+            if ($resourceId) {
+                $currentResourceIds[] = $resourceId;
+            }
+            
             $this->storeResourceMetrics($endpoint, $item, $resourceType, $connectionId);
         }
+
+        // Remove resources that are no longer in the API response
+        $this->cleanupStaleResources($endpoint, $currentResourceIds);
     }
 
     /**
      * Store metrics for a single resource in device_api_metrics table
+     * Only updates metrics that have changed to reduce database writes
      */
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
@@ -173,12 +188,24 @@ class Api
         $resourceName = $resourceName ?? $resourceId;
 
         $collectedAt = Carbon::now();
+        
+        // Fetch existing metrics for comparison
+        $existingMetrics = DB::table('device_api_metrics')
+            ->where('device_id', $this->device->device_id)
+            ->where('api_endpoint_id', $endpoint->id)
+            ->where('resource_id', $resourceId)
+            ->get()
+            ->keyBy('metric_name');
+
         $metricsToInsert = [];
+        $metricsToUpdate = [];
+        $processedMetricNames = [];
 
         // Process each metric mapping
         foreach ($endpoint->metric_map as $metricName => $apiPath) {
             try {
                 $value = data_get($item, $apiPath);
+                $processedMetricNames[] = $metricName;
 
                 if ($value === null) {
                     continue; // Skip null values
@@ -197,47 +224,172 @@ class Api
                     }
                 }
 
-                $metricsToInsert[] = [
-                    'device_id' => $this->device->device_id,
-                    'api_endpoint_id' => $endpoint->id,
-                    'api_connection_id' => $connectionId,
-                    'resource_type' => $resourceType,
-                    'resource_id' => $resourceId,
-                    'resource_name' => $resourceName,
-                    'metric_name' => $metricName,
-                    'metric_type' => 'gauge',
-                    'value' => $numericValue,
-                    'string_value' => $stringValue,
-                    'raw_response' => null,
-                    'collected_at' => $collectedAt,
-                    'created_at' => $collectedAt,
-                    'updated_at' => $collectedAt,
-                ];
+                // Check if metric exists and compare values
+                if (isset($existingMetrics[$metricName])) {
+                    $existing = $existingMetrics[$metricName];
+                    $valueChanged = false;
 
-                Log::debug("Prepared metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+                    if ($isNumeric) {
+                        // Compare numeric values with small tolerance for floating point
+                        $valueChanged = abs($existing->value - $numericValue) > 0.0001;
+                    } else {
+                        // Compare string values
+                        $valueChanged = $existing->string_value !== $stringValue;
+                    }
+
+                    if ($valueChanged) {
+                        $metricsToUpdate[] = [
+                            'id' => $existing->id,
+                            'value' => $numericValue,
+                            'string_value' => $stringValue,
+                            'collected_at' => $collectedAt,
+                            'updated_at' => $collectedAt,
+                        ];
+                        
+                        // Archive the changed metric to history table for trending
+                        $this->archiveMetricToHistory($endpoint, $connectionId, $resourceType, $resourceId, $resourceName, $metricName, $numericValue, $stringValue, $collectedAt);
+                        
+                        Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+                    } else {
+                        // Value unchanged, just update timestamp
+                        DB::table('device_api_metrics')
+                            ->where('id', $existing->id)
+                            ->update([
+                                'collected_at' => $collectedAt,
+                                'updated_at' => $collectedAt,
+                            ]);
+                        Log::debug("Metric {$metricName} unchanged for resource {$resourceName}");
+                    }
+                } else {
+                    // New metric - insert it
+                    $metricsToInsert[] = [
+                        'device_id' => $this->device->device_id,
+                        'api_endpoint_id' => $endpoint->id,
+                        'api_connection_id' => $connectionId,
+                        'resource_type' => $resourceType,
+                        'resource_id' => $resourceId,
+                        'resource_name' => $resourceName,
+                        'metric_name' => $metricName,
+                        'metric_type' => 'gauge',
+                        'value' => $numericValue,
+                        'string_value' => $stringValue,
+                        'raw_response' => null,
+                        'collected_at' => $collectedAt,
+                        'created_at' => $collectedAt,
+                        'updated_at' => $collectedAt,
+                    ];
+                    Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+                }
 
             } catch (\Exception $e) {
                 Log::error("Error processing metric {$metricName}: " . $e->getMessage());
             }
         }
 
-        // Batch insert metrics
+        // Delete metrics that are no longer in the API response
+        $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
+        if ($metricsToDelete->isNotEmpty()) {
+            DB::table('device_api_metrics')
+                ->where('device_id', $this->device->device_id)
+                ->where('api_endpoint_id', $endpoint->id)
+                ->where('resource_id', $resourceId)
+                ->whereIn('metric_name', $metricsToDelete->toArray())
+                ->delete();
+            Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
+        }
+
+        // Batch insert new metrics
         if (!empty($metricsToInsert)) {
             try {
-                // Delete old metrics for this resource to avoid duplicates
-                DB::table('device_api_metrics')
-                    ->where('device_id', $this->device->device_id)
-                    ->where('api_endpoint_id', $endpoint->id)
-                    ->where('resource_id', $resourceId)
-                    ->delete();
-
-                // Insert new metrics
                 DB::table('device_api_metrics')->insert($metricsToInsert);
-
-                Log::info("Stored " . count($metricsToInsert) . " metrics for {$resourceType} '{$resourceName}'");
+                Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
             } catch (\Exception $e) {
-                Log::error("Failed to store metrics for resource {$resourceName}: " . $e->getMessage());
+                Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
             }
+        }
+
+        // Batch update changed metrics
+        if (!empty($metricsToUpdate)) {
+            try {
+                foreach ($metricsToUpdate as $metric) {
+                    DB::table('device_api_metrics')
+                        ->where('id', $metric['id'])
+                        ->update([
+                            'value' => $metric['value'],
+                            'string_value' => $metric['string_value'],
+                            'collected_at' => $metric['collected_at'],
+                            'updated_at' => $metric['updated_at'],
+                        ]);
+                }
+                Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
+            } catch (\Exception $e) {
+                Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Archive a metric change to the history table for trending
+     */
+    protected function archiveMetricToHistory(
+        RestApiEndpoint $endpoint,
+        int $connectionId,
+        string $resourceType,
+        string $resourceId,
+        string $resourceName,
+        string $metricName,
+        ?float $numericValue,
+        ?string $stringValue,
+        Carbon $collectedAt
+    ): void {
+        try {
+            DB::table('device_api_metrics_history')->insert([
+                'device_id' => $this->device->device_id,
+                'api_endpoint_id' => $endpoint->id,
+                'api_connection_id' => $connectionId,
+                'resource_type' => $resourceType,
+                'resource_id' => $resourceId,
+                'resource_name' => $resourceName,
+                'metric_name' => $metricName,
+                'metric_type' => 'gauge',
+                'value' => $numericValue,
+                'string_value' => $stringValue,
+                'collected_at' => $collectedAt,
+                'created_at' => $collectedAt,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to archive metric to history: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Remove resources that no longer exist in the API response
+     */
+    protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
+    {
+        if (empty($currentResourceIds)) {
+            return;
+        }
+
+        // Find all resource IDs currently in database for this endpoint
+        $existingResourceIds = DB::table('device_api_metrics')
+            ->where('device_id', $this->device->device_id)
+            ->where('api_endpoint_id', $endpoint->id)
+            ->distinct()
+            ->pluck('resource_id')
+            ->toArray();
+
+        // Find resources that exist in DB but not in current API response
+        $staleResourceIds = array_diff($existingResourceIds, $currentResourceIds);
+
+        if (!empty($staleResourceIds)) {
+            $deletedCount = DB::table('device_api_metrics')
+                ->where('device_id', $this->device->device_id)
+                ->where('api_endpoint_id', $endpoint->id)
+                ->whereIn('resource_id', $staleResourceIds)
+                ->delete();
+
+            Log::info("Removed {$deletedCount} metrics for " . count($staleResourceIds) . " stale resources from endpoint {$endpoint->name}: " . implode(', ', $staleResourceIds));
         }
     }
 
