@@ -14,5 +14,6 @@ class RestApiAuthenticationTypeSeeder extends Seeder
     {
         RestApiAuthenticationType::firstOrCreate(['name' => 'Basic Auth']);
         RestApiAuthenticationType::firstOrCreate(['name' => 'Token']);
+        RestApiAuthenticationType::firstOrCreate(['name' => 'Session Token']);
     }
 }
