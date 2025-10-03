@@ -262,8 +262,8 @@ class Api
             }, $metricsToInsert);
 
             try {
-                // EXPLICIT DEBUG LOG: Show the data structure before insertion
-                Log::error("CRITICAL DB DEBUG: Attempting batch insert of " . count($metricsToInsert) . " metrics into rest_api_metrics. Sample records:", [
+                // EXPLICIT DEBUG LOG: Show the data structure being inserted for troubleshooting
+                Log::error("CRITICAL DB DEBUG: Attempting batch insert of " . count($metricsToInsert) . " metrics into rest_api_metrics. Sample:", [
                     'sample_data' => array_slice($metricsToInsert, 0, 5)
                 ]);
 
