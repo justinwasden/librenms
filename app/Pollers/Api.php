@@ -290,30 +290,40 @@ class Api
 
 		protected function storeCustomMetrics(): void
 		{
+		    // Check if the global array was populated during the poll run
 		    if (!empty($GLOBALS['poll_state']['rest_api']['custom_metrics'])) {
 		        $metricsToInsert = $GLOBALS['poll_state']['rest_api']['custom_metrics'];
 
-		        $now = Carbon::now();
-		        $metricsToInsert = array_map(function ($metric) use ($now) {
+		        $nowString = Carbon::now()->toDateTimeString();
 
-		            // CRITICAL FIX: Explicitly convert the Carbon object to a database string
-		            // This ensures consistency across all timestamp fields for the batch insert.
+		        $metricsToInsert = array_map(function ($metric) use ($nowString) {
+
+		            // CRITICAL FIX 1: Ensure collected_at is converted from Carbon object to string
+		            // $metric['collected_at'] is a Carbon object from storeMetric, convert it to string
 		            $metric['collected_at'] = $metric['collected_at']->toDateTimeString();
 
-		            $metric['created_at'] = $now->toDateTimeString();
-		            $metric['updated_at'] = $now->toDateTimeString();
+		            // CRITICAL FIX 2: Ensure metric_value is a JSON string if it's not scalar
+		            // This prevents the batch insert from failing on complex data types
+		            if (!is_scalar($metric['metric_value'])) {
+		                $metric['metric_value'] = json_encode($metric['metric_value']);
+		            }
+
+		            // Add mandatory created_at and updated_at fields as strings
+		            $metric['created_at'] = $nowString;
+		            $metric['updated_at'] = $nowString;
 
 		            return $metric;
 		        }, $metricsToInsert);
 
 		        try {
-		            // This is the batch insert that will now run with correctly formatted strings
+		            // Execute the batch insert with fully serialized data
 		            \App\Models\RestApiMetric::insert($metricsToInsert);
 
+		            // This confirms successful insertion in the log
 		            Log::info("Successfully inserted " . count($metricsToInsert) . " custom REST API metrics.");
 		        } catch (\Exception $e) {
-		            // Log the exception to the debug log, just in case
-		            Log::error("CRITICAL DB FAILURE in storeCustomMetrics: " . $e->getMessage());
+		            // Log the exception to the debug log
+		            Log::error("CRITICAL DB FAILURE in storeCustomMetrics: " . $e->getMessage(), ['metrics_count' => count($metricsToInsert)]);
 		        }
 		    }
 		}
