@@ -6,9 +6,8 @@
  * Run: php scripts/verify_tables.php
  */
 
-require __DIR__.'/../bootstrap/autoload.php';
-$app = require_once __DIR__.'/../bootstrap/app.php';
-$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$init_modules = [];
+require __DIR__ . '/../includes/init.php';
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -59,7 +58,7 @@ if (Schema::hasTable('device_api_metrics')) {
             ->get(['resource_type', 'resource_name', 'metric_name', 'value', 'string_value', 'collected_at']);
         
         foreach ($recent as $metric) {
-            $val = $metric->value ?? substr($metric->string_value, 0, 30);
+            $val = $metric->value ?? substr($metric->string_value ?? '', 0, 30);
             echo "     - [{$metric->resource_type}] {$metric->resource_name} -> {$metric->metric_name} = {$val}\n";
         }
     }

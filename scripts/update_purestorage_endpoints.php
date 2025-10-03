@@ -6,9 +6,8 @@
  * Run: php scripts/update_purestorage_endpoints.php
  */
 
-require __DIR__.'/../bootstrap/autoload.php';
-$app = require_once __DIR__.'/../bootstrap/app.php';
-$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$init_modules = [];
+require __DIR__ . '/../includes/init.php';
 
 use App\Models\RestApiEndpoint;
 use Illuminate\Support\Facades\DB;
@@ -281,5 +280,5 @@ if ($drivesEndpoint) {
 echo "\n✓ All endpoints updated successfully!\n";
 echo "\nNext steps:\n";
 echo "1. Run polling: php lnms device:poll 1 -m rest-api -vv\n";
-echo "2. Check metrics: php artisan tinker --execute=\"DB::table('device_api_metrics')->where('device_id', 1)->count()\"\n";
-echo "3. View data: php artisan tinker --execute=\"DB::table('device_api_metrics')->where('device_id', 1)->limit(10)->get(['resource_type','resource_name','metric_name','value','string_value'])\"\n";
+echo "2. Check metrics: mysql -u librenms -p librenms -e \"SELECT COUNT(*) FROM device_api_metrics WHERE device_id=1;\"\n";
+echo "3. View data: mysql -u librenms -p librenms -e \"SELECT resource_type, COUNT(*) as count FROM device_api_metrics WHERE device_id=1 GROUP BY resource_type;\"\n";
