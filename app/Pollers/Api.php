@@ -130,6 +130,13 @@ class Api
                         continue;
                     }
 
+                    // Debug: Log the response structure
+                    Log::debug("API Response for endpoint {$endpoint->name}", [
+                        'url' => $url,
+                        'response_keys' => is_array($body) ? array_keys($body) : 'not an array',
+                        'response_sample' => json_encode(array_slice($body, 0, 2), JSON_PRETTY_PRINT),
+                    ]);
+
                     // Validate response structure
                     if (!is_array($body)) {
                         Log::warning("API response is not an array for endpoint {$endpoint->name}, got: " . gettype($body));
