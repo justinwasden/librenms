@@ -4,79 +4,90 @@
 
 📁 FILES CREATED/MODIFIED:
   ✓ /app/Pollers/Api.php (UPDATED - backup at Api.php.backup)
-  ✓ /database/migrations/2025_10_02_230000_create_device_api_metrics_table.php
   ✓ /database/migrations/2025_10_02_230100_add_resource_fields_to_rest_api_endpoints.php
   ✓ /scripts/diagnostic_rest_api.php
   ✓ /scripts/update_purestorage_endpoints.php
+  ✓ /scripts/verify_tables.php (NEW - verify database state)
   ✓ /REST_API_SETUP.md
   ✓ /IMPLEMENTATION_SUMMARY.txt
+
+NOTE: The device_api_metrics table already exists from migration:
+  2025_10_01_161039_create_rest_api_metrics_table.php
 
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                         INSTALLATION COMMANDS                            ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-# 1. Run migrations
+# 1. Run migrations (if not already done)
 php artisan migrate
 
 # 2. Make scripts executable
-chmod +x scripts/diagnostic_rest_api.php scripts/update_purestorage_endpoints.php
+chmod +x scripts/*.php
 
-# 3. Update PureStorage endpoints
+# 3. Verify current state
+php scripts/verify_tables.php
+
+# 4. Update PureStorage endpoint configurations
 php scripts/update_purestorage_endpoints.php
-
-# 4. Run diagnostic (replace 1 with your device_id)
-php scripts/diagnostic_rest_api.php 1
 
 # 5. Test polling
 php lnms device:poll 1 -m rest-api -vv
 
-# 6. Verify data
-php artisan tinker --execute="DB::table('device_api_metrics')->where('device_id', 1)->count()"
+# 6. Verify data was stored
+php artisan tinker --execute="DB::table('device_api_metrics')->count()"
+php artisan tinker --execute="DB::table('device_api_metrics')->limit(10)->get(['resource_type','resource_name','metric_name','value'])"
 
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                         TROUBLESHOOTING                                  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-No data stored?
-  → php scripts/diagnostic_rest_api.php <device_id>
-  → Check logs: tail -f /opt/librenms/logs/librenms.log | grep "REST API"
-
-Getting NULL values?
-  → See API response: php lnms device:poll <device_id> -m rest-api -vv | grep -A 20 "API Response"
-  → Update metric_map paths to match actual structure
+No data stored after polling?
+  → php scripts/verify_tables.php
+  → Check if endpoints have metric_map configured
+  → Look for "Processing X items" and "Stored X metrics" in poll output
 
 Table doesn't exist?
-  → php artisan migrate:status
-  → php artisan migrate
+  → The table was created by migration: 2025_10_01_161039_create_rest_api_metrics_table.php
+  → Check: php artisan migrate:status
+  → Note: Table is named "device_api_metrics" not "rest_api_metrics"
+
+Wrong table name in query?
+  ✗ select * from rest_api_metrics;      <- WRONG
+  ✓ select * from device_api_metrics;    <- CORRECT
+
+Getting NULL values?
+  → See API response: php lnms device:poll 1 -m rest-api -vv | grep -A 20 "API Response"
+  → Update metric_map paths to match actual structure
 
 ╔══════════════════════════════════════════════════════════════════════════╗
-║                    VERIFY EVERYTHING WORKS                               ║
+║                         VERIFY EVERYTHING                                ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-php artisan tinker
+# Quick verification
+php scripts/verify_tables.php
 
-// Check table exists
-Schema::hasTable('device_api_metrics')
+# Check in database
+mysql -u librenms -p librenms -e "SELECT COUNT(*) FROM device_api_metrics WHERE device_id=1;"
+mysql -u librenms -p librenms -e "SELECT resource_type, COUNT(*) as count FROM device_api_metrics WHERE device_id=1 GROUP BY resource_type;"
 
-// Count metrics
-DB::table('device_api_metrics')->where('device_id', 1)->count()
-
-// View recent metrics
-DB::table('device_api_metrics')
-  ->where('device_id', 1)
-  ->orderBy('collected_at', 'desc')
-  ->limit(5)
-  ->get(['resource_type', 'resource_name', 'metric_name', 'value'])
+# View sample data
+mysql -u librenms -p librenms -e "SELECT resource_type, resource_name, metric_name, value FROM device_api_metrics WHERE device_id=1 LIMIT 10;"
 
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                         SUCCESS INDICATORS                               ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-✓ Migration completes without errors
-✓ Diagnostic shows "All checks passed!"
-✓ Poll shows "Processing X items for endpoint..."
-✓ Poll shows "Stored X metrics for [resource_type] 'resource_name'"
-✓ Database query returns metrics count > 0
+When polling (php lnms device:poll 1 -m rest-api -vv):
+  ✓ "API Response for endpoint..." appears for each endpoint
+  ✓ "Processing X items for endpoint..." appears
+  ✓ "Prepared metric X = Y for resource Z" appears
+  ✓ "Stored X metrics for [resource_type] 'resource_name'" appears
+  ✓ Database count increases: device_api_metrics table has rows
+
+When verifying (php scripts/verify_tables.php):
+  ✓ device_api_metrics table EXISTS
+  ✓ All endpoints have resource_type configured
+  ✓ Total metrics > 0
 
 For complete documentation, see:
   - /REST_API_SETUP.md
