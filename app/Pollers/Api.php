@@ -139,6 +139,8 @@ class Api
 
                     if ($body && $endpoint->metric_map) {
                         $this->mapData($endpoint, $body);
+                        Log::debug("Custom metrics count: " . count($GLOBALS['poll_state']['rest_api']['custom_metrics'] ?? []));
+
                     }
 
                     $endpoint->update(['last_polled' => Carbon::now()]);
