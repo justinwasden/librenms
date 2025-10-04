@@ -161,15 +161,16 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('devices')->name('devices.')->group(function () {
             // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
             Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-                 ->names([
-                    'index'   => 'rest-api.templates.index',
-                    'create'  => 'rest-api.templates.create',
-                    'store'   => 'rest-api.templates.store',
-                    'show'    => 'rest-api.templates.show',
-                    'edit'    => 'rest-api.templates.edit',
-                    'update'  => 'rest-api.templates.update',
-                    'destroy' => 'rest-api.templates.destroy',
-                 ]);
+				     ->parameters(['rest-api-templates' => 'template'])
+				     ->names([
+				        'index'   => 'rest-api.templates.index',
+				        'create'  => 'rest-api.templates.create',
+				        'store'   => 'rest-api.templates.store',
+				        'show'    => 'rest-api.templates.show',
+				        'edit'    => 'rest-api.templates.edit',
+				        'update'  => 'rest-api.templates.update',
+				        'destroy' => 'rest-api.templates.destroy',
+				     ]);
         });
 
 
