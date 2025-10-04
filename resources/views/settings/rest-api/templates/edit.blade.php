@@ -13,37 +13,52 @@
                     @method('PUT')
                     <pre>{{ print_r($template->template_data, true) }}</pre>
 										@php
+    $template_data = is_array($template->template_data)
+        ? $template->template_data
+        : (json_decode($template->template_data, true) ?? []);
 
-										    // Decode JSON if stored as a string
-										    $template_data_array = is_array($template->template_data)
-										        ? $template->template_data
-										        : (json_decode($template->template_data, true) ?? []);
+    $connections = $template_data['connections'] ?? [];
+@endphp
 
-										    $endpoints = $template_data_array['endpoints'] ?? [];
-										@endphp
+@foreach ($connections as $cIndex => $connection)
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <strong>Connection {{ $cIndex + 1 }}: {{ $connection['name'] ?? 'Unnamed Connection' }}</strong>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label>Base URL</label>
+                <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][base_url]" value="{{ $connection['base_url'] ?? '' }}">
+            </div>
+            <div class="form-group">
+                <label>Rate Limit</label>
+                <input type="number" class="form-control" name="template_data[connections][{{ $cIndex }}][rate_limit]" value="{{ $connection['rate_limit'] ?? '' }}">
+            </div>
 
-
-                    @foreach ($endpoints as $index => $endpoint)
-                        <div class="card mb-3">
-                            <div class="card-header bg-light">
-                                <strong>Endpoint {{ $index + 1 }}: {{ $endpoint['name'] ?? 'Unnamed' }}</strong>
-                            </div>
-                            <div class="card-body">
-                                <div class="form-group">
-                                    <label>Path</label>
-                                    <input type="text" class="form-control" name="template_data[endpoints][{{ $index }}][path]" value="{{ $endpoint['path'] ?? '' }}">
-                                </div>
-                                <div class="form-group">
-                                    <label>Method</label>
-                                    <input type="text" class="form-control" name="template_data[endpoints][{{ $index }}][method]" value="{{ $endpoint['method'] ?? '' }}">
-                                </div>
-                                <div class="form-group">
-                                    <label>Parameters (JSON)</label>
-                                    <textarea class="form-control" name="template_data[endpoints][{{ $index }}][params]" rows="3">{{ json_encode($endpoint['params'] ?? [], JSON_PRETTY_PRINT) }}</textarea>
-                                </div>
-                            </div>
+            @foreach (($connection['endpoints'] ?? []) as $eIndex => $endpoint)
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <strong>Endpoint {{ $eIndex + 1 }}: {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Path</label>
+                            <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][path]" value="{{ $endpoint['path'] ?? '' }}">
                         </div>
-                    @endforeach
+                        <div class="form-group">
+                            <label>HTTP Method</label>
+                            <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][http_method]" value="{{ $endpoint['http_method'] ?? '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Response Mapping (JSON)</label>
+                            <textarea class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][response_mapping]" rows="3">{{ json_encode($endpoint['response_mapping'] ?? [], JSON_PRETTY_PRINT) }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+@endforeach
                     <button type="submit" class="btn btn-primary">Update</button>
                 </form>
             </div>
