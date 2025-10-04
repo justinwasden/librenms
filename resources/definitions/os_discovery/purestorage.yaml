@@ -1,8 +1,7 @@
+mib: PURESTORAGE-MIB
 modules:
-    os:
-        # Collects the hardware description from the Entity MIB
-        hardware: ENTITY-MIB::entPhysicalDescr.1
-        # Collects the software version from the Entity MIB
-        version: ENTITY-MIB::entPhysicalSoftwareRev.1
-        # Collects the serial number from the Entity MIB
-        serial: ENTITY-MIB::entPhysicalSerialNum.1
+  os:
+    sysDescr_regex: '/Pure Storage (?<hardware>\w+), (?<version>Purity\/\/FA [\d\.]+)/'
+    hardware_regex: '/Pure Storage (?<hardware>\w+)/'
+    version_regex: '/Purity\/\/FA (?<version>[\d\.]+)/'
+

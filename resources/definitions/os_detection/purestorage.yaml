@@ -1,7 +1,48 @@
 os: purestorage
+text: 'Pure Storage'
 type: storage
-text: PureStorage FlashArray
 icon: purestorage
+mib_dir: purestorage
+
+discovery_modules:
+  applications: false
+  bgp-peers: false
+  mpls: false
+  stp: false
+  wireless: false
+  cisco-cef: false
+  cisco-mac-accounting: false
+  cisco-remote-access-monitor: false
+  slas: false
+  cisco-ipsec-flow-monitor: false
+  cipsec-tunnels: false
+  cisco-otv: false
+  api-poller: true
+  purestorage_api_discovery: true
+
+polling_modules:
+  applications: false
+  bgp-peers: false
+  mpls: false
+  ospf: false
+  stp: false
+  wireless: false
+  cisco-cef: false
+  cisco-mac-accounting: false
+  cisco-remote-access-monitor: false
+  slas: false
+  cisco-ipsec-flow-monitor: false
+  cipsec-tunnels: false
+  cisco-otv: false
+  api-poller: true
+  purestorage_api_discovery: true
+
+discovery:
+  -
+      sysObjectID: .1.3.6.1.4.1.40482
+      sysDescr:
+       'Pure Storage'
+       'Purity//FA'
 vendor: purestorage
 processor_stacked: false  # PureStorage doesn't expose CPU via SNMP
 mib_dir:
