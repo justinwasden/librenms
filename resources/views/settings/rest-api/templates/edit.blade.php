@@ -12,7 +12,8 @@
 								    @csrf
 								    @method('PUT')
 								    @php
-    								$endpoints = $template->template_data['endpoints'] ?? [];
+    								$template_data = is_array($template->template_data) ? $template->template_data : [];
+										$endpoints = $template_data['endpoints'] ?? [];
 										@endphp
 
 										@foreach ($endpoints as $index => $endpoint)
