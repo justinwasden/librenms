@@ -29,7 +29,7 @@
                                 <td>{{ $template->vendor }}</td>
                                 <td>
                                     {{-- FIX: Use explicit ID passing for edit --}}
-                                    <a href="{{ route('devices.rest-api.templates.edit', ['rest_api_template' => $template->id]) }}" class="btn btn-sm btn-info">Edit</a>
+                                    <a href="{{ route('devices.rest-api.templates.edit', ['template' => $template->id]) }}" class="btn btn-sm btn-info">Edit</a>
                                     {{-- Delete button is intentionally omitted per request 2 --}}
                                 </td>
                             </tr>
