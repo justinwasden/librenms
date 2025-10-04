@@ -45,8 +45,7 @@ discovery:
        'Purity//FA'
 vendor: purestorage
 processor_stacked: false  # PureStorage doesn't expose CPU via SNMP
-mib_dir:
-    - purestorage
+
 over:
     - { graph: device_purestorage_bandwidth, text: 'Array Bandwidth' }
     - { graph: device_purestorage_iops, text: 'Array IOPS' }
