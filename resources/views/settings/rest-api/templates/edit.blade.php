@@ -11,10 +11,13 @@
                 <form action="{{ route('devices.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                     @csrf
                     @method('PUT')
-                    @php
-                    // FIX: Removed json_decode() because $template->template_data is already an array.
-                    $endpoints = $template->template_data['endpoints'] ?? [];
-                    @endphp
+										@php
+										// Safely check if template_data is an array (from DB model cast)
+										$template_data_array = is_array($template->template_data) ? $template->template_data : [];
+
+										// Safely retrieve the 'endpoints' key from the array.
+										$endpoints = $template_data_array['endpoints'] ?? [];
+										@endphp
 
                     @foreach ($endpoints as $index => $endpoint)
                         <div class="card mb-3">
