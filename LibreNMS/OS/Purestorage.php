@@ -114,7 +114,7 @@ class Purestorage extends Generic
      * Override to disable standard storage discovery
      * PureStorage storage metrics are collected via REST API
      */
-    public function discoverStorage()
+    public function discoverStorage(): \Illuminate\Support\Collection
     {
         // Return empty collection - storage is handled by REST API
         return collect();

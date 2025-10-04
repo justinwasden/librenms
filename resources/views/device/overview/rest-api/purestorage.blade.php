@@ -15,11 +15,11 @@ $array_metrics = DB::table('device_api_metrics')
     ->get()
     ->groupBy('metric_name');
 
-// Get array capacity and info
-$capacity_total = $array_metrics['capacity']->first()->value ?? 0;
-$capacity_used = ($array_metrics['total']->first()->value ?? 0) - ($array_metrics['space.available']->first()->value ?? 0);
-$data_reduction = $array_metrics['space.data_reduction']->first()->value ?? 0;
-$array_name = $array_metrics['name']->first()->string_value ?? $device['hostname'];
+// Get array capacity and info with proper null handling
+$capacity_total = optional($array_metrics->get('capacity'))->first()->value ?? 0;
+$capacity_used = (optional($array_metrics->get('total'))->first()->value ?? 0) - (optional($array_metrics->get('space.available'))->first()->value ?? 0);
+$data_reduction = optional($array_metrics->get('space.data_reduction'))->first()->value ?? 0;
+$array_name = optional($array_metrics->get('name'))->first()->string_value ?? $device['hostname'];
 $capacity_percent = $capacity_total > 0 ? round(($capacity_used / $capacity_total) * 100, 2) : 0;
 
 // Get volume metrics  
@@ -67,7 +67,23 @@ $network_interfaces = DB::table('device_api_metrics')
     ->get();
 
 $background = \LibreNMS\Util\Color::percentage($capacity_percent, null);
+
+// Check if we have any metrics at all
+$has_metrics = $array_metrics->count() > 0 || $volume_metrics->count() > 0 || $host_connections->count() > 0 || $network_interfaces->count() > 0;
 @endphp
+
+@if(!$has_metrics)
+<div class="row">
+    <div class="col-md-12">
+        <div class="alert alert-info">
+            <i class="fa fa-info-circle"></i> 
+            <strong>No REST API metrics collected yet.</strong> 
+            Metrics will appear after the next polling cycle. 
+            Please ensure the REST API connection is properly configured and the device is reachable.
+        </div>
+    </div>
+</div>
+@else
 
 <!-- Array Storage Overview -->
 <div class="row">
@@ -181,3 +197,5 @@ $background = \LibreNMS\Util\Color::percentage($capacity_percent, null);
     </div>
     @endif
 </div>
+
+@endif
