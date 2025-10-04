@@ -1,0 +1,192 @@
+os: purestorage
+type: storage
+text: PureStorage FlashArray
+icon: purestorage
+processor_stacked: false  # PureStorage doesn't expose CPU via SNMP
+mib_dir: 
+    - purestorage
+over:
+    - { graph: device_purestorage_bandwidth, text: 'Array Bandwidth' }
+    - { graph: device_purestorage_iops, text: 'Array IOPS' }
+    - { graph: device_purestorage_latency, text: 'Array Latency' }
+poller_modules:
+    bgp-peers: false
+    cisco-mac-accounting: false
+    cisco-otv: false
+    cisco-pw: false
+    cisco-vrf: false
+    cisco-vrf-lite: false
+    cisco-vss: false
+    entity-physical: false
+    ipsec-tunnels: false
+    isis: false
+    mpls: false
+    nac: false
+    os: true
+    ospf: false
+    processors: false  # No CPU polling
+    route: false
+    stp: false
+    ucd-diskio: false
+    ucd-mib: false
+    wireless: false
+discovery_modules:
+    arp-table: false
+    bgp-peers: false
+    cisco-mac-accounting: false
+    cisco-otv: false
+    cisco-pw: false
+    cisco-vrf: false
+    cisco-vrf-lite: false
+    cisco-vss: false
+    discovery-protocols: false
+    entity-physical: true
+    entity-state: false
+    fdb-table: false
+    ipv4-addresses: false
+    ipv6-addresses: false
+    isis: false
+    mempools: false  # No memory polling
+    mpls: false
+    nac: false
+    ospf: false
+    processors: false  # No CPU discovery
+    route: false
+    sensors: false  # Use REST API for metrics instead
+    slas: false
+    storage: false  # Use REST API for storage metrics
+    stp: false
+    vlans: false
+    vrf: false
+    wireless: false
+discovery:
+    -
+        sysObjectID:
+            - .1.3.6.1.4.1.40482    # Pure Storage enterprise OID
+        sysDescr_regex:
+            - '/Pure.*Storage/i'
+            - '/FlashArray/i'
+            - '/Purity/i'
+    -
+        sysDescr_regex:
+            - '/Purity.*Operating.*Environment/i'
+graphs:
+    device_purestorage_bandwidth:
+        -
+            title_name: Array Bandwidth
+            type: device_graph
+            rrd_file: purestorage_bandwidth.rrd
+            ds:
+                read:
+                    name: Read
+                    type: GAUGE
+                    colour: 00cc00
+                    rpn: 1000000,*,8,*
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+                    rpn: 1000000,*,8,*
+            rrd_options: '--base 1000'
+            rrd_title: Bandwidth
+            rrd_vertical_label: 'bits/s'
+            rrd_format: 'si'
+
+    device_purestorage_iops:
+        -
+            title_name: Array IOPS
+            type: device_graph
+            rrd_file: purestorage_iops.rrd
+            ds:
+                read:
+                    name: Read
+                    type: DERIVE
+                    min: 0
+                    max: 1000000000
+                    colour: 00cc00
+                write:
+                    name: Write
+                    type: DERIVE
+                    min: 0
+                    max: 1000000000
+                    colour: 0000ff
+            rrd_options: '--base 1000'
+            rrd_title: IOPS
+            rrd_vertical_label: 'ops/s'
+            rrd_format: 'si'
+
+    device_purestorage_latency:
+        -
+            title_name: Array Latency
+            type: device_graph
+            rrd_file: purestorage_latency.rrd
+            ds:
+                read:
+                    name: Read
+                    type: GAUGE
+                    colour: 00cc00
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+            rrd_options: '--base 1000'
+            rrd_title: Latency
+            rrd_vertical_label: 'ms'
+
+    device_purestorage_volume_iops:
+        -
+            title_name: 'Volume {{ $graph_instance }} IOPS'
+            type: device_graph
+            rrd_file: purestorage-volume-iops-%s.rrd
+            ds:
+                read:
+                    name: Read
+                    type: GAUGE
+                    colour: 00cc00
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+            rrd_options: '--base 1000'
+            rrd_title: IOPS
+            rrd_vertical_label: 'ops/s'
+            rrd_format: 'si'
+
+    device_purestorage_volume_bandwidth:
+        -
+            title_name: 'Volume {{ $graph_instance }} Bandwidth'
+            type: device_graph
+            rrd_file: purestorage-volume-bandwidth-%s.rrd
+            ds:
+                read:
+                    name: Read
+                    type: GAUGE
+                    colour: 00cc00
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+            rrd_options: '--base 1000'
+            rrd_title: Bandwidth
+            rrd_vertical_label: 'Bps'
+            rrd_format: 'si'
+
+    device_purestorage_volume_latency:
+        -
+            title_name: 'Volume {{ $graph_instance }} Latency'
+            type: device_graph
+            rrd_file: purestorage-volume-latency-%s.rrd
+            ds:
+                read:
+                    name: Read
+                    type: GAUGE
+                    colour: 00cc00
+                    rpn: 1000,/
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+                    rpn: 1000,/
+            rrd_options: '--base 1000'
+            rrd_title: Latency
+            rrd_vertical_label: 'ms'
