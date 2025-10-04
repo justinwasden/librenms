@@ -12,7 +12,7 @@ class RestApiTemplate extends Model
     protected $fillable = ['name', 'vendor', 'template_data'];
 
     protected $casts = [
-        'template_data' => 'json',
+        'template_data' => 'array',
     ];
 
     /**
