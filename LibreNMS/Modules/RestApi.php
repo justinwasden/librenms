@@ -23,7 +23,11 @@ class RestApi implements Module
 
     public function shouldPoll(OS $os, ModuleStatus $status): bool
     {
-        $device = $os->getDevice();
+        \Illuminate\Support\Facades\Log::debug("RestApi shouldPoll check", [
+        'device_id' => $device->device_id,
+        'has_connections' => $device->restApiConnections()->exists(),
+        'device_status' => $device->status,
+        'status' => $status->isEnabled(),
 
         // Only poll if device has REST API connections
         return $device->restApiConnections()->exists() && $device->status;
