@@ -12,12 +12,14 @@
                     @csrf
                     @method('PUT')
 										@php
-										// Safely check if template_data is an array (from DB model cast)
-										$template_data_array = is_array($template->template_data) ? $template->template_data : [];
+										    // Decode JSON if stored as a string
+										    $template_data_array = is_array($template->template_data)
+										        ? $template->template_data
+										        : (json_decode($template->template_data, true) ?? []);
 
-										// Safely retrieve the 'endpoints' key from the array.
-										$endpoints = $template_data_array['endpoints'] ?? [];
+										    $endpoints = $template_data_array['endpoints'] ?? [];
 										@endphp
+
 
                     @foreach ($endpoints as $index => $endpoint)
                         <div class="card mb-3">
