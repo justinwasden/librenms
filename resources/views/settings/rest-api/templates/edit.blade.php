@@ -11,8 +11,9 @@
                 <form action="{{ route('devices.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                     @csrf
                     @method('PUT')
+                    <pre>{{ print_r($template->template_data, true) }}</pre>
 										@php
-										<pre>{{ print_r($template->template_data, true) }}</pre>
+
 										    // Decode JSON if stored as a string
 										    $template_data_array = is_array($template->template_data)
 										        ? $template->template_data
