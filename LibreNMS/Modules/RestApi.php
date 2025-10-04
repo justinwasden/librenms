@@ -28,6 +28,7 @@ class RestApi implements Module
         'has_connections' => $device->restApiConnections()->exists(),
         'device_status' => $device->status,
         'status' => $status->isEnabled(),
+    		]);
 
         // Only poll if device has REST API connections
         return $device->restApiConnections()->exists() && $device->status;
