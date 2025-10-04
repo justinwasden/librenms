@@ -12,7 +12,7 @@
 								    @csrf
 								    @method('PUT')
 								    @php
-    								$endpoints = json_decode($template->template_data, true)['endpoints'] ?? [];
+    								$endpoints = $template->template_data['endpoints'] ?? [];
 										@endphp
 
 										@foreach ($endpoints as $index => $endpoint)
