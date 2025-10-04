@@ -10,6 +10,7 @@ use App\Models\RestApiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Validator;
 
 class RestApiController extends Controller
 {
@@ -41,8 +42,8 @@ class RestApiController extends Controller
                 'base_url' => $connData['base_url'],
                 'credential_id' => $connData['credential_id'] ?? null,
                 'rate_limit' => $connData['rate_limit'] ?? 60,
-                'enabled' => $connData['enabled'] ?? true, // Default to enabled
-                'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false, // Default to false
+                'enabled' => $connData['enabled'] ?? true,
+                'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
             ]);
 
             if (isset($connData['endpoints']) && is_array($connData['endpoints'])) {
@@ -59,10 +60,16 @@ class RestApiController extends Controller
     {
         Gate::authorize('update', $device);
 
+        // Validate with flexible URL format
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'base_url' => 'required|url|max:2048',
-            'rate_limit' => 'nullable|integer|min:1', // FIX: Set to nullable
+            'base_url' => ['required', 'string', 'max:2048', function($attribute, $value, $fail) {
+                // Allow any string that starts with http:// or https://
+                if (!preg_match('/^https?:\/\/.+/', $value)) {
+                    $fail('The base url must start with http:// or https://');
+                }
+            }],
+            'rate_limit' => 'nullable|integer|min:1',
         ]);
 
         $device->restApiConnections()->create(array_merge($validated, [
@@ -75,28 +82,34 @@ class RestApiController extends Controller
     }
 
     public function updateConnection(Request $request, Device $device, RestApiConnection $connection)
-		{
-		    Gate::authorize('update', $device);
+    {
+        Gate::authorize('update', $device);
 
-		    if ($connection->device_id !== $device->device_id) {
-		        abort(404);
-		    }
+        if ($connection->device_id !== $device->device_id) {
+            abort(404);
+        }
 
-		    $validated = $request->validate([
-		        'name' => 'required|string|max:255',
-		        'base_url' => 'required|url|max:2048',
-		        'rate_limit' => 'nullable|integer|min:1', // Corrected to nullable
-		    ]);
+        // Flexible validation for base_url
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'base_url' => ['required', 'string', 'max:2048', function($attribute, $value, $fail) {
+                // Allow any string that starts with http:// or https://
+                // This is less strict than Laravel's 'url' rule which requires DNS-resolvable hostnames
+                if (!preg_match('/^https?:\/\/.+/', $value)) {
+                    $fail('The base url must start with http:// or https://');
+                }
+            }],
+            'rate_limit' => 'nullable|integer|min:1',
+        ]);
 
-		    // This logic ensures 'enabled' and 'disable_ssl_verify' are correctly set to true or false.
-		    $validated['enabled'] = $request->has('enabled');
-		    $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
+        // Handle checkboxes
+        $validated['enabled'] = $request->has('enabled');
+        $validated['disable_ssl_verify'] = $request->has('disable_ssl_verify');
 
-		    // If validation passes, update the connection.
-		    $connection->update($validated);
+        $connection->update($validated);
 
-		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
-		}
+        return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
+    }
 
     public function updateConnectionCredential(Request $request, Device $device, RestApiConnection $connection)
     {
@@ -110,7 +123,6 @@ class RestApiController extends Controller
             'credential_id' => 'nullable|exists:rest_api_credentials,id',
         ]);
 
-        // FIX: The update logic was here, using $validated
         $connection->update($validated);
 
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Credentials applied successfully.');
@@ -120,7 +132,6 @@ class RestApiController extends Controller
     {
         Gate::authorize('update', $device);
 
-        // Ensure the connection belongs to this device
         if ($connection->device_id !== $device->device_id) {
             abort(404);
         }
@@ -138,7 +149,7 @@ class RestApiController extends Controller
             abort(404);
         }
 
-        // FIX: Added logic to handle adding a new endpoint via the connection update method
+        // Handle adding a new endpoint via the connection update method
         if ($request->input('action_type') === 'add_endpoint') {
             $connection = $endpoint->connection;
             return $this->storeEndpoint($request, $device, $connection);
@@ -162,7 +173,6 @@ class RestApiController extends Controller
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Endpoint updated successfully.');
     }
 
-    // NEW: Private helper method to store endpoints
     private function storeEndpoint(Request $request, Device $device, RestApiConnection $connection)
     {
         // Validation for new endpoint creation
@@ -198,7 +208,6 @@ class RestApiController extends Controller
 
     private function replacePlaceholdersInArray(array $data, Device $device): array
     {
-        // ... (implementation remains the same)
         array_walk_recursive($data, function (&$value) use ($device) {
             if (is_string($value)) {
                 $value = $this->replacePlaceholdersInString($value, $device);
@@ -210,7 +219,6 @@ class RestApiController extends Controller
 
     private function replacePlaceholdersInString(string $string, Device $device): string
     {
-        // ... (implementation remains the same)
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
 

@@ -1,153 +1,170 @@
 @extends('layouts.librenmsv1')
 
 @section('content')
-{{-- Global Alerts for Success/Error (Always placed at the top of content) --}}
-@if ($errors->any())
-    <div class="alert alert-danger alert-dismissible">
-        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-        <ul class="mb-0">
-            @foreach ($errors->all() as $error)
-                <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-@endif
+    {{-- Use device page wrapper to maintain device tabs --}}
+    <x-device.page :device="$device">
+        <x-device.edit-tabs :device="$device" />
 
-@if(session('success'))
-    <div class="alert alert-success alert-dismissible">
-        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-        {{ session('success') }}
-    </div>
-@endif
-
-<div class="row">
-    {{-- Apply Template Section --}}
-    <div class="col-md-12">
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                <h3 class="panel-title">Apply REST API Template</h3>
+        {{-- Global Alerts for Success/Error --}}
+        @if ($errors->any())
+            <div class="alert alert-danger alert-dismissible">
+                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                <ul class="mb-0">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
             </div>
-            <div class="panel-body">
-                <form action="{{ route('device.rest-api.apply-template', $device) }}" method="POST" class="form-inline">
-                    @csrf
-                    <div class="form-group">
-                        <select name="template_id" id="template_id" class="form-control" required style="width: 300px;">
-                            <option value="">Select a Template</option>
-                            @foreach($templates as $template)
-                                <option value="{{ $template->id }}">{{ $template->name }} ({{ $template->vendor }})</option>
-                            @endforeach
-                        </select>
+        @endif
+
+        @if(session('success'))
+            <div class="alert alert-success alert-dismissible">
+                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                {{ session('success') }}
+            </div>
+        @endif
+
+        <div class="row">
+            {{-- Apply Template Section --}}
+            <div class="col-md-12">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title">Apply REST API Template</h3>
                     </div>
-                    <button type="submit" class="btn btn-primary">Apply Template</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Add Custom Connection Section --}}
-<div class="row" style="margin-top: 20px;">
-    <div class="col-md-12">
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                <h3 class="panel-title">Add Custom Connection</h3>
-            </div>
-            <div class="panel-body">
-                <form action="{{ route('device.rest-api.connections.store', $device) }}" method="POST" class="form-inline">
-                    @csrf
-                    <div class="form-group mr-2"><input type="text" name="name" class="form-control" placeholder="Connection Name" required></div>
-                    <div class="form-group mr-2"><input type="url" name="base_url" class="form-control" placeholder="Base URL (https://...)" required style="width: 400px;"></div>
-                    <div class="form-group mr-2"><input type="number" name="rate_limit" class="form-control" placeholder="Rate Limit (reqs/min, default 60)" style="width: 150px;"></div>
-                    <button type="submit" class="btn btn-success">Create Connection</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- API Connections List --}}
-<div class="row" style="margin-top: 20px;">
-    <div class="col-md-12">
-        <div class="panel panel-default">
-            <div class="panel-heading"><h3 class="panel-title">API Connections</h3></div>
-            <div class="panel-body">
-                @forelse($device->restApiConnections as $connection)
-                    <div class="panel panel-default">
-                        <div class="panel-heading">
-                            <h4 class="panel-title pull-left" style="padding-top: 7.5px;">
-                                {{ $connection->name }}
-                                <span class="label label-{{ $connection->enabled ? 'success' : 'warning' }} ml-2">{{ $connection->enabled ? 'Enabled' : 'Disabled' }}</span>
-                            </h4>
-                            <div class="pull-right">
-                                {{-- Apply/Edit Credentials Button --}}
-                                <button type="button" class="btn btn-sm btn-warning" data-toggle="modal" data-target="#credentialModal{{ $connection->id }}">
-                                    {{ $connection->credential ? 'Edit Creds' : 'Apply Creds' }}
-                                </button>
-
-                                {{-- Edit Connection Button --}}
-                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#connectionEditModal{{ $connection->id }}">
-                                    Edit Connection
-                                </button>
-
-                                {{-- Delete Connection Form --}}
-                                <form action="{{ route('device.rest-api.connections.destroy', [$device, $connection]) }}" method="POST" style="display: inline;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this connection?')">Delete</button>
-                                </form>
-                            </div>
-                            <div class="clearfix"></div>
-                        </div>
-                        <div class="panel-body">
-                            <p><strong>Base URL:</strong> {{ $connection->base_url }}</p>
-                            <p><strong>Credential:</strong> {{ $connection->credential->name ?? 'None Applied' }}</p>
-                            <p><strong>Rate Limit:</strong> {{ $connection->rate_limit }} reqs/min</p>
-                            <p><strong>SSL Verify:</strong> <span class="label label-{{ $connection->disable_ssl_verify ? 'danger' : 'success' }}">{{ $connection->disable_ssl_verify ? 'Disabled' : 'Enabled' }}</span></p>
-
-                            <h5 style="margin-top: 20px;">Endpoints:
-                                {{-- Button to add custom endpoint to this connection --}}
-                                <button type="button" class="btn btn-xs btn-success ml-2" data-toggle="modal" data-target="#endpointAddModal{{ $connection->id }}">Add Endpoint</button>
-                            </h5>
-                            <table class="table table-condensed table-striped">
-                                <thead>
-                                    <tr><th>Name</th><th>Method</th><th>Path</th><th>Last Polled</th><th>Actions</th></tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($connection->endpoints as $endpoint)
-                                        <tr>
-                                            <td>{{ $endpoint->name }}</td>
-                                            <td><span class="label label-info">{{ $endpoint->method }}</span></td>
-                                            <td><code>{{ $endpoint->path }}</code></td>
-                                            <td>{{ $endpoint->last_polled ? $endpoint->last_polled->diffForHumans() : 'Never' }}</td>
-                                            <td>
-                                                {{-- Edit Endpoint Action --}}
-                                                <button type="button" class="btn btn-xs btn-info" data-toggle="modal" data-target="#endpointEditModal{{ $endpoint->id }}">Edit</button>
-
-                                                {{-- Delete Endpoint Action --}}
-                                                <form action="{{ route('device.rest-api.endpoints.destroy', [$device, $endpoint]) }}" method="POST" style="display: inline;">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('Delete this endpoint?')">Delete</button>
-                                                </form>
-                                            </td>
-                                        </tr>
+                    <div class="panel-body">
+                        <form action="{{ route('device.rest-api.apply-template', $device) }}" method="POST" class="form-inline">
+                            @csrf
+                            <div class="form-group">
+                                <select name="template_id" id="template_id" class="form-control" required style="width: 300px;">
+                                    <option value="">Select a Template</option>
+                                    @foreach($templates as $template)
+                                        <option value="{{ $template->id }}">{{ $template->name }} ({{ $template->vendor }})</option>
                                     @endforeach
-                                </tbody>
-                            </table>
-                        </div>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Apply Template</button>
+                        </form>
                     </div>
-                    @if(!$loop->last)<hr>@endif
-                @empty
-                    <p>No REST API connections configured for this device.</p>
-                @endforelse
+                </div>
             </div>
         </div>
-    </div>
-</div>
+
+        {{-- Add Custom Connection Section --}}
+        <div class="row" style="margin-top: 20px;">
+            <div class="col-md-12">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title">Add Custom Connection</h3>
+                    </div>
+                    <div class="panel-body">
+                        <form action="{{ route('device.rest-api.connections.store', $device) }}" method="POST" class="form-inline">
+                            @csrf
+                            <div class="form-group mr-2">
+                                <input type="text" name="name" class="form-control" placeholder="Connection Name" required>
+                            </div>
+                            <div class="form-group mr-2">
+                                {{-- FIX: Pre-populate with actual device hostname/IP --}}
+                                <input type="url" name="base_url" class="form-control" 
+                                       placeholder="Base URL (https://...)" 
+                                       value="https://{{ $device->hostname }}" 
+                                       required style="width: 400px;">
+                            </div>
+                            <div class="form-group mr-2">
+                                <input type="number" name="rate_limit" class="form-control" 
+                                       placeholder="Rate Limit (reqs/min, default 60)" 
+                                       style="width: 150px;">
+                            </div>
+                            <button type="submit" class="btn btn-success">Create Connection</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- API Connections List --}}
+        <div class="row" style="margin-top: 20px;">
+            <div class="col-md-12">
+                <div class="panel panel-default">
+                    <div class="panel-heading"><h3 class="panel-title">API Connections</h3></div>
+                    <div class="panel-body">
+                        @forelse($device->restApiConnections as $connection)
+                            <div class="panel panel-default">
+                                <div class="panel-heading">
+                                    <h4 class="panel-title pull-left" style="padding-top: 7.5px;">
+                                        {{ $connection->name }}
+                                        <span class="label label-{{ $connection->enabled ? 'success' : 'warning' }} ml-2">{{ $connection->enabled ? 'Enabled' : 'Disabled' }}</span>
+                                    </h4>
+                                    <div class="pull-right">
+                                        {{-- Apply/Edit Credentials Button --}}
+                                        <button type="button" class="btn btn-sm btn-warning" data-toggle="modal" data-target="#credentialModal{{ $connection->id }}">
+                                            {{ $connection->credential ? 'Edit Creds' : 'Apply Creds' }}
+                                        </button>
+
+                                        {{-- Edit Connection Button --}}
+                                        <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#connectionEditModal{{ $connection->id }}">
+                                            Edit Connection
+                                        </button>
+
+                                        {{-- Delete Connection Form --}}
+                                        <form action="{{ route('device.rest-api.connections.destroy', [$device, $connection]) }}" method="POST" style="display: inline;">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this connection?')">Delete</button>
+                                        </form>
+                                    </div>
+                                    <div class="clearfix"></div>
+                                </div>
+                                <div class="panel-body">
+                                    <p><strong>Base URL:</strong> {{ $connection->base_url }}</p>
+                                    <p><strong>Credential:</strong> {{ $connection->credential->name ?? 'None Applied' }}</p>
+                                    <p><strong>Rate Limit:</strong> {{ $connection->rate_limit }} reqs/min</p>
+                                    <p><strong>SSL Verify:</strong> <span class="label label-{{ $connection->disable_ssl_verify ? 'danger' : 'success' }}">{{ $connection->disable_ssl_verify ? 'Disabled' : 'Enabled' }}</span></p>
+
+                                    <h5 style="margin-top: 20px;">Endpoints:
+                                        {{-- Button to add custom endpoint to this connection --}}
+                                        <button type="button" class="btn btn-xs btn-success ml-2" data-toggle="modal" data-target="#endpointAddModal{{ $connection->id }}">Add Endpoint</button>
+                                    </h5>
+                                    <table class="table table-condensed table-striped">
+                                        <thead>
+                                            <tr><th>Name</th><th>Method</th><th>Path</th><th>Last Polled</th><th>Actions</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($connection->endpoints as $endpoint)
+                                                <tr>
+                                                    <td>{{ $endpoint->name }}</td>
+                                                    <td><span class="label label-info">{{ $endpoint->method }}</span></td>
+                                                    <td><code>{{ $endpoint->path }}</code></td>
+                                                    <td>{{ $endpoint->last_polled ? $endpoint->last_polled->diffForHumans() : 'Never' }}</td>
+                                                    <td>
+                                                        {{-- Edit Endpoint Action --}}
+                                                        <button type="button" class="btn btn-xs btn-info" data-toggle="modal" data-target="#endpointEditModal{{ $endpoint->id }}">Edit</button>
+
+                                                        {{-- Delete Endpoint Action --}}
+                                                        <form action="{{ route('device.rest-api.endpoints.destroy', [$device, $endpoint]) }}" method="POST" style="display: inline;">
+                                                            @csrf
+                                                            @method('DELETE')
+                                                            <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('Delete this endpoint?')">Delete</button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            @if(!$loop->last)<hr>@endif
+                        @empty
+                            <p>No REST API connections configured for this device.</p>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+        </div>
+    </x-device.page>
 
 {{-- MODALS --}}
 @foreach($device->restApiConnections as $connection)
-    {{-- 1. Connection Edit Modal (Updated to pass existing required data) --}}
+    {{-- 1. Connection Edit Modal --}}
     <div class="modal fade" id="connectionEditModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
@@ -156,19 +173,30 @@
                     @method('PUT')
                     <div class="modal-header"><h5 class="modal-title">Edit Connection: {{ $connection->name }}</h5></div>
                     <div class="modal-body">
-                        {{-- CRITICAL FIX: Ensure required fields pass current values --}}
-                        <div class="form-group"><label>Name</label><input type="text" name="name" class="form-control" value="{{ old('name', $connection->name) }}" required></div>
-                        <div class="form-group"><label>Base URL</label><input type="url" name="base_url" class="form-control" value="{{ old('base_url', $connection->base_url) }}" required></div>
-                        <div class="form-group"><label>Rate Limit (reqs/min)</label><input type="number" name="rate_limit" class="form-control" value="{{ old('rate_limit', $connection->rate_limit ?? 60) }}" min="1"></div>
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" name="name" class="form-control" value="{{ old('name', $connection->name) }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Base URL</label>
+                            <input type="text" name="base_url" class="form-control" value="{{ old('base_url', $connection->base_url) }}" required>
+                            <small class="form-text text-muted">
+                                Note: Only enable "Disable SSL Verification" if you have self-signed certificates. The URL must be valid even if SSL is disabled.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Rate Limit (reqs/min)</label>
+                            <input type="number" name="rate_limit" class="form-control" value="{{ old('rate_limit', $connection->rate_limit ?? 60) }}" min="1">
+                        </div>
 
                         {{-- Enable/Disable Connection --}}
                         <div class="checkbox">
-                            <label><input type="checkbox" name="enabled" value="1" @if($connection->enabled) checked @endif> **Enable Connection**</label>
+                            <label><input type="checkbox" name="enabled" value="1" @if($connection->enabled) checked @endif> Enable Connection</label>
                         </div>
 
                         {{-- Disable SSL Verify --}}
                         <div class="checkbox">
-                            <label><input type="checkbox" name="disable_ssl_verify" value="1" @if($connection->disable_ssl_verify) checked @endif> **Disable SSL Verification**</label>
+                            <label><input type="checkbox" name="disable_ssl_verify" value="1" @if($connection->disable_ssl_verify) checked @endif> Disable SSL Verification (for self-signed certs)</label>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -180,7 +208,7 @@
         </div>
     </div>
 
-    {{-- 2. Credential Modal (Global Credentials Assignment) --}}
+    {{-- 2. Credential Modal --}}
     <div class="modal fade" id="credentialModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
