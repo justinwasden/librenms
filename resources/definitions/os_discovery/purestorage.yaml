@@ -1,5 +1,8 @@
 modules:
     os:
+        # Collects the hardware description from the Entity MIB
         hardware: ENTITY-MIB::entPhysicalDescr.1
+        # Collects the software version from the Entity MIB
         version: ENTITY-MIB::entPhysicalSoftwareRev.1
+        # Collects the serial number from the Entity MIB
         serial: ENTITY-MIB::entPhysicalSerialNum.1

@@ -2,8 +2,9 @@ os: purestorage
 type: storage
 text: PureStorage FlashArray
 icon: purestorage
+vendor: purestorage
 processor_stacked: false  # PureStorage doesn't expose CPU via SNMP
-mib_dir: 
+mib_dir:
     - purestorage
 over:
     - { graph: device_purestorage_bandwidth, text: 'Array Bandwidth' }
