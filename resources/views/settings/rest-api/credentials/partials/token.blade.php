@@ -6,7 +6,6 @@
                id="params_token" 
                class="form-control" 
                value="{{ old('params.token', $credential->params->firstWhere('key', 'token')->value ?? '') }}" 
-               style="cursor: pointer;"
                required>
         <div class="input-group-append">
             <span class="input-group-text" id="token-timer-regular" style="display: none;">
@@ -18,59 +17,6 @@
         <i class="fas fa-info-circle"></i> Click the field to reveal the token for 5 seconds.
     </small>
 </div>
-
-<script>
-let tokenFieldTimer = null;
-let tokenFieldCountdown = null;
-
-document.addEventListener('DOMContentLoaded', function() {
-    const tokenField = document.getElementById('params_token');
-    if (tokenField) {
-        tokenField.addEventListener('click', function() {
-            revealTokenField(this, 'token-timer-regular');
-        });
-    }
-});
-
-function revealTokenField(input, timerId) {
-    // Clear any existing timers
-    if (tokenFieldTimer) clearTimeout(tokenFieldTimer);
-    if (tokenFieldCountdown) clearInterval(tokenFieldCountdown);
-    
-    // Show token
-    input.type = 'text';
-    input.style.cursor = 'text';
-    
-    // Show timer
-    const timerDisplay = document.getElementById(timerId);
-    const timerSeconds = timerDisplay ? timerDisplay.querySelector('.timer-seconds') : null;
-    
-    if (timerDisplay && timerSeconds) {
-        timerDisplay.style.display = 'flex';
-        
-        // Countdown
-        let seconds = 5;
-        timerSeconds.textContent = seconds;
-        
-        tokenFieldCountdown = setInterval(() => {
-            seconds--;
-            timerSeconds.textContent = seconds;
-            
-            if (seconds <= 0) {
-                clearInterval(tokenFieldCountdown);
-            }
-        }, 1000);
-        
-        // Hide after 5 seconds
-        tokenFieldTimer = setTimeout(() => {
-            input.type = 'password';
-            input.style.cursor = 'pointer';
-            timerDisplay.style.display = 'none';
-            clearInterval(tokenFieldCountdown);
-        }, 5000);
-    }
-}
-</script>
 
 <div class="form-group">
     <label for="params_header">Header Name</label>
