@@ -1,65 +1,102 @@
+{{-- /resources/views/device/rest-api/templates/edit.blade.php --}}
 @extends('layouts.librenmsv1')
 
 @section('content')
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">Edit REST API Template</h3>
-            </div>
-            <div class="card-body">
+<div x-data="{ tab: 'connection', openEndpoint: null }">
+    <div class="modal fade show" id="editTemplateModal" tabindex="-1" role="dialog" aria-labelledby="editTemplateLabel" aria-modal="true" style="display:block;">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
                 <form action="{{ route('devices.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                     @csrf
                     @method('PUT')
-                    <pre>{{ print_r($template->template_data, true) }}</pre>
-										@php
-    $template_data = is_array($template->template_data)
-        ? $template->template_data
-        : (json_decode($template->template_data, true) ?? []);
 
-    $connections = $template_data['connections'] ?? [];
-@endphp
-
-@foreach ($connections as $cIndex => $connection)
-    <div class="card mb-4 border-primary">
-        <div class="card-header bg-primary text-white">
-            <strong>Connection {{ $cIndex + 1 }}: {{ $connection['name'] ?? 'Unnamed Connection' }}</strong>
-        </div>
-        <div class="card-body">
-            <div class="form-group">
-                <label>Base URL</label>
-                <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][base_url]" value="{{ $connection['base_url'] ?? '' }}">
-            </div>
-            <div class="form-group">
-                <label>Rate Limit</label>
-                <input type="number" class="form-control" name="template_data[connections][{{ $cIndex }}][rate_limit]" value="{{ $connection['rate_limit'] ?? '' }}">
-            </div>
-
-            @foreach (($connection['endpoints'] ?? []) as $eIndex => $endpoint)
-                <div class="card mb-3">
-                    <div class="card-header bg-light">
-                        <strong>Endpoint {{ $eIndex + 1 }}: {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}</strong>
+                    <div class="modal-header">
+                        <h5 class="modal-title">Edit REST API Template: {{ $template->name }}</h5>
+                        <button type="button" class="close" onclick="window.history.back();">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
                     </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label>Path</label>
-                            <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][path]" value="{{ $endpoint['path'] ?? '' }}">
+
+                    <div class="modal-body">
+                        {{-- Tabs --}}
+                        <ul class="nav nav-tabs mb-3">
+                            <li class="nav-item">
+                                <a class="nav-link" :class="{ 'active': tab === 'connection' }" @click.prevent="tab = 'connection'">Connection</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" :class="{ 'active': tab === 'endpoints' }" @click.prevent="tab = 'endpoints'">Endpoints</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" :class="{ 'active': tab === 'preview' }" @click.prevent="tab = 'preview'">Preview / Test</a>
+                            </li>
+                        </ul>
+
+                        {{-- Connection Tab --}}
+                        <div x-show="tab === 'connection'" x-cloak>
+                            @include('device.rest-api.templates.partials.connection', ['template' => $template])
                         </div>
-                        <div class="form-group">
-                            <label>HTTP Method</label>
-                            <input type="text" class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][http_method]" value="{{ $endpoint['http_method'] ?? '' }}">
+
+                        {{-- Endpoints Tab --}}
+                        <div x-show="tab === 'endpoints'" x-cloak>
+                            @php
+                                $template_data_array = is_array($template->template_data)
+                                    ? $template->template_data
+                                    : (json_decode($template->template_data, true) ?? []);
+                                $connections = $template_data_array['connections'] ?? [];
+                            @endphp
+
+                            @foreach ($connections as $cIndex => $connection)
+                                <div class="card mb-3 border-info">
+                                    <div class="card-header bg-info text-white">
+                                        <strong>{{ $connection['name'] ?? 'Unnamed Connection' }}</strong>
+                                        <small class="ml-2 text-light">({{ $connection['base_url'] ?? 'No URL' }})</small>
+                                    </div>
+
+                                    <div class="card-body">
+                                        @if (!empty($connection['endpoints']))
+                                            <ul class="list-group">
+                                                @foreach ($connection['endpoints'] as $eIndex => $endpoint)
+                                                    <li class="list-group-item">
+                                                        <div class="d-flex justify-content-between align-items-center">
+                                                            <span>
+                                                                <strong>{{ $endpoint['name'] ?? 'Unnamed Endpoint' }}</strong>
+                                                                <small class="text-muted">({{ $endpoint['path'] ?? '' }})</small>
+                                                            </span>
+                                                            <button type="button" class="btn btn-sm btn-secondary"
+                                                                    @click="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? openEndpoint = null : openEndpoint = '{{ $cIndex }}-{{ $eIndex }}'">
+                                                                <span x-show="openEndpoint !== '{{ $cIndex }}-{{ $eIndex }}'">Edit</span>
+                                                                <span x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'">Close</span>
+                                                            </button>
+                                                        </div>
+
+                                                        <div class="mt-3" x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'" x-cloak>
+                                                            @include('device.rest-api.templates.partials.endpoint-form', [
+                                                                'connectionIndex' => $cIndex,
+                                                                'endpointIndex' => $eIndex,
+                                                                'endpoint' => $endpoint,
+                                                            ])
+                                                        </div>
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        @else
+                                            <p class="text-muted">No endpoints defined for this connection.</p>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
-                        <div class="form-group">
-                            <label>Response Mapping (JSON)</label>
-                            <textarea class="form-control" name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][response_mapping]" rows="3">{{ json_encode($endpoint['response_mapping'] ?? [], JSON_PRETTY_PRINT) }}</textarea>
+
+                        {{-- Preview / Test Tab --}}
+                        <div x-show="tab === 'preview'" x-cloak>
+                            @include('device.rest-api.templates.partials.preview', ['template' => $template])
                         </div>
                     </div>
-                </div>
-            @endforeach
-        </div>
-    </div>
-@endforeach
-                    <button type="submit" class="btn btn-primary">Update</button>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="window.history.back();">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
                 </form>
             </div>
         </div>
