@@ -70,7 +70,7 @@
                                                         </div>
 
                                                         <div class="mt-3" x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'" x-cloak>
-                                                            @include('device.rest-api.templates.partials.endpoint-form', [
+                                                            @include('settings.rest-api.templates.partials.endpoint-form', [
                                                                 'connectionIndex' => $cIndex,
                                                                 'endpointIndex' => $eIndex,
                                                                 'endpoint' => $endpoint,
