@@ -58,6 +58,11 @@ class RestApiTemplateController extends Controller
         // Ensure boolean values are properly converted for checkbox fields
         if (isset($validated['template_data']['connections'])) {
             foreach ($validated['template_data']['connections'] as $cIndex => &$connection) {
+                // Convert disable_ssl_verify to boolean
+                if (isset($connection['disable_ssl_verify'])) {
+                    $connection['disable_ssl_verify'] = filter_var($connection['disable_ssl_verify'], FILTER_VALIDATE_BOOLEAN);
+                }
+                
                 if (isset($connection['endpoints'])) {
                     foreach ($connection['endpoints'] as $eIndex => &$endpoint) {
                         // Convert enabled to boolean
