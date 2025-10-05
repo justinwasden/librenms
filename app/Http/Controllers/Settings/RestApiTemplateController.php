@@ -188,6 +188,13 @@ class RestApiTemplateController extends Controller
                             } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
                                 $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
                                 $options['headers'][$params['header']] = $scheme . $params['token'];
+                            } elseif ($authType === 'session token') {
+                                // Get session token for session-based auth
+                                $sessionToken = $this->getSessionToken($connData, $device, $client, $verifySsl);
+                                if ($sessionToken) {
+                                    $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                                    $options['headers'][$tokenHeader] = $sessionToken;
+                                }
                             }
                         }
                     }
