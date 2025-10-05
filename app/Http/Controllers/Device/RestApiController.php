@@ -219,16 +219,37 @@ class RestApiController extends Controller
 
     private function replacePlaceholdersInString(string $string, Device $device): string
     {
+        // Support Laravel Blade-style placeholders: {{ $device->hostname }}
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
-
+        $string = Str::replace('{{ $device->sysName }}', $device->sysName, $string);
+        $string = Str::replace('{{ $device->display }}', $device->display ?? $device->hostname, $string);
+        
+        // Support simple placeholder format: {device_hostname}
+        $string = Str::replace('{device_hostname}', $device->hostname, $string);
+        $string = Str::replace('{device_ip}', $device->ip, $string);
+        $string = Str::replace('{device_sysname}', $device->sysName, $string);
+        $string = Str::replace('{device_display}', $device->display ?? $device->hostname, $string);
+        
+        // Support getAttrib for custom attributes: {{ $device->getAttrib('name') }}
         preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
 
         if (!empty($matches[2])) {
             foreach ($matches[2] as $index => $attribName) {
                 $attribValue = $device->getAttrib($attribName);
                 $fullPlaceholder = $matches[0][$index];
-                $string = Str::replace($fullPlaceholder, $attribValue, $string);
+                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
+            }
+        }
+        
+        // Support simple attrib format: {device_attrib:name}
+        preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
+        
+        if (!empty($attribMatches[1])) {
+            foreach ($attribMatches[1] as $index => $attribName) {
+                $attribValue = $device->getAttrib($attribName);
+                $fullPlaceholder = $attribMatches[0][$index];
+                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
             }
         }
 
