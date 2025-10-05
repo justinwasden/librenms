@@ -310,6 +310,9 @@ class RestApiTemplateController extends Controller
             }
         }
 
+        return $string;
+    }
+
     /**
      * Get session token for session-based authentication
      */
