@@ -20,7 +20,7 @@
     </div>
 
     <div class="row">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="form-group">
                 <label>HTTP Method</label>
                 <select class="form-control" 
@@ -34,7 +34,26 @@
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
+            <div class="form-group">
+                <label>Resource Type <span class="text-danger">*</span></label>
+                <select class="form-control" 
+                        name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][resource_type]"
+                        required>
+                    <option value="">-- Select Type --</option>
+                    <option value="device" {{ ($endpoint['resource_type'] ?? '') === 'device' ? 'selected' : '' }}>Device</option>
+                    <option value="port" {{ ($endpoint['resource_type'] ?? '') === 'port' ? 'selected' : '' }}>Port</option>
+                    <option value="storage" {{ ($endpoint['resource_type'] ?? '') === 'storage' ? 'selected' : '' }}>Storage</option>
+                    <option value="mempool" {{ ($endpoint['resource_type'] ?? '') === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
+                    <option value="processor" {{ ($endpoint['resource_type'] ?? '') === 'processor' ? 'selected' : '' }}>Processor</option>
+                    <option value="sensor" {{ ($endpoint['resource_type'] ?? '') === 'sensor' ? 'selected' : '' }}>Sensor</option>
+                    <option value="custom" {{ ($endpoint['resource_type'] ?? '') === 'custom' ? 'selected' : '' }}>Custom</option>
+                </select>
+                <small class="form-text text-muted">What type of resource does this endpoint monitor?</small>
+            </div>
+        </div>
+
+        <div class="col-md-4">
             <div class="form-group">
                 <label>Poll Interval (seconds)</label>
                 <input type="number" 
@@ -75,13 +94,57 @@
                   placeholder="What data does this endpoint provide?">{{ $endpoint['description'] ?? '' }}</textarea>
     </div>
 
-    <div class="form-group mb-0">
-        <label>Response Mapping (JSON) <small class="text-muted">(Optional)</small></label>
+    {{-- Metric Mapping Section --}}
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white">
+            <h6 class="mb-0">
+                <i class="fas fa-chart-line"></i> Metric Mapping
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info mb-3">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Map API response fields to LibreNMS metrics.</strong><br>
+                Use JSONPath notation to extract values from the response. Example: <code>$.data.cpu_usage</code>
+            </div>
+
+            <div class="form-group">
+                <label>Metric Map (JSON)</label>
+                <textarea class="form-control font-monospace" 
+                          rows="8" 
+                          name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][metric_map]"
+                          placeholder='{
+  "cpu_usage": "$.data.cpu.usage_percent",
+  "memory_used": "$.data.memory.used_bytes",
+  "temperature": "$.sensors.temp1.value"
+}'>{{ is_array($endpoint['metric_map'] ?? null) ? json_encode($endpoint['metric_map'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : ($endpoint['metric_map'] ?? '') }}</textarea>
+                <small class="form-text text-muted">
+                    <strong>Format:</strong> <code>{"metric_name": "jsonpath_to_value"}</code><br>
+                    <strong>Example:</strong> <code>{"cpu_percent": "$.cpu.usage"}</code> maps response field <code>cpu.usage</code> to metric <code>cpu_percent</code>
+                </small>
+            </div>
+
+            <div class="form-group mb-0">
+                <label>Response Path (Optional)</label>
+                <input type="text" 
+                       class="form-control font-monospace" 
+                       name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_path]"
+                       value="{{ $endpoint['response_path'] ?? '' }}"
+                       placeholder="$.data.items">
+                <small class="form-text text-muted">
+                    JSONPath to the data array in the response. Leave empty if metrics are at root level.<br>
+                    <strong>Example:</strong> <code>$.data.items</code> to access items array in nested response
+                </small>
+            </div>
+        </div>
+    </div>
+
+    {{-- Legacy Response Mapping (kept for compatibility) --}}
+    <div class="form-group" style="display: none;">
+        <label>Response Mapping (Deprecated - Use Metric Map)</label>
         <textarea class="form-control font-monospace" 
-                  rows="6" 
-                  name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_mapping]"
-                  placeholder='{"metric_name": "$.data.value"}'>{{ is_array($endpoint['response_mapping'] ?? null) ? json_encode($endpoint['response_mapping'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : ($endpoint['response_mapping'] ?? '') }}</textarea>
-        <small class="form-text text-muted">Map API response fields to LibreNMS metrics</small>
+                  rows="2" 
+                  name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_mapping]">{{ is_array($endpoint['response_mapping'] ?? null) ? json_encode($endpoint['response_mapping'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : ($endpoint['response_mapping'] ?? '') }}</textarea>
     </div>
 
     <div class="text-right mt-3">
