@@ -89,7 +89,7 @@
 
                         {{-- Preview / Test Tab --}}
                         <div x-show="tab === 'preview'" x-cloak>
-                            @include('device.rest-api.templates.partials.preview', ['template' => $template])
+                            @include('settings.rest-api.templates.partials.preview', ['template' => $template])
                         </div>
                     </div>
 
