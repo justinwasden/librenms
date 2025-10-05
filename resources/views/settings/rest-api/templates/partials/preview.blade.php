@@ -29,6 +29,25 @@
         </small>
     </div>
 
+    {{-- Credential Selection --}}
+    <div class="form-group">
+        <label for="test_credential_id">
+            <i class="fas fa-key"></i> Select Credential (Optional)
+        </label>
+        <select class="form-control" id="test_credential_id" x-model="selectedCredentialId">
+            <option value="">-- Use template default --</option>
+            @foreach(\App\Models\RestApiCredential::orderBy('name')->get() as $credential)
+                <option value="{{ $credential->id }}">
+                    {{ $credential->name }}
+                    ({{ $credential->authenticationType->name ?? 'Unknown' }})
+                </option>
+            @endforeach
+        </select>
+        <small class="form-text text-muted">
+            Override the credential configured in the template for this test
+        </small>
+    </div>
+
     {{-- Endpoint Selection --}}
     <div class="form-group" x-show="selectedDeviceId">
         <label for="test_endpoint">
@@ -191,6 +210,10 @@
                                     <td x-text="testSummary?.connection"></td>
                                 </tr>
                                 <tr>
+                                    <td><strong>Credential:</strong></td>
+                                    <td x-text="testSummary?.credential || 'None'"></td>
+                                </tr>
+                                <tr>
                                     <td><strong>Base URL:</strong></td>
                                     <td><code x-text="testSummary?.base_url"></code></td>
                                 </tr>
@@ -299,6 +322,7 @@
 function templateTester() {
     return {
         selectedDeviceId: '',
+        selectedCredentialId: '',
         selectedEndpoint: 'first',
         verifySsl: false,
         showHeaders: false,
@@ -385,6 +409,7 @@ function templateTester() {
                     },
                     body: JSON.stringify({
                         device_id: this.selectedDeviceId,
+                        credential_id: this.selectedCredentialId || null,
                         test_all_endpoints: this.selectedEndpoint === 'all',
                         specific_endpoint: this.selectedEndpoint !== 'all' && this.selectedEndpoint !== 'first' ? this.selectedEndpoint : null,
                         verify_ssl: this.verifySsl,

@@ -86,6 +86,7 @@ class RestApiTemplateController extends Controller
     {
         $request->validate([
             'device_id' => 'required|exists:devices,device_id',
+            'credential_id' => 'nullable|exists:rest_api_credentials,id',
             'test_all_endpoints' => 'boolean',
             'specific_endpoint' => 'nullable|string',
             'verify_ssl' => 'boolean',
@@ -95,6 +96,7 @@ class RestApiTemplateController extends Controller
         ]);
 
         $device = \App\Models\Device::find($request->device_id);
+        $overrideCredentialId = $request->get('credential_id');
         $testAllEndpoints = $request->get('test_all_endpoints', false);
         $specificEndpoint = $request->get('specific_endpoint');
         $verifySsl = $request->get('verify_ssl', false);
@@ -105,18 +107,37 @@ class RestApiTemplateController extends Controller
         // Replace placeholders in template
         $templateData = $this->replacePlaceholdersInArray($template->template_data, $device);
 
+        // Override credential if specified for testing
+        if ($overrideCredentialId) {
+            foreach ($templateData['connections'] as &$connection) {
+                $connection['credential_id'] = $overrideCredentialId;
+            }
+        }
+
         $results = [
             'success' => true,
             'summary' => [
                 'device' => $device->hostname,
                 'connection' => $templateData['connections'][0]['name'] ?? 'Unknown',
                 'base_url' => $templateData['connections'][0]['base_url'] ?? 'Unknown',
+                'credential' => null,
                 'endpoints_tested' => 0,
                 'success_rate' => 0,
                 'total_time' => 0,
             ],
             'endpoint_results' => [],
         ];
+
+        // Add credential info to summary
+        if ($overrideCredentialId) {
+            $credential = \App\Models\RestApiCredential::find($overrideCredentialId);
+            $results['summary']['credential'] = $credential ? $credential->name . ' (Override)' : 'Unknown';
+        } elseif (isset($templateData['connections'][0]['credential_id'])) {
+            $credential = \App\Models\RestApiCredential::find($templateData['connections'][0]['credential_id']);
+            $results['summary']['credential'] = $credential ? $credential->name . ' (Template Default)' : 'None';
+        } else {
+            $results['summary']['credential'] = 'None';
+        }
 
         $client = new \GuzzleHttp\Client([
             'timeout' => $timeout,
