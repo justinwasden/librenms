@@ -4,6 +4,7 @@ namespace LibreNMS\Modules;
 
 use App\Models\Device;
 use App\Pollers\Api as ApiPoller;
+use App\Services\DataMatcher;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Module;
 use LibreNMS\OS;
@@ -48,8 +49,23 @@ class RestApi implements Module
     {
         $device = $os->getDevice();
 
+        // Step 1: Poll REST APIs and collect metrics
         $poller = new ApiPoller($device);
         $poller->poll();
+
+        // Step 2: Auto-match collected metrics to LibreNMS fields
+        $matcher = new DataMatcher();
+        $stats = $matcher->processDeviceMetrics($device);
+
+        // Log stats if there were any matches or unmatched metrics
+        if ($stats['matched'] > 0 || $stats['unmatched'] > 0) {
+            echo sprintf(
+                " REST API Metrics: %d matched, %d unmatched, %d errors\n",
+                $stats['matched'],
+                $stats['unmatched'],
+                $stats['errors']
+            );
+        }
     }
 
     public function dataExists(Device $device): bool

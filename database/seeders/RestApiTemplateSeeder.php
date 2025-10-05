@@ -31,6 +31,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'System Info',
                                     'path' => '/v10.04/system',
                                     'method' => 'GET',
+                                    'resource_type' => 'device',
                                     'metric_map' => [
                                         'hostname' => 'hostname',
                                         'uptime' => 'boot_time',
@@ -41,6 +42,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'Interface Statistics',
                                     'path' => '/v10.04/system/interfaces/*/statistics',
                                     'method' => 'GET',
+                                    'resource_type' => 'port',
                                     'metric_map' => [
                                         'rx_bytes' => 'rx_bytes',
                                         'tx_bytes' => 'tx_bytes',
@@ -72,6 +74,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'CPU Utilization',
                                     'path' => '/restconf/data/Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization',
                                     'method' => 'GET',
+                                    'resource_type' => 'processor',
                                     'metric_map' => [
                                         'five_sec_avg' => 'cpu-utilization.five-seconds-average',
                                         'one_min_avg' => 'cpu-utilization.one-minute-average',
@@ -82,6 +85,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'Memory Statistics',
                                     'path' => '/restconf/data/Cisco-IOS-XE-memory-oper:memory-statistics',
                                     'method' => 'GET',
+                                    'resource_type' => 'mempool',
                                     'metric_map' => [
                                         'total_memory' => 'memory-statistics.total-memory',
                                         'used_memory' => 'memory-statistics.used-memory',
@@ -113,6 +117,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/v2/monitor/system/status',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'device',
                                     'metric_map' => [
                                         'hostname' => 'results.hostname',
                                         'firmware_version' => 'results.version',
@@ -126,6 +131,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/v2/monitor/system/resource/usage',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'sensor',
                                     'metric_map' => [
                                         'cpu_current' => 'results.cpu.0.current',
                                         'cpu_average_1min' => 'results.cpu.0.historical.1-min.average',
@@ -140,6 +146,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/v2/monitor/system/session',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'custom',
                                     'metric_map' => [
                                         'session_current' => 'session.0.current',
                                         'session_average_1min' => 'session.0.historical.1-min.average',
@@ -150,6 +157,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/v2/monitor/vpn/ssl',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'custom',
                                     'metric_map' => [
                                         'vpn_users_active' => 'results.0.users',
                                     ],
@@ -159,6 +167,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/v2/monitor/log/current-disk-usage',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'storage',
                                     'metric_map' => [
                                         'log_disk_used_bytes' => 'results.used_bytes',
                                         'log_disk_free_bytes' => 'results.free_bytes',
@@ -189,6 +198,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'System Uptime',
                                     'path' => '/rpc/get-system-uptime-information',
                                     'method' => 'GET',
+                                    'resource_type' => 'device',
                                     'metric_map' => [
                                         'uptime_seconds' => 'system-uptime-information.up-time.seconds',
                                     ],
@@ -197,6 +207,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'name' => 'Interface Statistics',
                                     'path' => '/api-json/op/show-interfaces-statistics',
                                     'method' => 'GET',
+                                    'resource_type' => 'port',
                                     'metric_map' => [
                                         'ge-0/0/0_rx_bytes' => 'interface-statistics.physical-interface.0.input-bytes',
                                         'ge-0/0/0_tx_bytes' => 'interface-statistics.physical-interface.0.output-bytes',
@@ -232,12 +243,14 @@ class RestApiTemplateSeeder extends Seeder
                                         'uptime' => 'result.system.uptime',
                                         'version' => 'result.system.sw-version',
                                     ],
+                                    'resource_type' => 'device',
                                 ],
                                 [
                                     'name' => 'Interface Statistics',
                                     'path' => '/api/?type=op&cmd=<show><interface>all</interface></show>',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'port',
                                     'metric_map' => [
                                         'ethernet1/1_rx_bytes' => 'result.interface.ethernet1/1.stats.ibytes',
                                         'ethernet1/1_tx_bytes' => 'result.interface.ethernet1/1.stats.obytes',
@@ -248,6 +261,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/?type=report&reportname=top-application-categories',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
+                                    'resource_type' => 'custom',
                                     'metric_map' => [
                                         'report_name' => 'report.@attributes.reportname',
                                         'result_name' => 'report.result.@attributes.name',
@@ -281,7 +295,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/arrays',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'array',
+                                    'resource_type' => 'device',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -301,7 +315,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/controllers',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'controller',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -317,7 +331,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/volumes',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'volume',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -338,7 +352,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/network-interfaces',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'interface',
+                                    'resource_type' => 'port',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -362,7 +376,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/hosts',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'host',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -379,7 +393,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/arrays/performance',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'array_performance',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -395,7 +409,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/volumes/performance',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'volume_performance',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -411,7 +425,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/alerts',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'alert',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'code',
                                     'response_mapping' => [
@@ -428,7 +442,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/hardware',
                                     'http_method' => 'GET',
                                     'poll_interval' => 600,
-                                    'resource_type' => 'hardware',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -444,7 +458,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/drives',
                                     'http_method' => 'GET',
                                     'poll_interval' => 600,
-                                    'resource_type' => 'drive',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -480,7 +494,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/arrays',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_array',
+                                    'resource_type' => 'device',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -492,7 +506,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/arrays/{array_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_array_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'array_id',
                                     'resource_name_field' => 'array_id',
                                     'response_mapping' => [
@@ -504,7 +518,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/arrays/{array_id}/hardware',
                                     'http_method' => 'GET',
                                     'poll_interval' => 3600,
-                                    'resource_type' => 'pure1_hardware',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -517,7 +531,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/volumes',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_volume',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -529,7 +543,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/volumes/{volume_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_volume_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'volume_id',
                                     'resource_name_field' => 'volume_id',
                                     'response_mapping' => [
@@ -541,7 +555,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/hosts',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_host',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -553,7 +567,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/hosts/{host_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_host_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'host_id',
                                     'resource_name_field' => 'host_id',
                                     'response_mapping' => [
@@ -565,7 +579,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/pods',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_pod',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -577,7 +591,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/pods/{pod_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_pod_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'pod_id',
                                     'resource_name_field' => 'pod_id',
                                     'response_mapping' => [
@@ -589,7 +603,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/file-systems',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_fs',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -601,7 +615,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/file-systems/{file_system_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_fs_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'file_system_id',
                                     'resource_name_field' => 'file_system_id',
                                     'response_mapping' => [
@@ -613,7 +627,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/file-systems/{file_system_id}/directories',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_directory',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -625,7 +639,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/file-systems/{file_system_id}/directories/{directory_id}/metrics',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'pure1_directory_metrics',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'directory_id',
                                     'resource_name_field' => 'directory_id',
                                     'response_mapping' => [
@@ -657,7 +671,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/arrays',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'array',
+                                    'resource_type' => 'device',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -677,7 +691,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/controllers',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'controller',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -693,7 +707,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/volumes',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'volume',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
 												            'response_mapping' => [
@@ -714,7 +728,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/network-interfaces',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'interface',
+                                    'resource_type' => 'port',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -734,7 +748,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/hosts',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'host',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
 												            'response_mapping' => [
@@ -754,7 +768,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/arrays/performance',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'array_performance',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
                                     'response_mapping' => [
@@ -776,7 +790,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/volumes/performance',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'volume_performance',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -798,7 +812,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/alerts',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'alert',
+                                    'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'code',
                                     'response_mapping' => [
@@ -818,7 +832,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/hardware',
                                     'http_method' => 'GET',
                                     'poll_interval' => 600,
-                                    'resource_type' => 'hardware',
+                                    'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
@@ -835,7 +849,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/2.26/drives',
                                     'http_method' => 'GET',
                                     'poll_interval' => 600,
-                                    'resource_type' => 'drive',
+                                    'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
                                     'response_mapping' => [
