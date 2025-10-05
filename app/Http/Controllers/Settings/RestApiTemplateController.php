@@ -163,7 +163,7 @@ class RestApiTemplateController extends Controller
 
                     // Try to decode as JSON for pretty preview
                     $jsonBody = json_decode($body, true);
-                    $responsePreview = $jsonBody 
+                    $responsePreview = $jsonBody
                         ? json_encode($jsonBody, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
                         : $body;
 
@@ -282,12 +282,12 @@ class RestApiTemplateController extends Controller
         $string = \Illuminate\Support\Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = \Illuminate\Support\Str::replace('{{ $device->ip }}', $device->ip, $string);
         $string = \Illuminate\Support\Str::replace('{{ $device->sysName }}', $device->sysName, $string);
-        
+
         // Support simple placeholder format: {device_hostname}
         $string = \Illuminate\Support\Str::replace('{device_hostname}', $device->hostname, $string);
         $string = \Illuminate\Support\Str::replace('{device_ip}', $device->ip, $string);
         $string = \Illuminate\Support\Str::replace('{device_sysname}', $device->sysName, $string);
-        
+
         // Support getAttrib for custom attributes
         preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
 
@@ -298,10 +298,10 @@ class RestApiTemplateController extends Controller
                 $string = \Illuminate\Support\Str::replace($fullPlaceholder, $attribValue ?? '', $string);
             }
         }
-        
+
         // Support simple attrib format: {device_attrib:name}
         preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
-        
+
         if (!empty($attribMatches[1])) {
             foreach ($attribMatches[1] as $index => $attribName) {
                 $attribValue = $device->getAttrib($attribName);
@@ -364,3 +364,4 @@ class RestApiTemplateController extends Controller
             return null;
         }
     }
+}
