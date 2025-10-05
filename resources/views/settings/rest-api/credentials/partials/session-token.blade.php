@@ -33,14 +33,20 @@
 
 <div class="form-group">
     <label for="params_token_header">Session Token Header</label>
-    <input type="text" name="params[token_header]" id="params_token_header" class="form-control" 
+    <input type="text" 
+           name="params[token_header]" 
+           id="params_token_header" 
+           class="form-control" 
            value="{{ old('params.token_header', $credential->params->firstWhere('key', 'token_header')->value ?? 'x-auth-token') }}">
     <small class="form-text text-muted">The response header name containing the session token (default: x-auth-token).</small>
 </div>
 
 <div class="form-group">
     <label for="params_api_token_header">API Token Header</label>
-    <input type="text" name="params[api_token_header]" id="params_api_token_header" class="form-control" 
+    <input type="text" 
+           name="params[api_token_header]" 
+           id="params_api_token_header" 
+           class="form-control" 
            value="{{ old('params.api_token_header', $credential->params->firstWhere('key', 'api_token_header')->value ?? 'api-token') }}">
     <small class="form-text text-muted">The request header name for sending the API token to the login endpoint (default: api-token).</small>
 </div>
@@ -51,9 +57,9 @@
         @php
             $currentMethod = old('params.login_method', $credential->params->firstWhere('key', 'login_method')->value ?? 'POST');
         @endphp
-        <option value="POST" @if($currentMethod == 'POST') selected @endif>POST</option>
-        <option value="GET" @if($currentMethod == 'GET') selected @endif>GET</option>
-        <option value="PUT" @if($currentMethod == 'PUT') selected @endif>PUT</option>
+        <option value="POST" {{ $currentMethod == 'POST' ? 'selected' : '' }}>POST</option>
+        <option value="GET" {{ $currentMethod == 'GET' ? 'selected' : '' }}>GET</option>
+        <option value="PUT" {{ $currentMethod == 'PUT' ? 'selected' : '' }}>PUT</option>
     </select>
     <small class="form-text text-muted">The HTTP method to use for the login request (default: POST).</small>
 </div>
