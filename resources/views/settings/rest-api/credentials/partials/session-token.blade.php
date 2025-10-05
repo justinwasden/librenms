@@ -11,9 +11,7 @@
                id="params_api_token" 
                class="form-control" 
                value="{{ old('params.api_token', $credential->params->firstWhere('key', 'api_token')->value ?? '') }}" 
-               onclick="revealToken(this)" 
-               readonly 
-               onfocus="this.removeAttribute('readonly');"
+               style="cursor: pointer;"
                required>
         <div class="input-group-append">
             <span class="input-group-text" id="token-timer" style="display: none;">
@@ -30,6 +28,15 @@
 let tokenTimer = null;
 let countdownInterval = null;
 
+document.addEventListener('DOMContentLoaded', function() {
+    const tokenField = document.getElementById('params_api_token');
+    if (tokenField) {
+        tokenField.addEventListener('click', function() {
+            revealToken(this);
+        });
+    }
+});
+
 function revealToken(input) {
     // Clear any existing timers
     if (tokenTimer) clearTimeout(tokenTimer);
@@ -37,31 +44,35 @@ function revealToken(input) {
     
     // Show token
     input.type = 'text';
+    input.style.cursor = 'text';
     
     // Show timer
     const timerDisplay = document.getElementById('token-timer');
     const timerSeconds = document.getElementById('timer-seconds');
-    timerDisplay.style.display = 'flex';
-    
-    // Countdown
-    let seconds = 5;
-    timerSeconds.textContent = seconds;
-    
-    countdownInterval = setInterval(() => {
-        seconds--;
+    if (timerDisplay && timerSeconds) {
+        timerDisplay.style.display = 'flex';
+        
+        // Countdown
+        let seconds = 5;
         timerSeconds.textContent = seconds;
         
-        if (seconds <= 0) {
+        countdownInterval = setInterval(() => {
+            seconds--;
+            timerSeconds.textContent = seconds;
+            
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+        
+        // Hide after 5 seconds
+        tokenTimer = setTimeout(() => {
+            input.type = 'password';
+            input.style.cursor = 'pointer';
+            timerDisplay.style.display = 'none';
             clearInterval(countdownInterval);
-        }
-    }, 1000);
-    
-    // Hide after 5 seconds
-    tokenTimer = setTimeout(() => {
-        input.type = 'password';
-        timerDisplay.style.display = 'none';
-        clearInterval(countdownInterval);
-    }, 5000);
+        }, 5000);
+    }
 }
 </script>
 

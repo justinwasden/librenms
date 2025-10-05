@@ -6,9 +6,7 @@
                id="params_token" 
                class="form-control" 
                value="{{ old('params.token', $credential->params->firstWhere('key', 'token')->value ?? '') }}" 
-               onclick="revealTokenField(this, 'token-timer-regular')" 
-               readonly 
-               onfocus="this.removeAttribute('readonly');"
+               style="cursor: pointer;"
                required>
         <div class="input-group-append">
             <span class="input-group-text" id="token-timer-regular" style="display: none;">
@@ -25,6 +23,15 @@
 let tokenFieldTimer = null;
 let tokenFieldCountdown = null;
 
+document.addEventListener('DOMContentLoaded', function() {
+    const tokenField = document.getElementById('params_token');
+    if (tokenField) {
+        tokenField.addEventListener('click', function() {
+            revealTokenField(this, 'token-timer-regular');
+        });
+    }
+});
+
 function revealTokenField(input, timerId) {
     // Clear any existing timers
     if (tokenFieldTimer) clearTimeout(tokenFieldTimer);
@@ -32,31 +39,36 @@ function revealTokenField(input, timerId) {
     
     // Show token
     input.type = 'text';
+    input.style.cursor = 'text';
     
     // Show timer
     const timerDisplay = document.getElementById(timerId);
-    const timerSeconds = timerDisplay.querySelector('.timer-seconds');
-    timerDisplay.style.display = 'flex';
+    const timerSeconds = timerDisplay ? timerDisplay.querySelector('.timer-seconds') : null;
     
-    // Countdown
-    let seconds = 5;
-    timerSeconds.textContent = seconds;
-    
-    tokenFieldCountdown = setInterval(() => {
-        seconds--;
+    if (timerDisplay && timerSeconds) {
+        timerDisplay.style.display = 'flex';
+        
+        // Countdown
+        let seconds = 5;
         timerSeconds.textContent = seconds;
         
-        if (seconds <= 0) {
+        tokenFieldCountdown = setInterval(() => {
+            seconds--;
+            timerSeconds.textContent = seconds;
+            
+            if (seconds <= 0) {
+                clearInterval(tokenFieldCountdown);
+            }
+        }, 1000);
+        
+        // Hide after 5 seconds
+        tokenFieldTimer = setTimeout(() => {
+            input.type = 'password';
+            input.style.cursor = 'pointer';
+            timerDisplay.style.display = 'none';
             clearInterval(tokenFieldCountdown);
-        }
-    }, 1000);
-    
-    // Hide after 5 seconds
-    tokenFieldTimer = setTimeout(() => {
-        input.type = 'password';
-        timerDisplay.style.display = 'none';
-        clearInterval(tokenFieldCountdown);
-    }, 5000);
+        }, 5000);
+    }
 }
 </script>
 
