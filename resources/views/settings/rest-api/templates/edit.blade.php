@@ -33,7 +33,7 @@
 
                         {{-- Connection Tab --}}
                         <div x-show="tab === 'connection'" x-cloak>
-                            @include('device.rest-api.templates.partials.connection', ['template' => $template])
+                            @include('settings.rest-api.templates.partials.connection', ['template' => $template])
                         </div>
 
                         {{-- Endpoints Tab --}}
