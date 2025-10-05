@@ -245,6 +245,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
+
+        // Metric Field Mapping Routes
+        require __DIR__ . '/metric_field_mapping_routes.php';
     });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
