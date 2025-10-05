@@ -46,15 +46,31 @@ class RestApiTemplateController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
             'vendor' => 'nullable|string|max:255',
-            'template_data' => 'required|json',
+            'template_data' => 'required',
             'description' => 'nullable|string',
         ]);
 
-        $validated['template_data'] = json_decode($validated['template_data'], true);
+        // Handle template_data - it might come as JSON string or array
+        if (is_string($validated['template_data'])) {
+            $validated['template_data'] = json_decode($validated['template_data'], true);
+        }
+
+        // Ensure boolean values are properly converted for checkbox fields
+        if (isset($validated['template_data']['connections'])) {
+            foreach ($validated['template_data']['connections'] as $cIndex => &$connection) {
+                if (isset($connection['endpoints'])) {
+                    foreach ($connection['endpoints'] as $eIndex => &$endpoint) {
+                        // Convert enabled to boolean
+                        $endpoint['enabled'] = filter_var($endpoint['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                    }
+                }
+            }
+        }
 
         $template->update($validated);
 
-        return redirect()->route('devices.rest-api.templates.index')->with('success', 'Template updated successfully.');
+        return redirect()->route('devices.rest-api.templates.edit', $template->id)
+                         ->with('success', 'Template updated successfully.');
     }
 
     public function destroy(RestApiTemplate $template)
