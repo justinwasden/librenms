@@ -7,6 +7,30 @@
     [x-cloak] { display: none !important; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
+    
+    /* Enhanced tab styling */
+    .nav-tabs .nav-link {
+        color: #495057;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        background-color: #f8f9fa;
+        border-color: #dee2e6 #dee2e6 transparent;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #007bff;
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+        border-bottom-color: transparent;
+        font-weight: 600;
+    }
+    
+    .nav-tabs .nav-link i {
+        margin-right: 6px;
+    }
 </style>
 @endpush
 
@@ -57,13 +81,17 @@
                                 <textarea name="description" id="description" class="form-control" rows="2">{{ old('description', $template->description) }}</textarea>
                             </div>
 
+                            {{-- Separator --}}
+                            <hr class="mb-4" style="border-top: 2px solid #dee2e6;">
+
                             {{-- Tabs Navigation --}}
-                            <ul class="nav nav-tabs mb-3" role="tablist">
+                            <ul class="nav nav-tabs mb-3" role="tablist" style="border-bottom: 2px solid #dee2e6;">
                                 <li class="nav-item">
                                     <a class="nav-link" 
                                        :class="{ 'active': activeTab === 'connection' }" 
                                        @click.prevent="activeTab = 'connection'"
-                                       href="#">
+                                       href="#"
+                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
                                         <i class="fas fa-plug"></i> Connection
                                     </a>
                                 </li>
@@ -71,7 +99,8 @@
                                     <a class="nav-link" 
                                        :class="{ 'active': activeTab === 'endpoints' }" 
                                        @click.prevent="activeTab = 'endpoints'"
-                                       href="#">
+                                       href="#"
+                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
                                         <i class="fas fa-list"></i> Endpoints
                                     </a>
                                 </li>
@@ -79,7 +108,8 @@
                                     <a class="nav-link" 
                                        :class="{ 'active': activeTab === 'preview' }" 
                                        @click.prevent="activeTab = 'preview'"
-                                       href="#">
+                                       href="#"
+                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
                                         <i class="fas fa-eye"></i> Preview
                                     </a>
                                 </li>
