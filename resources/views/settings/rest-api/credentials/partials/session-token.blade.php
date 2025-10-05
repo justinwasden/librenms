@@ -5,9 +5,65 @@
 
 <div class="form-group">
     <label for="params_api_token">API Token <span class="text-danger">*</span></label>
-    <input type="password" name="params[api_token]" id="params_api_token" class="form-control" value="{{ old('params.api_token', $credential->params->firstWhere('key', 'api_token')->value ?? '') }}" required>
-    <small class="form-text text-muted">The API token or key used to authenticate with the login endpoint.</small>
+    <div class="input-group">
+        <input type="password" 
+               name="params[api_token]" 
+               id="params_api_token" 
+               class="form-control" 
+               value="{{ old('params.api_token', $credential->params->firstWhere('key', 'api_token')->value ?? '') }}" 
+               onclick="revealToken(this)" 
+               readonly 
+               onfocus="this.removeAttribute('readonly');"
+               required>
+        <div class="input-group-append">
+            <span class="input-group-text" id="token-timer" style="display: none;">
+                <i class="fas fa-clock"></i> <span id="timer-seconds">5</span>s
+            </span>
+        </div>
+    </div>
+    <small class="form-text text-muted">
+        <i class="fas fa-info-circle"></i> Click the field to reveal the API token for 5 seconds.
+    </small>
 </div>
+
+<script>
+let tokenTimer = null;
+let countdownInterval = null;
+
+function revealToken(input) {
+    // Clear any existing timers
+    if (tokenTimer) clearTimeout(tokenTimer);
+    if (countdownInterval) clearInterval(countdownInterval);
+    
+    // Show token
+    input.type = 'text';
+    
+    // Show timer
+    const timerDisplay = document.getElementById('token-timer');
+    const timerSeconds = document.getElementById('timer-seconds');
+    timerDisplay.style.display = 'flex';
+    
+    // Countdown
+    let seconds = 5;
+    timerSeconds.textContent = seconds;
+    
+    countdownInterval = setInterval(() => {
+        seconds--;
+        timerSeconds.textContent = seconds;
+        
+        if (seconds <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+    
+    // Hide after 5 seconds
+    tokenTimer = setTimeout(() => {
+        input.type = 'password';
+        timerDisplay.style.display = 'none';
+        clearInterval(countdownInterval);
+    }, 5000);
+}
+</script>
 
 <div class="form-group">
     <label for="params_login_path">Login Path <span class="text-danger">*</span></label>
