@@ -67,16 +67,12 @@ class DataMatcher
 		        'others_per_sec' => 'sensor_current',
 		        'read_bytes_per_sec'    => 'sensor_current',
 		        'write_bytes_per_sec'   => 'sensor_current',
-		        'total_physical'        => 'sensor_current',
-		        'total_provisioned'     => 'sensor_current',
 		        'received_bytes_per_sec' => 'sensor_current',
 		        'transmitted_bytes_per_sec' => 'sensor_current',
 		        'received_packets_per_sec' => 'sensor_current',
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
-		        'total_used' => 'sensor_current',
 		        'drive_status' => 'sensor_current',
-		        'drive_capacity' => 'sensor_current',
   	          	'tmp' => 'temperature',
 
 		    ],
@@ -104,6 +100,9 @@ class DataMatcher
 				    'volume_free'        => 'storage_free',
 				    'drive_capacity'     => 'storage_size',
 				    'drive_used'         => 'storage_used',
+			        'total_used' => 'sensor_current',
+			        'total_physical'        => 'sensor_current',
+			        'total_provisioned'     => 'sensor_current',
 				],
 		];
 
@@ -294,6 +293,7 @@ class DataMatcher
             Log::debug("Skipping null value for metric {$metric->metric_name}");
             return;
         }
+
 
         try {
             // Special handling for sensors table
