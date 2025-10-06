@@ -96,15 +96,15 @@ class DataMatcher
 		        'eth_speed' => 'ifSpeed',
 		    ],
 		    'storage' => [
-		        'total_capacity' => 'storage_size',
-		        'volume_provisioned' => 'storage_size',
-		        'used_capacity' => 'storage_used',
-		        'volume_used' => 'storage_used',
-		        'free_capacity' => 'storage_free',
-		        'volume_free' => 'storage_free',
-            'drive_capacity' => 'storage_size',
-            'drive_used' => 'storage_used',
-		    ],
+				    'total_capacity'     => 'storage_size',
+				    'volume_provisioned' => 'storage_size',
+				    'used_capacity'      => 'storage_used',
+				    'volume_used'        => 'storage_used',
+				    'free_capacity'      => 'storage_free',
+				    'volume_free'        => 'storage_free',
+				    'drive_capacity'     => 'storage_size',
+				    'drive_used'         => 'storage_used',
+				],
 		];
 
 		    /**
@@ -140,7 +140,8 @@ class DataMatcher
 		    'space' => 'count',
 		    'nvb' => 'state',
 		    'bay' => 'state',
-		    'provisioned' => 'count',		    'connections' => 'count',
+		    'provisioned' => 'count',
+		    'connections' => 'count',
 		    'snapshots' => 'count',
 		    'usec' => 'delay',       // Catches usec_per_read_op, queue_usec, etc.
 				'sec' => 'count',         // Catches reads_per_sec, packets_per_sec, etc.
@@ -150,13 +151,18 @@ class DataMatcher
 		];
 
 
-    protected int $matchedCount = 0;
-    protected int $unmatchedCount = 0;
-    protected int $errorCount = 0;
+    protected bool $verbose = false;
+		protected int $matchedCount = 0;
+		protected int $unmatchedCount = 0;
+		protected int $errorCount = 0;
 
-    /**
-     * Process all unmatched metrics for a device
-     */
+		protected function logDebug(string $message): void
+		{
+		    if ($this->verbose) {
+		        Log::debug($message);
+		    }
+		}
+
     public function processDeviceMetrics(Device $device): array
     {
         $this->matchedCount = 0;
@@ -191,13 +197,19 @@ class DataMatcher
             }
         }
 
+				return [
+				    'device' => $device->hostname,
+				    'matched' => $this->matchedCount,
+				    'unmatched' => $this->unmatchedCount,
+				    'errors' => $this->errorCount,
+				];
+
         if ($this->matchedCount > 0 || $this->unmatchedCount > 0) {
             Log::info("DataMatcher for device {$device->hostname}: {$this->matchedCount} matched, {$this->unmatchedCount} unmatched, {$this->errorCount} errors");
         }
 
         return $this->getStats();
     }
-
 
     protected function matchMetric($metric, Device $device): ?MetricFieldMapping
     {
@@ -225,16 +237,24 @@ class DataMatcher
             );
         }
 
-        // Step 2: Try dynamic mapping from database - SIMPLIFIED
-        // First try exact match with vendor/os
-        $mapping = MetricFieldMapping::where('metric_name', $metricName)
-            /* TEMPORARILY COMMENTED OUT to ignore the problematic resource_type filter
-            ->where(function ($q) use ($resourceType) {
-                $q->where('resource_type', $resourceType)
-                  ->orWhereNull('resource_type');
-            })
-            */
-            ->where(function ($q) use ($deviceVendor) {
+						 $mapping = MetricFieldMapping::where('metric_name', $metricName)
+						    ->where(function ($q) use ($resourceType) {
+						        $q->where('resource_type', $resourceType)
+						          ->orWhereNull('resource_type')
+						          ->orWhere('resource_type', 'generic');
+						    })
+						    ->where(function ($q) use ($deviceVendor) {
+						        $q->where('vendor', $deviceVendor)
+						          ->orWhereNull('vendor');
+						    })
+						    ->where(function ($q) use ($deviceOs) {
+						        $q->where('os', $deviceOs)
+						          ->orWhereNull('os');
+						    })
+						    ->where('enabled', true)
+						    ->orderByRaw('vendor IS NULL ASC, os IS NULL ASC')
+						    ->first();
+                ->where(function ($q) use ($deviceVendor) {
                 $q->where('vendor', $deviceVendor)
                   ->orWhereNull('vendor');
             })
@@ -262,18 +282,19 @@ class DataMatcher
     }
 
     protected function findStaticMapping(string $metricName): ?array
-    {
-        foreach ($this->staticMap as $table => $fields) {
-            if (isset($fields[$metricName])) {
-                return [
-                    'table' => $table,
-                    'field' => $fields[$metricName],
-                ];
-            }
-        }
+		{
+		    $normalized = str_replace(['-', ' '], '_', strtolower($metricName));
 
-        return null;
-    }
+		    foreach ($this->staticMap as $table => $fields) {
+		        foreach ($fields as $key => $field) {
+		            $keyNormalized = str_replace(['-', ' '], '_', strtolower($key));
+		            if ($normalized === $keyNormalized || str_contains($normalized, $keyNormalized)) {
+		                return ['table' => $table, 'field' => $field];
+		            }
+		        }
+		    }
+		    return null;
+		}
 
     protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
     {
@@ -315,7 +336,6 @@ class DataMatcher
             throw $e;
         }
     }
-
 
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
 		{
@@ -501,31 +521,34 @@ class DataMatcher
     }
 
     protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
-    {
-        // Try to find port by resource_id or resource_name
-        $port = DB::table('ports')
-            ->where('device_id', $device->device_id)
-            ->where(function ($q) use ($metric) {
-                $q->where('ifName', $metric->resource_id)
-                  ->orWhere('ifName', $metric->resource_name)
-                  ->orWhere('ifDescr', $metric->resource_name)
-                  ->orWhere('ifAlias', $metric->resource_name);
-            })
-            ->first();
+		{
+		    $name = $this->normalizeResourceName($metric->resource_name);
+		    $id = $this->normalizeResourceName($metric->resource_id);
 
-        if ($port) {
-            DB::table('ports')
-                ->where('port_id', $port->port_id)
-                ->update([
-                    $mapping->librenms_field => $value,
-                    'poll_time' => time(),
-                ]);
+		    $ports = DB::table('ports')
+		        ->where('device_id', $device->device_id)
+		        ->get();
 
-            Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
-        } else {
-            Log::warning("Port not found for metric {$metric->metric_name} (resource: {$metric->resource_id})");
-        }
-    }
+		    foreach ($ports as $port) {
+		        $portKey = $this->normalizeResourceName($port->ifName)
+		            ?? $this->normalizeResourceName($port->ifDescr)
+		            ?? $this->normalizeResourceName($port->ifAlias);
+
+		        if ($portKey && ($portKey === $name || $portKey === $id)) {
+		            DB::table('ports')
+		                ->where('port_id', $port->port_id)
+		                ->update([
+		                    $mapping->librenms_field => $value,
+		                    'poll_time' => time(),
+		                ]);
+
+		            Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
+		            return;
+		        }
+		    }
+
+		    Log::warning("No matching port found for {$metric->metric_name} on {$device->hostname}");
+		}
 
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
@@ -577,59 +600,65 @@ class DataMatcher
     }
 
     protected function determineSensorClass(string $metricName): string
-    {
-        $metricName = strtolower($metricName);
+		{
+		    $metricName = strtolower($metricName);
 
-        // NOTE: This array MUST contain only values recognized by LibreNMS\Enum\Sensor
-        $sensorClassMap = [
-            'temperature' => 'temperature',
-            'temp' => 'temperature',
-            'power' => 'power',
-            'power_consumption' => 'power',
-            'voltage' => 'voltage',
-            'volt' => 'voltage',
-            'current' => 'current',
-            'ampere' => 'current',
-            'fan' => 'fanspeed',
-            'fanspeed' => 'fanspeed',
-            'humidity' => 'humidity',
-            'frequency' => 'frequency',
-            'signal' => 'signal',
-            'load' => 'load',
-            'state' => 'state',
-            'status' => 'state',
+		    // Step 1: Direct keyword mapping from class property
+		    $validClasses = [
+		        'temperature', 'voltage', 'current', 'power', 'fanspeed',
+		        'humidity', 'frequency', 'signal', 'load', 'state',
+		        'count', 'delay', 'ratio'
+		    ];
 
-            // EXPANDED & FIXED MAPPINGS
-            'iops' => 'count',
-            'reads' => 'count',
-            'writes' => 'count',
-            'sec' => 'count',
-            'connections' => 'count',
-            'snapshots' => 'count',
-            'latency' => 'delay',
-            'usec' => 'delay',
-            'reduction' => 'ratio',
-            'ratio' => 'ratio',
-            'tmp' => 'temperature',
-            'bay' => 'state',
-            'nvb' => 'state',
-        ];
-
-        foreach ($this->sensorClassMap as $keyword => $class) {
+		    foreach ($this->sensorClassMap as $keyword => $class) {
 		        if (str_contains($metricName, $keyword)) {
-		            // Validate against LibreNMS\Enum\Sensor
-		            $valid = [
-		                'temperature', 'voltage', 'current', 'power', 'fanspeed',
-		                'humidity', 'frequency', 'signal', 'load', 'state',
-		                'count', 'delay', 'ratio'
-		            ];
-
-		            return in_array($class, $valid) ? $class : 'state';
+		            return in_array($class, $validClasses, true) ? $class : 'state';
 		        }
-    }
+		    }
 
-        return 'state'; // Default fallback
-    }
+		    // Step 2: Fallback pattern-based classification
+		    $fallbackRules = [
+		        '/(_|^)latency($|_)/'       => 'delay',
+		        '/(_|^)delay($|_)/'         => 'delay',
+		        '/(_|^)time($|_)/'          => 'delay',
+		        '/(_|^)duration($|_)/'      => 'delay',
+
+		        '/(_|^)rate($|_)/'          => 'ratio',   // e.g. cache_miss_rate
+		        '/(_|^)percent($|_)/'       => 'ratio',
+		        '/(_|^)ratio($|_)/'         => 'ratio',
+		        '/(_|^)util($|_)/'          => 'ratio',
+		        '/(_|^)usage($|_)/'         => 'ratio',
+
+		        '/(_|^)count($|_)/'         => 'count',   // e.g. packet_count
+		        '/(_|^)number($|_)/'        => 'count',
+		        '/(_|^)total($|_)/'         => 'count',
+		        '/(_|^)hits($|_)/'          => 'count',
+		        '/(_|^)misses($|_)/'        => 'count',
+		        '/(_|^)ops($|_)/'           => 'count',
+		        '/(_|^)requests($|_)/'      => 'count',
+		        '/(_|^)connections($|_)/'   => 'count',
+
+		        '/(_|^)temperature($|_)/'   => 'temperature',
+		        '/(_|^)voltage($|_)/'       => 'voltage',
+		        '/(_|^)power($|_)/'         => 'power',
+		        '/(_|^)current($|_)/'       => 'current',
+		        '/(_|^)fan($|_)/'           => 'fanspeed',
+		    ];
+
+		    foreach ($fallbackRules as $pattern => $class) {
+		        if (preg_match($pattern, $metricName)) {
+		            return $class;
+		        }
+		    }
+
+		    // Step 3: Default fallback
+		    return 'state';
+		}
+
+    protected function normalizeResourceName(?string $name): ?string
+		{
+		    return $name ? strtolower(str_replace([' ', '_', '-'], '', $name)) : null;
+		}
 
     protected function generateSensorIndex($metric): string
     {
@@ -674,33 +703,25 @@ class DataMatcher
         return $mapping;
     }
 
-    protected function createPlaceholderMapping($metric, Device $device): MetricFieldMapping
-    {
-        $mapping = MetricFieldMapping::firstOrCreate(
-            [
-                'metric_name' => strtolower($metric->metric_name),
-                'resource_type' => strtolower($metric->resource_type),
-                'vendor' => $device->vendor ?? null,
-                'os' => $device->os ?? null,
-            ],
-            [
-                'librenms_table' => 'unmatched',
-                'librenms_field' => 'unmatched',
-                'auto_learned' => true,
-                'last_seen_at' => now(),
-                'last_matched_device_id' => $device->device_id,
-                'enabled' => false, // Disabled until admin configures it
-            ]
-        );
-
-        // Update last_seen_at even if mapping already exists
-        $mapping->update([
-            'last_seen_at' => now(),
-            'last_matched_device_id' => $device->device_id,
-        ]);
-
-        return $mapping;
-    }
+    protected function createPlaceholderMapping($metric, $device): MetricFieldMapping
+		{
+		    return MetricFieldMapping::updateOrCreate(
+		        [
+		            'metric_name' => $metric->metric_name,
+		            'resource_type' => $metric->resource_type,
+		            'vendor' => $device->vendor ?? null,
+		            'os' => $device->os ?? null,
+		        ],
+		        [
+		            'librenms_table' => null,
+		            'librenms_field' => null,
+		            'enabled' => false,
+		            'auto_learned' => true,
+		            'last_seen_at' => now(),
+		            'last_matched_device_id' => $device->device_id,
+		        ]
+		    );
+		}
 
     protected function getStats(): array
     {
