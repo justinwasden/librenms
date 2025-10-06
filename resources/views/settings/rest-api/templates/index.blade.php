@@ -5,7 +5,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="row justify-content-center">
-        <div class="col-md-8 col-lg-7">
+        <div class="col-md-9 col-lg-10">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">
@@ -52,8 +52,8 @@
                                 <tbody>
                                     @foreach($templates as $template)
                                         @php
-                                            $template_data = is_array($template->template_data) 
-                                                ? $template->template_data 
+                                            $template_data = is_array($template->template_data)
+                                                ? $template->template_data
                                                 : json_decode($template->template_data, true);
                                             $connections = $template_data['connections'] ?? [];
                                             $totalEndpoints = collect($connections)->sum(function($conn) {
@@ -82,14 +82,14 @@
                                             </td>
                                             <td class="text-right">
                                                 <div class="btn-group btn-group-sm">
-                                                    <a href="{{ route('devices.rest-api.templates.edit', $template->id) }}" 
-                                                       class="btn btn-info" 
+                                                    <a href="{{ route('devices.rest-api.templates.edit', $template->id) }}"
+                                                       class="btn btn-info"
                                                        title="Edit Template">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </a>
-                                                    <button type="button" 
-                                                            class="btn btn-danger" 
-                                                            data-toggle="modal" 
+                                                    <button type="button"
+                                                            class="btn btn-danger"
+                                                            data-toggle="modal"
                                                             data-target="#deleteModal{{ $template->id }}"
                                                             title="Delete Template">
                                                         <i class="fas fa-trash"></i>

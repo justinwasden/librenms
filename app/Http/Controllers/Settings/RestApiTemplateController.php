@@ -116,23 +116,21 @@ class RestApiTemplateController extends Controller
                             // 1. Aggressively strip all control characters and unnecessary whitespace
                             $cleanString = preg_replace('/[\r\n\t]/', '', $mapData);
 
-                            // 2. Remove extra surrounding quotes and backslashes if present (double-encoding artifact)
-                            // The string starts and ends with a quote, and internal quotes are escaped
+                            // 2. Remove surrounding quotes and strip slashes, which fixes double-encoding
                             if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
                                 $cleanString = substr($cleanString, 1, -1);
-                                $cleanString = stripslashes($cleanString);
                             }
+                            // FIX: Must run stripslashes to turn \" into " before final decode
+                            $cleanString = stripslashes($cleanString);
 
                             // 3. Decode the resulting clean string into a PHP array
-                            // Use the original string if decoding the cleaned version fails
                             $phpArray = json_decode($cleanString, true);
 
                             // 4. Re-encode the PHP array back to a compact, clean string for database storage
-                            // This guarantees a single-line, correct JSON representation.
                             if ($phpArray !== null) {
                                 $endpoint['metric_map'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
                             } else {
-                                // If decoding failed even after cleanup, default to saving the cleaned string.
+                                // If decoding failed even after cleanup, default to saving the *original cleaned string*.
                                 $endpoint['metric_map'] = $cleanString;
                             }
                         }
@@ -147,8 +145,9 @@ class RestApiTemplateController extends Controller
 
                             if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
                                 $cleanString = substr($cleanString, 1, -1);
-                                $cleanString = stripslashes($cleanString);
                             }
+                            // FIX: Apply stripslashes here as well
+                            $cleanString = stripslashes($cleanString);
 
                             $phpArray = json_decode($cleanString, true);
 
