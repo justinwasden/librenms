@@ -28,16 +28,22 @@ class DataMatcher
 		        'location' => 'location',
 		        'contact' => 'sysContact',
 		        'raw_capacity' => 'storage_total',
+		        'total_capacity' => 'storage_total',
+            'used_capacity' => 'storage_used',
+            'free_capacity' => 'storage_free',
+            'total_used' => 'storage_used',
 		    ],
 		    'sensors' => [
 		        'temperature' => 'sensor_current',
 		        'temp' => 'sensor_current',
 		        'power' => 'sensor_current',
+            'power_consumption' => 'sensor_current',
 		        'voltage' => 'sensor_current',
 		        'volt' => 'sensor_current',
 		        'current' => 'sensor_current',
 		        'fan_speed' => 'sensor_current',
-		        'humidity' => 'sensor_current',
+            'fanspeed' => 'sensor_current',
+ 		        'humidity' => 'sensor_current',
 		        'latency' => 'sensor_current',
 		        'iops' => 'sensor_current',
 		        'reads_per_sec' => 'sensor_current',
@@ -95,6 +101,9 @@ class DataMatcher
 		        'used_capacity' => 'storage_used',
 		        'volume_used' => 'storage_used',
 		        'free_capacity' => 'storage_free',
+		        'volume_free' => 'storage_free',
+            'drive_capacity' => 'storage_size',
+            'drive_used' => 'storage_used',
 		    ],
 		];
 
@@ -105,11 +114,14 @@ class DataMatcher
 		    'temperature' => 'temperature',
 		    'temp' => 'temperature',
 		    'power' => 'power',
+        'power_consumption' => 'power',
 		    'voltage' => 'voltage',
 		    'volt' => 'voltage',
 		    'current' => 'current',
 		    'fan_speed' => 'fanspeed',
-		    'fan' => 'fanspeed',
+		    'fanspeed' => 'fanspeed',
+        'ampere' => 'current',
+ 		    'fan' => 'fanspeed',
 		    'humidity' => 'humidity',
 		    'frequency' => 'frequency',
 		    'signal' => 'signal',
@@ -134,6 +146,8 @@ class DataMatcher
 				'nvb' => 'storage',
 				'bay' => 'storage',
 				'provisioned' => 'storage',
+        'reads' => 'count',
+        'writes' => 'count',
 		];
 
 
@@ -151,9 +165,9 @@ class DataMatcher
         $this->errorCount = 0;
 
         $metrics = DB::table('device_api_metrics')
-			    ->where('device_id', $device->device_id)
-			    ->whereNull('matched_at') // <-- Selects all unmatched metrics
-			    ->get();
+            ->where('device_id', $device->device_id)
+            ->whereNull('matched_at')
+            ->get();
 
         if ($metrics->isEmpty()) {
             return $this->getStats();
@@ -162,20 +176,17 @@ class DataMatcher
         Log::debug("Processing {$metrics->count()} unmatched metrics for device {$device->hostname}");
 
         foreach ($metrics as $metric) {
-    try {
-        $mapping = $this->matchMetric($metric, $device);
+            try {
+                $mapping = $this->matchMetric($metric, $device);
 
-        if ($mapping && !$mapping->isUnmatched()) {
-            $this->storeMetricValue($metric, $mapping, $device);
-            $this->markAsMatched($metric, $mapping);
-            $this->matchedCount++;
-        } else {
-            // New logging for consistently unmatched metrics
-            Log::debug("UNMATCHED: {$metric->metric_name} (Resource: {$metric->resource_name})"); // <-- ADD THIS LINE
-            $this->unmatchedCount++;
-        }
-    } catch (\Exception $e) {
-
+                if ($mapping && !$mapping->isUnmatched()) {
+                    $this->storeMetricValue($metric, $mapping, $device);
+                    $this->markAsMatched($metric, $mapping);
+                    $this->matchedCount++;
+                } else {
+                    $this->unmatchedCount++;
+                }
+            } catch (\Exception $e) {
                 $this->errorCount++;
                 Log::error("Error processing metric {$metric->metric_name} for device {$device->hostname}: {$e->getMessage()}");
             }
@@ -188,9 +199,7 @@ class DataMatcher
         return $this->getStats();
     }
 
-    /**
-     * Find the best mapping for a metric
-     */
+
     protected function matchMetric($metric, Device $device): ?MetricFieldMapping
     {
         $metricName = strtolower($metric->metric_name ?? '');
@@ -219,13 +228,14 @@ class DataMatcher
 
         // Step 2: Try dynamic mapping from database - SIMPLIFIED
         // First try exact match with vendor/os
-       $mapping = MetricFieldMapping::where('metric_name', $metricName)
+        $mapping = MetricFieldMapping::where('metric_name', $metricName)
+            /* TEMPORARILY COMMENTED OUT to ignore the problematic resource_type filter
             ->where(function ($q) use ($resourceType) {
                 $q->where('resource_type', $resourceType)
                   ->orWhereNull('resource_type');
             })
+            */
             ->where(function ($q) use ($deviceVendor) {
-
                 $q->where('vendor', $deviceVendor)
                   ->orWhereNull('vendor');
             })
@@ -252,16 +262,8 @@ class DataMatcher
         return $this->createPlaceholderMapping($metric, $device);
     }
 
-    /**
-     * Find a static mapping for a metric
-     */
     protected function findStaticMapping(string $metricName): ?array
     {
-        if (str_contains($metricName, '_per_sec') || str_contains($metricName, 'usec_per_')) {
-            return ['table' => 'sensors', 'field' => 'sensor_current'];
-        }
-
-
         foreach ($this->staticMap as $table => $fields) {
             if (isset($fields[$metricName])) {
                 return [
@@ -274,9 +276,48 @@ class DataMatcher
         return null;
     }
 
-    /**
-     * Store metric value in the appropriate LibreNMS table
-     */
+    protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
+    {
+        $value = $metric->value ?? $metric->string_value;
+
+        // Transform value based on mapping rules
+        // NOTE: $mapping->transformValue() is assumed to exist on MetricFieldMapping model
+        $transformedValue = $mapping->transformValue($value);
+
+        if ($transformedValue === null) {
+            Log::debug("Skipping null value for metric {$metric->metric_name}");
+            return;
+        }
+
+        try {
+            // Special handling for sensors table
+            if ($mapping->librenms_table === 'sensors') {
+                $this->updateSensor($device, $metric, $mapping, $transformedValue);
+                return;
+            }
+
+            // Special handling for ports table
+            if ($mapping->librenms_table === 'ports') {
+                $this->updatePort($device, $metric, $mapping, $transformedValue);
+                return;
+            }
+
+            // Special handling for storage table
+            if ($mapping->librenms_table === 'storage') {
+                $this->updateStorage($device, $metric, $mapping, $transformedValue);
+                return;
+            }
+
+            // Standard table update (e.g., 'devices')
+            $this->updateStandardTable($device, $mapping, $transformedValue);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to store metric {$metric->metric_name} in {$mapping->librenms_table}.{$mapping->librenms_field}: {$e->getMessage()}");
+            throw $e;
+        }
+    }
+
+
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
 		{
 		    $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
@@ -419,11 +460,9 @@ class DataMatcher
 		    }
 		}
 
-    /**
-     * Update or create a sensor record
-     */
     protected function updateSensor(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
+        // Get the sensor class based on the metric name using the updated map
         $sensorClass = $this->determineSensorClass($metric->metric_name);
         $sensorIndex = $this->generateSensorIndex($metric);
 
@@ -462,9 +501,6 @@ class DataMatcher
         }
     }
 
-    /**
-     * Update a port record
-     */
     protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
         // Try to find port by resource_id or resource_name
@@ -492,9 +528,6 @@ class DataMatcher
         }
     }
 
-    /**
-     * Update a storage record
-     */
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
         // Try to find storage by resource_id or resource_name
@@ -529,9 +562,6 @@ class DataMatcher
         }
     }
 
-    /**
-     * Update a standard LibreNMS table
-     */
     protected function updateStandardTable(Device $device, MetricFieldMapping $mapping, $value): void
     {
         $updated = DB::table($mapping->librenms_table)
@@ -547,51 +577,59 @@ class DataMatcher
         }
     }
 
-    /**
-     * Determine sensor class from metric name
-     */
     protected function determineSensorClass(string $metricName): string
     {
         $metricName = strtolower($metricName);
+
+        // NOTE: This array MUST contain only values recognized by LibreNMS\Enum\Sensor
+        $sensorClassMap = [
+            'temperature' => 'temperature',
+            'temp' => 'temperature',
+            'power' => 'power',
+            'power_consumption' => 'power',
+            'voltage' => 'voltage',
+            'volt' => 'voltage',
+            'current' => 'current',
+            'ampere' => 'current',
+            'fan' => 'fanspeed',
+            'fanspeed' => 'fanspeed',
+            'humidity' => 'humidity',
+            'frequency' => 'frequency',
+            'signal' => 'signal',
+            'load' => 'load',
+            'state' => 'state',
+            'status' => 'state',
+
+            // EXPANDED & FIXED MAPPINGS
+            'iops' => 'count',
+            'reads' => 'count',
+            'writes' => 'count',
+            'sec' => 'count',
+            'connections' => 'count',
+            'snapshots' => 'count',
+            'latency' => 'delay',
+            'usec' => 'delay',
+            'reduction' => 'ratio',
+            'ratio' => 'ratio',
+            'tmp' => 'temperature',
+            'bay' => 'state',
+            'nvb' => 'state',
+        ];
 
         foreach ($this->sensorClassMap as $keyword => $class) {
             if (str_contains($metricName, $keyword)) {
                 return $class;
             }
         }
-        
-        if (str_contains($metricName, 'reduction')) return 'ratio';
-        if (str_contains($metricName, 'iops')) return 'count';
-        if (str_contains($metricName, 'latency')) return 'delay';
-        if (str_contains($metricName, 'connections')) return 'count';
-        if (str_contains($metricName, 'snapshots')) return 'count';
-
-        // Add specific fix for disk/bay related status metrics
-        if (str_contains($metricName, 'bay') || str_contains($metricName, 'nvb') || str_contains($metricName, 'drive')) {
-             return 'state'; // Use 'state' for general component health/status
-        }
-        
-        // If the 'storage' tag from the map is somehow still propagating,
-        // it must also be changed here:
-        if (str_contains($metricName, 'storage') || str_contains($metricName, 'capacity') || str_contains($metricName, 'provisioned')) {
-             return 'count'; // Use 'count' for numerical storage metrics
-        }
-
 
         return 'state'; // Default fallback
     }
 
-    /**
-     * Generate a unique sensor index from metric
-     */
     protected function generateSensorIndex($metric): string
     {
         return 'api-' . ($metric->resource_id ?? md5($metric->metric_name));
     }
 
-    /**
-     * Mark metric as matched
-     */
     protected function markAsMatched($metric, MetricFieldMapping $mapping): void
     {
         DB::table('device_api_metrics')
@@ -602,9 +640,6 @@ class DataMatcher
             ]);
     }
 
-    /**
-     * Create or update a mapping
-     */
     protected function createOrUpdateMapping(
         string $metricName,
         string $resourceType,
@@ -633,9 +668,6 @@ class DataMatcher
         return $mapping;
     }
 
-    /**
-     * Create a placeholder mapping for unmatched metrics
-     */
     protected function createPlaceholderMapping($metric, Device $device): MetricFieldMapping
     {
         $mapping = MetricFieldMapping::firstOrCreate(
@@ -664,9 +696,6 @@ class DataMatcher
         return $mapping;
     }
 
-    /**
-     * Get processing statistics
-     */
     protected function getStats(): array
     {
         return [
@@ -676,9 +705,6 @@ class DataMatcher
         ];
     }
 
-    /**
-     * Reset unmatched metrics (for re-processing)
-     */
     public function resetMetrics(Device $device, ?string $metricName = null): int
     {
         $query = DB::table('device_api_metrics')
