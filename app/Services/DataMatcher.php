@@ -14,45 +14,58 @@ class DataMatcher
      * These are tried first before dynamic mappings
      */
     protected array $staticMap = [
-        'devices' => [
-            'status' => 'status',
-            'serial' => 'serial',
-            'serial_number' => 'serial',
-            'model' => 'hardware',
+		        'devices' => [
+		        'hostname' => 'hostname',
+		        'sysname' => 'sysName',
+		        'location' => 'location',
+		        'contact' => 'sysContact',
+		        'version' => 'version',
             'hardware_model' => 'hardware',
             'firmware_version' => 'version',
             'firmware' => 'version',
+        		'os' => 'os',
+        		'model' => 'hardware',
+    		    'serial' => 'serial',
+		        'serial_number' => 'serial',
+            'status' => 'status',
             'os_version' => 'version',
             'total_capacity' => 'storage_total',
             'used_capacity' => 'storage_used',
             'free_capacity' => 'storage_free',
             'uptime' => 'uptime',
-            'hostname' => 'hostname',
-            'sysname' => 'sysName',
-            'location' => 'location',
-            'contact' => 'sysContact',
         ],
-        'sensors' => [
-            'temperature' => 'sensor_current',
-            'temp' => 'sensor_current',
+		        'sensors' => [
+		        'temperature' => 'sensor_current',
+		        'voltage' => 'sensor_current',
+		        'temp' => 'sensor_current',
+		        'latency' => 'sensor_current',
+		        'iops' => 'sensor_current',
+		        'reads_per_sec' => 'sensor_current',
+		        'writes_per_sec' => 'sensor_current',
+		        'data_reduction' => 'sensor_current',
+		        'total_reduction' => 'sensor_current',
             'power' => 'sensor_current',
             'power_consumption' => 'sensor_current',
-            'voltage' => 'sensor_current',
             'current' => 'sensor_current',
             'fan_speed' => 'sensor_current',
             'fanspeed' => 'sensor_current',
             'humidity' => 'sensor_current',
         ],
-        'ports' => [
-            'interface_speed' => 'ifSpeed',
-            'speed' => 'ifSpeed',
-            'interface_status' => 'ifOperStatus',
-            'oper_status' => 'ifOperStatus',
-            'admin_status' => 'ifAdminStatus',
-            'interface_name' => 'ifName',
-            'interface_alias' => 'ifAlias',
-            'interface_description' => 'ifDescr',
-            'mtu' => 'ifMtu',
+		        'ports' => [
+		        'interface_speed' => 'ifSpeed',
+		        'speed' => 'ifSpeed',
+		        'interface_status' => 'ifOperStatus',
+		        'oper_status' => 'ifOperStatus',
+		        'admin_status' => 'ifAdminStatus',
+		        'interface_name' => 'ifName',
+		        'interface_alias' => 'ifAlias',
+		        'interface_description' => 'ifDescr',
+		        'mtu' => 'ifMtu',
+			      'eth_mtu' => 'ifMtu',
+		        'eth_address' => 'ifPhysAddress',
+		        'eth_speed' => 'ifSpeed',
+		        'eth_mac_address' => 'ifPhysAddress',
+
         ],
     ];
 
@@ -74,6 +87,20 @@ class DataMatcher
         'load' => 'load',
         'state' => 'state',
         'status' => 'state',
+		    'iops' => 'count',
+		    'read_iops' => 'count',
+		    'write_iops' => 'count',
+		    'reads_per_sec' => 'count',
+		    'writes_per_sec' => 'count',
+		    'latency' => 'delay',
+		    'usec_per_op' => 'delay',
+		    'queue_usec' => 'delay',
+		    'san_usec' => 'delay',
+		    'service_usec' => 'delay',
+		    'reduction' => 'ratio',
+		    'ratio' => 'ratio',
+		    'capacity' => 'storage',
+		    'space' => 'storage',
     ];
 
     protected int $matchedCount = 0;
@@ -103,7 +130,7 @@ class DataMatcher
         foreach ($metrics as $metric) {
             try {
                 $mapping = $this->matchMetric($metric, $device);
-                
+
                 if ($mapping && !$mapping->isUnmatched()) {
                     $this->storeMetricValue($metric, $mapping, $device);
                     $this->markAsMatched($metric, $mapping);
@@ -210,7 +237,7 @@ class DataMatcher
     protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
     {
         $value = $metric->value ?? $metric->string_value;
-        
+
         // Transform value based on mapping rules
         $transformedValue = $mapping->transformValue($value);
 
@@ -272,7 +299,7 @@ class DataMatcher
             DB::table('sensors')
                 ->where('sensor_id', $sensor->sensor_id)
                 ->update($data);
-            
+
             Log::debug("Updated sensor {$sensorClass} ({$sensorIndex}) = {$value} for device {$device->hostname}");
         } else {
             // Create new sensor
@@ -285,7 +312,7 @@ class DataMatcher
                 'sensor_oid' => '',
                 'poller_type' => 'rest-api',
             ]));
-            
+
             Log::info("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
         }
     }
@@ -313,7 +340,7 @@ class DataMatcher
                     $mapping->librenms_field => $value,
                     'poll_time' => time(),
                 ]);
-            
+
             Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
         } else {
             Log::warning("Port not found for metric {$metric->metric_name} (resource: {$metric->resource_id})");
@@ -350,7 +377,7 @@ class DataMatcher
             DB::table('storage')
                 ->where('storage_id', $storage->storage_id)
                 ->update($updateData);
-            
+
             Log::debug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value}");
         } else {
             Log::warning("Storage not found for metric {$metric->metric_name} (resource: {$metric->resource_name})");
