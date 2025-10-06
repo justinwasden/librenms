@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\Collection;
 
 class Api
 {
@@ -19,12 +20,14 @@ class Api
     protected array $poller_options;
     protected Client $client;
     protected array $sessionTokens = [];
+    protected DataMatcher $matcher;
 
     public function __construct(Device $device, array $poller_options = [], Client $client = null)
     {
         $this->device = $device;
         $this->poller_options = $poller_options;
         $this->client = $client ?? new Client(['timeout' => 30, 'connect_timeout' => 10]);
+				$this->matcher = new DataMatcher();
     }
 
     public function poll()
@@ -96,7 +99,7 @@ class Api
 
                     $bodyContent = $response->getBody()->getContents();
                     $body = json_decode($bodyContent, true);
-                    
+
                     if (json_last_error() !== JSON_ERROR_NONE) {
                         Log::warning("Invalid JSON response from {$url}: " . json_last_error_msg());
                         continue;
@@ -125,15 +128,19 @@ class Api
                 }
             }
         }
+
+                // Process all new metrics with DataMatcher
+        try {
+            $this->matcher->processDeviceMetrics($this->device);
+        } catch (\Exception $e) {
+            Log::error("DataMatcher failed for device {$this->device->hostname}: " . $e->getMessage());
+        }
     }
 
-    /**
-     * Process API response and store in device_api_metrics table
-     */
     protected function processApiResponse(RestApiEndpoint $endpoint, array $data, int $connectionId)
     {
         $resourceType = $endpoint->resource_type ?? 'unknown';
-        
+
         // Handle different response formats
         $items = [];
         if (isset($data['items']) && is_array($data['items'])) {
@@ -152,20 +159,42 @@ class Api
             $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
             $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
             $resourceId = $resourceId ?? $resourceName;
-            
+
             if ($resourceId) {
                 $currentResourceIds[] = $resourceId;
             }
-            
+
             $this->storeResourceMetrics($endpoint, $item, $resourceType, $connectionId);
         }
 
         $this->cleanupStaleResources($endpoint, $currentResourceIds);
     }
 
-    /**
-     * Store metrics for a single resource
-     */
+    protected function normalizeResourceType(?string $resourceType): string
+    {
+        if (!$resourceType) return 'unknown';
+
+        $type = strtolower(trim($resourceType));
+        $mappings = [
+            'array' => 'storage',
+            'controller' => 'device',
+            'host' => 'device',
+            'network' => 'port',
+            'interface' => 'port',
+            'volume' => 'storage',
+            'disk' => 'storage',
+            'fan' => 'sensor',
+            'temperature' => 'sensor',
+            'power-supply' => 'sensor',
+            'latency' => 'performance',
+            'iops' => 'performance',
+            'throughput' => 'performance',
+            'bandwidth' => 'performance',
+        ];
+
+        return $mappings[$type] ?? $type;
+    }
+
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
         $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
@@ -180,7 +209,7 @@ class Api
         $resourceName = $resourceName ?? $resourceId;
 
         $collectedAt = Carbon::now();
-        
+
         $existingMetrics = DB::table('device_api_metrics')
             ->where('device_id', $this->device->device_id)
             ->where('api_endpoint_id', $endpoint->id)
@@ -231,7 +260,7 @@ class Api
                             'collected_at' => $collectedAt,
                             'updated_at' => $collectedAt,
                         ];
-                        
+
                         Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
                     } else {
                         DB::table('device_api_metrics')
@@ -308,9 +337,6 @@ class Api
         }
     }
 
-    /**
-     * Remove resources that no longer exist in API response
-     */
     protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
     {
         if (empty($currentResourceIds)) {
@@ -337,9 +363,6 @@ class Api
         }
     }
 
-    /**
-     * Check rate limit for connection
-     */
     protected function checkRateLimit($connection): bool
     {
         if (!$connection->rate_limit || $connection->rate_limit <= 0) {
@@ -357,9 +380,6 @@ class Api
         return count($requests) < $connection->rate_limit;
     }
 
-    /**
-     * Update rate limit tracking
-     */
     protected function updateRateLimit($connection): void
     {
         if (!$connection->rate_limit || $connection->rate_limit <= 0) {
@@ -373,9 +393,6 @@ class Api
         Cache::put($cacheKey, $requests, 120);
     }
 
-    /**
-     * Handle failed endpoint
-     */
     protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
     {
         $cacheKey = "rest_api_failures:{$endpoint->id}";
@@ -385,9 +402,6 @@ class Api
         Cache::put($cacheKey, $failures, 3600);
     }
 
-    /**
-     * Replace placeholders in URLs
-     */
     private function replacePlaceholders(string $string, Device $device): string
     {
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
@@ -406,9 +420,6 @@ class Api
         return $string;
     }
 
-    /**
-     * Get session token for connection
-     */
     protected function getSessionToken($connection): ?string
     {
         if (!$connection->credential || strtolower($connection->credential->authenticationType->name) !== 'session token') {
@@ -469,4 +480,50 @@ class Api
             return null;
         }
     }
+
+    protected function matchDevicePort(string $resourceName)
+		{
+		    if (empty($resourceName) || !$this->device) {
+		        return null;
+		    }
+
+		    // Try multiple match types (exact, partial, normalized)
+		    return \App\Models\Port::where('device_id', $this->device->device_id)
+		        ->where(function ($query) use ($resourceName) {
+		            $query->where('ifName', $resourceName)
+		                  ->orWhere('ifDescr', $resourceName)
+		                  ->orWhere('ifAlias', 'like', "%{$resourceName}%");
+		        })
+		        ->first();
+		}
+
+    protected function matchDeviceSensor(string $resourceName)
+		{
+		    if (empty($resourceName) || !$this->device) {
+		        return null;
+		    }
+
+		    return \App\Models\Sensor::where('device_id', $this->device->device_id)
+		        ->where(function ($query) use ($resourceName) {
+		            $query->where('sensor_descr', $resourceName)
+		                  ->orWhere('sensor_oid', $resourceName)
+		                  ->orWhere('sensor_index', $resourceName)
+		                  ->orWhere('sensor_descr', 'like', "%{$resourceName}%");
+		        })
+		        ->first();
+		}
+
+    protected function matchDeviceStorage(string $resourceName)
+		{
+		    if (empty($resourceName) || !$this->device) {
+		        return null;
+		    }
+
+		    return \App\Models\Storage::where('device_id', $this->device->device_id)
+		        ->where(function ($query) use ($resourceName) {
+		            $query->where('storage_descr', $resourceName)
+		                  ->orWhere('storage_descr', 'like', "%{$resourceName}%");
+		        })
+		        ->first();
+		}
 }
