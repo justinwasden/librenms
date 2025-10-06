@@ -25,7 +25,7 @@ class RestApiEndpoint extends Model
         'query_params' => 'json',
         'headers' => 'json',
         'body' => 'json',
-        'metric_map' => 'json',
+        'metric_map' => 'array',
         'last_polled' => 'datetime',
     ];
 
