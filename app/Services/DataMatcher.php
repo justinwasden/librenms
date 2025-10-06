@@ -132,9 +132,17 @@ class DataMatcher
         $metricName = strtolower($metric->metric_name ?? '');
         $resourceType = strtolower($metric->resource_type ?? 'unknown');
 
+        // Get device vendor/os - handle missing columns
+        $deviceVendor = $device->vendor ?? null;
+        $deviceOs = $device->os ?? null;
+
+        // Debug logging
+        Log::debug("Matching metric: {$metricName}, resource_type: {$resourceType}, device vendor: {$deviceVendor}, os: {$deviceOs}");
+
         // Step 1: Try static mapping first
         $staticMapping = $this->findStaticMapping($metricName);
         if ($staticMapping) {
+            Log::debug("Found static mapping for {$metricName}: {$staticMapping['table']}.{$staticMapping['field']}");
             return $this->createOrUpdateMapping(
                 $metricName,
                 $resourceType,
@@ -145,17 +153,37 @@ class DataMatcher
             );
         }
 
-        // Step 2: Try dynamic mapping from database
-        $mapping = MetricFieldMapping::forMetric($metricName, $resourceType)
-            ->forDevice($device)
+        // Step 2: Try dynamic mapping from database - SIMPLIFIED
+        // First try exact match with vendor/os
+        $mapping = MetricFieldMapping::where('metric_name', $metricName)
+            ->where(function ($q) use ($resourceType) {
+                $q->where('resource_type', $resourceType)
+                  ->orWhereNull('resource_type');
+            })
+            ->where(function ($q) use ($deviceVendor) {
+                $q->where('vendor', $deviceVendor)
+                  ->orWhereNull('vendor');
+            })
+            ->where(function ($q) use ($deviceOs) {
+                $q->where('os', $deviceOs)
+                  ->orWhereNull('os');
+            })
             ->where('enabled', true)
+            ->orderByRaw('vendor IS NULL ASC, os IS NULL ASC') // Prefer specific over generic
             ->first();
+
+        if ($mapping) {
+            Log::debug("Found dynamic mapping for {$metricName}: {$mapping->librenms_table}.{$mapping->librenms_field}");
+        } else {
+            Log::debug("No dynamic mapping found for {$metricName} with resource_type: {$resourceType}");
+        }
 
         if ($mapping && !$mapping->isUnmatched()) {
             return $mapping;
         }
 
         // Step 3: No match found - create placeholder for admin review
+        Log::debug("Creating placeholder for unmatched metric: {$metricName}");
         return $this->createPlaceholderMapping($metric, $device);
     }
 
@@ -356,8 +384,8 @@ class DataMatcher
             [
                 'metric_name' => $metricName,
                 'resource_type' => $resourceType,
-                'vendor' => $device->vendor,
-                'os' => $device->os,
+                'vendor' => $device->vendor ?? null,
+                'os' => $device->os ?? null,
             ],
             [
                 'librenms_table' => $table,
@@ -381,8 +409,8 @@ class DataMatcher
             [
                 'metric_name' => strtolower($metric->metric_name),
                 'resource_type' => strtolower($metric->resource_type),
-                'vendor' => $device->vendor,
-                'os' => $device->os,
+                'vendor' => $device->vendor ?? null,
+                'os' => $device->os ?? null,
             ],
             [
                 'librenms_table' => 'unmatched',
