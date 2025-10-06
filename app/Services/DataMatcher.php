@@ -70,7 +70,7 @@ class DataMatcher
 		        'received_packets_per_sec' => 'sensor_current',
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
-		        'total_used; => 'sensor_current',
+		        'total_used' => 'sensor_current',
 		    ],
 		    'ports' => [
 		        'interface_speed' => 'ifSpeed',
