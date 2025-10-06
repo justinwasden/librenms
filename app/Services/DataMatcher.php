@@ -162,17 +162,19 @@ class DataMatcher
         Log::debug("Processing {$metrics->count()} unmatched metrics for device {$device->hostname}");
 
         foreach ($metrics as $metric) {
-            try {
-                $mapping = $this->matchMetric($metric, $device);
+    try {
+        $mapping = $this->matchMetric($metric, $device);
 
-                if ($mapping && !$mapping->isUnmatched()) {
-                    $this->storeMetricValue($metric, $mapping, $device);
-                    $this->markAsMatched($metric, $mapping);
-                    $this->matchedCount++;  // <-- This increments to 70
-                } else {
-                    $this->unmatchedCount++;
-                }
-            } catch (\Exception $e) {
+        if ($mapping && !$mapping->isUnmatched()) {
+            $this->storeMetricValue($metric, $mapping, $device);
+            $this->markAsMatched($metric, $mapping);
+            $this->matchedCount++;
+        } else {
+            // New logging for consistently unmatched metrics
+            Log::debug("UNMATCHED: {$metric->metric_name} (Resource: {$metric->resource_name})"); // <-- ADD THIS LINE
+            $this->unmatchedCount++;
+        }
+    } catch (\Exception $e) {
 
                 $this->errorCount++;
                 Log::error("Error processing metric {$metric->metric_name} for device {$device->hostname}: {$e->getMessage()}");
@@ -277,15 +279,27 @@ class DataMatcher
      */
     protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
     {
-        $value = $metric->value ?? $metric->string_value;
+        Log::debug("Metric Debug", [
+				    'metric_name' => $metric->metric_name,
+				    'resource_name' => $metric->resource_name,
+				    'raw_value' => $metric->value,
+				    'raw_string_value' => $metric->string_value,
+				]);
 
-        // Transform value based on mapping rules
-        $transformedValue = $mapping->transformValue($value);
+				$value = $metric->value ?? $metric->string_value;
 
-        if ($transformedValue === null) {
-            Log::debug("Skipping null value for metric {$metric->metric_name}");
-            return;
-        }
+				// Transform value based on mapping rules (Assume transformValue returns non-null if possible)
+				$transformedValue = $mapping->transformValue($value);
+
+				if ($transformedValue === null) {
+				    // THIS IS THE CRITICAL LINE WHERE THE LOOP RETURNS QUIETLY
+				    Log::error("CRITICAL: Skipping null/untransformed value for metric {$metric->metric_name} from resource {$metric->resource_name}", [ // <-- MODIFIED LINE
+				        'original_value' => $value,
+				        'mapping_table' => $mapping->librenms_table ?? 'N/A',
+				        'mapping_field' => $mapping->librenms_field ?? 'N/A',
+				    ]);
+				    return;
+				}
 
         try {
             // Special handling for sensors table
