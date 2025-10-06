@@ -34,8 +34,6 @@ class RestApiDiscovery
         $stats['ports'] = $this->discoverPorts();
         $stats['storage'] = $this->discoverStorage();
         $stats['sensors'] = $this->discoverSensors();
-        $stats['processors'] = $this->discoverProcessors();
-        $stats['mempools'] = $this->discoverMemPools();
 
         Log::info("REST API discovery complete for {$this->device->hostname}", $stats);
 
@@ -148,7 +146,6 @@ class RestApiDiscovery
 
             DB::table('storage')->insert([
                 'device_id' => $this->device->device_id,
-                'storage_mib' => 'rest-api',
                 'storage_index' => crc32($volume->resource_id) & 0x7FFFFFFF,
                 'storage_type' => 'rest-api',
                 'storage_descr' => $volume->resource_name ?? $volume->resource_id,
@@ -220,16 +217,6 @@ class RestApiDiscovery
         }
 
         return $discovered;
-    }
-
-    protected function discoverProcessors(): int
-    {
-        return 0;
-    }
-
-    protected function discoverMemPools(): int
-    {
-        return 0;
     }
 
     protected function getMetricValue($metrics, array $names, $default = null)
