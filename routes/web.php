@@ -154,7 +154,8 @@ Route::middleware(['auth'])->group(function () {
 
         // Metric Field Mappings
         Route::prefix('settings')->name('settings.')->group(function () {
-            Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class);
+            Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
+                ->parameters(['metric-field-mappings' => 'mapping']);
             Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
             Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
