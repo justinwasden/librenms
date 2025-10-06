@@ -71,6 +71,8 @@ class DataMatcher
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
 		        'total_used' => 'sensor_current',
+            'tmp' => 'temperature',
+
 		    ],
 		    'ports' => [
 		        'interface_speed' => 'ifSpeed',
