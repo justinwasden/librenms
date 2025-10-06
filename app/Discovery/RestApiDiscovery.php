@@ -15,9 +15,6 @@ class RestApiDiscovery
         $this->device = $device;
     }
 
-    /**
-     * Discover all REST API resources for a device
-     */
     public function discover(): array
     {
         $stats = [
@@ -34,7 +31,6 @@ class RestApiDiscovery
 
         Log::info("Starting REST API discovery for device {$this->device->hostname}");
 
-        // Discover from collected metrics
         $stats['ports'] = $this->discoverPorts();
         $stats['storage'] = $this->discoverStorage();
         $stats['sensors'] = $this->discoverSensors();
@@ -98,8 +94,8 @@ class RestApiDiscovery
                 'ifMtu' => $this->getMetricValue($metrics, ['ifMtu', 'mtu'], 1500),
                 'ifType' => $this->getMetricValue($metrics, ['ifType', 'type'], 'ethernetCsmacd'),
                 'ifPhysAddress' => $this->getMetricValue($metrics, ['ifPhysAddress', 'mac'], ''),
-                'poll_time' => now(),
-                'poll_prev' => 0,
+                'poll_time' => time(),
+                'poll_prev' => time(),
                 'poll_period' => 300,
             ]);
 
@@ -119,7 +115,8 @@ class RestApiDiscovery
             ->where(function ($q) {
                 $q->where('metric_name', 'like', '%volume%')
                   ->orWhere('metric_name', 'like', '%storage%')
-                  ->orWhere('metric_name', 'like', '%capacity%');
+                  ->orWhere('metric_name', 'like', '%capacity%')
+                  ->orWhere('metric_name', 'like', '%provisioned%');
             })
             ->select('resource_id', 'resource_name')
             ->distinct()
@@ -145,7 +142,7 @@ class RestApiDiscovery
                 ->get()
                 ->keyBy('metric_name');
 
-            $total = $this->getMetricValue($metrics, ['volume_provisioned', 'capacity', 'size'], 0);
+            $total = $this->getMetricValue($metrics, ['volume_provisioned', 'capacity', 'size', 'total'], 0);
             $used = $this->getMetricValue($metrics, ['volume_used', 'used'], 0);
             $free = $total - $used;
 
@@ -180,7 +177,8 @@ class RestApiDiscovery
                   ->orWhere('metric_name', 'like', '%reduction%')
                   ->orWhere('metric_name', 'like', '%iops%')
                   ->orWhere('metric_name', 'like', '%latency%')
-                  ->orWhere('metric_name', 'like', '%connections%');
+                  ->orWhere('metric_name', 'like', '%connections%')
+                  ->orWhere('metric_name', 'like', '%snapshots%');
             })
             ->whereNotNull('value')
             ->select('resource_id', 'resource_name', 'metric_name', 'value')
@@ -189,7 +187,7 @@ class RestApiDiscovery
 
         foreach ($sensorMetrics as $metric) {
             $sensorClass = $this->determineSensorClass($metric->metric_name);
-            $sensorIndex = 'api-' . ($metric->resource_id ?? md5($metric->metric_name));
+            $sensorIndex = 'api-' . ($metric->resource_id ?? md5($metric->metric_name . $metric->resource_name));
 
             $exists = DB::table('sensors')
                 ->where('device_id', $this->device->device_id)
@@ -265,6 +263,7 @@ class RestApiDiscovery
         if (str_contains($metricName, 'iops')) return 'count';
         if (str_contains($metricName, 'latency')) return 'delay';
         if (str_contains($metricName, 'connections')) return 'count';
+        if (str_contains($metricName, 'snapshots')) return 'count';
 
         return 'count';
     }
