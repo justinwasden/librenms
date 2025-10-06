@@ -19,7 +19,10 @@ class RestApi implements Module
 
     public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
-        return false; // REST API doesn't need discovery
+        $device = $os->getDevice();
+        
+        // Discover if device has enabled REST API connections
+        return $device->restApiConnections()->where('enabled', 1)->exists();
     }
 
     public function shouldPoll(OS $os, ModuleStatus $status): bool
@@ -42,7 +45,22 @@ class RestApi implements Module
 
     public function discover(OS $os): void
     {
-        // Not needed for REST API polling
+        $device = $os->getDevice();
+        
+        // Run REST API discovery
+        $discovery = new \App\Discovery\RestApiDiscovery($device);
+        $stats = $discovery->discover();
+        
+        if (array_sum($stats) > 0) {
+            echo sprintf(
+                " REST API Discovery: %d ports, %d storage, %d sensors, %d processors, %d mempools\n",
+                $stats['ports'],
+                $stats['storage'],
+                $stats['sensors'],
+                $stats['processors'],
+                $stats['mempools']
+            );
+        }
     }
 
     public function poll(OS $os, DataStorageInterface $datastore): void
