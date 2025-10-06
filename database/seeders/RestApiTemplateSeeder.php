@@ -12,23 +12,25 @@ class RestApiTemplateSeeder extends Seeder
      */
     public function run(): void
     {
-        // Define common metric mapping arrays for the Pure Storage template.
+        // Define common metric mapping arrays.
+        // NOTE: Metric names changed to match LibreNMS database fields (e.g., 'storage_size', 'ifDescr', 'state').
 
         $pureStorageArrayInfoMapping = [
             'storage_size' => 'items.0.space.total_physical',
             'storage_used' => 'items.0.space.total_used',
+            // Custom metric names can be used for device-level reporting or graphing
             'available_capacity' => 'items.0.space.total_provisioned',
             'array_data_reduction' => 'items.0.space.data_reduction',
             'array_total_reduction' => 'items.0.space.total_reduction',
             'array_capacity' => 'items.0.capacity',
-            'storage_descr' => 'items.0.name',
+            'storage_descr' => 'items.0.name', // Mapped to storage description
             'array_id' => 'items.0.id',
             'array_version' => 'items.0.version',
         ];
 
         $pureStorageVolumesInfoMapping = [
-            'storage_descr' => 'name',
-            'storage_size' => 'provisioned',
+            'storage_descr' => 'name', // Mapped to storage description
+            'storage_size' => 'provisioned', // Mapped to storage size
             'total_physical' => 'space.total_physical',
             'storage_used' => 'space.total_used',
             'volume_snapshots' => 'space.snapshots',
@@ -42,11 +44,12 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $pureStorageControllersStatusMapping = [
-            'controller_name' => 'items.0.name',
-            'controller_model' => 'items.0.model',
-            'controller_status' => 'items.0.status',
+            // Controllers are components; status maps better to sensor field 'state' or 'status'
+            'device_hardware' => 'items.0.name', // Stored as component name/label
+            'hardware' => 'items.0.model',
+            'state' => 'items.0.status', // Using generic state field for status indicator
             'controller_mode' => 'items.0.mode',
-            'purity_version' => 'items.0.version',
+            'version' => 'items.0.version',
         ];
 
         $pureStorageArrayPerformanceMapping = [
@@ -76,6 +79,7 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $pureStorageAlertsMapping = [
+            // Alerts typically map to the eventlog/alerts table structure, not component metrics
             'alert_id' => 'id',
             'alert_state' => 'state',
             'alert_code' => 'code',
@@ -89,27 +93,27 @@ class RestApiTemplateSeeder extends Seeder
 
         $pureStorageHardwareComponentsMapping = [
             'hardware_name' => 'name',
-            'hardware_status' => 'status',
+            'state' => 'status', // Status mapped to generic 'state' field
             'hardware_type' => 'type',
             'hardware_serial' => 'serial',
-            'hardware_temperature' => 'temperature',
-            'hardware_voltage' => 'voltage',
+            'temperature' => 'temperature', // Maps to standard sensor value
+            'voltage' => 'voltage', // Maps to standard sensor value
         ];
 
         $pureStorageDrivesMapping = [
-            'drive_name' => 'name',
-            'state' => 'status',
-            'sensor_class' => 'type',
-            'drive_capacity' => 'capacity',
+            'storage_descr' => 'name', // Drive name maps well to storage description
+            'state' => 'status', // Drive status mapped to sensor 'state'
+            'sensor_class' => 'type', // Drive type mapped to sensor class
+            'storage_size' => 'capacity', // Drive capacity mapped to storage size
             'drive_protocol' => 'protocol',
             'drive_details' => 'details',
         ];
 
         $pureStorageNetworkInterfacesMapping = [
-            'ifDescr' => 'name',
+            'ifDescr' => 'name', // Mapped to primary interface description
             'ifPhysAddress' => 'eth.mac_address',
-            'ifAdminStatus' => 'enabled', // 1/0
-            'ifOperStatus' => 'enabled', // 1/0
+            'ifAdminStatus' => 'enabled',
+            'ifOperStatus' => 'enabled',
             'ifSpeed' => 'speed',
             'ifMtu' => 'eth.mtu',
             'ifType' => 'interface_type',
@@ -238,6 +242,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/v10.04/system',
                                     'method' => 'GET',
                                     'resource_type' => 'device',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($arubaSystemInfoMapping),
                                 ],
                                 [
@@ -245,6 +250,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/v10.04/system/interfaces/*/statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'port',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($arubaInterfaceStatsMapping),
                                 ],
                             ],
@@ -272,6 +278,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/restconf/data/Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization',
                                     'method' => 'GET',
                                     'resource_type' => 'processor',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($ciscoCpuUtilizationMapping),
                                 ],
                                 [
@@ -279,6 +286,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/restconf/data/Cisco-IOS-XE-memory-oper:memory-statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'mempool',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($ciscoMemoryStatsMapping),
                                 ],
                             ],
@@ -307,6 +315,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'device',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($fortinetSystemStatusMapping),
                                 ],
                                 [
@@ -315,6 +324,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'sensor',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($fortinetResourceUsageMapping),
                                 ],
                                 [
@@ -323,6 +333,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($fortinetSessionStatsMapping),
                                 ],
                                 [
@@ -331,6 +342,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($fortinetVpnStatusMapping),
                                 ],
                                 [
@@ -339,6 +351,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'storage',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($fortinetSecurityEventsMapping),
                                 ],
                             ],
@@ -366,6 +379,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/rpc/get-system-uptime-information',
                                     'method' => 'GET',
                                     'resource_type' => 'device',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($juniperSystemUptimeMapping),
                                 ],
                                 [
@@ -373,6 +387,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api-json/op/show-interfaces-statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'port',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($juniperInterfaceStatsMapping),
                                 ],
                             ],
@@ -401,6 +416,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'device',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($paloAltoSystemInfoMapping),
                                 ],
                                 [
@@ -409,6 +425,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'port',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($paloAltoInterfaceStatsMapping),
                                 ],
                                 [
@@ -417,6 +434,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
+                                    // FIXED: Using json_encode()
                                     'metric_map' => json_encode($paloAltoTopAppsMapping),
                                 ],
                             ],
@@ -426,7 +444,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x) - Using placeholders from provided template
+            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x)
             // ---------------------------------------------------------------------
             [
                 'name' => 'Pure Storage FlashArray (OAuth2 REST API 2.x)',
@@ -447,19 +465,9 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'device',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => json_encode([
-                                        'total_capacity' => 'items.0.space.total_physical',
-                                        'used_capacity' => 'items.0.space.total_used',
-                                        'available_capacity' => 'items.0.space.total_provisioned',
-                                        'array_data_reduction' => 'items.0.space.data_reduction',
-                                        'array_total_reduction' => 'items.0.space.total_reduction',
-                                        'array_capacity' => 'items.0.capacity',
-                                        'array_name' => 'items.0.name',
-                                        'array_id' => 'items.0.id',
-                                        'array_version' => 'items.0.version',
-                                    ]),
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageArrayInfoMapping),
                                 ],
-                                // ... rest of the endpoints (using placeholders for completeness)
                                 [
                                     'name' => 'Controllers Status',
                                     'path' => '/controllers',
@@ -468,58 +476,104 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => json_encode([
-                                        'controller_name' => 'items.0.name',
-                                        'controller_model' => 'items.0.model',
-                                        'controller_status' => 'items.0.status',
-                                        'controller_mode' => 'items.0.mode',
-                                        'purity_version' => 'items.0.version',
-                                    ]),
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageControllersStatusMapping),
                                 ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            // ---------------------------------------------------------------------
-            // 7. PURE STORAGE PURE1 (Cloud API) - Using placeholders from provided template
-            // ---------------------------------------------------------------------
-            [
-                'name' => 'Pure Storage Pure1 (Cloud API)',
-                'vendor' => 'Pure Storage',
-                'description' => 'API endpoints for Pure Storage Pure1 Cloud API (JSON based). Requires Custom Auth (ID 14).',
-                'template_data' => [
-                    'connections' => [
-                        [
-                            'name' => 'Primary Connection',
-                            'base_url' => 'https://api.pure1.purestorage.com/api/2.0',
-                            'rate_limit' => 60,
-                            'endpoints' => [
+                                // Added missing Volume info endpoint with proper mappings
                                 [
-                                    'name' => 'Pure1 Arrays Info',
-                                    'path' => '/arrays',
+                                    'name' => 'Volumes Info',
+                                    'path' => '/volumes',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
-                                    'resource_type' => 'device',
-                                    'resource_id_field' => 'id',
+                                    'resource_type' => 'storage',
+                                    'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => json_encode([
-                                        'id' => 'id', 'name' => 'name', 'model' => 'model', 'version' => 'version', 'status' => 'status',
-                                    ]),
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageVolumesInfoMapping),
                                 ],
-                                // ... rest of the endpoints (using placeholders for completeness)
+                                // Added missing Network Interfaces endpoint with proper mappings
                                 [
-                                    'name' => 'Pure1 Array Metrics',
-                                    'path' => '/arrays/{array_id}/metrics',
+                                    'name' => 'Network Interfaces',
+                                    'path' => '/network-interfaces',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 300,
+                                    'resource_type' => 'port',
+                                    'resource_id_field' => 'name',
+                                    'resource_name_field' => 'name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageNetworkInterfacesMapping),
+                                ],
+                                // Added missing Hosts endpoint
+                                [
+                                    'name' => 'Hosts',
+                                    'path' => '/hosts',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 300,
+                                    'resource_type' => 'custom',
+                                    'resource_id_field' => 'name',
+                                    'resource_name_field' => 'name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageHostsMapping),
+                                ],
+                                // Added missing Array Performance endpoint
+                                [
+                                    'name' => 'Array Performance',
+                                    'path' => '/arrays/performance',
                                     'http_method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'sensor',
-                                    'resource_id_field' => 'array_id',
-                                    'resource_name_field' => 'array_id',
-                                    'response_mapping' => json_encode([
-                                        'bytes_per_sec' => 'bytes_per_sec', 'reads_per_sec' => 'reads_per_sec', 'writes_per_sec' => 'writes_per_sec', 'data_reduction' => 'data_reduction',
-                                    ]),
+                                    'resource_id_field' => 'items.0.name',
+                                    'resource_name_field' => 'items.0.name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageArrayPerformanceMapping),
+                                ],
+                                // Added missing Volume Performance endpoint
+                                [
+                                    'name' => 'Volume Performance',
+                                    'path' => '/volumes/performance',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 300,
+                                    'resource_type' => 'sensor',
+                                    'resource_id_field' => 'name',
+                                    'resource_name_field' => 'name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageVolumePerformanceMapping),
+                                ],
+                                // Added missing Alerts endpoint
+                                [
+                                    'name' => 'Alerts',
+                                    'path' => '/alerts',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 300,
+                                    'resource_type' => 'custom',
+                                    'resource_id_field' => 'id',
+                                    'resource_name_field' => 'code',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageAlertsMapping),
+                                ],
+                                // Added missing Hardware Components endpoint
+                                [
+                                    'name' => 'Hardware Components',
+                                    'path' => '/hardware',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 600,
+                                    'resource_type' => 'sensor',
+                                    'resource_id_field' => 'name',
+                                    'resource_name_field' => 'name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageHardwareComponentsMapping),
+                                ],
+                                // Added missing Drives endpoint
+                                [
+                                    'name' => 'Drives',
+                                    'path' => '/drives',
+                                    'http_method' => 'GET',
+                                    'poll_interval' => 600,
+                                    'resource_type' => 'storage',
+                                    'resource_id_field' => 'name',
+                                    'resource_name_field' => 'name',
+                                    // FIXED: Using json_encode()
+                                    'response_mapping' => json_encode($pureStorageDrivesMapping),
                                 ],
                             ],
                         ],
@@ -589,7 +643,6 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'custom',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    // ADDED: Missing Hosts Mapping definition
                                     'response_mapping' => json_encode($pureStorageHostsMapping),
                                 ],
                                 [
@@ -650,9 +703,6 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         foreach ($templates as $template) {
-            // NOTE: The previous templates (1-7) had their metric_map/response_mapping
-            // arrays wrapped in json_encode() in the final output to resolve the issue.
-            // This structure below is how the template data is saved to the DB.
             RestApiTemplate::firstOrCreate(
                 ['name' => $template['name']],
                 [
