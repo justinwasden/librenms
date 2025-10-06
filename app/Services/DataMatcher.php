@@ -559,6 +559,24 @@ class DataMatcher
                 return $class;
             }
         }
+        
+        if (str_contains($metricName, 'reduction')) return 'ratio';
+        if (str_contains($metricName, 'iops')) return 'count';
+        if (str_contains($metricName, 'latency')) return 'delay';
+        if (str_contains($metricName, 'connections')) return 'count';
+        if (str_contains($metricName, 'snapshots')) return 'count';
+
+        // Add specific fix for disk/bay related status metrics
+        if (str_contains($metricName, 'bay') || str_contains($metricName, 'nvb') || str_contains($metricName, 'drive')) {
+             return 'state'; // Use 'state' for general component health/status
+        }
+        
+        // If the 'storage' tag from the map is somehow still propagating,
+        // it must also be changed here:
+        if (str_contains($metricName, 'storage') || str_contains($metricName, 'capacity') || str_contains($metricName, 'provisioned')) {
+             return 'count'; // Use 'count' for numerical storage metrics
+        }
+
 
         return 'state'; // Default fallback
     }
