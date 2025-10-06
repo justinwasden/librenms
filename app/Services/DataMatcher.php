@@ -29,20 +29,20 @@ class DataMatcher
 		        'contact' => 'sysContact',
 		        'raw_capacity' => 'storage_total',
 		        'total_capacity' => 'storage_total',
-            'used_capacity' => 'storage_used',
-            'free_capacity' => 'storage_free',
-            'total_used' => 'storage_used',
+            	'used_capacity' => 'storage_used',
+            	'free_capacity' => 'storage_free',
+            	'total_used' => 'storage_used',
 		    ],
 		    'sensors' => [
 		        'temperature' => 'sensor_current',
 		        'temp' => 'sensor_current',
 		        'power' => 'sensor_current',
-            'power_consumption' => 'sensor_current',
+            	'power_consumption' => 'sensor_current',
 		        'voltage' => 'sensor_current',
 		        'volt' => 'sensor_current',
 		        'current' => 'sensor_current',
 		        'fan_speed' => 'sensor_current',
-            'fanspeed' => 'sensor_current',
+            	'fanspeed' => 'sensor_current',
  		        'humidity' => 'sensor_current',
 		        'latency' => 'sensor_current',
 		        'iops' => 'sensor_current',
@@ -77,7 +77,7 @@ class DataMatcher
 		        'total_used' => 'sensor_current',
 		        'drive_status' => 'sensor_current',
 		        'drive_capacity' => 'sensor_current',
-            'tmp' => 'temperature',
+  	          	'tmp' => 'temperature',
 
 		    ],
 		    'ports' => [
@@ -107,47 +107,44 @@ class DataMatcher
 				],
 		];
 
-		    /**
-		     * Sensor class mappings based on metric name patterns
-		     */
 		protected array $sensorClassMap = [
-		    'temperature' => 'temperature',
-		    'temp' => 'temperature',
-		    'power' => 'power',
-        'power_consumption' => 'power',
-		    'voltage' => 'voltage',
-		    'volt' => 'voltage',
-		    'current' => 'current',
-		    'fan_speed' => 'fanspeed',
-		    'fanspeed' => 'fanspeed',
-        'ampere' => 'current',
- 		    'fan' => 'fanspeed',
-		    'humidity' => 'humidity',
-		    'frequency' => 'frequency',
-		    'signal' => 'signal',
-		    'load' => 'load',
-		    'state' => 'state',
-		    'status' => 'state',
-		    'iops' => 'count',
-		    'reads_per_sec' => 'count',
-		    'writes_per_sec' => 'count',
-		    'latency' => 'delay',
-		    'delay' => 'delay',
-		    'usec_per_op' => 'delay',
-		    'reduction' => 'ratio',
-		    'ratio' => 'ratio',
-		    'capacity' => 'count',
-		    'space' => 'count',
-		    'nvb' => 'state',
-		    'bay' => 'state',
-		    'provisioned' => 'count',
-		    'connections' => 'count',
-		    'snapshots' => 'count',
-		    'usec' => 'delay',       // Catches usec_per_read_op, queue_usec, etc.
-				'sec' => 'count',         // Catches reads_per_sec, packets_per_sec, etc.
-				'tmp' => 'temperature',   // Catches CTx.TMPx
-        'reads' => 'count',
-        'writes' => 'count',
+			'temperature' => 'temperature',
+	    	'temp' => 'temperature',
+	    	'power' => 'power',
+        	'power_consumption' => 'power',
+			'voltage' => 'voltage',
+	    	'volt' => 'voltage',
+	    	'current' => 'current',
+			'fan_speed' => 'fanspeed',
+	    	'fanspeed' => 'fanspeed',
+        	'ampere' => 'current',
+ 			'fan' => 'fanspeed',
+	    	'humidity' => 'humidity',
+	    	'frequency' => 'frequency',
+			'signal' => 'signal',
+	    	'load' => 'load',
+	    	'state' => 'state',
+			'status' => 'state',
+	    	'iops' => 'count',
+	    	'reads_per_sec' => 'count',
+			'writes_per_sec' => 'count',
+	    	'latency' => 'delay',
+	    	'delay' => 'delay',
+			'usec_per_op' => 'delay',
+	    	'reduction' => 'ratio',
+	    	'ratio' => 'ratio',
+			'capacity' => 'count',
+	    	'space' => 'count',
+	    	'nvb' => 'state',
+			'bay' => 'state',
+	    	'provisioned' => 'count',
+	    	'connections' => 'count',
+			'snapshots' => 'count',
+	    	'usec' => 'delay',
+			'sec' => 'count',
+			'tmp' => 'temperature',
+        	'reads' => 'count',
+        	'writes' => 'count',
 		];
 
 
@@ -158,7 +155,7 @@ class DataMatcher
 
 		protected function logDebug(string $message): void
 		{
-		    if ($this->verbose) {
+			if ($this->verbose) {
 		        Log::debug($message);
 		    }
 		}
@@ -237,24 +234,14 @@ class DataMatcher
             );
         }
 
-						 $mapping = MetricFieldMapping::where('metric_name', $metricName)
-						    ->where(function ($q) use ($resourceType) {
-						        $q->where('resource_type', $resourceType)
-						          ->orWhereNull('resource_type')
-						          ->orWhere('resource_type', 'generic');
-						    })
-						    ->where(function ($q) use ($deviceVendor) {
-						        $q->where('vendor', $deviceVendor)
-						          ->orWhereNull('vendor');
-						    })
-						    ->where(function ($q) use ($deviceOs) {
-						        $q->where('os', $deviceOs)
-						          ->orWhereNull('os');
-						    })
-						    ->where('enabled', true)
-						    ->orderByRaw('vendor IS NULL ASC, os IS NULL ASC')
-						    ->first();
-                ->where(function ($q) use ($deviceVendor) {
+        // Step 2: Try dynamic mapping from database
+        $mapping = MetricFieldMapping::where('metric_name', $metricName)
+            ->where(function ($q) use ($resourceType) {
+                $q->where('resource_type', $resourceType)
+                  ->orWhereNull('resource_type')
+                  ->orWhere('resource_type', 'generic');
+            })
+            ->where(function ($q) use ($deviceVendor) {
                 $q->where('vendor', $deviceVendor)
                   ->orWhereNull('vendor');
             })
@@ -280,20 +267,19 @@ class DataMatcher
         Log::debug("Creating placeholder for unmatched metric: {$metricName}");
         return $this->createPlaceholderMapping($metric, $device);
     }
-
     protected function findStaticMapping(string $metricName): ?array
 		{
-		    $normalized = str_replace(['-', ' '], '_', strtolower($metricName));
+			    $normalized = str_replace(['-', ' '], '_', strtolower($metricName));
 
-		    foreach ($this->staticMap as $table => $fields) {
-		        foreach ($fields as $key => $field) {
-		            $keyNormalized = str_replace(['-', ' '], '_', strtolower($key));
-		            if ($normalized === $keyNormalized || str_contains($normalized, $keyNormalized)) {
-		                return ['table' => $table, 'field' => $field];
-		            }
-		        }
-		    }
-		    return null;
+			    foreach ($this->staticMap as $table => $fields) {
+			        foreach ($fields as $key => $field) {
+			            $keyNormalized = str_replace(['-', ' '], '_', strtolower($key));
+			            if ($normalized === $keyNormalized || str_contains($normalized, $keyNormalized)) {
+			                return ['table' => $table, 'field' => $field];
+			            }
+			        }
+			    }
+			    return null;
 		}
 
     protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
@@ -339,144 +325,144 @@ class DataMatcher
 
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
 		{
-		    $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
-		    $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
+			    $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
+			    $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
 
-		    if (!$resourceId && !$resourceName) {
-		        Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
-		        return;
-		    }
+			    if (!$resourceId && !$resourceName) {
+			        Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
+			        return;
+			    }
 
-		    $resourceId = $resourceId ?? $resourceName;
-		    $resourceName = $resourceName ?? $resourceId;
+			    $resourceId = $resourceId ?? $resourceName;
+			    $resourceName = $resourceName ?? $resourceId;
 
-		    $collectedAt = Carbon::now();
+			    $collectedAt = Carbon::now();
 
-		    $existingMetrics = DB::table('device_api_metrics')
-		        ->where('device_id', $this->device->device_id)
-		        ->where('api_endpoint_id', $endpoint->id)
-		        ->where('resource_id', $resourceId)
-		        ->get()
-		        ->keyBy('metric_name');
+			    $existingMetrics = DB::table('device_api_metrics')
+			        ->where('device_id', $this->device->device_id)
+			        ->where('api_endpoint_id', $endpoint->id)
+			        ->where('resource_id', $resourceId)
+			        ->get()
+			        ->keyBy('metric_name');
 
-		    $metricsToInsert = [];
-		    $metricsToUpdate = [];
-		    $processedMetricNames = [];
+			    $metricsToInsert = [];
+			    $metricsToUpdate = [];
+			    $processedMetricNames = [];
 
-		    foreach ($endpoint->metric_map as $metricName => $apiPath) {
-		        try {
-		            $value = data_get($item, $apiPath);
-		            $processedMetricNames[] = $metricName;
+			    foreach ($endpoint->metric_map as $metricName => $apiPath) {
+			        try {
+			            $value = data_get($item, $apiPath);
+			            $processedMetricNames[] = $metricName;
 
-		            if ($value === null) {
-		                continue;
-		            }
+			            if ($value === null) {
+			                continue;
+			            }
 
-		            $isNumeric = is_numeric($value);
-		            $numericValue = $isNumeric ? (float)$value : null;
-		            $stringValue = null;
+			            $isNumeric = is_numeric($value);
+			            $numericValue = $isNumeric ? (float)$value : null;
+			            $stringValue = null;
 
-		            if (!$isNumeric) {
-		                if (is_array($value) || is_object($value)) {
-		                    $stringValue = json_encode($value);
-		                } else {
-		                    $stringValue = (string)$value;
-		                }
-		            }
+			            if (!$isNumeric) {
+			                if (is_array($value) || is_object($value)) {
+			                    $stringValue = json_encode($value);
+			                } else {
+			                    $stringValue = (string)$value;
+			                }
+			            }
 
-		            if (isset($existingMetrics[$metricName])) {
-		                $existing = $existingMetrics[$metricName];
-		                $valueChanged = false;
+			            if (isset($existingMetrics[$metricName])) {
+			                $existing = $existingMetrics[$metricName];
+			                $valueChanged = false;
 
-		                if ($isNumeric) {
-		                    $valueChanged = abs($existing->value - $numericValue) > 0.0001;
-		                } else {
-		                    $valueChanged = $existing->string_value !== $stringValue;
-		                }
+			                if ($isNumeric) {
+			                    $valueChanged = abs($existing->value - $numericValue) > 0.0001;
+			                } else {
+			                    $valueChanged = $existing->string_value !== $stringValue;
+			                }
 
-		                if ($valueChanged) {
-		                    $metricsToUpdate[] = [
-		                        'id' => $existing->id,
-		                        'value' => $numericValue,
-		                        'string_value' => $stringValue,
-		                        'collected_at' => $collectedAt,
-		                        'updated_at' => $collectedAt,
-		                    ];
+			                if ($valueChanged) {
+			                    $metricsToUpdate[] = [
+			                        'id' => $existing->id,
+			                        'value' => $numericValue,
+			                        'string_value' => $stringValue,
+			                        'collected_at' => $collectedAt,
+			                        'updated_at' => $collectedAt,
+			                    ];
 
-		                    Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
-		                } else {
-		                    DB::table('device_api_metrics')
-		                        ->where('id', $existing->id)
-		                        ->update([
-		                            'collected_at' => $collectedAt,
-		                            'updated_at' => $collectedAt,
-		                        ]);
-		                }
-		            } else {
-		                $metricsToInsert[] = [
-		                    'device_id' => $this->device->device_id,
-		                    'api_endpoint_id' => $endpoint->id,
-		                    'api_connection_id' => $connectionId,
-		                    'resource_type' => $resourceType,
-		                    'resource_id' => $resourceId,
-		                    'resource_name' => $resourceName,
-		                    'metric_name' => $metricName,
-		                    'metric_type' => 'gauge',
-		                    'value' => $numericValue,
-		                    'string_value' => $stringValue,
-		                    'raw_response' => null,
-		                    'collected_at' => $collectedAt,
-		                    'created_at' => $collectedAt,
-		                    'updated_at' => $collectedAt,
-		                ];
-		                Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
-		            }
+			                    Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+			                } else {
+			                    DB::table('device_api_metrics')
+			                        ->where('id', $existing->id)
+			                        ->update([
+			                            'collected_at' => $collectedAt,
+			                            'updated_at' => $collectedAt,
+			                        ]);
+			                }
+			            } else {
+			                $metricsToInsert[] = [
+			                    'device_id' => $this->device->device_id,
+			                    'api_endpoint_id' => $endpoint->id,
+			                    'api_connection_id' => $connectionId,
+			                    'resource_type' => $resourceType,
+			                    'resource_id' => $resourceId,
+			                    'resource_name' => $resourceName,
+			                    'metric_name' => $metricName,
+			                    'metric_type' => 'gauge',
+			                    'value' => $numericValue,
+			                    'string_value' => $stringValue,
+			                    'raw_response' => null,
+			                    'collected_at' => $collectedAt,
+			                    'created_at' => $collectedAt,
+			                    'updated_at' => $collectedAt,
+			                ];
+			                Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+			            }
 
-		        } catch (\Exception $e) {
-		            Log::error("Error processing metric {$metricName}: " . $e->getMessage());
-		        }
-		    }
+			        } catch (\Exception $e) {
+			            Log::error("Error processing metric {$metricName}: " . $e->getMessage());
+			        }
+			    }
 
-		    // Delete obsolete metrics
-		    $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
-		    if ($metricsToDelete->isNotEmpty()) {
-		        DB::table('device_api_metrics')
-		            ->where('device_id', $this->device->device_id)
-		            ->where('api_endpoint_id', $endpoint->id)
-		            ->where('resource_id', $resourceId)
-		            ->whereIn('metric_name', $metricsToDelete->toArray())
-		            ->delete();
-		        Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
-		    }
+			    // Delete obsolete metrics
+			    $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
+			    if ($metricsToDelete->isNotEmpty()) {
+			        DB::table('device_api_metrics')
+			            ->where('device_id', $this->device->device_id)
+			            ->where('api_endpoint_id', $endpoint->id)
+			            ->where('resource_id', $resourceId)
+			            ->whereIn('metric_name', $metricsToDelete->toArray())
+			            ->delete();
+			        Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
+			    }
 
-		    // Batch insert new metrics
-		    if (!empty($metricsToInsert)) {
-		        try {
-		            DB::table('device_api_metrics')->insert($metricsToInsert);
-		            Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
-		        } catch (\Exception $e) {
-		            Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
-		        }
-		    }
+			    // Batch insert new metrics
+			    if (!empty($metricsToInsert)) {
+			        try {
+			            DB::table('device_api_metrics')->insert($metricsToInsert);
+			            Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
+			        } catch (\Exception $e) {
+			            Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
+			        }
+			    }
 
-		    // Batch update changed metrics
-		    if (!empty($metricsToUpdate)) {
-		        try {
-		            foreach ($metricsToUpdate as $metric) {
-		                DB::table('device_api_metrics')
-		                    ->where('id', $metric['id'])
-		                    ->update([
-		                        'value' => $metric['value'],
-		                        'string_value' => $metric['string_value'],
-		                        'collected_at' => $metric['collected_at'],
-		                        'updated_at' => $metric['updated_at'],
-		                    ]);
-		            }
-		            Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
-		        } catch (\Exception $e) {
-		            Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
-		        }
-		    }
+			    // Batch update changed metrics
+			    if (!empty($metricsToUpdate)) {
+			        try {
+			            foreach ($metricsToUpdate as $metric) {
+			                DB::table('device_api_metrics')
+			                    ->where('id', $metric['id'])
+			                    ->update([
+			                        'value' => $metric['value'],
+			                        'string_value' => $metric['string_value'],
+			                        'collected_at' => $metric['collected_at'],
+			                        'updated_at' => $metric['updated_at'],
+			                    ]);
+			            }
+			            Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
+			        } catch (\Exception $e) {
+			            Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
+			        }
+			    }
 		}
 
     protected function updateSensor(Device $device, $metric, MetricFieldMapping $mapping, $value): void
@@ -521,7 +507,7 @@ class DataMatcher
     }
 
     protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
-		{
+	{
 		    $name = $this->normalizeResourceName($metric->resource_name);
 		    $id = $this->normalizeResourceName($metric->resource_id);
 
@@ -548,7 +534,7 @@ class DataMatcher
 		    }
 
 		    Log::warning("No matching port found for {$metric->metric_name} on {$device->hostname}");
-		}
+	}
 
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
@@ -600,7 +586,7 @@ class DataMatcher
     }
 
     protected function determineSensorClass(string $metricName): string
-		{
+	{
 		    $metricName = strtolower($metricName);
 
 		    // Step 1: Direct keyword mapping from class property
@@ -653,12 +639,12 @@ class DataMatcher
 
 		    // Step 3: Default fallback
 		    return 'state';
-		}
+	}
 
     protected function normalizeResourceName(?string $name): ?string
-		{
-		    return $name ? strtolower(str_replace([' ', '_', '-'], '', $name)) : null;
-		}
+	{
+	    return $name ? strtolower(str_replace([' ', '_', '-'], '', $name)) : null;
+	}
 
     protected function generateSensorIndex($metric): string
     {
@@ -704,7 +690,7 @@ class DataMatcher
     }
 
     protected function createPlaceholderMapping($metric, $device): MetricFieldMapping
-		{
+	{
 		    return MetricFieldMapping::updateOrCreate(
 		        [
 		            'metric_name' => $metric->metric_name,
@@ -721,7 +707,7 @@ class DataMatcher
 		            'last_matched_device_id' => $device->device_id,
 		        ]
 		    );
-		}
+	}
 
     protected function getStats(): array
     {
