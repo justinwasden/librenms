@@ -15,7 +15,6 @@ class DataMatcher
      */
 protected array $staticMap = [
     'devices' => [
-        // Core device info (likely the array itself)
         'status' => 'status',
         'serial' => 'serial',
         'serial_number' => 'serial',
@@ -24,17 +23,16 @@ protected array $staticMap = [
         'firmware_version' => 'version',
         'firmware' => 'version',
         'os_version' => 'version',
-        'version' => 'version',            // Explicit API field matching
-        'os' => 'os',                      // Explicit API field matching
+        'version' => 'version',
+        'os' => 'os',
         'uptime' => 'uptime',
         'hostname' => 'hostname',
         'sysname' => 'sysName',
         'location' => 'location',
         'contact' => 'sysContact',
-        'raw_capacity' => 'storage_total',  // Map aggregate size to device storage
+        'raw_capacity' => 'storage_total',
     ],
     'sensors' => [
-        // Generic sensor terms for base reading column
         'temperature' => 'sensor_current',
         'temp' => 'sensor_current',
         'power' => 'sensor_current',
@@ -43,15 +41,20 @@ protected array $staticMap = [
         'current' => 'sensor_current',
         'fan_speed' => 'sensor_current',
         'humidity' => 'sensor_current',
-        'latency' => 'sensor_current',      // Catch performance metrics
-        'iops' => 'sensor_current',         // Catch performance metrics
-        'reads_per_sec' => 'sensor_current',// Catch performance metrics
-        'writes_per_sec' => 'sensor_current',// Catch performance metrics
+        'latency' => 'sensor_current',
+        'iops' => 'sensor_current',
+        'reads_per_sec' => 'sensor_current',
+        'writes_per_sec' => 'sensor_current',
         'data_reduction' => 'sensor_current',
         'total_reduction' => 'sensor_current',
+        // New sensor metrics commonly used in your API data
+        'usec_per_read_op' => 'sensor_current',
+        'usec_per_write_op' => 'sensor_current',
+        'drive_status' => 'sensor_current', // Should be picked up by sensor logic
+        'drive_capacity' => 'sensor_current',
+        'drive_protocol' => 'sensor_current',
     ],
     'ports' => [
-        // Interface/Port metrics
         'interface_speed' => 'ifSpeed',
         'speed' => 'ifSpeed',
         'interface_status' => 'ifOperStatus',
@@ -61,8 +64,6 @@ protected array $staticMap = [
         'interface_alias' => 'ifAlias',
         'interface_description' => 'ifDescr',
         'mtu' => 'ifMtu',
-
-        // Explicit matches from your API responses/templates
         'eth_mtu' => 'ifMtu',
         'eth_address' => 'ifPhysAddress',
         'eth_mac_address' => 'ifPhysAddress',
@@ -81,47 +82,35 @@ protected array $staticMap = [
     /**
      * Sensor class mappings based on metric name patterns
      */
-    protected array $sensorClassMap = [
-        'temperature' => 'temperature',
-        'temp' => 'temperature',
-        'power' => 'power',
-        'voltage' => 'voltage',
-        'volt' => 'voltage',
-        'current' => 'current',
-        'ampere' => 'current',
-        'fan' => 'fanspeed',
-        'humidity' => 'humidity',
-        'frequency' => 'frequency',
-        'signal' => 'signal',
-        'load' => 'load',
-        'state' => 'state',
-        'status' => 'state',
-		    'iops' => 'count',
-		    'read_iops' => 'count',
-		    'write_iops' => 'count',
-		    'reads_per_sec' => 'count',
-		    'writes_per_sec' => 'count',
-		    'latency' => 'delay',
-		    'usec_per_op' => 'delay',
-		    'queue_usec' => 'delay',
-		    'san_usec' => 'delay',
-		    'service_usec' => 'delay',
-		    'reduction' => 'ratio',
-		    'ratio' => 'ratio',
-		    'capacity' => 'storage',
-		    'space' => 'storage',
-		    'iops' => 'count',
-		    'reads_per_sec' => 'count',
-		    'writes_per_sec' => 'count',
-		    'latency' => 'delay',
-		    'usec_per_op' => 'delay',
-		    'reduction' => 'ratio',
-		    'ratio' => 'ratio',
-		    'capacity' => 'storage',
-		    'space' => 'storage',
-		    'connections' => 'count',
-		    'snapshots' => 'count',
-    ];
+protected array $sensorClassMap = [
+    'temperature' => 'temperature',
+    'temp' => 'temperature',
+    'power' => 'power',
+    'voltage' => 'voltage',
+    'volt' => 'voltage',
+    'current' => 'current',
+    'fan_speed' => 'fanspeed',
+    'fan' => 'fanspeed',
+    'humidity' => 'humidity',
+    'frequency' => 'frequency',
+    'signal' => 'signal',
+    'load' => 'load',
+    'state' => 'state',
+    'status' => 'state',
+    'iops' => 'count',
+    'reads_per_sec' => 'count',
+    'writes_per_sec' => 'count',
+    'latency' => 'delay',
+    'usec_per_op' => 'delay',
+    'reduction' => 'ratio',
+    'ratio' => 'ratio',
+    'capacity' => 'storage',
+    'space' => 'storage',
+    'connections' => 'count',
+    'snapshots' => 'count',
+    'tmp' => 'temperature', // Added: Handles CT0.TMPx naming convention
+];
+
 
     protected int $matchedCount = 0;
     protected int $unmatchedCount = 0;
