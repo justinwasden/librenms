@@ -211,15 +211,13 @@ class DataMatcher
 
         // Step 2: Try dynamic mapping from database - SIMPLIFIED
         // First try exact match with vendor/os
-        $mapping = MetricFieldMapping::where('metric_name', $metricName)
-    // REMOVE THIS BLOCK to test if resource_type is the filter:
-    /*
-    ->where(function ($q) use ($resourceType) {
-        $q->where('resource_type', $resourceType)
-          ->orWhereNull('resource_type');
-    })
-    */
-    ->where(function ($q) use ($deviceVendor) {
+       $mapping = MetricFieldMapping::where('metric_name', $metricName)
+            ->where(function ($q) use ($resourceType) {
+                $q->where('resource_type', $resourceType)
+                  ->orWhereNull('resource_type');
+            })
+            ->where(function ($q) use ($deviceVendor) {
+
                 $q->where('vendor', $deviceVendor)
                   ->orWhereNull('vendor');
             })
@@ -251,6 +249,11 @@ class DataMatcher
      */
     protected function findStaticMapping(string $metricName): ?array
     {
+        if (str_contains($metricName, '_per_sec') || str_contains($metricName, 'usec_per_')) {
+            return ['table' => 'sensors', 'field' => 'sensor_current'];
+        }
+
+
         foreach ($this->staticMap as $table => $fields) {
             if (isset($fields[$metricName])) {
                 return [
