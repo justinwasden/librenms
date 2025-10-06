@@ -246,6 +246,7 @@ class Api
              catch (\Exception $e) {
                 Log::error("Error processing metric {$metricName}: " . $e->getMessage());
             }
+          }
         }
 
         // Delete obsolete metrics
