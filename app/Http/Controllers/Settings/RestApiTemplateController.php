@@ -113,18 +113,28 @@ class RestApiTemplateController extends Controller
                         $mapData = $endpoint['metric_map'];
 
                         if (is_string($mapData)) {
-                            // 1. Clean the outer string (removes \r\n\t)
-                            $cleanString = trim(str_replace(["\r", "\n", "\t"], '', $mapData));
+                            // 1. Aggressively strip all control characters and unnecessary whitespace
+                            $cleanString = preg_replace('/[\r\n\t]/', '', $mapData);
 
-                            // 2. Decode the clean string into a PHP array
+                            // 2. Remove extra surrounding quotes and backslashes if present (double-encoding artifact)
+                            // The string starts and ends with a quote, and internal quotes are escaped
+                            if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
+                                $cleanString = substr($cleanString, 1, -1);
+                                $cleanString = stripslashes($cleanString);
+                            }
+
+                            // 3. Decode the resulting clean string into a PHP array
+                            // Use the original string if decoding the cleaned version fails
                             $phpArray = json_decode($cleanString, true);
 
-                            // 3. Re-encode the PHP array back to a clean string
-                            // This ensures it is saved cleanly to the DB, ready for processing.
-                            $endpoint['metric_map'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
-                        } else {
-                            // If it's already a PHP array (e.g., from seeder), ensure it's encoded to a string.
-                            $endpoint['metric_map'] = json_encode($mapData, JSON_UNESCAPED_SLASHES);
+                            // 4. Re-encode the PHP array back to a compact, clean string for database storage
+                            // This guarantees a single-line, correct JSON representation.
+                            if ($phpArray !== null) {
+                                $endpoint['metric_map'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
+                            } else {
+                                // If decoding failed even after cleanup, default to saving the cleaned string.
+                                $endpoint['metric_map'] = $cleanString;
+                            }
                         }
                     }
 
@@ -133,11 +143,20 @@ class RestApiTemplateController extends Controller
                         $mapData = $endpoint['response_mapping'];
 
                         if (is_string($mapData)) {
-                            $cleanString = trim(str_replace(["\r", "\n", "\t"], '', $mapData));
+                            $cleanString = preg_replace('/[\r\n\t]/', '', $mapData);
+
+                            if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
+                                $cleanString = substr($cleanString, 1, -1);
+                                $cleanString = stripslashes($cleanString);
+                            }
+
                             $phpArray = json_decode($cleanString, true);
-                            $endpoint['response_mapping'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
-                        } else {
-                            $endpoint['response_mapping'] = json_encode($mapData, JSON_UNESCAPED_SLASHES);
+
+                            if ($phpArray !== null) {
+                                $endpoint['response_mapping'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
+                            } else {
+                                $endpoint['response_mapping'] = $cleanString;
+                            }
                         }
                     }
                 }
