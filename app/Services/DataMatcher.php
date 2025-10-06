@@ -120,6 +120,7 @@ class DataMatcher
 		    'reads_per_sec' => 'count',
 		    'writes_per_sec' => 'count',
 		    'latency' => 'delay',
+		    'delay' => 'delay',
 		    'usec_per_op' => 'delay',
 		    'reduction' => 'ratio',
 		    'ratio' => 'ratio',
@@ -127,7 +128,12 @@ class DataMatcher
 		    'space' => 'storage',
 		    'connections' => 'count',
 		    'snapshots' => 'count',
-		    'tmp' => 'temperature',
+		    'usec' => 'delay',       // Catches usec_per_read_op, queue_usec, etc.
+				'sec' => 'count',         // Catches reads_per_sec, packets_per_sec, etc.
+				'tmp' => 'temperature',   // Catches CTx.TMPx
+				'nvb' => 'storage',
+				'bay' => 'storage',
+				'provisioned' => 'storage',
 		];
 
 
