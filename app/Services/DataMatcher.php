@@ -277,57 +277,147 @@ class DataMatcher
     /**
      * Store metric value in the appropriate LibreNMS table
      */
-    protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
-    {
-        Log::debug("Metric Debug", [
-				    'metric_name' => $metric->metric_name,
-				    'resource_name' => $metric->resource_name,
-				    'raw_value' => $metric->value,
-				    'raw_string_value' => $metric->string_value,
-				]);
+    protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
+		{
+		    $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
+		    $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
 
-				$value = $metric->value ?? $metric->string_value;
+		    if (!$resourceId && !$resourceName) {
+		        Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
+		        return;
+		    }
 
-				// Transform value based on mapping rules (Assume transformValue returns non-null if possible)
-				$transformedValue = $mapping->transformValue($value);
+		    $resourceId = $resourceId ?? $resourceName;
+		    $resourceName = $resourceName ?? $resourceId;
 
-				if ($transformedValue === null) {
-				    // THIS IS THE CRITICAL LINE WHERE THE LOOP RETURNS QUIETLY
-				    Log::error("CRITICAL: Skipping null/untransformed value for metric {$metric->metric_name} from resource {$metric->resource_name}", [ // <-- MODIFIED LINE
-				        'original_value' => $value,
-				        'mapping_table' => $mapping->librenms_table ?? 'N/A',
-				        'mapping_field' => $mapping->librenms_field ?? 'N/A',
-				    ]);
-				    return;
-				}
+		    $collectedAt = Carbon::now();
 
-        try {
-            // Special handling for sensors table
-            if ($mapping->librenms_table === 'sensors') {
-                $this->updateSensor($device, $metric, $mapping, $transformedValue);
-                return;
-            }
+		    $existingMetrics = DB::table('device_api_metrics')
+		        ->where('device_id', $this->device->device_id)
+		        ->where('api_endpoint_id', $endpoint->id)
+		        ->where('resource_id', $resourceId)
+		        ->get()
+		        ->keyBy('metric_name');
 
-            // Special handling for ports table
-            if ($mapping->librenms_table === 'ports') {
-                $this->updatePort($device, $metric, $mapping, $transformedValue);
-                return;
-            }
+		    $metricsToInsert = [];
+		    $metricsToUpdate = [];
+		    $processedMetricNames = [];
 
-            // Special handling for storage table
-            if ($mapping->librenms_table === 'storage') {
-                $this->updateStorage($device, $metric, $mapping, $transformedValue);
-                return;
-            }
+		    foreach ($endpoint->metric_map as $metricName => $apiPath) {
+		        try {
+		            $value = data_get($item, $apiPath);
+		            $processedMetricNames[] = $metricName;
 
-            // Standard table update
-            $this->updateStandardTable($device, $mapping, $transformedValue);
+		            if ($value === null) {
+		                continue;
+		            }
 
-        } catch (\Exception $e) {
-            Log::error("Failed to store metric {$metric->metric_name} in {$mapping->librenms_table}.{$mapping->librenms_field}: {$e->getMessage()}");
-            throw $e;
-        }
-    }
+		            $isNumeric = is_numeric($value);
+		            $numericValue = $isNumeric ? (float)$value : null;
+		            $stringValue = null;
+
+		            if (!$isNumeric) {
+		                if (is_array($value) || is_object($value)) {
+		                    $stringValue = json_encode($value);
+		                } else {
+		                    $stringValue = (string)$value;
+		                }
+		            }
+
+		            if (isset($existingMetrics[$metricName])) {
+		                $existing = $existingMetrics[$metricName];
+		                $valueChanged = false;
+
+		                if ($isNumeric) {
+		                    $valueChanged = abs($existing->value - $numericValue) > 0.0001;
+		                } else {
+		                    $valueChanged = $existing->string_value !== $stringValue;
+		                }
+
+		                if ($valueChanged) {
+		                    $metricsToUpdate[] = [
+		                        'id' => $existing->id,
+		                        'value' => $numericValue,
+		                        'string_value' => $stringValue,
+		                        'collected_at' => $collectedAt,
+		                        'updated_at' => $collectedAt,
+		                    ];
+
+		                    Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+		                } else {
+		                    DB::table('device_api_metrics')
+		                        ->where('id', $existing->id)
+		                        ->update([
+		                            'collected_at' => $collectedAt,
+		                            'updated_at' => $collectedAt,
+		                        ]);
+		                }
+		            } else {
+		                $metricsToInsert[] = [
+		                    'device_id' => $this->device->device_id,
+		                    'api_endpoint_id' => $endpoint->id,
+		                    'api_connection_id' => $connectionId,
+		                    'resource_type' => $resourceType,
+		                    'resource_id' => $resourceId,
+		                    'resource_name' => $resourceName,
+		                    'metric_name' => $metricName,
+		                    'metric_type' => 'gauge',
+		                    'value' => $numericValue,
+		                    'string_value' => $stringValue,
+		                    'raw_response' => null,
+		                    'collected_at' => $collectedAt,
+		                    'created_at' => $collectedAt,
+		                    'updated_at' => $collectedAt,
+		                ];
+		                Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+		            }
+
+		        } catch (\Exception $e) {
+		            Log::error("Error processing metric {$metricName}: " . $e->getMessage());
+		        }
+		    }
+
+		    // Delete obsolete metrics
+		    $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
+		    if ($metricsToDelete->isNotEmpty()) {
+		        DB::table('device_api_metrics')
+		            ->where('device_id', $this->device->device_id)
+		            ->where('api_endpoint_id', $endpoint->id)
+		            ->where('resource_id', $resourceId)
+		            ->whereIn('metric_name', $metricsToDelete->toArray())
+		            ->delete();
+		        Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
+		    }
+
+		    // Batch insert new metrics
+		    if (!empty($metricsToInsert)) {
+		        try {
+		            DB::table('device_api_metrics')->insert($metricsToInsert);
+		            Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
+		        } catch (\Exception $e) {
+		            Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
+		        }
+		    }
+
+		    // Batch update changed metrics
+		    if (!empty($metricsToUpdate)) {
+		        try {
+		            foreach ($metricsToUpdate as $metric) {
+		                DB::table('device_api_metrics')
+		                    ->where('id', $metric['id'])
+		                    ->update([
+		                        'value' => $metric['value'],
+		                        'string_value' => $metric['string_value'],
+		                        'collected_at' => $metric['collected_at'],
+		                        'updated_at' => $metric['updated_at'],
+		                    ]);
+		            }
+		            Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
+		        } catch (\Exception $e) {
+		            Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
+		        }
+		    }
+		}
 
     /**
      * Update or create a sensor record
