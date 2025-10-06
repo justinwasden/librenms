@@ -18,7 +18,6 @@ class RestApiTemplateSeeder extends Seeder
         $pureStorageArrayInfoMapping = [
             "storage_size" => "items.0.space.total_physical",
             "storage_used" => "items.0.space.total_used",
-            // Custom metric names can be used for device-level reporting or graphing
             "available_capacity" => "items.0.space.total_provisioned",
             "array_data_reduction" => "items.0.space.data_reduction",
             "array_total_reduction" => "items.0.space.total_reduction",
@@ -465,7 +464,6 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "device",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    // FIXED: Using json_encode()
                                     "response_mapping" => json_encode($pureStorageArrayInfoMapping),
                                 ],
                                 [

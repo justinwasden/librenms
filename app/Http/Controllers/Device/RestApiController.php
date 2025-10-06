@@ -37,21 +37,27 @@ class RestApiController extends Controller
         $templateData = $this->replacePlaceholdersInArray($template->template_data, $device);
 
         foreach ($templateData['connections'] as $connData) {
-            $connection = $device->restApiConnections()->create([
-                'name' => $connData['name'],
-                'base_url' => $connData['base_url'],
-                'credential_id' => $connData['credential_id'] ?? null,
-                'rate_limit' => $connData['rate_limit'] ?? 60,
-                'enabled' => $connData['enabled'] ?? true,
-                'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
-            ]);
+				    $connection = $device->restApiConnections()->create([
+				        'name' => $connData['name'],
+				        'base_url' => $connData['base_url'],
+				        'credential_id' => $connData['credential_id'] ?? null,
+				        'rate_limit' => $connData['rate_limit'] ?? 60,
+				        'enabled' => $connData['enabled'] ?? true,
+				        'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
+				    ]);
 
-            if (isset($connData['endpoints']) && is_array($connData['endpoints'])) {
-                foreach ($connData['endpoints'] as $endpointData) {
-                    $connection->endpoints()->create($endpointData);
-                }
-            }
-        }
+				    if (isset($connData['endpoints']) && is_array($connData['endpoints'])) {
+				        foreach ($connData['endpoints'] as $endpointData) {
+				            // Remove json_encode here
+				            if (isset($endpointData['response_mapping'])) {
+				                $endpointData['metric_map'] = $endpointData['response_mapping'];
+				                unset($endpointData['response_mapping']);
+				            }
+
+				            $connection->endpoints()->create($endpointData);
+				        }
+				    }
+				}
 
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Template applied successfully.');
     }
@@ -224,13 +230,13 @@ class RestApiController extends Controller
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
         $string = Str::replace('{{ $device->sysName }}', $device->sysName, $string);
         $string = Str::replace('{{ $device->display }}', $device->display ?? $device->hostname, $string);
-        
+
         // Support simple placeholder format: {device_hostname}
         $string = Str::replace('{device_hostname}', $device->hostname, $string);
         $string = Str::replace('{device_ip}', $device->ip, $string);
         $string = Str::replace('{device_sysname}', $device->sysName, $string);
         $string = Str::replace('{device_display}', $device->display ?? $device->hostname, $string);
-        
+
         // Support getAttrib for custom attributes: {{ $device->getAttrib('name') }}
         preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
 
@@ -241,10 +247,10 @@ class RestApiController extends Controller
                 $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
             }
         }
-        
+
         // Support simple attrib format: {device_attrib:name}
         preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
-        
+
         if (!empty($attribMatches[1])) {
             foreach ($attribMatches[1] as $index => $attribName) {
                 $attribValue = $device->getAttrib($attribName);
