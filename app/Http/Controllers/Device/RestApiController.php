@@ -48,14 +48,19 @@ class RestApiController extends Controller
 
 				    if (isset($connData['endpoints']) && is_array($connData['endpoints'])) {
 				        foreach ($connData['endpoints'] as $endpointData) {
-				            // Remove json_encode here
-				            if (isset($endpointData['response_mapping'])) {
-				                $endpointData['metric_map'] = $endpointData['response_mapping'];
-				                unset($endpointData['response_mapping']);
-				            }
+								    // Handle legacy field names
+								    if (isset($endpointData['response_mapping'])) {
+								        // Convert stringified JSON to array if necessary
+								        $map = $endpointData['response_mapping'];
+								        if (is_string($map)) {
+								            $map = json_decode($map, true);
+								        }
+								        $endpointData['metric_map'] = $map;
+								        unset($endpointData['response_mapping']);
+								    }
 
-				            $connection->endpoints()->create($endpointData);
-				        }
+								    $connection->endpoints()->create($endpointData);
+								}
 				    }
 				}
 
@@ -148,56 +153,69 @@ class RestApiController extends Controller
     }
 
     public function updateEndpoint(Request $request, Device $device, RestApiEndpoint $endpoint)
-    {
-        Gate::authorize('update', $device);
+		{
+		    Gate::authorize('update', $device);
 
-        if ($endpoint->connection->device_id !== $device->device_id) {
-            abort(404);
-        }
+		    if ($endpoint->connection->device_id !== $device->device_id) {
+		        abort(404);
+		    }
 
-        // Handle adding a new endpoint via the connection update method
-        if ($request->input('action_type') === 'add_endpoint') {
-            $connection = $endpoint->connection;
-            return $this->storeEndpoint($request, $device, $connection);
-        }
+		    // Handle adding a new endpoint via the connection update method
+		    if ($request->input('action_type') === 'add_endpoint') {
+		        $connection = $endpoint->connection;
+		        return $this->storeEndpoint($request, $device, $connection);
+		    }
 
-        // Standard endpoint update validation
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'path' => 'required|string|max:2048',
-            'method' => 'required|in:GET,POST,PUT,DELETE',
-            'metric_map_json' => 'required|json',
-        ]);
+		    // Standard endpoint update validation
+		    $validated = $request->validate([
+		        'name' => 'required|string|max:255',
+		        'path' => 'required|string|max:2048',
+		        'method' => 'required|in:GET,POST,PUT,DELETE',
+		        'metric_map_json' => 'required|string', // treat as string, not JSON
+		    ]);
 
-        $endpoint->update([
-            'name' => $validated['name'],
-            'path' => $validated['path'],
-            'method' => $validated['method'],
-            'metric_map' => json_decode($validated['metric_map_json'], true),
-        ]);
+		    // Decode the JSON safely (handles escaped or stringified JSON)
+		    $decodedMap = json_decode(stripslashes($validated['metric_map_json']), true);
 
-        return redirect()->route('device.edit.rest-api', $device)->with('success', 'Endpoint updated successfully.');
-    }
+		    if (json_last_error() !== JSON_ERROR_NONE) {
+		        return back()->withErrors(['metric_map_json' => 'Invalid JSON format.']);
+		    }
 
-    private function storeEndpoint(Request $request, Device $device, RestApiConnection $connection)
-    {
-        // Validation for new endpoint creation
-        $validated = $request->validate([
-            'endpoint_name' => 'required|string|max:255',
-            'endpoint_path' => 'required|string|max:2048',
-            'endpoint_method' => 'required|in:GET,POST,PUT,DELETE',
-            'endpoint_metric_map_json' => 'required|json',
-        ]);
+		    $endpoint->update([
+		        'name' => $validated['name'],
+		        'path' => $validated['path'],
+		        'method' => $validated['method'],
+		        'metric_map' => $decodedMap,
+		    ]);
 
-        $connection->endpoints()->create([
-            'name' => $validated['endpoint_name'],
-            'path' => $validated['endpoint_path'],
-            'method' => $validated['endpoint_method'],
-            'metric_map' => json_decode($validated['endpoint_metric_map_json'], true),
-        ]);
+		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'Endpoint updated successfully.');
+		}
 
-        return redirect()->route('device.edit.rest-api', $device)->with('success', 'New endpoint added successfully.');
-    }
+		private function storeEndpoint(Request $request, Device $device, RestApiConnection $connection)
+		{
+		    // Validation for new endpoint creation
+		    $validated = $request->validate([
+		        'endpoint_name' => 'required|string|max:255',
+		        'endpoint_path' => 'required|string|max:2048',
+		        'endpoint_method' => 'required|in:GET,POST,PUT,DELETE',
+		        'endpoint_metric_map_json' => 'required|string', // treat as string
+		    ]);
+
+		    $decodedMap = json_decode(stripslashes($validated['endpoint_metric_map_json']), true);
+
+		    if (json_last_error() !== JSON_ERROR_NONE) {
+		        return back()->withErrors(['endpoint_metric_map_json' => 'Invalid JSON format.']);
+		    }
+
+		    $connection->endpoints()->create([
+		        'name' => $validated['endpoint_name'],
+		        'path' => $validated['endpoint_path'],
+		        'method' => $validated['endpoint_method'],
+		        'metric_map' => $decodedMap,
+		    ]);
+
+		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'New endpoint added successfully.');
+		}
 
     public function destroyEndpoint(Device $device, RestApiEndpoint $endpoint)
     {
