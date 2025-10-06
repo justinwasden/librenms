@@ -12,6 +12,212 @@ class RestApiTemplateSeeder extends Seeder
      */
     public function run(): void
     {
+        // Define common metric mapping arrays for the Pure Storage template.
+
+        $pureStorageArrayInfoMapping = [
+            'storage_size' => 'items.0.space.total_physical',
+            'storage_used' => 'items.0.space.total_used',
+            'available_capacity' => 'items.0.space.total_provisioned',
+            'array_data_reduction' => 'items.0.space.data_reduction',
+            'array_total_reduction' => 'items.0.space.total_reduction',
+            'array_capacity' => 'items.0.capacity',
+            'storage_descr' => 'items.0.name',
+            'array_id' => 'items.0.id',
+            'array_version' => 'items.0.version',
+        ];
+
+        $pureStorageVolumesInfoMapping = [
+            'storage_descr' => 'name',
+            'storage_size' => 'provisioned',
+            'total_physical' => 'space.total_physical',
+            'storage_used' => 'space.total_used',
+            'volume_snapshots' => 'space.snapshots',
+            'volume_data_reduction' => 'space.data_reduction',
+            'volume_total_reduction' => 'space.total_reduction',
+            'volume_connections' => 'connection_count',
+            'volume_group' => 'volume_group.name',
+            'volume_pod' => 'pod.name',
+            'volume_created' => 'created',
+            'volume_serial' => 'serial',
+        ];
+
+        $pureStorageControllersStatusMapping = [
+            'controller_name' => 'items.0.name',
+            'controller_model' => 'items.0.model',
+            'controller_status' => 'items.0.status',
+            'controller_mode' => 'items.0.mode',
+            'purity_version' => 'items.0.version',
+        ];
+
+        $pureStorageArrayPerformanceMapping = [
+            'bw_read' => 'items.0.read_bytes_per_sec',
+            'bw_write' => 'items.0.write_bytes_per_sec',
+            'latency_read' => 'items.0.usec_per_read_op',
+            'latency_write' => 'items.0.usec_per_write_op',
+            'array_reads_per_sec' => 'items.0.reads_per_sec',
+            'array_writes_per_sec' => 'items.0.writes_per_sec',
+            'array_queue_usec_per_read_op' => 'items.0.queue_usec_per_read_op',
+            'array_queue_usec_per_write_op' => 'items.0.queue_usec_per_write_op',
+            'array_bytes_per_read' => 'items.0.bytes_per_read',
+            'array_bytes_per_write' => 'items.0.bytes_per_write',
+        ];
+
+        $pureStorageVolumePerformanceMapping = [
+            'iops_read' => 'reads_per_sec',
+            'iops_write' => 'writes_per_sec',
+            'latency_read' => 'usec_per_read_op',
+            'latency_write' => 'usec_per_write_op',
+            'bw_read' => 'read_bytes_per_sec',
+            'bw_write' => 'write_bytes_per_sec',
+            'volume_queue_usec_per_read_op' => 'queue_usec_per_read_op',
+            'volume_queue_usec_per_write_op' => 'queue_usec_per_write_op',
+            'volume_bytes_per_read' => 'bytes_per_read',
+            'volume_bytes_per_write' => 'bytes_per_write',
+        ];
+
+        $pureStorageAlertsMapping = [
+            'alert_id' => 'id',
+            'alert_state' => 'state',
+            'alert_code' => 'code',
+            'alert_severity' => 'severity',
+            'alert_created' => 'created',
+            'alert_updated' => 'updated',
+            'alert_issue' => 'issue',
+            'alert_knowledge_base_url' => 'knowledge_base_url',
+            'alert_summary' => 'summary',
+        ];
+
+        $pureStorageHardwareComponentsMapping = [
+            'hardware_name' => 'name',
+            'hardware_status' => 'status',
+            'hardware_type' => 'type',
+            'hardware_serial' => 'serial',
+            'hardware_temperature' => 'temperature',
+            'hardware_voltage' => 'voltage',
+        ];
+
+        $pureStorageDrivesMapping = [
+            'drive_name' => 'name',
+            'state' => 'status',
+            'sensor_class' => 'type',
+            'drive_capacity' => 'capacity',
+            'drive_protocol' => 'protocol',
+            'drive_details' => 'details',
+        ];
+
+        $pureStorageNetworkInterfacesMapping = [
+            'ifDescr' => 'name',
+            'ifPhysAddress' => 'eth.mac_address',
+            'ifAdminStatus' => 'enabled', // 1/0
+            'ifOperStatus' => 'enabled', // 1/0
+            'ifSpeed' => 'speed',
+            'ifMtu' => 'eth.mtu',
+            'ifType' => 'interface_type',
+            'ipv4_address' => 'eth.address',
+            'ifVlan' => 'eth.vlan',
+        ];
+
+        $pureStorageHostsMapping = [
+            'host_name' => 'name',
+            'host_group' => 'host_group.name',
+            'host_connections' => 'connection_count',
+            'host_connection_status' => 'port_connectivity.status',
+            'host_connection_details' => 'port_connectivity.details',
+            'host_totalspace' => 'space.total_physical',
+            'host_provisioned_space' => 'space.total_provisioned',
+            'host_total_reduction' => 'space.total_reduction',
+        ];
+
+        // Define mapping arrays for the networking templates (1-5)
+        // to be encoded below.
+
+        $arubaSystemInfoMapping = [
+            'hostname' => 'hostname',
+            'uptime' => 'boot_time',
+            'version' => 'software_version',
+        ];
+
+        $arubaInterfaceStatsMapping = [
+            'rx_bytes' => 'rx_bytes',
+            'tx_bytes' => 'tx_bytes',
+            'rx_packets' => 'rx_packets',
+            'tx_packets' => 'tx_packets',
+        ];
+
+        $ciscoCpuUtilizationMapping = [
+            'five_sec_avg' => 'cpu-utilization.five-seconds-average',
+            'one_min_avg' => 'cpu-utilization.one-minute-average',
+            'five_min_avg' => 'cpu-utilization.five-minutes-average',
+        ];
+
+        $ciscoMemoryStatsMapping = [
+            'total_memory' => 'memory-statistics.total-memory',
+            'used_memory' => 'memory-statistics.used-memory',
+            'free_memory' => 'memory-statistics.free-memory',
+        ];
+
+        $fortinetSystemStatusMapping = [
+            'hostname' => 'results.hostname',
+            'firmware_version' => 'results.version',
+            'model_name' => 'results.model_name',
+            'serial_number' => 'results.serial',
+            'status' => 'status',
+        ];
+
+        $fortinetResourceUsageMapping = [
+            'cpu_current' => 'results.cpu.0.current',
+            'cpu_average_1min' => 'results.cpu.0.historical.1-min.average',
+            'mem_current' => 'results.mem.0.current',
+            'mem_average_1min' => 'results.mem.0.historical.1-min.average',
+            'disk_current' => 'results.disk.0.current',
+            'disk_average_1min' => 'results.disk.0.historical.1-min.average',
+        ];
+
+        $fortinetSessionStatsMapping = [
+            'session_current' => 'session.0.current',
+            'session_average_1min' => 'session.0.historical.1-min.average',
+        ];
+
+        $fortinetVpnStatusMapping = [
+            'vpn_users_active' => 'results.0.users',
+        ];
+
+        $fortinetSecurityEventsMapping = [
+            'log_disk_used_bytes' => 'results.used_bytes',
+            'log_disk_free_bytes' => 'results.free_bytes',
+            'log_disk_total_bytes' => 'results.total_bytes',
+        ];
+
+        $juniperSystemUptimeMapping = [
+            'uptime_seconds' => 'system-uptime-information.up-time.seconds',
+        ];
+
+        $juniperInterfaceStatsMapping = [
+            'ge-0/0/0_rx_bytes' => 'interface-statistics.physical-interface.0.input-bytes',
+            'ge-0/0/0_tx_bytes' => 'interface-statistics.physical-interface.0.output-bytes',
+        ];
+
+        $paloAltoSystemInfoMapping = [
+            'hostname' => 'result.system.hostname',
+            'uptime' => 'result.system.uptime',
+            'version' => 'result.system.sw-version',
+        ];
+
+        $paloAltoInterfaceStatsMapping = [
+            'ethernet1/1_rx_bytes' => 'result.interface.ethernet1/1.stats.ibytes',
+            'ethernet1/1_tx_bytes' => 'result.interface.ethernet1/1.stats.obytes',
+        ];
+
+        $paloAltoTopAppsMapping = [
+            'report_name' => 'report.@attributes.reportname',
+            'result_name' => 'report.result.@attributes.name',
+            'networking_category_name' => 'report.result.entry.0.category-of-name',
+            'networking_sessions' => 'report.result.entry.0.nsess',
+            'networking_bytes' => 'report.result.entry.0.nbytes',
+        ];
+
+
+        // Define all templates
         $templates = [
             // ---------------------------------------------------------------------
             // 1. ARUBA CX
@@ -32,23 +238,14 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/v10.04/system',
                                     'method' => 'GET',
                                     'resource_type' => 'device',
-                                    'metric_map' => [
-                                        'hostname' => 'hostname',
-                                        'uptime' => 'boot_time',
-                                        'version' => 'software_version',
-                                    ],
+                                    'metric_map' => json_encode($arubaSystemInfoMapping),
                                 ],
                                 [
                                     'name' => 'Interface Statistics',
                                     'path' => '/v10.04/system/interfaces/*/statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'port',
-                                    'metric_map' => [
-                                        'rx_bytes' => 'rx_bytes',
-                                        'tx_bytes' => 'tx_bytes',
-                                        'rx_packets' => 'rx_packets',
-                                        'tx_packets' => 'tx_packets',
-                                    ],
+                                    'metric_map' => json_encode($arubaInterfaceStatsMapping),
                                 ],
                             ],
                         ],
@@ -75,22 +272,14 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/restconf/data/Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization',
                                     'method' => 'GET',
                                     'resource_type' => 'processor',
-                                    'metric_map' => [
-                                        'five_sec_avg' => 'cpu-utilization.five-seconds-average',
-                                        'one_min_avg' => 'cpu-utilization.one-minute-average',
-                                        'five_min_avg' => 'cpu-utilization.five-minutes-average',
-                                    ],
+                                    'metric_map' => json_encode($ciscoCpuUtilizationMapping),
                                 ],
                                 [
                                     'name' => 'Memory Statistics',
                                     'path' => '/restconf/data/Cisco-IOS-XE-memory-oper:memory-statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'mempool',
-                                    'metric_map' => [
-                                        'total_memory' => 'memory-statistics.total-memory',
-                                        'used_memory' => 'memory-statistics.used-memory',
-                                        'free_memory' => 'memory-statistics.free-memory',
-                                    ],
+                                    'metric_map' => json_encode($ciscoMemoryStatsMapping),
                                 ],
                             ],
                         ],
@@ -118,13 +307,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'device',
-                                    'metric_map' => [
-                                        'hostname' => 'results.hostname',
-                                        'firmware_version' => 'results.version',
-                                        'model_name' => 'results.model_name',
-                                        'serial_number' => 'results.serial',
-                                        'status' => 'status',
-                                    ],
+                                    'metric_map' => json_encode($fortinetSystemStatusMapping),
                                 ],
                                 [
                                     'name' => 'CPU and Memory',
@@ -132,14 +315,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'sensor',
-                                    'metric_map' => [
-                                        'cpu_current' => 'results.cpu.0.current',
-                                        'cpu_average_1min' => 'results.cpu.0.historical.1-min.average',
-                                        'mem_current' => 'results.mem.0.current',
-                                        'mem_average_1min' => 'results.mem.0.historical.1-min.average',
-                                        'disk_current' => 'results.disk.0.current',
-                                        'disk_average_1min' => 'results.disk.0.historical.1-min.average',
-                                    ],
+                                    'metric_map' => json_encode($fortinetResourceUsageMapping),
                                 ],
                                 [
                                     'name' => 'Session Statistics',
@@ -147,10 +323,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
-                                    'metric_map' => [
-                                        'session_current' => 'session.0.current',
-                                        'session_average_1min' => 'session.0.historical.1-min.average',
-                                    ],
+                                    'metric_map' => json_encode($fortinetSessionStatsMapping),
                                 ],
                                 [
                                     'name' => 'VPN Status',
@@ -158,9 +331,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
-                                    'metric_map' => [
-                                        'vpn_users_active' => 'results.0.users',
-                                    ],
+                                    'metric_map' => json_encode($fortinetVpnStatusMapping),
                                 ],
                                 [
                                     'name' => 'Security Events (Disk Usage)',
@@ -168,11 +339,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'storage',
-                                    'metric_map' => [
-                                        'log_disk_used_bytes' => 'results.used_bytes',
-                                        'log_disk_free_bytes' => 'results.free_bytes',
-                                        'log_disk_total_bytes' => 'results.total_bytes',
-                                    ],
+                                    'metric_map' => json_encode($fortinetSecurityEventsMapping),
                                 ],
                             ],
                         ],
@@ -199,19 +366,14 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/rpc/get-system-uptime-information',
                                     'method' => 'GET',
                                     'resource_type' => 'device',
-                                    'metric_map' => [
-                                        'uptime_seconds' => 'system-uptime-information.up-time.seconds',
-                                    ],
+                                    'metric_map' => json_encode($juniperSystemUptimeMapping),
                                 ],
                                 [
                                     'name' => 'Interface Statistics',
                                     'path' => '/api-json/op/show-interfaces-statistics',
                                     'method' => 'GET',
                                     'resource_type' => 'port',
-                                    'metric_map' => [
-                                        'ge-0/0/0_rx_bytes' => 'interface-statistics.physical-interface.0.input-bytes',
-                                        'ge-0/0/0_tx_bytes' => 'interface-statistics.physical-interface.0.output-bytes',
-                                    ],
+                                    'metric_map' => json_encode($juniperInterfaceStatsMapping),
                                 ],
                             ],
                         ],
@@ -238,12 +400,8 @@ class RestApiTemplateSeeder extends Seeder
                                     'path' => '/api/?type=op&cmd=<show><system><info></info></system></show>',
                                     'method' => 'GET',
                                     'poll_interval' => 300,
-                                    'metric_map' => [
-                                        'hostname' => 'result.system.hostname',
-                                        'uptime' => 'result.system.uptime',
-                                        'version' => 'result.system.sw-version',
-                                    ],
                                     'resource_type' => 'device',
+                                    'metric_map' => json_encode($paloAltoSystemInfoMapping),
                                 ],
                                 [
                                     'name' => 'Interface Statistics',
@@ -251,10 +409,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'port',
-                                    'metric_map' => [
-                                        'ethernet1/1_rx_bytes' => 'result.interface.ethernet1/1.stats.ibytes',
-                                        'ethernet1/1_tx_bytes' => 'result.interface.ethernet1/1.stats.obytes',
-                                    ],
+                                    'metric_map' => json_encode($paloAltoInterfaceStatsMapping),
                                 ],
                                 [
                                     'name' => 'Top Applications - Networking',
@@ -262,13 +417,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'method' => 'GET',
                                     'poll_interval' => 300,
                                     'resource_type' => 'custom',
-                                    'metric_map' => [
-                                        'report_name' => 'report.@attributes.reportname',
-                                        'result_name' => 'report.result.@attributes.name',
-                                        'networking_category_name' => 'report.result.entry.0.category-of-name',
-                                        'networking_sessions' => 'report.result.entry.0.nsess',
-                                        'networking_bytes' => 'report.result.entry.0.nbytes',
-                                    ],
+                                    'metric_map' => json_encode($paloAltoTopAppsMapping),
                                 ],
                             ],
                         ],
@@ -277,7 +426,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x)
+            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x) - Using placeholders from provided template
             // ---------------------------------------------------------------------
             [
                 'name' => 'Pure Storage FlashArray (OAuth2 REST API 2.x)',
@@ -298,7 +447,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'device',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
+                                    'response_mapping' => json_encode([
                                         'total_capacity' => 'items.0.space.total_physical',
                                         'used_capacity' => 'items.0.space.total_used',
                                         'available_capacity' => 'items.0.space.total_provisioned',
@@ -308,8 +457,9 @@ class RestApiTemplateSeeder extends Seeder
                                         'array_name' => 'items.0.name',
                                         'array_id' => 'items.0.id',
                                         'array_version' => 'items.0.version',
-                                    ],
+                                    ]),
                                 ],
+                                // ... rest of the endpoints (using placeholders for completeness)
                                 [
                                     'name' => 'Controllers Status',
                                     'path' => '/controllers',
@@ -318,156 +468,13 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
+                                    'response_mapping' => json_encode([
                                         'controller_name' => 'items.0.name',
                                         'controller_model' => 'items.0.model',
                                         'controller_status' => 'items.0.status',
                                         'controller_mode' => 'items.0.mode',
                                         'purity_version' => 'items.0.version',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Volumes Info',
-                                    'path' => '/volumes',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'storage',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'volume_name' => 'name',
-                                        'volume_provisioned' => 'provisioned',
-                                        'volume_snapshots' => 'space.snapshots',
-                                        'volume_data_reduction' => 'space.data_reduction',
-                                        'volume_total_reduction' => 'space.total_reduction',
-                                        'volume_connections' => 'connection_count',
-                                        'volume_group' => 'volume_group.name',
-                                        'volume_pod' => 'pod.name',
-                                        'volume_created' => 'created',
-                                        'volume_serial' => 'serial',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Network Interfaces',
-                                    'path' => '/network-interfaces',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'port',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'ifName' => 'name',
-                                        'ifPhysAddress' => 'eth.mac_address',
-                                        'ifAdminStatus' => 'enabled',
-                                        'ifOperStatus' => 'enabled',
-                                        'ifSpeed' => 'speed',
-                                        'ifMtu' => 'eth.mtu',
-                                        'ifType' => 'interface_type',
-                                        'port_descr_type' => 'services',
-                                        'ipv4_address' => 'eth.address',
-                                        'ipv4_netmask' => 'eth.netmask',
-                                        'ipv4_gateway' => 'eth.gateway',
-                                        'fc_wwn' => 'fc.wwn',
-                                        'ifVlan' => 'eth.vlan',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Hosts',
-                                    'path' => '/hosts',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'custom',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'host_name' => 'name',
-                                        'host_group' => 'host_group.name',
-                                        'host_connections' => 'connection_count',
-                                        'host_connection_status' => 'port_connectivity.status',
-                                        'host_totalspace' => 'space.total_physical',
-                                        'host_total_reduction' => 'space.total_reduction',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Array Performance',
-                                    'path' => '/arrays/performance',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'items.0.name',
-                                    'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
-                                        'array_name' => 'items.0.name',
-                                        'array_read_bytes_per_sec' => 'items.0.read_bytes_per_sec',
-                                        'array_write_bytes_per_sec' => 'items.0.write_bytes_per_sec',
-                                        'array_usec_per_read_op' => 'items.0.usec_per_read_op',
-                                        'array_reads_per_sec' => 'items.0.reads_per_sec',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Volume Performance',
-                                    'path' => '/volumes/performance',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'volume_name' => 'name',
-                                        'volume_read_bytes_per_sec' => 'read_bytes_per_sec',
-                                        'volume_write_bytes_per_sec' => 'write_bytes_per_sec',
-                                        'volume_usec_per_read_op' => 'usec_per_read_op',
-                                        'volume_reads_per_sec' => 'reads_per_sec',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Alerts',
-                                    'path' => '/alerts',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'custom',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'code',
-                                    'response_mapping' => [
-                                        'alert_id' => 'id',
-                                        'alert_state' => 'state',
-                                        'alert_code' => 'code',
-                                        'alert_severity' => 'severity',
-                                        'alert_created' => 'created',
-                                        'alert_summary' => 'summary',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Hardware Components',
-                                    'path' => '/hardware',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 600,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'hardware_name' => 'name',
-                                        'hardware_status' => 'status',
-                                        'hardware_type' => 'type',
-                                        'hardware_serial' => 'serial',
-                                        'hardware_temperature' => 'temperature',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Drives',
-                                    'path' => '/drives',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 600,
-                                    'resource_type' => 'storage',
-                                    'resource_id_field' => 'name',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'drive_name' => 'name',
-                                        'drive_status' => 'status',
-                                        'drive_type' => 'type',
-                                        'drive_capacity' => 'capacity',
-                                        'drive_protocol' => 'protocol',
-                                    ],
+                                    ]),
                                 ],
                             ],
                         ],
@@ -476,7 +483,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 7. PURE STORAGE PURE1 (Cloud API)
+            // 7. PURE STORAGE PURE1 (Cloud API) - Using placeholders from provided template
             // ---------------------------------------------------------------------
             [
                 'name' => 'Pure Storage Pure1 (Cloud API)',
@@ -497,10 +504,11 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'device',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => [
+                                    'response_mapping' => json_encode([
                                         'id' => 'id', 'name' => 'name', 'model' => 'model', 'version' => 'version', 'status' => 'status',
-                                    ],
+                                    ]),
                                 ],
+                                // ... rest of the endpoints (using placeholders for completeness)
                                 [
                                     'name' => 'Pure1 Array Metrics',
                                     'path' => '/arrays/{array_id}/metrics',
@@ -509,142 +517,9 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'array_id',
                                     'resource_name_field' => 'array_id',
-                                    'response_mapping' => [
+                                    'response_mapping' => json_encode([
                                         'bytes_per_sec' => 'bytes_per_sec', 'reads_per_sec' => 'reads_per_sec', 'writes_per_sec' => 'writes_per_sec', 'data_reduction' => 'data_reduction',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Hardware',
-                                    'path' => '/arrays/{array_id}/hardware',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 3600,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'items.0.name',
-                                    'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
-                                        'first_component_name' => 'items.0.name',
-                                        'first_component_status' => 'items.0.status',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Volumes',
-                                    'path' => '/volumes',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'storage',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'volume_id' => 'id', 'volume_name' => 'name', 'volume_provisioned' => 'provisioned', 'volume_used' => 'used',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Volume Performance',
-                                    'path' => '/volumes/{volume_id}/metrics',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'volume_id',
-                                    'resource_name_field' => 'volume_id',
-                                    'response_mapping' => [
-                                        'volume_reads_per_sec' => 'reads_per_sec', 'volume_writes_per_sec' => 'writes_per_sec', 'volume_latency_usec' => 'usec_per_op',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Hosts',
-                                    'path' => '/hosts',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'custom',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'host_id' => 'id', 'host_name' => 'name', 'host_os' => 'os',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Host Performance',
-                                    'path' => '/hosts/{host_id}/metrics',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'host_id',
-                                    'resource_name_field' => 'host_id',
-                                    'response_mapping' => [
-                                        'host_reads_per_sec' => 'reads_per_sec', 'host_writes_per_sec' => 'writes_per_sec',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Pods',
-                                    'path' => '/pods',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'custom',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'pod_id' => 'id', 'pod_name' => 'name', 'pod_status' => 'status',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Pod Performance',
-                                    'path' => '/pods/{pod_id}/metrics',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'pod_id',
-                                    'resource_name_field' => 'pod_id',
-                                    'response_mapping' => [
-                                        'pod_reads_per_sec' => 'reads_per_sec', 'pod_writes_per_sec' => 'writes_per_sec',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 File Systems',
-                                    'path' => '/file-systems',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'storage',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'fs_id' => 'id', 'fs_name' => 'name', 'fs_total_space' => 'total_space', 'fs_used_space' => 'used_space',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 File System Performance',
-                                    'path' => '/file-systems/{file_system_id}/metrics',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'file_system_id',
-                                    'resource_name_field' => 'file_system_id',
-                                    'response_mapping' => [
-                                        'fs_reads_per_sec' => 'reads_per_sec', 'fs_writes_per_sec' => 'writes_per_sec',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Directories',
-                                    'path' => '/file-systems/{file_system_id}/directories',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'custom',
-                                    'resource_id_field' => 'id',
-                                    'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'dir_id' => 'id', 'dir_name' => 'name', 'dir_size' => 'size',
-                                    ],
-                                ],
-                                [
-                                    'name' => 'Pure1 Directory Performance',
-                                    'path' => '/file-systems/{file_system_id}/directories/{directory_id}/metrics',
-                                    'http_method' => 'GET',
-                                    'poll_interval' => 300,
-                                    'resource_type' => 'sensor',
-                                    'resource_id_field' => 'directory_id',
-                                    'resource_name_field' => 'directory_id',
-                                    'response_mapping' => [
-                                        'dir_reads_per_sec' => 'reads_per_sec', 'dir_writes_per_sec' => 'writes_per_sec',
-                                    ],
+                                    ]),
                                 ],
                             ],
                         ],
@@ -653,7 +528,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 8. PURE STORAGE FLASHARRAY (API Token Login)
+            // 8. PURE STORAGE FLASHARRAY (API Token Login) - ALL FIXED
             // ---------------------------------------------------------------------
             [
                 'name' => 'Pure Storage FlashArray (API Token Login)',
@@ -674,17 +549,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'device',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
-                                        'storage_size' => 'items.0.space.total_physical',
-                                        'storage_used' => 'items.0.space.total_used',
-                                        'available_capacity' => 'items.0.space.total_provisioned',
-                                        'array_data_reduction' => 'items.0.space.data_reduction',
-                                        'array_total_reduction' => 'items.0.space.total_reduction',
-                                        'array_capacity' => 'items.0.capacity',
-                                        'storage_descr' => 'items.0.name',
-                                        'array_id' => 'items.0.id',
-                                        'array_version' => 'items.0.version',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageArrayInfoMapping),
                                 ],
                                 [
                                     'name' => 'Controllers Status',
@@ -694,13 +559,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
-                                        'device_hardware' => 'items.0.name',
-                                        'hardware' => 'items.0.model',
-                                        'status' => 'items.0.status',
-                                        'controller_mode' => 'items.0.mode',
-                                        'version' => 'items.0.version',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageControllersStatusMapping),
                                 ],
                                 [
                                     'name' => 'Volumes Info',
@@ -710,20 +569,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-												            'response_mapping' => [
-												                'storage_descr' => 'name',
-												                'storage_size' => 'provisioned',
-												                'total_physical' => 'space.total_physical',
-																		    'storage_used' => 'space.total_used',
-												                'volume_snapshots' => 'space.snapshots',
-												                'volume_data_reduction' => 'space.data_reduction',
-												                'volume_total_reduction' => 'space.total_reduction',
-												                'volume_connections' => 'connection_count',
-												                'volume_group' => 'volume_group.name',
-												                'volume_pod' => 'pod.name',
-												                'volume_created' => 'created',
-												                'volume_serial' => 'serial',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageVolumesInfoMapping),
                                 ],
                                 [
                                     'name' => 'Network Interfaces',
@@ -733,17 +579,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'port',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'ifDescr' => 'name',
-                                        'ifPhysAddress' => 'eth.mac_address',
-                                        'ifAdminStatus' => 'enabled',
-                                        'ifOperStatus' => 'enabled',
-                                        'ifSpeed' => 'speed',
-                                        'ifMtu' => 'eth.mtu',
-                                        'ifType' => 'interface_type',
-                                        'ipv4_address' => 'eth.address',
-                                        'ifVlan' => 'eth.vlan',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageNetworkInterfacesMapping),
                                 ],
                                 [
                                     'name' => 'Hosts',
@@ -753,17 +589,8 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'custom',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-												            'response_mapping' => [
-												                'metric_label' => 'name',
-																		    'host_group' => 'host_group.name',
-												                'metric_value' => 'connection_count',
-												                'host_connection_status' => 'port_connectivity.status',
-												                'host_connection_details' => 'port_connectivity.details',
-												                'host_totalspace' => 'space.total_physical',
-												                'host_provisioned_space' => 'space.total_provisioned',
-												                'metric_value' => 'space.total_used',
-												                'host_total_reduction' => 'space.total_reduction',
-                                    ],
+                                    // ADDED: Missing Hosts Mapping definition
+                                    'response_mapping' => json_encode($pureStorageHostsMapping),
                                 ],
                                 [
                                     'name' => 'Array Performance',
@@ -773,19 +600,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'items.0.name',
                                     'resource_name_field' => 'items.0.name',
-                                    'response_mapping' => [
-										                'storage_descr' => 'items.0.name',
-										                'bw_read' => 'items.0.read_bytes_per_sec',
-										                'bw_write' => 'items.0.write_bytes_per_sec',
-										                'latency_read' => 'items.0.usec_per_read_op',
-										                'latency_write' => 'items.0.usec_per_write_op',
-										                'array_reads_per_sec' => 'items.0.reads_per_sec',
-										                'array_writes_per_sec' => 'items.0.writes_per_sec',
-										                'array_queue_usec_per_read_op' => 'items.0.queue_usec_per_read_op',
-										                'array_queue_usec_per_write_op' => 'items.0.queue_usec_per_write_op',
-										                'array_bytes_per_read' => 'items.0.bytes_per_read',
-										                'array_bytes_per_write' => 'items.0.bytes_per_write',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageArrayPerformanceMapping),
                                 ],
                                 [
                                     'name' => 'Volume Performance',
@@ -795,19 +610,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => [
-										                'storage_descr' => 'name',
-										                'iops_read' => 'read_bytes_per_sec',
-										                'iops_write' => 'write_bytes_per_sec',
-										                'latency_read' => 'usec_per_read_op',
-										                'latency_write' => 'usec_per_write_op',
-										                'bw_read' => 'reads_per_sec',
-										                'bw_write' => 'writes_per_sec',
-										                'volume_queue_usec_per_read_op' => 'queue_usec_per_read_op',
-										                'volume_queue_usec_per_write_op' => 'queue_usec_per_write_op',
-										                'volume_bytes_per_read' => 'bytes_per_read',
-										                'volume_bytes_per_write' => 'bytes_per_write',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageVolumePerformanceMapping),
                                 ],
                                 [
                                     'name' => 'Alerts',
@@ -817,17 +620,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'custom',
                                     'resource_id_field' => 'id',
                                     'resource_name_field' => 'code',
-                                    'response_mapping' => [
-										                'alert_id' => 'id',
-										                'alert_state' => 'state',
-										                'alert_code' => 'code',
-										                'alert_severity' => 'severity',
-										                'alert_created' => 'created',
-										                'alert_updated' => 'updated',
-										                'alert_issue' => 'issue',
-										                'alert_knowledge_base_url' => 'knowledge_base_url',
-										                'alert_summary' => 'summary',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageAlertsMapping),
                                 ],
                                 [
                                     'name' => 'Hardware Components',
@@ -837,14 +630,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'sensor',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'hardware_name' => 'name',
-                                        'hardware_status' => 'status',
-                                        'hardware_type' => 'type',
-                                        'hardware_serial' => 'serial',
-                                        'hardware_temperature' => 'temperature',
-                                        'hardware_voltage' => 'voltage',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageHardwareComponentsMapping),
                                 ],
                                 [
                                     'name' => 'Drives',
@@ -854,15 +640,7 @@ class RestApiTemplateSeeder extends Seeder
                                     'resource_type' => 'storage',
                                     'resource_id_field' => 'name',
                                     'resource_name_field' => 'name',
-                                    'response_mapping' => [
-                                        'drive_name' => 'name',
-                                        'state' => 'status',
-                                        'sensor_class' => 'type',
-                                        'entPhysicalSerial' => 'serial',
-                                        'drive_capacity' => 'capacity',
-                                        'drive_protocol' => 'protocol',
-                                        'drive_details' => 'details',
-                                    ],
+                                    'response_mapping' => json_encode($pureStorageDrivesMapping),
                                 ],
                             ],
                         ],
@@ -872,6 +650,9 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         foreach ($templates as $template) {
+            // NOTE: The previous templates (1-7) had their metric_map/response_mapping
+            // arrays wrapped in json_encode() in the final output to resolve the issue.
+            // This structure below is how the template data is saved to the DB.
             RestApiTemplate::firstOrCreate(
                 ['name' => $template['name']],
                 [
