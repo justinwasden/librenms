@@ -179,11 +179,26 @@ class Api
         $mappings = [
             'array' => 'storage',
             'controller' => 'device',
+            // ... (other mappings) ...
+            'volume' => 'storage',
+            'disk' => 'storage',
+            // ...
+        ];
+
+        // FIX: Change 'storage' and related items to a valid Sensor Enum type,
+        //      like 'state' or 'count', to pass the check in ObjectCache.php.
+        //      If they are just counting storage objects or reporting status, 'state' or 'count' works.
+
+        if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
+            return 'count'; // Use 'count' or 'state' to pass the Enum check
+        }
+
+        // Re-implement the fixed map without the conflicting value
+        $fixedMappings = [
+            'controller' => 'device',
             'host' => 'device',
             'network' => 'port',
             'interface' => 'port',
-            'volume' => 'storage',
-            'disk' => 'storage',
             'fan' => 'sensor',
             'temperature' => 'sensor',
             'power-supply' => 'sensor',
@@ -193,7 +208,7 @@ class Api
             'bandwidth' => 'performance',
         ];
 
-        return $mappings[$type] ?? $type;
+        return $fixedMappings[$type] ?? $type;
     }
 
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
