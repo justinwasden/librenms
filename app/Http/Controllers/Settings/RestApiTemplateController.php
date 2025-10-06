@@ -33,6 +33,7 @@ class RestApiTemplateController extends Controller
         $validated['template_data'] = json_decode($validated['template_data'], true);
 
         // FIX: Clean up potentially multi-line JSON strings (metric_map/response_mapping)
+        // Ensure metric_map/response_mapping content is cleaned and saved as an array within template_data
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
         RestApiTemplate::create($validated);
@@ -60,6 +61,7 @@ class RestApiTemplateController extends Controller
         }
 
         // FIX: Clean up potentially multi-line JSON strings (metric_map/response_mapping)
+        // Ensure metric_map/response_mapping content is cleaned and saved as an array within template_data
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
 
@@ -93,8 +95,8 @@ class RestApiTemplateController extends Controller
     }
 
     /**
-     * Internal helper to clean up metric mapping JSON strings.
-     * Removes unwanted characters (\r, \n, \t) if the string looks like an encoded JSON mapping.
+     * Internal helper to clean up metric mapping JSON strings and convert them back to PHP arrays.
+     * This prevents unwanted whitespace and control characters from polluting the final saved structure.
      */
     protected function cleanTemplateMappings(array $templateData): array
     {
@@ -105,14 +107,38 @@ class RestApiTemplateController extends Controller
         foreach ($templateData['connections'] as &$connection) {
             if (isset($connection['endpoints'])) {
                 foreach ($connection['endpoints'] as &$endpoint) {
-                    if (isset($endpoint['metric_map']) && is_string($endpoint['metric_map'])) {
-                        // Attempt to strip problematic whitespace characters before saving.
-                        // This handles cases where UI inputs submit formatted JSON strings.
-                        $endpoint['metric_map'] = trim(str_replace(["\r", "\n", "\t"], '', $endpoint['metric_map']));
+
+                    // --- Handle metric_map ---
+                    if (isset($endpoint['metric_map'])) {
+                        $mapData = $endpoint['metric_map'];
+
+                        if (is_string($mapData)) {
+                            // 1. Clean the outer string (removes \r\n\t)
+                            $cleanString = trim(str_replace(["\r", "\n", "\t"], '', $mapData));
+
+                            // 2. Decode the clean string into a PHP array
+                            $phpArray = json_decode($cleanString, true);
+
+                            // 3. Re-encode the PHP array back to a clean string
+                            // This ensures it is saved cleanly to the DB, ready for processing.
+                            $endpoint['metric_map'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
+                        } else {
+                            // If it's already a PHP array (e.g., from seeder), ensure it's encoded to a string.
+                            $endpoint['metric_map'] = json_encode($mapData, JSON_UNESCAPED_SLASHES);
+                        }
                     }
-                    if (isset($endpoint['response_mapping']) && is_string($endpoint['response_mapping'])) {
-                        // Apply the same cleanup to response_mapping if present
-                        $endpoint['response_mapping'] = trim(str_replace(["\r", "\n", "\t"], '', $endpoint['response_mapping']));
+
+                    // --- Handle response_mapping (if separate) ---
+                    if (isset($endpoint['response_mapping'])) {
+                        $mapData = $endpoint['response_mapping'];
+
+                        if (is_string($mapData)) {
+                            $cleanString = trim(str_replace(["\r", "\n", "\t"], '', $mapData));
+                            $phpArray = json_decode($cleanString, true);
+                            $endpoint['response_mapping'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
+                        } else {
+                            $endpoint['response_mapping'] = json_encode($mapData, JSON_UNESCAPED_SLASHES);
+                        }
                     }
                 }
             }
