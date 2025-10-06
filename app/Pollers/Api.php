@@ -254,6 +254,11 @@ class Api
         $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
         if ($metricsToDelete->isNotEmpty()) {
             DB::table('device_api_metrics')
-             }
+            	  ->where('device_id', $this->device->device_id)
+                ->where('api_endpoint_id', $endpoint->id)
+                ->where('resource_id', $resourceId)
+                ->whereIn('metric_name', $metricsToDelete)
+                ->delete();
+        }
 		}
 }
