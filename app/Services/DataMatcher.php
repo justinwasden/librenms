@@ -13,61 +13,70 @@ class DataMatcher
      * Static mappings for common metrics
      * These are tried first before dynamic mappings
      */
-    protected array $staticMap = [
-		        'devices' => [
-		        'hostname' => 'hostname',
-		        'sysname' => 'sysName',
-		        'location' => 'location',
-		        'contact' => 'sysContact',
-		        'version' => 'version',
-            'hardware_model' => 'hardware',
-            'firmware_version' => 'version',
-            'firmware' => 'version',
-        		'os' => 'os',
-        		'model' => 'hardware',
-    		    'serial' => 'serial',
-		        'serial_number' => 'serial',
-            'status' => 'status',
-            'os_version' => 'version',
-            'total_capacity' => 'storage_total',
-            'used_capacity' => 'storage_used',
-            'free_capacity' => 'storage_free',
-            'uptime' => 'uptime',
-        ],
-		        'sensors' => [
-		        'temperature' => 'sensor_current',
-		        'voltage' => 'sensor_current',
-		        'temp' => 'sensor_current',
-		        'latency' => 'sensor_current',
-		        'iops' => 'sensor_current',
-		        'reads_per_sec' => 'sensor_current',
-		        'writes_per_sec' => 'sensor_current',
-		        'data_reduction' => 'sensor_current',
-		        'total_reduction' => 'sensor_current',
-            'power' => 'sensor_current',
-            'power_consumption' => 'sensor_current',
-            'current' => 'sensor_current',
-            'fan_speed' => 'sensor_current',
-            'fanspeed' => 'sensor_current',
-            'humidity' => 'sensor_current',
-        ],
-		        'ports' => [
-		        'interface_speed' => 'ifSpeed',
-		        'speed' => 'ifSpeed',
-		        'interface_status' => 'ifOperStatus',
-		        'oper_status' => 'ifOperStatus',
-		        'admin_status' => 'ifAdminStatus',
-		        'interface_name' => 'ifName',
-		        'interface_alias' => 'ifAlias',
-		        'interface_description' => 'ifDescr',
-		        'mtu' => 'ifMtu',
-			      'eth_mtu' => 'ifMtu',
-		        'eth_address' => 'ifPhysAddress',
-		        'eth_speed' => 'ifSpeed',
-		        'eth_mac_address' => 'ifPhysAddress',
+protected array $staticMap = [
+    'devices' => [
+        // Core device info (likely the array itself)
+        'status' => 'status',
+        'serial' => 'serial',
+        'serial_number' => 'serial',
+        'model' => 'hardware',
+        'hardware_model' => 'hardware',
+        'firmware_version' => 'version',
+        'firmware' => 'version',
+        'os_version' => 'version',
+        'version' => 'version',            // Explicit API field matching
+        'os' => 'os',                      // Explicit API field matching
+        'uptime' => 'uptime',
+        'hostname' => 'hostname',
+        'sysname' => 'sysName',
+        'location' => 'location',
+        'contact' => 'sysContact',
+        'raw_capacity' => 'storage_total',  // Map aggregate size to device storage
+    ],
+    'sensors' => [
+        // Generic sensor terms for base reading column
+        'temperature' => 'sensor_current',
+        'temp' => 'sensor_current',
+        'power' => 'sensor_current',
+        'voltage' => 'sensor_current',
+        'volt' => 'sensor_current',
+        'current' => 'sensor_current',
+        'fan_speed' => 'sensor_current',
+        'humidity' => 'sensor_current',
+        'latency' => 'sensor_current',      // Catch performance metrics
+        'iops' => 'sensor_current',         // Catch performance metrics
+        'reads_per_sec' => 'sensor_current',// Catch performance metrics
+        'writes_per_sec' => 'sensor_current',// Catch performance metrics
+        'data_reduction' => 'sensor_current',
+        'total_reduction' => 'sensor_current',
+    ],
+    'ports' => [
+        // Interface/Port metrics
+        'interface_speed' => 'ifSpeed',
+        'speed' => 'ifSpeed',
+        'interface_status' => 'ifOperStatus',
+        'oper_status' => 'ifOperStatus',
+        'admin_status' => 'ifAdminStatus',
+        'interface_name' => 'ifName',
+        'interface_alias' => 'ifAlias',
+        'interface_description' => 'ifDescr',
+        'mtu' => 'ifMtu',
 
-        ],
-    ];
+        // Explicit matches from your API responses/templates
+        'eth_mtu' => 'ifMtu',
+        'eth_address' => 'ifPhysAddress',
+        'eth_mac_address' => 'ifPhysAddress',
+        'eth_speed' => 'ifSpeed',
+    ],
+    'storage' => [
+        // Explicit storage metrics (for volumes, to update storage table)
+        'total_capacity' => 'storage_size',
+        'volume_provisioned' => 'storage_size',
+        'used_capacity' => 'storage_used',
+        'volume_used' => 'storage_used',
+        'free_capacity' => 'storage_free',
+    ],
+];
 
     /**
      * Sensor class mappings based on metric name patterns
