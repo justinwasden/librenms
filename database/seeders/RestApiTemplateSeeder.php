@@ -242,7 +242,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "device",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $arubaSystemInfoMapping),
+                                    "metric_map" => $arubaSystemInfoMapping,
                                 ],
                                 [
                                     "name" => "Interface Statistics",
@@ -250,7 +250,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "port",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $arubaInterfaceStatsMapping),
+                                    "metric_map" => $arubaInterfaceStatsMapping,
                                 ],
                             ],
                         ],
@@ -278,7 +278,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "processor",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $ciscoCpuUtilizationMapping),
+                                    "metric_map" => $ciscoCpuUtilizationMapping,
                                 ],
                                 [
                                     "name" => "Memory Statistics",
@@ -286,7 +286,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "mempool",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $ciscoMemoryStatsMapping),
+                                    "metric_map" => $ciscoMemoryStatsMapping,
                                 ],
                             ],
                         ],
@@ -315,7 +315,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "device",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $fortinetSystemStatusMapping),
+                                    "metric_map" => $fortinetSystemStatusMapping,
                                 ],
                                 [
                                     "name" => "CPU and Memory",
@@ -324,7 +324,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "sensor",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $fortinetResourceUsageMapping),
+                                    "metric_map" => $fortinetResourceUsageMapping,
                                 ],
                                 [
                                     "name" => "Session Statistics",
@@ -333,7 +333,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "custom",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $fortinetSessionStatsMapping),
+                                    "metric_map" => $fortinetSessionStatsMapping,
                                 ],
                                 [
                                     "name" => "VPN Status",
@@ -342,7 +342,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "custom",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $fortinetVpnStatusMapping),
+                                    "metric_map" => $fortinetVpnStatusMapping,
                                 ],
                                 [
                                     "name" => "Security Events (Disk Usage)",
@@ -351,7 +351,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "storage",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $fortinetSecurityEventsMapping),
+                                    "metric_map" => $fortinetSecurityEventsMapping,
                                 ],
                             ],
                         ],
@@ -379,7 +379,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "device",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $juniperSystemUptimeMapping),
+                                    "metric_map" => $juniperSystemUptimeMapping,
                                 ],
                                 [
                                     "name" => "Interface Statistics",
@@ -387,7 +387,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "method" => "GET",
                                     "resource_type" => "port",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $juniperInterfaceStatsMapping),
+                                    "metric_map" => $juniperInterfaceStatsMapping,
                                 ],
                             ],
                         ],
@@ -416,7 +416,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "device",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $paloAltoSystemInfoMapping),
+                                    "metric_map" => $paloAltoSystemInfoMapping,
                                 ],
                                 [
                                     "name" => "Interface Statistics",
@@ -425,7 +425,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "port",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $paloAltoInterfaceStatsMapping),
+                                    "metric_map" => $paloAltoInterfaceStatsMapping,
                                 ],
                                 [
                                     "name" => "Top Applications - Networking",
@@ -434,7 +434,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "poll_interval" => 300,
                                     "resource_type" => "custom",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $paloAltoTopAppsMapping),
+                                    "metric_map" => $paloAltoTopAppsMapping,
                                 ],
                             ],
                         ],
@@ -464,7 +464,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "device",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageArrayInfoMapping),
+                                    "metric_map" => $pureStorageArrayInfoMapping,
                                 ],
                                 [
                                     "name" => "Controllers Status",
@@ -475,7 +475,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageControllersStatusMapping),
+                                    "metric_map" => $pureStorageControllersStatusMapping,
                                 ],
                                 // Added missing Volume info endpoint with proper mappings
                                 [
@@ -487,7 +487,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageVolumesInfoMapping),
+                                    "metric_map" => $pureStorageVolumesInfoMapping,
                                 ],
                                 // Added missing Network Interfaces endpoint with proper mappings
                                 [
@@ -499,7 +499,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageNetworkInterfacesMapping),
+                                    "metric_map" => $pureStorageNetworkInterfacesMapping,
                                 ],
                                 // Added missing Hosts endpoint
                                 [
@@ -511,7 +511,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageHostsMapping),
+                                    "metric_map" => $pureStorageHostsMapping,
                                 ],
                                 // Added missing Array Performance endpoint
                                 [
@@ -523,7 +523,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageArrayPerformanceMapping),
+                                    "metric_map" => $pureStorageArrayPerformanceMapping,
                                 ],
                                 // Added missing Volume Performance endpoint
                                 [
@@ -535,7 +535,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageVolumePerformanceMapping),
+                                    "metric_map" => $pureStorageVolumePerformanceMapping,
                                 ],
                                 // Added missing Alerts endpoint
                                 [
@@ -547,7 +547,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "id",
                                     "resource_name_field" => "code",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageAlertsMapping),
+                                    "metric_map" => $pureStorageAlertsMapping,
                                 ],
                                 // Added missing Hardware Components endpoint
                                 [
@@ -559,7 +559,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageHardwareComponentsMapping),
+                                    "metric_map" => $pureStorageHardwareComponentsMapping,
                                 ],
                                 // Added missing Drives endpoint
                                 [
@@ -571,7 +571,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     // FIXED: Using json_encode()
-                                    "metric_map" => $pureStorageDrivesMapping),
+                                    "metric_map" => $pureStorageDrivesMapping,
                                 ],
                             ],
                         ],
