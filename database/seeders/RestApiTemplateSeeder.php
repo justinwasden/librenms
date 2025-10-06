@@ -601,7 +601,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "device",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageArrayInfoMapping),
+                                    "metric_map" => $pureStorageArrayInfoMapping,
                                 ],
                                 [
                                     "name" => "Controllers Status",
@@ -611,7 +611,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageControllersStatusMapping),
+                                    "metric_map" => $pureStorageControllersStatusMapping,
                                 ],
                                 [
                                     "name" => "Volumes Info",
@@ -621,7 +621,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "storage",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageVolumesInfoMapping),
+                                    "metric_map" => $pureStorageVolumesInfoMapping,
                                 ],
                                 [
                                     "name" => "Network Interfaces",
@@ -631,7 +631,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "port",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageNetworkInterfacesMapping),
+                                    "metric_map" => $pureStorageNetworkInterfacesMapping,
                                 ],
                                 [
                                     "name" => "Hosts",
@@ -641,7 +641,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "custom",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageHostsMapping),
+                                    "metric_map" => $pureStorageHostsMapping,
                                 ],
                                 [
                                     "name" => "Array Performance",
@@ -651,7 +651,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageArrayPerformanceMapping),
+                                    "metric_map" => $pureStorageArrayPerformanceMapping,
                                 ],
                                 [
                                     "name" => "Volume Performance",
@@ -661,7 +661,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageVolumePerformanceMapping),
+                                    "metric_map" => $pureStorageVolumePerformanceMapping,
                                 ],
                                 [
                                     "name" => "Alerts",
@@ -671,7 +671,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "custom",
                                     "resource_id_field" => "id",
                                     "resource_name_field" => "code",
-                                    "metric_map" => $pureStorageAlertsMapping),
+                                    "metric_map" => $pureStorageAlertsMapping,
                                 ],
                                 [
                                     "name" => "Hardware Components",
@@ -681,7 +681,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageHardwareComponentsMapping),
+                                    "metric_map" => $pureStorageHardwareComponentsMapping,
                                 ],
                                 [
                                     "name" => "Drives",
@@ -691,7 +691,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "storage",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageDrivesMapping),
+                                    "metric_map" => $pureStorageDrivesMapping,
                                 ],
                             ],
                         ],
