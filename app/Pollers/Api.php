@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\Collection; // Added for type hinting restApiConnections
 
 class Api
 {
@@ -243,17 +244,131 @@ class Api
                         'updated_at' => $collectedAt,
                     ];
                 }
-             catch (\Exception $e) {
+            } catch (\Exception $e) {
                 Log::error("Error processing metric {$metricName}: " . $e->getMessage());
             }
-          }
+        }
+
+        // Apply updates
+        foreach ($metricsToUpdate as $metric) {
+            $id = Arr::pull($metric, 'id');
+            DB::table('device_api_metrics')->where('id', $id)->update($metric);
+        }
+
+        // Apply inserts
+        if (!empty($metricsToInsert)) {
+            DB::table('device_api_metrics')->insert($metricsToInsert);
         }
 
         // Delete obsolete metrics
         $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
         if ($metricsToDelete->isNotEmpty()) {
             DB::table('device_api_metrics')
-				}
-			}
-}
+                ->where('device_id', $this->device->device_id)
+                ->where('api_endpoint_id', $endpoint->id)
+                ->where('resource_id', $resourceId)
+                ->whereIn('metric_name', $metricsToDelete)
+                ->delete();
+        }
+    }
 
+    // --- Placeholder Methods ---
+
+    /**
+     * Placeholder for the getSessionToken method.
+     * @param mixed $connection
+     * @return string|null
+     */
+    protected function getSessionToken($connection): ?string
+    {
+        // Actual implementation logic goes here
+        return null;
+    }
+
+    /**
+     * Placeholder for the checkRateLimit method.
+     * @param mixed $connection
+     * @return bool
+     */
+    protected function checkRateLimit($connection): bool
+    {
+        // Actual implementation logic goes here
+        return true;
+    }
+
+    /**
+     * Placeholder for the updateRateLimit method.
+     * @param mixed $connection
+     * @return void
+     */
+    protected function updateRateLimit($connection): void
+    {
+        // Actual implementation logic goes here
+    }
+
+    /**
+     * Placeholder for the replacePlaceholders method.
+     * @param string $url
+     * @param Device $device
+     * @return string
+     */
+    protected function replacePlaceholders(string $url, Device $device): string
+    {
+        // Actual implementation logic goes here
+        return $url;
+    }
+
+    /**
+     * Placeholder for the handleFailedEndpoint method.
+     * @param RestApiEndpoint $endpoint
+     * @return void
+     */
+    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
+    {
+        // Actual implementation logic goes here
+    }
+
+    /**
+     * Placeholder for the cleanupStaleResources method.
+     * @param RestApiEndpoint $endpoint
+     * @param array $currentResourceIds
+     * @return void
+     */
+    protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
+    {
+        // Actual implementation logic goes here
+    }
+
+    /**
+     * Placeholder for the matchDevicePort method.
+     * @param string $resourceName
+     * @return mixed
+     */
+    protected function matchDevicePort(string $resourceName)
+    {
+        // Actual implementation logic goes here
+        return $resourceName;
+    }
+
+    /**
+     * Placeholder for the matchDeviceSensor method.
+     * @param string $resourceName
+     * @return mixed
+     */
+    protected function matchDeviceSensor(string $resourceName)
+    {
+        // Actual implementation logic goes here
+        return $resourceName;
+    }
+
+    /**
+     * Placeholder for the matchDeviceStorage method.
+     * @param string $resourceName
+     * @return mixed
+     */
+    protected function matchDeviceStorage(string $resourceName)
+    {
+        // Actual implementation logic goes here
+        return $resourceName;
+    }
+}
