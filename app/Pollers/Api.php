@@ -4,6 +4,7 @@ namespace App\Pollers;
 
 use App\Models\Device;
 use App\Models\RestApiEndpoint;
+use App\Services\DataMatcher;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
