@@ -148,8 +148,17 @@ Route::middleware(['auth'])->group(function () {
 
         // REINSTATED: Global Credentials Management (Point 4)
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
-            Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
-            Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+        Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+        Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+        });
+
+        // Metric Field Mappings
+        Route::prefix('settings')->name('settings.')->group(function () {
+            Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class);
+            Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
+            Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
+            Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
+            Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
         });
 
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
