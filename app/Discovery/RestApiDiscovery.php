@@ -21,8 +21,6 @@ class RestApiDiscovery
             'ports' => 0,
             'storage' => 0,
             'sensors' => 0,
-            'processors' => 0,
-            'mempools' => 0,
         ];
 
         if (!$this->device->restApiConnections()->where('enabled', 1)->exists()) {
@@ -154,6 +152,7 @@ class RestApiDiscovery
                 'storage_used' => $used,
                 'storage_free' => $free,
                 'storage_perc' => $total > 0 ? round(($used / $total) * 100, 2) : 0,
+                'type' => 'volume',
             ]);
 
             Log::info("Discovered storage {$volume->resource_name} for device {$this->device->hostname}");
