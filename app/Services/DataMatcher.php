@@ -46,12 +46,6 @@ class DataMatcher
 		        'total_reduction' => 'sensor_current',
 		        'usec_per_read_op' => 'sensor_current',
 		        'usec_per_write_op' => 'sensor_current',
-		        'read_bytes_per_sec'    => 'sensor_current',
-		        'write_bytes_per_sec'   => 'sensor_current',
-		        'total_physical'        => 'sensor_current',
-		        'total_provisioned'     => 'sensor_current',
-		        'drive_status' => 'sensor_current',
-		        'drive_capacity' => 'sensor_current',
 		        'drive_protocol' => 'sensor_current',
 		        'bytes_per_op' => 'sensor_current',
 		        'bytes_per_read' => 'sensor_current',
@@ -65,12 +59,18 @@ class DataMatcher
 		        'service_usec_per_read_op' => 'sensor_current',
 		        'service_usec_per_write_op' => 'sensor_current',
 		        'others_per_sec' => 'sensor_current',
+		        'read_bytes_per_sec'    => 'sensor_current',
+		        'write_bytes_per_sec'   => 'sensor_current',
+		        'total_physical'        => 'sensor_current',
+		        'total_provisioned'     => 'sensor_current',
 		        'received_bytes_per_sec' => 'sensor_current',
 		        'transmitted_bytes_per_sec' => 'sensor_current',
 		        'received_packets_per_sec' => 'sensor_current',
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
 		        'total_used' => 'sensor_current',
+		        'drive_status' => 'sensor_current',
+		        'drive_capacity' => 'sensor_current',
             'tmp' => 'temperature',
 
 		    ],
@@ -145,9 +145,9 @@ class DataMatcher
         $this->errorCount = 0;
 
         $metrics = DB::table('device_api_metrics')
-            ->where('device_id', $device->device_id)
-            ->whereNull('matched_at')
-            ->get();
+			    ->where('device_id', $device->device_id)
+			    ->whereNull('matched_at') // <-- Selects all unmatched metrics
+			    ->get();
 
         if ($metrics->isEmpty()) {
             return $this->getStats();
@@ -212,11 +212,14 @@ class DataMatcher
         // Step 2: Try dynamic mapping from database - SIMPLIFIED
         // First try exact match with vendor/os
         $mapping = MetricFieldMapping::where('metric_name', $metricName)
-            ->where(function ($q) use ($resourceType) {
-                $q->where('resource_type', $resourceType)
-                  ->orWhereNull('resource_type');
-            })
-            ->where(function ($q) use ($deviceVendor) {
+    // REMOVE THIS BLOCK to test if resource_type is the filter:
+    /*
+    ->where(function ($q) use ($resourceType) {
+        $q->where('resource_type', $resourceType)
+          ->orWhereNull('resource_type');
+    })
+    */
+    ->where(function ($q) use ($deviceVendor) {
                 $q->where('vendor', $deviceVendor)
                   ->orWhereNull('vendor');
             })
