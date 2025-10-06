@@ -232,6 +232,12 @@ class DataMatcher
                 return;
             }
 
+            // Special handling for storage table
+            if ($mapping->librenms_table === 'storage') {
+                $this->updateStorage($device, $metric, $mapping, $transformedValue);
+                return;
+            }
+
             // Standard table update
             $this->updateStandardTable($device, $mapping, $transformedValue);
 
@@ -305,12 +311,49 @@ class DataMatcher
                 ->where('port_id', $port->port_id)
                 ->update([
                     $mapping->librenms_field => $value,
-                    'poll_time' => now(),
+                    'poll_time' => time(),
                 ]);
             
             Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
         } else {
             Log::warning("Port not found for metric {$metric->metric_name} (resource: {$metric->resource_id})");
+        }
+    }
+
+    /**
+     * Update a storage record
+     */
+    protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
+    {
+        // Try to find storage by resource_id or resource_name
+        $storage = DB::table('storage')
+            ->where('device_id', $device->device_id)
+            ->where(function ($q) use ($metric) {
+                $q->where('storage_descr', $metric->resource_name)
+                  ->orWhere('storage_descr', $metric->resource_id);
+            })
+            ->first();
+
+        if ($storage) {
+            $updateData = [
+                $mapping->librenms_field => $value,
+            ];
+
+            // If updating storage_used or storage_size, recalculate percentage
+            if (in_array($mapping->librenms_field, ['storage_used', 'storage_size'])) {
+                $size = $mapping->librenms_field === 'storage_size' ? $value : $storage->storage_size;
+                $used = $mapping->librenms_field === 'storage_used' ? $value : $storage->storage_used;
+                $updateData['storage_free'] = $size - $used;
+                $updateData['storage_perc'] = $size > 0 ? round(($used / $size) * 100, 2) : 0;
+            }
+
+            DB::table('storage')
+                ->where('storage_id', $storage->storage_id)
+                ->update($updateData);
+            
+            Log::debug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value}");
+        } else {
+            Log::warning("Storage not found for metric {$metric->metric_name} (resource: {$metric->resource_name})");
         }
     }
 
