@@ -53,6 +53,24 @@ class DataMatcher
 		        'drive_status' => 'sensor_current',
 		        'drive_capacity' => 'sensor_current',
 		        'drive_protocol' => 'sensor_current',
+		        'bytes_per_op' => 'sensor_current',
+		        'bytes_per_read' => 'sensor_current',
+		        'bytes_per_write' => 'sensor_current',
+		        'usec_per_read_op' => 'sensor_current',
+		        'usec_per_write_op' => 'sensor_current',
+		        'queue_usec_per_read_op' => 'sensor_current',
+		        'queue_usec_per_write_op' => 'sensor_current',
+		        'san_usec_per_read_op' => 'sensor_current',
+		        'san_usec_per_write_op' => 'sensor_current',
+		        'service_usec_per_read_op' => 'sensor_current',
+		        'service_usec_per_write_op' => 'sensor_current',
+		        'others_per_sec' => 'sensor_current',
+		        'received_bytes_per_sec' => 'sensor_current',
+		        'transmitted_bytes_per_sec' => 'sensor_current',
+		        'received_packets_per_sec' => 'sensor_current',
+		        'transmitted_packets_per_sec' => 'sensor_current',
+		        'total_errors_per_sec' => 'sensor_current',
+		        'total_used; => 'sensor_current',
 		    ],
 		    'ports' => [
 		        'interface_speed' => 'ifSpeed',
@@ -142,11 +160,12 @@ class DataMatcher
                 if ($mapping && !$mapping->isUnmatched()) {
                     $this->storeMetricValue($metric, $mapping, $device);
                     $this->markAsMatched($metric, $mapping);
-                    $this->matchedCount++;
+                    $this->matchedCount++;  // <-- This increments to 70
                 } else {
                     $this->unmatchedCount++;
                 }
             } catch (\Exception $e) {
+
                 $this->errorCount++;
                 Log::error("Error processing metric {$metric->metric_name} for device {$device->hostname}: {$e->getMessage()}");
             }
