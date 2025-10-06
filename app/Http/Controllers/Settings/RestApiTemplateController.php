@@ -31,9 +31,6 @@ class RestApiTemplateController extends Controller
         ]);
 
         $validated['template_data'] = json_decode($validated['template_data'], true);
-
-        // FIX: Clean up potentially multi-line JSON strings (metric_map/response_mapping)
-        // Ensure metric_map/response_mapping content is cleaned and saved as an array within template_data
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
         RestApiTemplate::create($validated);
@@ -55,28 +52,39 @@ class RestApiTemplateController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        // Handle template_data - it might come as JSON string or array
         if (is_string($validated['template_data'])) {
             $validated['template_data'] = json_decode($validated['template_data'], true);
         }
 
-        // FIX: Clean up potentially multi-line JSON strings (metric_map/response_mapping)
-        // Ensure metric_map/response_mapping content is cleaned and saved as an array within template_data
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
-
-        // Ensure boolean values are properly converted for checkbox fields
+        // Normalize booleans and add missing resource_type
         if (isset($validated['template_data']['connections'])) {
-            foreach ($validated['template_data']['connections'] as $cIndex => &$connection) {
-                // Convert disable_ssl_verify to boolean
+            foreach ($validated['template_data']['connections'] as &$connection) {
+                // Normalize SSL verify flag
                 if (isset($connection['disable_ssl_verify'])) {
-                    $connection['disable_ssl_verify'] = filter_var($connection['disable_ssl_verify'], FILTER_VALIDATE_BOOLEAN);
+                    $connection['disable_ssl_verify'] = filter_var(
+                        $connection['disable_ssl_verify'],
+                        FILTER_VALIDATE_BOOLEAN
+                    );
                 }
 
                 if (isset($connection['endpoints'])) {
-                    foreach ($connection['endpoints'] as $eIndex => &$endpoint) {
-                        // Convert enabled to boolean
+                    foreach ($connection['endpoints'] as &$endpoint) {
+                        // Normalize enabled field
                         $endpoint['enabled'] = filter_var($endpoint['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+                        if (empty($endpoint['resource_type'])) {
+                            $endpoint['resource_type'] = $endpoint['name'] ?? 'unknown';
+                        }
+
+                        if (isset($endpoint['metric_map']) && is_string($endpoint['metric_map']) && $this->isJson($endpoint['metric_map'])) {
+                            $endpoint['metric_map'] = json_decode($endpoint['metric_map'], true);
+                        }
+
+                        if (isset($endpoint['response_mapping']) && is_string($endpoint['response_mapping']) && $this->isJson($endpoint['response_mapping'])) {
+                            $endpoint['response_mapping'] = json_decode($endpoint['response_mapping'], true);
+                        }
                     }
                 }
             }
@@ -84,77 +92,39 @@ class RestApiTemplateController extends Controller
 
         $template->update($validated);
 
-        return redirect()->route('devices.rest-api.templates.edit', $template->id)
-                         ->with('success', 'Template updated successfully.');
+        return redirect()
+            ->route('devices.rest-api.templates.edit', $template->id)
+            ->with('success', 'Template updated successfully.');
     }
 
     public function destroy(RestApiTemplate $template)
     {
         $template->delete();
-        return redirect()->route('devices.rest-api.templates.index')->with('success', 'Template deleted successfully.');
+        return redirect()->route('devices.rest-api.templates.index')
+                         ->with('success', 'Template deleted successfully.');
     }
 
-    /**
-     * Internal helper to clean up metric mapping JSON strings and convert them back to PHP arrays.
-     * This prevents unwanted whitespace and control characters from polluting the final saved structure.
-     */
-    protected function cleanTemplateMappings(array $templateData): array
+    private function cleanTemplateMappings($data)
     {
-        if (!isset($templateData['connections'])) {
-            return $templateData;
+        if (!is_array($data)) {
+            $data = json_decode($data, true) ?? [];
         }
 
-        foreach ($templateData['connections'] as &$connection) {
-            if (isset($connection['endpoints'])) {
-                foreach ($connection['endpoints'] as &$endpoint) {
+        foreach ($data as $key => &$value) {
+            if (is_string($value) && $this->isJson($value)) {
+                $value = json_decode($value, true);
+            }
 
-                    // --- Handle metric_map ---
-                    if (isset($endpoint['metric_map'])) {
-                        $mapData = $endpoint['metric_map'];
-
-                        if (is_string($mapData)) {
-                            // 1. Aggressively strip all control characters and unnecessary whitespace
-                            $cleanString = preg_replace('/[\r\n\t]/', '', $mapData);
-
-                            // 2. Remove surrounding quotes and strip slashes, which fixes double-encoding
-                            if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
-                                $cleanString = substr($cleanString, 1, -1);
-                            }
-                            // FIX: Must run stripslashes to turn \" into " before final decode
-                            $cleanString = stripslashes($cleanString);
-
-                            // 3. Decode the resulting clean string into a PHP array
-                            $phpArray = json_decode($cleanString, true);
-
-                            // 4. Re-encode the PHP array back to a compact, clean string for database storage
-                            if ($phpArray !== null) {
-                                $endpoint['metric_map'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
-                            } else {
-                                // If decoding failed even after cleanup, default to saving the *original cleaned string*.
-                                $endpoint['metric_map'] = $cleanString;
-                            }
-                        }
+            if (is_array($value)) {
+                foreach ($value as $subKey => &$subValue) {
+                    if (is_string($subValue) && $this->isJson($subValue)) {
+                        $subValue = json_decode($subValue, true);
                     }
 
-                    // --- Handle response_mapping (if separate) ---
-                    if (isset($endpoint['response_mapping'])) {
-                        $mapData = $endpoint['response_mapping'];
-
-                        if (is_string($mapData)) {
-                            $cleanString = preg_replace('/[\r\n\t]/', '', $mapData);
-
-                            if (Str::startsWith($cleanString, '"') && Str::endsWith($cleanString, '"')) {
-                                $cleanString = substr($cleanString, 1, -1);
-                            }
-                            // FIX: Apply stripslashes here as well
-                            $cleanString = stripslashes($cleanString);
-
-                            $phpArray = json_decode($cleanString, true);
-
-                            if ($phpArray !== null) {
-                                $endpoint['response_mapping'] = json_encode($phpArray, JSON_UNESCAPED_SLASHES);
-                            } else {
-                                $endpoint['response_mapping'] = $cleanString;
+                    if (is_array($subValue)) {
+                        foreach ($subValue as $innerKey => &$innerValue) {
+                            if (is_string($innerValue) && $this->isJson($innerValue)) {
+                                $innerValue = json_decode($innerValue, true);
                             }
                         }
                     }
@@ -162,12 +132,18 @@ class RestApiTemplateController extends Controller
             }
         }
 
-        return $templateData;
+        return $data;
     }
 
-    /**
-     * Replace placeholders in array recursively
-     */
+    private function isJson($string)
+    {
+        if (!is_string($string)) {
+            return false;
+        }
+        json_decode($string);
+        return json_last_error() === JSON_ERROR_NONE;
+    }
+
     private function replacePlaceholdersInArray(array $data, \App\Models\Device $device): array
     {
         array_walk_recursive($data, function (&$value) use ($device) {
@@ -179,9 +155,6 @@ class RestApiTemplateController extends Controller
         return $data;
     }
 
-    /**
-     * Replace placeholders in string
-     */
     private function replacePlaceholdersInString(string $string, \App\Models\Device $device): string
     {
         // Support Laravel Blade-style placeholders: {{ $device->hostname }}
@@ -219,9 +192,6 @@ class RestApiTemplateController extends Controller
         return $string;
     }
 
-    /**
-     * Get session token for session-based authentication
-     */
     private function getSessionToken(array $connData, \App\Models\Device $device, $client, bool $verifySsl): ?string
     {
         if (!isset($connData['credential_id'])) {

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 class Api
 {
     protected Device $device;
+    protected DataMatcher $matcher;
     protected array $poller_options;
     protected Client $client;
     protected array $sessionTokens = [];
@@ -25,6 +26,8 @@ class Api
         $this->device = $device;
         $this->poller_options = $poller_options;
         $this->client = $client ?? new Client(['timeout' => 30, 'connect_timeout' => 10]);
+        $this->matcher = new DataMatcher();
+
     }
 
     public function poll()
@@ -96,7 +99,7 @@ class Api
 
                     $bodyContent = $response->getBody()->getContents();
                     $body = json_decode($bodyContent, true);
-                    
+
                     if (json_last_error() !== JSON_ERROR_NONE) {
                         Log::warning("Invalid JSON response from {$url}: " . json_last_error_msg());
                         continue;
@@ -124,17 +127,19 @@ class Api
                     Log::error("Unexpected error polling endpoint {$endpoint->name}: " . $e->getMessage());
                 }
             }
-        }
+       }
+
+       try {
+           $this->matcher->processDeviceMetrics($this->device);
+       } catch (\Exception $e) {
+           Log::error("DataMatcher failed for device {$this->device->hostname}: " . $e->getMessage());
+   		 }
     }
 
-    /**
-     * Process API response and store in device_api_metrics table
-     * Handles both single items and arrays of items
-     */
     protected function processApiResponse(RestApiEndpoint $endpoint, array $data, int $connectionId)
     {
-        $resourceType = $endpoint->resource_type ?? 'unknown';
-        
+        $resourceType = $this->normalizeResourceType($endpoint->resource_type);
+
         // Handle PureStorage API response format: { items: [...] }
         $items = [];
         if (isset($data['items']) && is_array($data['items'])) {
@@ -156,25 +161,49 @@ class Api
             $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
             $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
             $resourceId = $resourceId ?? $resourceName;
-            
+
             if ($resourceId) {
                 $currentResourceIds[] = $resourceId;
             }
-            
+
             $this->storeResourceMetrics($endpoint, $item, $resourceType, $connectionId);
         }
 
-        // Remove resources that are no longer in the API response
         $this->cleanupStaleResources($endpoint, $currentResourceIds);
     }
 
-    /**
-     * Store metrics for a single resource in device_api_metrics table
-     * Only updates metrics that have changed to reduce database writes
-     */
+    protected function normalizeResourceType(?string $resourceType): string
+		{
+		    if (!$resourceType) {
+		        return 'unknown';
+		    }
+
+		    $type = strtolower(trim($resourceType));
+
+		    // Define common mappings between endpoint resource types and LibreNMS data models
+		    $mappings = [
+		        'array'           => 'storage',
+		        'controller'      => 'device',
+		        'host'            => 'device',
+		        'network'         => 'port',
+		        'interface'       => 'port',
+		        'volume'          => 'storage',
+		        'disk'            => 'storage',
+		        'fan'             => 'sensor',
+		        'temperature'     => 'sensor',
+		        'power-supply'    => 'sensor',
+		        'latency'         => 'performance',
+		        'iops'            => 'performance',
+		        'throughput'      => 'performance',
+		        'bandwidth'       => 'performance',
+		    ];
+
+		    return $mappings[$type] ?? $type;
+		}
+
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
-        // Extract resource identifiers
+
         $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
         $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
 
@@ -183,13 +212,24 @@ class Api
             return;
         }
 
-        // Use name as ID fallback
         $resourceId = $resourceId ?? $resourceName;
         $resourceName = $resourceName ?? $resourceId;
 
         $collectedAt = Carbon::now();
-        
-        // Fetch existing metrics for comparison
+
+        switch ($resourceType) {
+				    case 'port':
+				        $resourceId = $this->matchDevicePort($resourceName);
+				        break;
+				    case 'sensor':
+				        $resourceId = $this->matchDeviceSensor($resourceName);
+				        break;
+				    case 'storage':
+				        $resourceId = $this->matchDeviceStorage($resourceName);
+				        break;
+				}
+
+
         $existingMetrics = DB::table('device_api_metrics')
             ->where('device_id', $this->device->device_id)
             ->where('api_endpoint_id', $endpoint->id)
@@ -245,10 +285,10 @@ class Api
                             'collected_at' => $collectedAt,
                             'updated_at' => $collectedAt,
                         ];
-                        
+
                         // Archive the changed metric to history table for trending
                         $this->archiveMetricToHistory($endpoint, $connectionId, $resourceType, $resourceId, $resourceName, $metricName, $numericValue, $stringValue, $collectedAt);
-                        
+
                         Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
                     } else {
                         // Value unchanged, just update timestamp
@@ -326,11 +366,42 @@ class Api
                 Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
             }
         }
+
+        try {
+				    $this->matcher->processDeviceMetrics($this->device);
+				} catch (\Exception $e) {
+				    Log::error("DataMatcher failed for device {$this->device->hostname}: " . $e->getMessage());
+				}
     }
 
-    /**
-     * Archive a metric change to the history table for trending
-     */
+    protected function matchDevicePort(string $name): ?int
+		{
+		    return DB::table('ports')
+		        ->where('device_id', $this->device->device_id)
+		        ->where(function ($q) use ($name) {
+		            $q->where('ifName', $name)
+		              ->orWhere('ifDescr', $name)
+		              ->orWhere('ifAlias', $name);
+		        })
+		        ->value('port_id');
+		}
+
+		protected function matchDeviceSensor(string $name): ?int
+		{
+		    return DB::table('sensors')
+		        ->where('device_id', $this->device->device_id)
+		        ->where('sensor_descr', 'like', "%{$name}%")
+		        ->value('sensor_id');
+		}
+
+		protected function matchDeviceStorage(string $name): ?int
+		{
+		    return DB::table('storage')
+		        ->where('device_id', $this->device->device_id)
+		        ->where('storage_descr', 'like', "%{$name}%")
+		        ->value('storage_id');
+		}
+
     protected function archiveMetricToHistory(
         RestApiEndpoint $endpoint,
         int $connectionId,
@@ -362,9 +433,6 @@ class Api
         }
     }
 
-    /**
-     * Remove resources that no longer exist in the API response
-     */
     protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
     {
         if (empty($currentResourceIds)) {
