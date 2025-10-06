@@ -110,6 +110,17 @@ protected array $staticMap = [
 		    'ratio' => 'ratio',
 		    'capacity' => 'storage',
 		    'space' => 'storage',
+		    'iops' => 'count',
+		    'reads_per_sec' => 'count',
+		    'writes_per_sec' => 'count',
+		    'latency' => 'delay',
+		    'usec_per_op' => 'delay',
+		    'reduction' => 'ratio',
+		    'ratio' => 'ratio',
+		    'capacity' => 'storage',
+		    'space' => 'storage',
+		    'connections' => 'count',
+		    'snapshots' => 'count',
     ];
 
     protected int $matchedCount = 0;
