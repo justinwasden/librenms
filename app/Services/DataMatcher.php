@@ -136,16 +136,15 @@ class DataMatcher
 		    'usec_per_op' => 'delay',
 		    'reduction' => 'ratio',
 		    'ratio' => 'ratio',
-		    'capacity' => 'storage',
-		    'space' => 'storage',
-		    'connections' => 'count',
+		    'capacity' => 'count',
+		    'space' => 'count',
+		    'nvb' => 'state',
+		    'bay' => 'state',
+		    'provisioned' => 'count',		    'connections' => 'count',
 		    'snapshots' => 'count',
 		    'usec' => 'delay',       // Catches usec_per_read_op, queue_usec, etc.
 				'sec' => 'count',         // Catches reads_per_sec, packets_per_sec, etc.
 				'tmp' => 'temperature',   // Catches CTx.TMPx
-				'nvb' => 'storage',
-				'bay' => 'storage',
-				'provisioned' => 'storage',
         'reads' => 'count',
         'writes' => 'count',
 		];
@@ -617,10 +616,17 @@ class DataMatcher
         ];
 
         foreach ($this->sensorClassMap as $keyword => $class) {
-            if (str_contains($metricName, $keyword)) {
-                return $class;
-            }
-        }
+		        if (str_contains($metricName, $keyword)) {
+		            // Validate against LibreNMS\Enum\Sensor
+		            $valid = [
+		                'temperature', 'voltage', 'current', 'power', 'fanspeed',
+		                'humidity', 'frequency', 'signal', 'load', 'state',
+		                'count', 'delay', 'ratio'
+		            ];
+
+		            return in_array($class, $valid) ? $class : 'state';
+		        }
+    }
 
         return 'state'; // Default fallback
     }
