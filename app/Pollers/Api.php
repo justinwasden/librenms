@@ -243,10 +243,11 @@ class Api
                         'updated_at' => $collectedAt,
                     ];
                 }
-            } catch (\Exception $e) {
+             catch (\Exception $e) {
                 Log::error("Error processing metric {$metricName}: " . $e->getMessage());
-            }
-        }
+       	     }
+        		}
+      	}
 
         // Delete obsolete metrics
         $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
