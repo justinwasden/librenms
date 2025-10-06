@@ -243,7 +243,7 @@ class Api
                         'updated_at' => $collectedAt,
                     ];
                 }
-            } catch (\Exception $e) {
+             catch (\Exception $e) {
                 Log::error("Error processing metric {$metricName}: " . $e->getMessage());
             }
         }
@@ -252,6 +252,7 @@ class Api
         $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
         if ($metricsToDelete->isNotEmpty()) {
             DB::table('device_api_metrics')
+				}
+			}
 }
-}
-}
+
