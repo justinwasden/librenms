@@ -226,30 +226,29 @@ class Api
     }
 
 	protected function normalizeResourceType(?string $resourceType): string
-		{
-		    if (!$resourceType) return 'unknown';
+{
+    if (!$resourceType) return 'unknown';
 
-		    $type = strtolower(trim($resourceType));
+    $type = strtolower(trim($resourceType));
 
-		    // Normalize problematic types to valid enum values
-		    if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
-		        return 'count'; // or 'state' depending on your use case
-		    }
+    if (str_contains($type, 'network') || str_contains($type, 'interface') || $type === 'port') {
+        return 'port';
+    }
+
+    if (str_contains($type, 'drive') || str_contains($type, 'storage') || $type === 'volume') {
+        return 'storage';
+    }
+
+    // Default mappings for other components for entity creation
+    if (str_contains($type, 'controller')) {
+        return 'device'; // This maps to the 'device' case in storeResourceMetrics
+    }
+
 
 		    // Valid enum mappings
 		    $validMappings = [
 		        'controller'     => 'device',
 		        'host'           => 'device',
-		        'network'        => 'port',
-		        'network'        => 'ports',
-		        'network-interface' => 'port',
-		        'network-interface' => 'ports',
-		        'network-interfaces' => 'port',
-		        'network-interfaces' => 'ports',
-		        'eth'			       => 'port',
-		        'eth'			       => 'ports',
-		        'interface'      => 'port',
-		        'interface'      => 'ports',
 		        'fan'            => 'fanspeed',
 		        'temperature'    => 'temperature',
 		        'power-supply'   => 'power',
@@ -282,14 +281,14 @@ class Api
 		    $itemDataForEntity['serial'] = data_get($item, 'serial') ?? null;
 		    $itemDataForEntity['model'] = data_get($item, 'model') ?? null;
 
-		    if ($resourceType === 'port' || $resourceType === 'interface') {
-		        // Need to extract deeply nested port/eth data for creation
-		        $ethData = data_get($item, 'eth') ?? [];
-		        $portDataForEntity = array_merge($itemDataForEntity, $item); // Merge all data, keeping type hint
-		        $portDataForEntity['eth'] = $ethData;
-		        // NOTE: The previous call passed 4 args. The fixed functions use 2 or 3.
-                // The provided function in the prompt used 2, so let's stick to that for storePortData
-		        $this->storePortData($this->device, $portDataForEntity);
+		    if ($resourceType === 'port') {
+				    // Need to extract deeply nested port/eth data for creation
+				    $ethData = data_get($item, 'eth') ?? [];
+				    $portDataForEntity = array_merge($itemDataForEntity, $item);
+				    $portDataForEntity['eth'] = $ethData;
+				    // NOTE: We don't need to check for 'interface' anymore if normalizeResourceType handles the alias
+				    $this->storePortData($this->device, $portDataForEntity);
+				}
 		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
 		        // Drives/Volumes should be created in the storage table
 		        $this->storeDriveStorageData($this->device, $itemDataForEntity);
