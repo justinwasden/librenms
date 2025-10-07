@@ -222,7 +222,7 @@
 												            </a>
 												        </li>
 												        <li>
-												            <a href="{{ route('services.metric-field-mappings.index') }}">
+												            <a href="{{ route('settings.metric-field-mappings.index') }}">
 												                <i class="fa fa-sliders fa-fw fa-lg" aria-hidden="true"></i> {{ __('Metric Field Mappings') }}
 												            </a>
 												        </li>
