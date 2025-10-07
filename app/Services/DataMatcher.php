@@ -449,7 +449,7 @@ class DataMatcher
     protected function updateSensor(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
         // Determine the sensor class and index for unique identification
-        $sensorClass = $this->determineSensorClass($metric->metric_name);
+        $sensorClass = $this->determineResourceClass($mapping->librenms_table, $metric->metric_name);
         $sensorIndex = $this->generateSensorIndex($metric);
         $resourceName = $metric->resource_name ?? $metric->resource_id;
 
@@ -460,48 +460,45 @@ class DataMatcher
             ->where('sensor_index', $sensorIndex)
             ->first();
 
-        $collectedAt = now();
+        $collectedAt = $metric->collected_at;
         $isNumericValue = is_numeric($metric->value) && $metric->value !== null;
 
         $data = [
-            // Only use the numeric 'value' column from device_api_metrics for sensor_current
-            'sensor_current' => $isNumericValue ? $metric->value : ($sensor->sensor_current ?? null),
+            // Only set sensor_current if the API provided a usable numeric value
+            'sensor_current' => $isNumericValue ? (float)$metric->value : ($sensor->sensor_current ?? null),
             'sensor_prev' => $sensor->sensor_current ?? null,
             'lastupdate' => $collectedAt,
         ];
 
-        // Custom handling for status strings (like 'healthy' or 'unused')
-        // We update the sensor's description or use a dedicated string column if available.
-        if (!$isNumericValue) {
-            // Use the string_value for descriptive status on the sensor
-            // We prepend the resource name to the string for clarity in the UI.
+        // Use the string_value for descriptive status on the sensor if it's a non-numeric status metric
+        if (!$isNumericValue && $metric->string_value !== null && $mapping->librenms_field === 'sensor_current') {
+            // Write the status string to sensor_descr or another available string field
             $data['sensor_descr'] = "{$resourceName} Status: {$metric->string_value}";
-        } else {
-             // If a numeric value exists, use the original resource name for the description
+        } elseif (!$sensor) {
+             // If creating a new sensor, set the initial description from the resource name
              $data['sensor_descr'] = $resourceName;
         }
+
 
         if ($sensor) {
             DB::table('sensors')
                 ->where('sensor_id', $sensor->sensor_id)
                 ->update($data);
-
-            $this->logDebug("Updated sensor {$sensorClass} ({$sensorIndex}) = " . ($data['sensor_current'] ?? $data['sensor_descr']) . " for device {$device->hostname}");
+            $this->logDebug("Updated sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
         } else {
             // Create new sensor
             DB::table('sensors')->insert(array_merge($data, [
                 'device_id' => $device->device_id,
                 'sensor_class' => $sensorClass,
-                'sensor_type' => 'rest-api', // Indicates REST API source
+                'sensor_type' => 'rest-api',
                 'sensor_index' => $sensorIndex,
-                'sensor_oid' => $metric->metric_name, // Store the metric name as the OID identifier
+                'sensor_oid' => $metric->metric_name,
                 'poller_type' => 'rest-api',
             ]));
-
             $this->logDebug("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
         }
 
-        // CRITICAL FIX: Ensure the metric is marked as matched after a successful DB operation
+        // CRITICAL: Mark as matched only on success to allow metrics to be deleted
         $this->markAsMatched($metric, $mapping);
     }
 
@@ -537,36 +534,44 @@ class DataMatcher
 
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
-        // Try to find storage by resource_id or resource_name
+        $resourceName = $metric->resource_name ?? $metric->resource_id;
+
         $storage = DB::table('storage')
             ->where('device_id', $device->device_id)
-            ->where(function ($q) use ($metric) {
-                $q->where('storage_descr', $metric->resource_name)
-                  ->orWhere('storage_descr', $metric->resource_id);
+            ->where(function ($q) use ($resourceName) {
+                $q->where('storage_descr', $resourceName)
+                  ->orWhere('storage_descr', 'like', "%{$resourceName}%");
             })
             ->first();
 
         if ($storage) {
             $updateData = [
-                $mapping->librenms_field => $value,
+                $mapping->librenms_field => (float)$value, // Explicitly cast to float/double for large numbers
             ];
 
-            // If updating storage_used or storage_size, recalculate percentage
-            if (in_array($mapping->librenms_field, ['storage_used', 'storage_size'])) {
-                $size = ($mapping->librenms_field === 'storage_size') ? $value : ($storage->storage_size ?? 0);
-                $used = ($mapping->librenms_field === 'storage_used') ? $value : ($storage->storage_used ?? 0);
+            // Recalculate percentage if updating size or used
+            $isCapacityMetric = in_array($mapping->librenms_field, ['storage_size', 'storage_used']);
+
+            if ($isCapacityMetric) {
+                // Read current or incoming values
+                $size = ($mapping->librenms_field === 'storage_size') ? (float)$value : (float)($storage->storage_size ?? 0);
+                $used = ($mapping->librenms_field === 'storage_used') ? (float)$value : (float)($storage->storage_used ?? 0);
 
                 $updateData['storage_free'] = $size - $used;
-                $updateData['storage_perc'] = $size > 0 ? round(($used / $size) * 100, 2) : 0;
+                $updateData['storage_perc'] = ($size > 0) ? round(($used / $size) * 100, 2) : 0;
             }
 
+            // Update the record
             DB::table('storage')
                 ->where('storage_id', $storage->storage_id)
                 ->update($updateData);
 
-            Log::debug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value}");
+            $this->logDebug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value} for device {$device->hostname}");
+
+            // CRITICAL: Mark as matched only on success to allow metrics to be deleted
+            $this->markAsMatched($metric, $mapping);
         } else {
-            Log::warning("Storage not found for metric {$metric->metric_name} (resource: {$metric->resource_name})");
+            $this->logWarning("Storage not found for metric {$metric->metric_name} (resource: {$resourceName}) on device {$device->hostname}");
         }
     }
 
