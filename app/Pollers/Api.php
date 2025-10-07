@@ -464,14 +464,18 @@ class Api
 
 		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
-		    // FIX: Default 'enabled' to true if missing, instead of exiting on null.
-		    $enabled_status = $item_data['enabled'] ?? true;
+		    // Safely retrieve nested data, defaulting to an empty array if 'eth' is missing.
+		    $eth_data = data_get($item_data, 'eth', []);
 
-		    // Ensure nested fields are accessed correctly based on API response structure
-		    $mac_address = $item_data['eth']['mac_address'] ?? null;
-		    $mtu = $item_data['eth']['mtu'] ?? 1500;
+		    // Use data_get for the status, defaulting to true
+		    $enabled_status = data_get($item_data, 'enabled') ?? true;
 
-		    // Create a deterministic ifIndex
+		    // Safely extract fields
+		    $mac_address = $eth_data['mac_address'] ?? null;
+		    $mtu = $eth_data['mtu'] ?? 1500;
+		    $ifAlias = data_get($item_data, 'services.0'); // Safe access to first element of services array
+
+		    // Create a stable, deterministic ifIndex
 		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
 
 		    // Find existing port by name or MAC
@@ -486,20 +490,21 @@ class Api
 		        })
 		        ->first();
 
+		    // Safe fields for insert, ensuring compatibility with your schema
 		    $port_data = [
 		        'ifName'        => $resource_name,
 		        'ifDescr'       => $item_data['name'] ?? $resource_name,
-		        'ifAlias'       => $item_data['services'][0] ?? null,
-		        'ifType'        => 'ethernetCsmacd', // Standard Ethernet type
+		        'ifAlias'       => $ifAlias,
+		        'ifIndex'       => $ifIndex,
+		        'ifType'        => 'ethernetCsmacd', // Default to common type
 		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
 		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
-		        'ifSpeed'       => (int) ($item_data['speed'] ?? 0),
-		        'ifMtu'         => (int) $mtu,
+		        'ifSpeed'       => (int)($item_data['speed'] ?? 0),
+		        'ifMtu'         => (int)$mtu,
 		        'ifPhysAddress' => $mac_address,
-		        'poll_time'     => time(),
 		        'port_descr_type' => 'rest-api',
-		        'disabled'      => (int) ($enabled_status === false ? 1 : 0),
-		        'ifIndex'       => $ifIndex,
+		        'disabled'      => (int)($enabled_status === false ? 1 : 0),
+		        'poll_time'     => time(),
 		    ];
 
 		    if (!$existing_port) {
