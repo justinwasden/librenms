@@ -197,25 +197,29 @@
 										    </li>
 
 										    <li role="presentation" class="divider"></li>
+												<li class="dropdown-submenu">
+												    #
+												        <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
+												    </a>
+												    <ul class="dropdown-menu">
+												        <li>
+												            {{ route(
+												                <i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
+												            </a>
+												        </li>
+												        <li>
+												            {{ route(
+												                <i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
+												            </a>
+												        </li>
+												        <li>
+												            {{ route(
+												                <i class="fa fa-sliders fa-fw fa-lg" aria-hidden="true"></i> {{ __('Metric Field Mappings') }}
+												            </a>
+												        </li>
+												    </ul>
+												</li>
 
-										    <li class="dropdown-submenu">
-										        #
-										            <                {{ route(
-										                    <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
-										                </a>
-										            </li>
-										            <li>
-										                {{ route(
-										                    <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
-										                </a>
-										            </li>
-										            <li>
-															    {{ route(
-															        <i class="fa fa-sliders fa-fw fa-lg"></i> {{ __('Metric Field Mappings') }}
-															    </a>
-															</li>
-										        </ul>
-										    </li>
 										@endadmin
 
                     </ul>
