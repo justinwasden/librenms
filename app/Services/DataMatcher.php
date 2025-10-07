@@ -261,20 +261,6 @@ class DataMatcher
         Log::debug("Creating placeholder for unmatched metric: {$metricName}");
         return $this->createPlaceholderMapping($metric, $device);
     }
-//    p rotected function findStaticMapping(string $metricName): ?array
-//		{
-//			    $normalized = str_replace(['-', ' '], '_', strtolower($metricName));
-//
-//			    foreach ($this->staticMap as $table => $fields) {
-//			        foreach ($fields as $key => $field) {
-//			            $keyNormalized = str_replace(['-', ' '], '_', strtolower($key));
-//			            if ($normalized === $keyNormalized || str_contains($normalized, $keyNormalized)) {
-//			                return ['table' => $table, 'field' => $field];
-//			            }
-//			        }
-//			    }
-//			    return null;
-//		}
 
     protected function storeMetricValue($metric, MetricFieldMapping $mapping, Device $device): void
     {

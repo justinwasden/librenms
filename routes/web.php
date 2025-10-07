@@ -156,8 +156,10 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('settings')->name('settings.')->group(function () {
             Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
                 ->parameters(['metric-field-mappings' => 'mapping']);
-    				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
-		    		Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
+            Route::post('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
+            Route::get('metric-field-mappings/export', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'exportToJson'])->name('metric-field-mappings.export');
+
+            // Existing routes continue below:
             Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
             Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
