@@ -288,7 +288,7 @@ class Api
 				    $portDataForEntity['eth'] = $ethData;
 				    // NOTE: We don't need to check for 'interface' anymore if normalizeResourceType handles the alias
 				    $this->storePortData($this->device, $portDataForEntity);
-				}
+
 		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
 		        // Drives/Volumes should be created in the storage table
 		        $this->storeDriveStorageData($this->device, $itemDataForEntity);
