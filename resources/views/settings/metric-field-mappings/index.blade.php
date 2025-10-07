@@ -27,29 +27,32 @@
             @endif
 
             {{-- Action Buttons --}}
-            <div class="row mb-3">
-                <div class="col-md-12">
-                    <a href="{{ route('settings.metric-field-mappings.create') }}" class="btn btn-primary">
-                        <i class="fa fa-plus"></i> Create New Mapping
-                    </a>
+						<div class="row mb-3">
+						    <div class="col-md-12">
+						        {{ route(
+						            <i class="fa fa-plus"></i> Create New Mapping
+						        </a>
 
-                    <button type="button" class="btn btn-success" data-toggle="modal" data-target="#runMatchingModal">
-                        <i class="fa fa-refresh"></i> Run Matching
-                    </button>
+						        <button type="button" class="btn btn-success" data-toggle="modal" data-target="#runMatchingModal">
+						            <i class="fa fa-refresh"></i> Run Matching
+						        </button>
 
-                    <button type="button" class="btn btn-warning" onclick="confirmBulkDelete()">
-                        <i class="fa fa-trash"></i> Delete All Unmatched
-                    </button>
+						        <button type="button" class="btn btn-warning" onclick="confirmBulkDelete()">
+						            <i class="fa fa-trash"></i> Delete All Unmatched
+						        </button>
 
-										{{ route(
-										    @csrf
-										    <button type="submit" class="btn btn-sm btn-primary">Import from JSON</button>
-										</form>
+						        {{ route(
+						            @csrf
+						            <button type="submit" class="btn btn-sm btn-primary">
+						                <i class="fa fa-upload"></i> Import from JSON
+						            </button>
+						        </form>
 
-										{{ route(Export to JSON</a>
-
-                </div>
-            </div>
+						        {{ route(
+						            <i class="fa fa-download"></i> Export to JSON
+						        </a>
+						    </div>
+						</div>
 
             {{-- Filters --}}
             <div class="panel panel-default">
