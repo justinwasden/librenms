@@ -66,7 +66,7 @@ class DataMatcher
 		        'received_packets_per_sec' => 'sensor_current',
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
-		        'drive_status' => 'sensor_current',
+		        'drive_status' => 'sensor_status',
   	        'tmp' => 'sensor_current',
 
 		    ],
@@ -466,6 +466,12 @@ class DataMatcher
             'lastupdate' => now(),
         ];
 
+
+        if ($mapping->librenms_field === 'sensor_current' && !is_numeric($value)) {
+            $data['sensor_descr'] = $metric->resource_name . ' (' . $value . ')';
+            $data['sensor_current'] = null;
+        }
+
         if ($sensor) {
             DB::table('sensors')
                 ->where('sensor_id', $sensor->sensor_id)
@@ -536,8 +542,9 @@ class DataMatcher
 
             // If updating storage_used or storage_size, recalculate percentage
             if (in_array($mapping->librenms_field, ['storage_used', 'storage_size'])) {
-                $size = $mapping->librenms_field === 'storage_size' ? $value : $storage->storage_size;
-                $used = $mapping->librenms_field === 'storage_used' ? $value : $storage->storage_used;
+                $size = ($mapping->librenms_field === 'storage_size') ? $value : ($storage->storage_size ?? 0);
+                $used = ($mapping->librenms_field === 'storage_used') ? $value : ($storage->storage_used ?? 0);
+
                 $updateData['storage_free'] = $size - $used;
                 $updateData['storage_perc'] = $size > 0 ? round(($used / $size) * 100, 2) : 0;
             }
