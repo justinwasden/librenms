@@ -419,7 +419,7 @@ class Api
 		    $entPhysicalClass = $this->determineEntPhysicalClass($item_data['type'] ?? 'other');
 		    $entPhysicalIndex = $this->generateUniqueEntPhysicalIndex($device->device_id, $resource_id, $item_data);
 
-		    // NOTE: Removed all logic related to entPhysicalOperStatus to fix the schema error.
+		    // NOTE: last_discovered and entPhysicalOperStatus are removed to prevent SQLSTATE[42S22] errors.
 
 		    $physical_data = [
 		        'device_id'              => $device->device_id,
@@ -429,11 +429,22 @@ class Api
 		        'entPhysicalName'        => $item_data['name'] ?? $resource_name,
 		        'entPhysicalSerialNum'   => $item_data['serial'] ?? null,
 		        'entPhysicalModelName'   => $item_data['model'] ?? null,
-		        'last_discovered'        => Carbon::now(),
-		        // entPhysicalOperStatus is intentionally removed from insert data
+
+		        // The fields below are safely included based on your DESCRIBE output
+		        'entPhysicalHardwareRev' => $item_data['hw_revision'] ?? null,
+		        'entPhysicalFirmwareRev' => $item_data['fw_revision'] ?? null,
+		        'entPhysicalSoftwareRev' => $item_data['sw_revision'] ?? null,
+		        'entPhysicalAlias'       => $item_data['alias'] ?? null,
+		        'entPhysicalAssetID'     => $item_data['asset_id'] ?? null,
+		        'entPhysicalVendorType'  => $item_data['vendor_type'] ?? 'API-REST',
+		        'entPhysicalIsFRU'       => 'true', // Assuming API components are field-replaceable
+
+		        // Non-nullable integer fields
+		        'entPhysicalContainedIn' => 0,
+		        'entPhysicalParentRelPos' => -1,
 		    ];
 
-		    // Check for existing component using the generated stable index (primary key equivalent)
+		    // Check for existing component using the generated stable index
 		    $existing_component = DB::table('entPhysical')
 		        ->where('device_id', $device->device_id)
 		        ->where('entPhysicalIndex', $entPhysicalIndex)
@@ -450,6 +461,7 @@ class Api
 		        Log::debug("API Poller: Updated existing entPhysical {$resource_name} (ID: {$existing_component->entPhysical_id})");
 		    }
 		}
+
 		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
 		    // Logic extracted from DeviceApiPoller.php reference
