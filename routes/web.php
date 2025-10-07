@@ -168,26 +168,30 @@ Route::middleware(['auth'])->group(function () {
             Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
         });
 
-        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
-		        Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
-		        Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
-		        Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-			        ->parameters(['rest-api-templates' => 'template'])
-			        ->names([
-			        'index'   => 'rest-api.templates.index',
-			        'create'  => 'rest-api.templates.create',
-			        'store'   => 'rest-api.templates.store',
-			        'show'    => 'rest-api.templates.show',
-			        'edit'    => 'rest-api.templates.edit',
-			        'update'  => 'rest-api.templates.update',
-			        'destroy' => 'rest-api.templates.destroy',
-        ]);
+				    Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
 
-            // Test template endpoint
-            Route::post('rest-api-templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
-                 ->name('rest-api.templates.test');
+				    // Credentials Routes (Correctly placed under /settings/rest-api)
+				    Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+				    Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
 
-		    });
+				    // TEMPLATES Route (Correctly placed under /settings/rest-api)
+				    Route::resource('templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+				        ->parameters(['templates' => 'template'])
+				        ->names([
+				            'index'   => 'templates.index',
+				            'create'  => 'templates.create',
+				            'store'   => 'templates.store',
+				            'show'    => 'templates.show',
+				            'edit'    => 'templates.edit',
+				            'update'  => 'templates.update',
+				            'destroy' => 'templates.destroy',
+				        ]);
+
+				    // Test template endpoint
+				    Route::post('templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
+				         ->name('templates.test');
+				});
+
 
         Route::prefix('devices')->name('devices.')->group(function () {
         // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
