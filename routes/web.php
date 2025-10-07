@@ -150,6 +150,8 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
         Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
         Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
+				Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
         });
 
         // Metric Field Mappings
@@ -188,8 +190,6 @@ Route::middleware(['auth'])->group(function () {
 
 
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
-				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
-				Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
     });
 
     // fallback device routes
