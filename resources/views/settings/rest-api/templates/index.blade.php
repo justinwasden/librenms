@@ -144,7 +144,7 @@
 <div class="modal fade" id="createTemplateModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <form action="{{ route('devices.rest-api.templates.store') }}" method="POST">
+            <form action="{{ route('settings.rest-api.templates.store') }}" method="POST">
                 @csrf
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">
