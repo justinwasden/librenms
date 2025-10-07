@@ -207,7 +207,7 @@
 										    <li role="presentation" class="divider"></li>
 
 												<li class="dropdown-submenu">
-												    <a href="{{ route('api.poller.settings') }}">
+												    <a href="#">
 												        <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
 												    </a>
 												    <ul class="dropdown-menu">
