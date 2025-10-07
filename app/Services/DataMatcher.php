@@ -104,43 +104,43 @@ class DataMatcher
 		];
 
 		protected array $sensorClassMap = [
-			'temperature' => 'temperature',
-	    	'temp' => 'temperature',
-	    	'power' => 'power',
+					'temperature' 			=> 'temperature',
+	    		'temp' 							=> 'temperature',
+	    		'power' 						=> 'power',
         	'power_consumption' => 'power',
-			'voltage' => 'voltage',
-	    	'volt' => 'voltage',
-	    	'current' => 'current',
-			'fan_speed' => 'fanspeed',
-	    	'fanspeed' => 'fanspeed',
-        	'ampere' => 'current',
- 			'fan' => 'fanspeed',
-	    	'humidity' => 'humidity',
-	    	'frequency' => 'frequency',
-			'signal' => 'signal',
-	    	'load' => 'load',
-	    	'state' => 'state',
-			'status' => 'state',
-	    	'iops' => 'count',
-	    	'reads_per_sec' => 'count',
-			'writes_per_sec' => 'count',
-	    	'latency' => 'delay',
-	    	'delay' => 'delay',
-			'usec_per_op' => 'delay',
-	    	'reduction' => 'ratio',
-	    	'ratio' => 'ratio',
-			'capacity' => 'count',
-	    	'space' => 'count',
-	    	'nvb' => 'state',
-			'bay' => 'state',
-	    	'provisioned' => 'count',
-	    	'connections' => 'count',
-			'snapshots' => 'count',
-	    	'usec' => 'delay',
-			'sec' => 'count',
-			'tmp' => 'temperature',
-        	'reads' => 'count',
-        	'writes' => 'count',
+					'voltage' 					=> 'voltage',
+	   		 	'volt' 							=> 'voltage',
+	  	  	'current' 					=> 'current',
+					'fan_speed' 				=> 'fanspeed',
+	  	  	'fanspeed' 					=> 'fanspeed',
+        	'ampere' 						=> 'current',
+ 					'fan' 							=> 'fanspeed',
+	  	  	'humidity' 					=> 'humidity',
+	  	  	'frequency' 				=> 'frequency',
+					'signal' 						=> 'signal',
+	  	  	'load' 							=> 'load',
+	  	  	'state' 						=> 'state',
+					'status' 						=> 'state',
+	  	  	'iops' 							=> 'count',
+	  	  	'reads_per_sec' 		=> 'count',
+					'writes_per_sec'	  => 'count',
+	  	  	'latency' 					=> 'delay',
+	    		'delay' 						=> 'delay',
+					'usec_per_op' 			=> 'delay',
+	  	  	'reduction' 				=> 'ratio',
+	    		'ratio' 						=> 'ratio',
+					'capacity' 					=> 'count',
+	  	  	'space' 						=> 'count',
+	    		'nvb' 							=> 'state',
+					'bay' 							=> 'state',
+		    	'provisioned' 			=> 'count',
+	 		   	'connections' 			=> 'count',
+					'snapshots' 				=> 'count',
+	    		'usec' 							=> 'delay',
+					'sec' 							=> 'count',
+					'tmp' 							=> 'temperature',
+        	'reads' 						=> 'count',
+        	'writes' 						=> 'count',
 		];
 
 
@@ -503,34 +503,34 @@ class DataMatcher
     }
 
     protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
-	{
-		    $name = $this->normalizeResourceName($metric->resource_name);
-		    $id = $this->normalizeResourceName($metric->resource_id);
+		{
+			    $name = $this->normalizeResourceName($metric->resource_name);
+			    $id = $this->normalizeResourceName($metric->resource_id);
 
-		    $ports = DB::table('ports')
-		        ->where('device_id', $device->device_id)
-		        ->get();
+			    $ports = DB::table('ports')
+			        ->where('device_id', $device->device_id)
+			        ->get();
 
-		    foreach ($ports as $port) {
-		        $portKey = $this->normalizeResourceName($port->ifName)
-		            ?? $this->normalizeResourceName($port->ifDescr)
-		            ?? $this->normalizeResourceName($port->ifAlias);
+			    foreach ($ports as $port) {
+			        $portKey = $this->normalizeResourceName($port->ifName)
+			            ?? $this->normalizeResourceName($port->ifDescr)
+			            ?? $this->normalizeResourceName($port->ifAlias);
 
-		        if ($portKey && ($portKey === $name || $portKey === $id)) {
-		            DB::table('ports')
-		                ->where('port_id', $port->port_id)
-		                ->update([
-		                    $mapping->librenms_field => $value,
-		                    'poll_time' => time(),
-		                ]);
+			        if ($portKey && ($portKey === $name || $portKey === $id)) {
+			            DB::table('ports')
+			                ->where('port_id', $port->port_id)
+			                ->update([
+			                    $mapping->librenms_field => $value,
+			                    'poll_time' => time(),
+			                ]);
 
-		            Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
-		            return;
-		        }
-		    }
+			            Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
+			            return;
+			        }
+			    }
 
-		    Log::warning("No matching port found for {$metric->metric_name} on {$device->hostname}");
-	}
+			    Log::warning("No matching port found for {$metric->metric_name} on {$device->hostname}");
+		}
 
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
@@ -582,65 +582,67 @@ class DataMatcher
     }
 
     protected function determineSensorClass(string $metricName): string
-	{
-		    $metricName = strtolower($metricName);
+		{
+			    $metricName = strtolower($metricName);
 
-		    // Step 1: Direct keyword mapping from class property
-		    $validClasses = [
-		        'temperature', 'voltage', 'current', 'power', 'fanspeed',
-		        'humidity', 'frequency', 'signal', 'load', 'state',
-		        'count', 'delay', 'ratio'
-		    ];
+					Log::debug("Sensor class resolved for metric '{$metricName}' as '{$sensorClass}'");
 
-		    foreach ($this->sensorClassMap as $keyword => $class) {
-		        if (str_contains($metricName, $keyword)) {
-		            return in_array($class, $validClasses, true) ? $class : 'state';
-		        }
-		    }
+			    // Step 1: Direct keyword mapping from class property
+			    $validClasses = [
+			        'temperature', 'voltage', 'current', 'power', 'fanspeed',
+			        'humidity', 'frequency', 'signal', 'load', 'state',
+			        'count', 'delay', 'ratio'
+			    ];
 
-		    // Step 2: Fallback pattern-based classification
-		    $fallbackRules = [
-		        '/(_|^)latency($|_)/'       => 'delay',
-		        '/(_|^)delay($|_)/'         => 'delay',
-		        '/(_|^)time($|_)/'          => 'delay',
-		        '/(_|^)duration($|_)/'      => 'delay',
+			    foreach ($this->sensorClassMap as $keyword => $class) {
+			        if (str_contains($metricName, $keyword)) {
+			            return in_array($class, $validClasses, true) ? $class : 'state';
+			        }
+			    }
 
-		        '/(_|^)rate($|_)/'          => 'ratio',   // e.g. cache_miss_rate
-		        '/(_|^)percent($|_)/'       => 'ratio',
-		        '/(_|^)ratio($|_)/'         => 'ratio',
-		        '/(_|^)util($|_)/'          => 'ratio',
-		        '/(_|^)usage($|_)/'         => 'ratio',
+			    // Step 2: Fallback pattern-based classification
+			    $fallbackRules = [
+			        '/(_|^)latency($|_)/'       => 'delay',
+			        '/(_|^)delay($|_)/'         => 'delay',
+			        '/(_|^)time($|_)/'          => 'delay',
+			        '/(_|^)duration($|_)/'      => 'delay',
 
-		        '/(_|^)count($|_)/'         => 'count',   // e.g. packet_count
-		        '/(_|^)number($|_)/'        => 'count',
-		        '/(_|^)total($|_)/'         => 'count',
-		        '/(_|^)hits($|_)/'          => 'count',
-		        '/(_|^)misses($|_)/'        => 'count',
-		        '/(_|^)ops($|_)/'           => 'count',
-		        '/(_|^)requests($|_)/'      => 'count',
-		        '/(_|^)connections($|_)/'   => 'count',
+			        '/(_|^)rate($|_)/'          => 'ratio',   // e.g. cache_miss_rate
+			        '/(_|^)percent($|_)/'       => 'ratio',
+			        '/(_|^)ratio($|_)/'         => 'ratio',
+			        '/(_|^)util($|_)/'          => 'ratio',
+			        '/(_|^)usage($|_)/'         => 'ratio',
 
-		        '/(_|^)temperature($|_)/'   => 'temperature',
-		        '/(_|^)voltage($|_)/'       => 'voltage',
-		        '/(_|^)power($|_)/'         => 'power',
-		        '/(_|^)current($|_)/'       => 'current',
-		        '/(_|^)fan($|_)/'           => 'fanspeed',
-		    ];
+			        '/(_|^)count($|_)/'         => 'count',   // e.g. packet_count
+			        '/(_|^)number($|_)/'        => 'count',
+			        '/(_|^)total($|_)/'         => 'count',
+			        '/(_|^)hits($|_)/'          => 'count',
+			        '/(_|^)misses($|_)/'        => 'count',
+			        '/(_|^)ops($|_)/'           => 'count',
+			        '/(_|^)requests($|_)/'      => 'count',
+			        '/(_|^)connections($|_)/'   => 'count',
 
-		    foreach ($fallbackRules as $pattern => $class) {
-		        if (preg_match($pattern, $metricName)) {
-		            return $class;
-		        }
-		    }
+			        '/(_|^)temperature($|_)/'   => 'temperature',
+			        '/(_|^)voltage($|_)/'       => 'voltage',
+			        '/(_|^)power($|_)/'         => 'power',
+			        '/(_|^)current($|_)/'       => 'current',
+			        '/(_|^)fan($|_)/'           => 'fanspeed',
+			    ];
 
-		    // Step 3: Default fallback
-		    return 'state';
-	}
+			    foreach ($fallbackRules as $pattern => $class) {
+			        if (preg_match($pattern, $metricName)) {
+			            return $class;
+			        }
+			    }
+
+			    // Step 3: Default fallback
+			    return 'state';
+		}
 
     protected function normalizeResourceName(?string $name): ?string
-	{
-	    return $name ? strtolower(str_replace([' ', '_', '-'], '', $name)) : null;
-	}
+		{
+		    return $name ? strtolower(str_replace([' ', '_', '-'], '', $name)) : null;
+		}
 
     protected function generateSensorIndex($metric): string
     {
@@ -729,4 +731,37 @@ class DataMatcher
             'mapping_id' => null,
         ]);
     }
+
+    protected function findStaticMapping(string $metricName): ?array
+		{
+		    $normalized = str_replace(['-', ' '], '_', strtolower($metricName));
+
+		    // Try DB first
+		    $dbMapping = MetricFieldMapping::where('metric_name', $normalized)
+		        ->where('enabled', true)
+		        ->first();
+
+		    if ($dbMapping) {
+		        return [
+		            'table' => $dbMapping->librenms_table,
+		            'field' => $dbMapping->librenms_field,
+		        ];
+		    }
+
+		    // Fallback to JSON config
+		    $path = storage_path('app/resource_mappings.json');
+		    if (!file_exists($path)) return null;
+
+		    $json = json_decode(file_get_contents($path), true);
+		    foreach ($json['metric_field_mappings'] ?? [] as $map) {
+		        if (strtolower($map['metric_name']) === $normalized) {
+		            return [
+		                'table' => $map['librenms_table'],
+		                'field' => $map['librenms_field'],
+		            ];
+		        }
+		    }
+
+		    return null;
+		}
 }

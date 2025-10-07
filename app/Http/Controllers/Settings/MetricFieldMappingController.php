@@ -184,7 +184,7 @@ class MetricFieldMappingController extends Controller
 
         try {
             Artisan::call('metrics:match', $options);
-            
+
             $output = Artisan::output();
 
             return redirect()
@@ -258,4 +258,32 @@ class MetricFieldMappingController extends Controller
 
         return response()->json($fields);
     }
+
+    public function importFromJson(Request $request)
+		{
+		    $path = storage_path('app/resource_mappings.json');
+		    if (!file_exists($path)) {
+		        return back()->with('error', 'Mapping file not found.');
+		    }
+
+		    $json = json_decode(file_get_contents($path), true);
+		    $mappings = $json['metric_field_mappings'] ?? [];
+
+		    foreach ($mappings as $map) {
+		        \App\Models\MetricFieldMapping::updateOrCreate([
+		            'metric_name' => $map['metric_name'],
+		            'resource_type' => $map['resource_type'] ?? null,
+		            'vendor' => $map['vendor'] ?? null,
+		            'os' => $map['os'] ?? null,
+		        ], [
+		            'librenms_table' => $map['librenms_table'],
+		            'librenms_field' => $map['librenms_field'],
+		            'enabled' => true,
+		            'auto_learned' => false,
+		            'last_seen_at' => now(),
+		        ]);
+		    }
+
+		    return back()->with('success', 'Mappings imported successfully.');
+		}
 }

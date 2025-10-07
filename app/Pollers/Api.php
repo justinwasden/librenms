@@ -140,7 +140,7 @@ class Api
 
     protected function processApiResponse(RestApiEndpoint $endpoint, array $data, int $connectionId)
     {
-        $resourceType = $endpoint->resource_type ?? 'unknown';
+        $resourceType = $this->normalizeResourceType($endpoint->resource_type ?? 'unknown');
 
         // Handle different response formats
         $items = [];
@@ -171,7 +171,6 @@ class Api
         $this->cleanupStaleResources($endpoint, $currentResourceIds);
     }
 
-
 		protected function normalizeResourceType(?string $resourceType): string
 		{
 		    if (!$resourceType) return 'unknown';
@@ -179,8 +178,7 @@ class Api
 		    $type = strtolower(trim($resourceType));
 
 		    // Normalize problematic types to valid enum values
-		    $storageLikeTypes = ['array', 'volume', 'disk', 'storage'];
-		    if (in_array($type, $storageLikeTypes)) {
+		    if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
 		        return 'count'; // or 'state' depending on your use case
 		    }
 
