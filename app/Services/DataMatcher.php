@@ -98,6 +98,7 @@ class DataMatcher
 			      'total_physical'   	 => 'storage_size',
 			      'total_provisioned'  => 'storage_size',
 		        'raw_capacity' 			 => 'storage_size',
+		        'drive_type'				 => 'storage_type',
 
 				],
 		];

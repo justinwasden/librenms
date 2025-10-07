@@ -178,9 +178,10 @@ class Api
 
 		    $type = strtolower(trim($resourceType));
 
-		    // Normalize known problematic types to valid enum values
-		    if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
-		        return 'count'; // or 'state' depending on what the metric represents
+		    // Normalize problematic types to valid enum values
+		    $storageLikeTypes = ['array', 'volume', 'disk', 'storage'];
+		    if (in_array($type, $storageLikeTypes)) {
+		        return 'count'; // or 'state' depending on your use case
 		    }
 
 		    // Valid enum mappings
@@ -189,18 +190,17 @@ class Api
 		        'host'           => 'device',
 		        'network'        => 'port',
 		        'interface'      => 'port',
-		        'fan'            => 'sensor',
+		        'fan'            => 'fanspeed',
 		        'temperature'    => 'temperature',
 		        'power-supply'   => 'power',
 		        'latency'        => 'delay',
 		        'iops'           => 'count',
-		        'throughput'     => 'performance',
-		        'bandwidth'      => 'performance',
+		        'throughput'     => 'count',
+		        'bandwidth'      => 'count',
 		    ];
 
-		    return $validMappings[$type] ?? 'state'; // fallback to 'state' if unknown
+		    return $validMappings[$type] ?? 'state'; // fallback to 'state'
 		}
-
 
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
