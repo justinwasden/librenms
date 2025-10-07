@@ -3,9 +3,31 @@
     <input type="text" name="name" id="name" class="form-control" value="{{ old('name', $template->name) }}" required>
 </div>
 
-<div class="form-group">
-    <label for="vendor">Vendor</label>
-    <input type="text" name="vendor" id="vendor" class="form-control" value="{{ old('vendor', $template->vendor) }}">
+<div class="row">
+    <div class="col-md-6">
+        <div class="form-group">
+            <label for="vendor">Vendor</label>
+            <input type="text" name="vendor" id="vendor" class="form-control" value="{{ old('vendor', $template->vendor) }}">
+        </div>
+    </div>
+    {{-- NEW FIELD: Resource Type on Template --}}
+    <div class="col-md-6">
+        <div class="form-group">
+            <label for="resource_type">Primary Resource Type</label>
+            <select name="resource_type" id="resource_type" class="form-control">
+                <option value="">-- None (Generic) --</option>
+                <option value="device" {{ old('resource_type', $template->resource_type) === 'device' ? 'selected' : '' }}>Device</option>
+                <option value="port" {{ old('resource_type', $template->resource_type) === 'port' ? 'selected' : '' }}>Port/Interface</option>
+                <option value="storage" {{ old('resource_type', $template->resource_type) === 'storage' ? 'selected' : '' }}>Storage/Volume</option>
+                <option value="sensor" {{ old('resource_type', $template->resource_type) === 'sensor' ? 'selected' : '' }}>Sensor/Health</option>
+                <option value="processor" {{ old('resource_type', $template->resource_type) === 'processor' ? 'selected' : '' }}>Processor</option>
+                <option value="mempool" {{ old('resource_type', $template->resource_type) === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
+                <option value="alert" {{ old('resource_type', $template->resource_type) === 'alert' ? 'selected' : '' }}>Alert/Event</option>
+                <option value="custom" {{ old('resource_type', $template->resource_type) === 'custom' ? 'selected' : '' }}>Custom/Other</option>
+            </select>
+            <small class="form-text text-muted">Primary focus of this template (e.g., set to 'storage' for PureStorage)</small>
+        </div>
+    </div>
 </div>
 
 <div class="form-group">

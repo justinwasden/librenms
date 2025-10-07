@@ -26,6 +26,7 @@ class RestApiTemplateController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|unique:rest_api_templates,name|max:255',
             'vendor' => 'nullable|string|max:255',
+            'resource_type' => 'nullable|string|max:50', // ADDED validation for template-level resource_type
             'template_data' => 'required|json',
             'description' => 'nullable|string',
         ]);
@@ -48,6 +49,7 @@ class RestApiTemplateController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
             'vendor' => 'nullable|string|max:255',
+            'resource_type' => 'nullable|string|max:50', // ADDED validation for template-level resource_type
             'template_data' => 'required',
             'description' => 'nullable|string',
         ]);
@@ -58,7 +60,7 @@ class RestApiTemplateController extends Controller
 
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
-        // Normalize booleans and add missing resource_type
+        // Normalize booleans and ensure resource_type is saved from the endpoint form
         if (isset($validated['template_data']['connections'])) {
             foreach ($validated['template_data']['connections'] as &$connection) {
                 // Normalize SSL verify flag
@@ -74,9 +76,8 @@ class RestApiTemplateController extends Controller
                         // Normalize enabled field
                         $endpoint['enabled'] = filter_var($endpoint['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
 
-                        if (empty($endpoint['resource_type'])) {
-                            $endpoint['resource_type'] = $endpoint['name'] ?? 'unknown';
-                        }
+                        // Ensure endpoint resource_type is captured
+                        $endpoint['resource_type'] = $endpoint['resource_type'] ?? 'unknown';
 
                         if (isset($endpoint['metric_map']) && is_string($endpoint['metric_map']) && $this->isJson($endpoint['metric_map'])) {
                             $endpoint['metric_map'] = json_decode($endpoint['metric_map'], true);

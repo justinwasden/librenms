@@ -41,13 +41,17 @@
                         name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][resource_type]"
                         required>
                     <option value="">-- Select Type --</option>
-                    <option value="device" {{ ($endpoint['resource_type'] ?? '') === 'device' ? 'selected' : '' }}>Device</option>
-                    <option value="port" {{ ($endpoint['resource_type'] ?? '') === 'port' ? 'selected' : '' }}>Port</option>
-                    <option value="storage" {{ ($endpoint['resource_type'] ?? '') === 'storage' ? 'selected' : '' }}>Storage</option>
-                    <option value="mempool" {{ ($endpoint['resource_type'] ?? '') === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
+                    {{-- Updated Resource Types to match LibreNMS standards/seeding --}}
+                    <option value="device" {{ ($endpoint['resource_type'] ?? '') === 'device' ? 'selected' : '' }}>Device (Overall Status)</option>
+                    <option value="port" {{ ($endpoint['resource_type'] ?? '') === 'port' ? 'selected' : '' }}>Port/Interface</option>
+                    <option value="storage" {{ ($endpoint['resource_type'] ?? '') === 'storage' ? 'selected' : '' }}>Storage/Volume</option>
+                    <option value="sensor" {{ ($endpoint['resource_type'] ?? '') === 'sensor' ? 'selected' : '' }}>Sensor/Health</option>
                     <option value="processor" {{ ($endpoint['resource_type'] ?? '') === 'processor' ? 'selected' : '' }}>Processor</option>
-                    <option value="sensor" {{ ($endpoint['resource_type'] ?? '') === 'sensor' ? 'selected' : '' }}>Sensor</option>
-                    <option value="custom" {{ ($endpoint['resource_type'] ?? '') === 'custom' ? 'selected' : '' }}>Custom</option>
+                    <option value="mempool" {{ ($endpoint['resource_type'] ?? '') === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
+                    <option value="alert" {{ ($endpoint['resource_type'] ?? '') === 'alert' ? 'selected' : '' }}>Alert/Event</option>
+                    <option value="custom" {{ ($endpoint['resource_type'] ?? '') === 'custom' ? 'selected' : '' }}>Custom/Other</option>
+                    {{-- Fallback/Legacy values --}}
+                    <option value="unknown" {{ ($endpoint['resource_type'] ?? '') === 'unknown' ? 'selected' : '' }}>Unknown</option>
                 </select>
                 <small class="form-text text-muted">What type of resource does this endpoint monitor?</small>
             </div>
@@ -116,7 +120,7 @@
 						              rows="10"
 						              placeholder="Enter or paste JSON mapping here..."
 						              required
-						              style="white-space: pre; resize: vertical;">{{ old('metric_map_json', json_encode($endpoint->metric_map ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) }}</textarea>
+						              style="white-space: pre; resize: vertical;">{{ old('metric_map_json', json_encode($endpoint['metric_map'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) }}</textarea>
 
 						    <small class="form-text text-muted">
 						        Paste valid JSON mapping. Example: <code>{"storage_size": "items.0.space.total_physical"}</code>
@@ -156,13 +160,15 @@
         </button>
     </div>
 </div>
-@push('scripts')
+{{-- Pushing scripts separately due to template structure, ensuring the JS is scoped to the form --}}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const textarea = document.getElementById('endpoint_metric_map_json');
-    const errorDiv = document.getElementById('endpointJsonError');
-    const beautifyButton = document.getElementById('beautifyJson');
+    // Unique ID for this specific textarea, generated from the partial's context
+    const endpointIndex = '{{ $connectionIndex }}_{{ $endpointIndex }}';
+    const textarea = document.querySelector(`#endpointEditModal{{ $endpoint->id }} #metric_map_json`);
+    const beautifyButton = document.querySelector(`#endpointEditModal{{ $endpoint->id }} #beautifyJson`);
 
+    // Fallback if the component is used outside of the modal context
     if (!textarea) return;
 
     /**
@@ -170,6 +176,8 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function validateAndFormatJSON() {
         const value = textarea.value.trim();
+        const errorDiv = textarea.closest('.form-group').querySelector('#jsonError');
+
         if (!value) {
             errorDiv.style.display = 'none';
             return;
@@ -189,6 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * Validate while typing (without reformatting)
      */
     textarea.addEventListener('input', () => {
+        const errorDiv = textarea.closest('.form-group').querySelector('#jsonError');
         try {
             JSON.parse(textarea.value);
             errorDiv.style.display = 'none';
@@ -204,7 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
     textarea.addEventListener('blur', validateAndFormatJSON);
 
     /**
-     * Manual Beautify button (optional)
+     * Manual Beautify button
      */
     if (beautifyButton) {
         beautifyButton.addEventListener('click', function(e) {
@@ -214,4 +223,3 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-@endpush

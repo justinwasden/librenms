@@ -64,14 +64,14 @@
                             </div>
                             <div class="form-group mr-2">
                                 {{-- FIX: Pre-populate with actual device hostname/IP --}}
-                                <input type="url" name="base_url" class="form-control" 
-                                       placeholder="Base URL (https://...)" 
-                                       value="https://{{ $device->hostname }}" 
+                                <input type="url" name="base_url" class="form-control"
+                                       placeholder="Base URL (https://...)"
+                                       value="https://{{ $device->hostname }}"
                                        required style="width: 400px;">
                             </div>
                             <div class="form-group mr-2">
-                                <input type="number" name="rate_limit" class="form-control" 
-                                       placeholder="Rate Limit (reqs/min, default 60)" 
+                                <input type="number" name="rate_limit" class="form-control"
+                                       placeholder="Rate Limit (reqs/min, default 60)"
                                        style="width: 150px;">
                             </div>
                             <button type="submit" class="btn btn-success">Create Connection</button>
@@ -126,7 +126,7 @@
                                     </h5>
                                     <table class="table table-condensed table-striped">
                                         <thead>
-                                            <tr><th>Name</th><th>Method</th><th>Path</th><th>Last Polled</th><th>Actions</th></tr>
+                                            <tr><th>Name</th><th>Method</th><th>Path</th><th>Resource Type</th><th>Last Polled</th><th>Actions</th></tr>
                                         </thead>
                                         <tbody>
                                             @foreach($connection->endpoints as $endpoint)
@@ -134,6 +134,7 @@
                                                     <td>{{ $endpoint->name }}</td>
                                                     <td><span class="label label-info">{{ $endpoint->method }}</span></td>
                                                     <td><code>{{ $endpoint->path }}</code></td>
+                                                    <td><span class="label label-default">{{ $endpoint->resource_type ?? 'unknown' }}</span></td>
                                                     <td>{{ $endpoint->last_polled ? $endpoint->last_polled->diffForHumans() : 'Never' }}</td>
                                                     <td>
                                                         {{-- Edit Endpoint Action --}}
@@ -249,6 +250,20 @@
                     <div class="modal-body">
                         <div class="form-group"><label>Name</label><input type="text" name="endpoint_name" class="form-control" required></div>
                         <div class="form-group"><label>Method</label><select name="endpoint_method" class="form-control"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></div>
+                        <div class="form-group">
+                            <label>Resource Type</label>
+                            <select name="endpoint_resource_type" class="form-control">
+                                <option value="device">Device</option>
+                                <option value="port">Port/Interface</option>
+                                <option value="storage">Storage/Volume</option>
+                                <option value="sensor">Sensor/Health</option>
+                                <option value="processor">Processor</option>
+                                <option value="mempool">Memory Pool</option>
+                                <option value="alert">Alert/Event</option>
+                                <option value="custom">Custom/Other</option>
+                                <option value="unknown">Unknown</option>
+                            </select>
+                        </div>
                         <div class="form-group"><label>Path</label><input type="text" name="endpoint_path" class="form-control" required></div>
                         <div class="form-group"><label>Metric Map (JSON)</label><textarea name="endpoint_metric_map_json" class="form-control" rows="5" placeholder='{"metric_name": "json.path"}' required></textarea></div>
                     </div>
@@ -278,6 +293,21 @@
                             @foreach(['GET', 'POST', 'PUT', 'DELETE'] as $method)
                                 <option value="{{ $method }}" @if($endpoint->method == $method) selected @endif>{{ $method }}</option>
                             @endforeach
+                        </select>
+                    </div>
+                    {{-- Edit Endpoint Resource Type --}}
+                    <div class="form-group">
+                        <label>Resource Type</label>
+                        <select name="resource_type" class="form-control">
+                            <option value="device" @if(($endpoint->resource_type ?? 'unknown') == 'device') selected @endif>Device</option>
+                            <option value="port" @if(($endpoint->resource_type ?? 'unknown') == 'port') selected @endif>Port/Interface</option>
+                            <option value="storage" @if(($endpoint->resource_type ?? 'unknown') == 'storage') selected @endif>Storage/Volume</option>
+                            <option value="sensor" @if(($endpoint->resource_type ?? 'unknown') == 'sensor') selected @endif>Sensor/Health</option>
+                            <option value="processor" @if(($endpoint->resource_type ?? 'unknown') == 'processor') selected @endif>Processor</option>
+                            <option value="mempool" @if(($endpoint->resource_type ?? 'unknown') == 'mempool') selected @endif>Memory Pool</option>
+                            <option value="alert" @if(($endpoint->resource_type ?? 'unknown') == 'alert') selected @endif>Alert/Event</option>
+                            <option value="custom" @if(($endpoint->resource_type ?? 'unknown') == 'custom') selected @endif>Custom/Other</option>
+                            <option value="unknown" @if(($endpoint->resource_type ?? 'unknown') == 'unknown') selected @endif>Unknown</option>
                         </select>
                     </div>
                     <div class="form-group"><label>Path</label><input type="text" name="path" class="form-control" value="{{ old('path', $endpoint->path) }}" required></div>

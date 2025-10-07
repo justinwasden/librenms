@@ -1,23 +1,22 @@
 <?php
 
-namespace App\Http\Controllers\Settings;
+namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\MetricFieldMapping;
 use App\Models\Device;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Storage as StorageFacade;
 
 class MetricFieldMappingController extends Controller
 {
+
     public function index(Request $request)
     {
-        $query = MetricFieldMapping::query()->with('lastMatchedDevice');
+        $query = MetricFieldMapping::query()
+            ->with('lastMatchedDevice');
 
-        // Filters
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -52,14 +51,14 @@ class MetricFieldMappingController extends Controller
             $query->where('auto_learned', $request->auto_learned === '1');
         }
 
-        // Sorting
+
         $sortBy = $request->get('sort_by', 'metric_name');
         $sortDir = $request->get('sort_dir', 'asc');
         $query->orderBy($sortBy, $sortDir);
 
         $mappings = $query->paginate(25)->withQueryString();
 
-        // Get unique vendors and OS for filters
+
         $vendors = MetricFieldMapping::whereNotNull('vendor')
             ->distinct()
             ->pluck('vendor')
@@ -70,8 +69,9 @@ class MetricFieldMappingController extends Controller
             ->pluck('os')
             ->sort();
 
-        return view('settings.metric-field-mappings.index', compact('mappings', 'vendors', 'operatingSystems'));
+        return view('admin.metric-field-mappings.index', compact('mappings', 'vendors', 'operatingSystems'));
     }
+
 
     public function create()
     {
@@ -81,8 +81,9 @@ class MetricFieldMappingController extends Controller
 
         $tables = $this->getLibreNMSTables();
 
-        return view('settings.metric-field-mappings.create', compact('devices', 'tables'));
+        return view('admin.metric-field-mappings.create', compact('devices', 'tables'));
     }
+
 
     public function store(Request $request)
     {
@@ -108,9 +109,10 @@ class MetricFieldMappingController extends Controller
         MetricFieldMapping::create($validated);
 
         return redirect()
-            ->route('settings.metric-field-mappings.index')
+            ->route('admin.metric-field-mappings.index')
             ->with('success', 'Metric mapping created successfully!');
     }
+
 
     public function edit(MetricFieldMapping $mapping)
     {
@@ -120,8 +122,9 @@ class MetricFieldMappingController extends Controller
 
         $tables = $this->getLibreNMSTables();
 
-        return view('settings.metric-field-mappings.edit', compact('mapping', 'devices', 'tables'));
+        return view('admin.metric-field-mappings.edit', compact('mapping', 'devices', 'tables'));
     }
+
 
     public function update(Request $request, MetricFieldMapping $mapping)
     {
@@ -141,18 +144,20 @@ class MetricFieldMappingController extends Controller
         $mapping->update($validated);
 
         return redirect()
-            ->route('settings.metric-field-mappings.index')
+            ->route('admin.metric-field-mappings.index')
             ->with('success', 'Metric mapping updated successfully!');
     }
+
 
     public function destroy(MetricFieldMapping $mapping)
     {
         $mapping->delete();
 
         return redirect()
-            ->route('settings.metric-field-mappings.index')
+            ->route('admin.metric-field-mappings.index')
             ->with('success', 'Metric mapping deleted successfully!');
     }
+
 
     public function toggle(MetricFieldMapping $mapping)
     {
@@ -161,9 +166,10 @@ class MetricFieldMappingController extends Controller
         $status = $mapping->enabled ? 'enabled' : 'disabled';
 
         return redirect()
-            ->route('settings.metric-field-mappings.index')
+            ->route('admin.metric-field-mappings.index')
             ->with('success', "Metric mapping {$status} successfully!");
     }
+
 
     public function runMatching(Request $request)
     {
@@ -191,27 +197,30 @@ class MetricFieldMappingController extends Controller
             $output = Artisan::output();
 
             return redirect()
-                ->route('settings.metric-field-mappings.index')
+                ->route('admin.metric-field-mappings.index')
                 ->with('success', 'Metrics matching completed!')
                 ->with('output', $output);
         } catch (\Exception $e) {
             return redirect()
-                ->route('settings.metric-field-mappings.index')
+                ->route('admin.metric-field-mappings.index')
                 ->with('error', 'Error running metrics matching: ' . $e->getMessage());
         }
     }
+
 
     public function bulkDeleteUnmatched()
     {
         $count = MetricFieldMapping::unmatched()->delete();
 
         return redirect()
-            ->route('settings.metric-field-mappings.index')
+            ->route('admin.metric-field-mappings.index')
             ->with('success', "Deleted {$count} unmatched mapping(s)");
     }
 
+
     protected function getLibreNMSTables(): array
     {
+
         return [
             'devices' => 'Devices',
             'sensors' => 'Sensors',
@@ -220,8 +229,11 @@ class MetricFieldMappingController extends Controller
             'mempools' => 'Memory Pools',
             'processors' => 'Processors',
             'wireless_sensors' => 'Wireless Sensors',
+            'alerts' => 'Alerts/Eventlog',
+            'custom' => 'Custom Table',
         ];
     }
+
 
     public function getTableFields(Request $request)
     {
@@ -246,6 +258,8 @@ class MetricFieldMappingController extends Controller
                 'sensor_limit' => 'Limit',
                 'sensor_limit_low' => 'Low Limit',
                 'sensor_descr' => 'Description',
+                'sensor_state' => 'State (OK, WARN, CRIT)',
+                'sensor_unit' => 'Unit (e.g., C, V, A)',
             ],
             'ports' => [
                 'ifSpeed' => 'Interface Speed',
@@ -255,115 +269,29 @@ class MetricFieldMappingController extends Controller
                 'ifAlias' => 'Interface Alias',
                 'ifDescr' => 'Interface Description',
                 'ifMtu' => 'MTU',
+                'ifMac' => 'MAC Address',
+                'ifVlan' => 'VLAN ID',
+            ],
+            'storage' => [
+                'storage_size' => 'Total Size/Provisioned',
+                'storage_used' => 'Used Space',
+                'storage_free' => 'Free Space',
+                'storage_perc' => 'Percentage Used',
+                'storage_descr' => 'Description/Label',
+                'storage_type' => 'Type',
+            ],
+            'alerts' => [
+                'name' => 'Alert Name/ID',
+                'message' => 'Summary Message',
+                'severity' => 'Severity',
+                'status' => 'Status (Open/Closed)',
+                'timestamp' => 'Creation Timestamp',
+                'entity' => 'Affected Entity Name',
+                'url' => 'External URL',
             ],
             default => [],
         };
 
         return response()->json($fields);
     }
-
-    public function importFromJson(Request $request)
-    {
-        // 1. Validate File Upload and Type
-        $request->validate([
-            'mapping_file' => 'required|file|mimes:json,txt', // Only allow JSON or plain text for safety
-            'overwrite' => 'nullable|boolean',
-        ], [
-            'mapping_file.mimes' => 'The uploaded file must be a JSON file.',
-        ]);
-
-        $file = $request->file('mapping_file');
-        $jsonContent = file_get_contents($file->getRealPath());
-        $mappings = json_decode($jsonContent, true);
-
-        // 2. Validate JSON Structure (Must be a decode-able array)
-        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($mappings)) {
-            return redirect()->route('settings.metric-field-mappings.index')
-                ->with('error', 'The uploaded file is not a valid JSON array of mappings.');
-        }
-
-        $overwrite = (bool) $request->input('overwrite', false);
-        $importedCount = 0;
-        $failedCount = 0;
-        $errors = [];
-
-        // 3. Define Validation Rules for each Mapping Object
-        $rules = [
-            'metric_name'   => 'required|string|max:255',
-            'resource_type' => 'nullable|string|max:255',
-            'vendor'        => 'nullable|string|max:255',
-            'os'            => 'nullable|string|max:255',
-            'librenms_table' => 'required|string|max:255',
-            'librenms_field' => 'required|string|max:255',
-            'data_type'     => 'required|in:gauge,counter,rate', // Example types
-            'enabled'       => 'nullable|boolean',
-        ];
-
-        // 4. Loop through and validate each mapping
-        foreach ($mappings as $key => $mappingData) {
-            $validator = Validator::make($mappingData, $rules);
-
-            if ($validator->fails()) {
-                $errors[] = "Mapping #{$key} failed validation: " . $validator->errors()->all()[0];
-                $failedCount++;
-                continue;
-            }
-
-            // 5. Check for existence (only required if NOT overwriting)
-            $exists = \App\Models\MetricFieldMapping::where([
-                'metric_name' => $mappingData['metric_name'],
-                'vendor'      => $mappingData['vendor'] ?? null,
-                'os'          => $mappingData['os'] ?? null,
-            ])->first();
-
-            if ($exists && ! $overwrite) {
-                // Skip if exists and we are not overwriting
-                $failedCount++;
-                continue;
-            }
-
-            // 6. Import/Update the mapping
-            try {
-                \App\Models\MetricFieldMapping::updateOrCreate(
-                    [
-                        'metric_name' => $mappingData['metric_name'],
-                        'vendor'      => $mappingData['vendor'] ?? null,
-                        'os'          => $mappingData['os'] ?? null,
-                    ],
-                    array_merge($mappingData, ['auto_learned' => false]) // Mark as manual import
-                );
-                $importedCount++;
-            } catch (\Exception $e) {
-                $errors[] = "Mapping #{$key} failed database insertion: " . $e->getMessage();
-                $failedCount++;
-            }
-        }
-
-        // 7. Return Result
-        if ($failedCount > 0) {
-            $errorMessage = "Import finished. {$importedCount} mappings imported/updated. {$failedCount} failed or skipped.";
-            if (! empty($errors)) {
-                $errorMessage .= " Errors: " . implode('; ', array_slice($errors, 0, 3)) . (count($errors) > 3 ? '...' : '');
-            }
-            return redirect()->route('settings.metric-field-mappings.index')
-                ->with('error', $errorMessage);
-        }
-
-        return redirect()->route('settings.metric-field-mappings.index')
-            ->with('success', "Successfully imported/updated {$importedCount} metric field mappings.");
-    }
-
-		public function exportToJson()
-		{
-		    $mappings = \App\Models\MetricFieldMapping::all();
-		    $json = $mappings->toJson(JSON_PRETTY_PRINT);
-		    Storage::put('exports/metric_field_mappings.json', $json);
-
-		    return response()->download(storage_path('app/exports/metric_field_mappings.json'));
-		}
-
-		public function showImportForm()
-		{
-		    return view('settings.metric-field-mappings.import');
-		}
 }

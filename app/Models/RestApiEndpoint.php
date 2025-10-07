@@ -14,6 +14,7 @@ class RestApiEndpoint extends Model
         'name',
         'path',
         'method',
+        'resource_type',
         'query_params',
         'headers',
         'body',

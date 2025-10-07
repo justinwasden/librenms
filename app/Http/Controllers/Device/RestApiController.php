@@ -21,7 +21,8 @@ class RestApiController extends Controller
         // Load credentials as well, needed for the credential selection modal
         $credentials = \App\Models\RestApiCredential::all();
         $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
-        $templates = RestApiTemplate::all();
+        // Filter templates by vendor/OS (as per RestApiTemplate scope)
+        $templates = RestApiTemplate::forDevice($device)->get();
 
         return view('device.edit.rest-api', compact('device', 'templates', 'credentials'));
     }
@@ -58,6 +59,9 @@ class RestApiController extends Controller
 								        $endpointData['metric_map'] = $map;
 								        unset($endpointData['response_mapping']);
 								    }
+
+                    // Ensure resource_type is set for the new endpoint column
+                    $endpointData['resource_type'] = $endpointData['resource_type'] ?? $template->resource_type ?? 'unknown';
 
 								    $connection->endpoints()->create($endpointData);
 								}
@@ -171,6 +175,7 @@ class RestApiController extends Controller
 		        'name' => 'required|string|max:255',
 		        'path' => 'required|string|max:2048',
 		        'method' => 'required|in:GET,POST,PUT,DELETE',
+		        'resource_type' => 'nullable|string|max:50', // ADDED validation for resource_type
 		        'metric_map_json' => 'required|string', // treat as string, not JSON
 		    ]);
 
@@ -185,6 +190,7 @@ class RestApiController extends Controller
 		        'name' => $validated['name'],
 		        'path' => $validated['path'],
 		        'method' => $validated['method'],
+		        'resource_type' => $validated['resource_type'] ?? 'unknown', // ADDED update for resource_type
 		        'metric_map' => $decodedMap,
 		    ]);
 
@@ -198,6 +204,7 @@ class RestApiController extends Controller
 		        'endpoint_name' => 'required|string|max:255',
 		        'endpoint_path' => 'required|string|max:2048',
 		        'endpoint_method' => 'required|in:GET,POST,PUT,DELETE',
+		        'endpoint_resource_type' => 'nullable|string|max:50', // ADDED validation for resource_type
 		        'endpoint_metric_map_json' => 'required|string', // treat as string
 		    ]);
 
@@ -211,6 +218,7 @@ class RestApiController extends Controller
 		        'name' => $validated['endpoint_name'],
 		        'path' => $validated['endpoint_path'],
 		        'method' => $validated['endpoint_method'],
+		        'resource_type' => $validated['endpoint_resource_type'] ?? 'unknown', // ADDED set for resource_type
 		        'metric_map' => $decodedMap,
 		    ]);
 
@@ -278,5 +286,66 @@ class RestApiController extends Controller
         }
 
         return $string;
+    }
+
+    protected function getSessionToken($connection): ?string
+    {
+        if (!$connection->credential || strtolower($connection->credential->authenticationType->name) !== 'session token') {
+            return null;
+        }
+
+        $cacheKey = "rest_api_session_token:{$connection->id}";
+        $cachedToken = Cache::get($cacheKey);
+        if ($cachedToken) {
+            return $cachedToken;
+        }
+
+        try {
+            $params = $connection->credential->params->pluck('value', 'key');
+
+            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
+            $loginPath = $params['login_path'] ?? null;
+            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+
+            if (!$apiToken || !$loginPath) {
+                return null;
+            }
+
+            $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
+            $loginUrl = $this->replacePlaceholders($loginUrl, $this->device);
+
+            $loginOptions = [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Content-Type' => 'application/json',
+                ],
+            ];
+
+            if ($connection->disable_ssl_verify) {
+                $loginOptions['verify'] = false;
+            }
+
+            $loginMethod = strtoupper($params['login_method'] ?? 'POST');
+            $response = $this->client->request($loginMethod, $loginUrl, $loginOptions);
+
+            $sessionToken = null;
+            if ($response->hasHeader($tokenHeader)) {
+                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
+            }
+
+            if (!$sessionToken) {
+                return null;
+            }
+
+            $ttl = (int)($params['session_ttl'] ?? 3600);
+            Cache::put($cacheKey, $sessionToken, $ttl);
+
+            return $sessionToken;
+
+        } catch (\Exception $e) {
+            Log::error("Failed to obtain session token: " . $e->getMessage());
+            return null;
+        }
     }
 }
