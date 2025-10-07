@@ -241,7 +241,15 @@ class Api
 		        'controller'     => 'device',
 		        'host'           => 'device',
 		        'network'        => 'port',
+		        'network'        => 'ports',
+		        'network-interface' => 'port',
+		        'network-interface' => 'ports',
+		        'network-interfaces' => 'port',
+		        'network-interfaces' => 'ports',
+		        'eth'			       => 'port',
+		        'eth'			       => 'ports',
 		        'interface'      => 'port',
+		        'interface'      => 'ports',
 		        'fan'            => 'fanspeed',
 		        'temperature'    => 'temperature',
 		        'power-supply'   => 'power',
@@ -254,12 +262,6 @@ class Api
 		    return $validMappings[$type] ?? 'state'; // fallback to 'state'
 		}
 
-    /**
-     * This function performs two tasks:
-     * 1. Creates/updates the core LibreNMS entities (ports, storage, components).
-     * 2. Inserts/updates raw metric values into the device_api_metrics table for later matching.
-     * This combines the logic that was spread and partially commented out across both files.
-     */
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
         $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
@@ -427,112 +429,108 @@ class Api
         }
     }
 
+		protected function storeHardwareComponentData($device, $componentData)
+		{
+		    $name = $componentData['name'] ?? 'unknown';
+		    $status_str = strtolower($componentData['status'] ?? 'ok');
 
-	protected function storeHardwareComponentData($device, $componentData)
-	{
-	    $name = $componentData['name'] ?? 'unknown';
-	    $status_str = strtolower($componentData['status'] ?? 'ok');
+		    // Convert string status to tinyint status (1 = ok, 0 = down/critical/unknown)
+		    $status_int = ($status_str === 'ok' || $status_str === 'up') ? 1 : 0;
 
-	    // Convert string status to tinyint status (1 = ok, 0 = down/critical/unknown)
-	    $status_int = ($status_str === 'ok' || $status_str === 'up') ? 1 : 0;
+		    // The table name is 'component' (singular)
+		    DB::table('component')->updateOrInsert(
+		        ['device_id' => $device->device_id, 'label' => $name],
+		        [
+		            'type' => $componentData['type'] ?? 'controller',
+		            'status' => $status_int,
+		        ]
+		    );
 
-	    // The table name is 'component' (singular)
-	    DB::table('component')->updateOrInsert(
-	        ['device_id' => $device->device_id, 'label' => $name],
-	        [
-	            'type' => $componentData['type'] ?? 'controller',
-	            'status' => $status_int,
-	        ]
-	    );
+		    Log::info("Updated component {$name} for device {$device->hostname}");
+		}
 
-	    Log::info("Updated component {$name} for device {$device->hostname}");
-	}
+		protected function storePortData($device, $portData)
+		{
+		    if (!isset($portData['name'])) {
+		        Log::warning("Missing port name for device {$device->hostname}");
+		        return;
+		    }
 
-	protected function storePortData($device, $portData)
-	{
-	    if (!isset($portData['name'])) {
-	        Log::warning("Missing port name for device {$device->hostname}");
-	        return;
-	    }
+		    $ifName = $portData['name'];
+		    $ifDescr = $portData['description'] ?? $ifName;
+		    $ifIndex = $portData['index'] ?? crc32($ifName); // fallback unique index
 
-	    $ifName = $portData['name'];
-	    $ifDescr = $portData['description'] ?? $ifName;
-	    $ifIndex = $portData['index'] ?? crc32($ifName); // fallback unique index
+		    // Find or create port entry
+		    $port = DB::table('ports')
+		        ->where('device_id', $device->device_id)
+		        ->where(function ($query) use ($ifIndex, $ifName) {
+		            $query->where('ifIndex', $ifIndex)->orWhere('ifName', $ifName);
+		        })
+		        ->first();
 
-	    // Find or create port entry
-	    $port = DB::table('ports')
-	        ->where('device_id', $device->device_id)
-	        ->where(function ($query) use ($ifIndex, $ifName) {
-	            $query->where('ifIndex', $ifIndex)->orWhere('ifName', $ifName);
-	        })
-	        ->first();
+		    if (!$port) {
+		        $portId = DB::table('ports')->insertGetId([
+		            'device_id' => $device->device_id,
+		            'ifIndex' => $ifIndex,
+		            'ifName' => $ifName,
+		            'ifDescr' => $ifDescr,
+		            'ifType' => $portData['type'] ?? 'ethernetCsmacd',
+		            'ifSpeed' => $portData['speed'] ?? 0,
+		            'ifOperStatus' => $portData['status'] ?? 'up',
+		            'ifAdminStatus' => 'up',
+		            'ifAlias' => $portData['alias'] ?? null,
+		            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
+		        ]);
+		    } else {
+		        $portId = $port->port_id;
+		        DB::table('ports')->where('port_id', $portId)->update([
+		            'ifSpeed' => $portData['speed'] ?? $port->ifSpeed,
+		            'ifOperStatus' => $portData['status'] ?? $port->ifOperStatus,
+		            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
+		        ]);
+		    }
 
-	    if (!$port) {
-	        $portId = DB::table('ports')->insertGetId([
-	            'device_id' => $device->device_id,
-	            'ifIndex' => $ifIndex,
-	            'ifName' => $ifName,
-	            'ifDescr' => $ifDescr,
-	            'ifType' => $portData['type'] ?? 'ethernetCsmacd',
-	            'ifSpeed' => $portData['speed'] ?? 0,
-	            'ifOperStatus' => $portData['status'] ?? 'up',
-	            'ifAdminStatus' => 'up',
-	            'ifAlias' => $portData['alias'] ?? null,
-	            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
-	        ]);
-	    } else {
-	        $portId = $port->port_id;
-	        DB::table('ports')->where('port_id', $portId)->update([
-	            'ifSpeed' => $portData['speed'] ?? $port->ifSpeed,
-	            'ifOperStatus' => $portData['status'] ?? $port->ifOperStatus,
-	            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
-	        ]);
-	    }
+		    // Update performance counters directly in the 'ports' table based on your schema.
+		    // The original logic was incorrectly targeting 'ports_statistics'.
+		    DB::table('ports')->where('port_id', $portId)->update([
+		        'ifInOctets' => $portData['rx_bytes'] ?? 0,
+		        'ifOutOctets' => $portData['tx_bytes'] ?? 0,
+		        'ifInUcastPkts' => $portData['rx_packets'] ?? 0,
+		        'ifOutUcastPkts' => $portData['tx_packets'] ?? 0,
+		        'poll_time' => time(),
+		    ]);
 
-	    // Update performance counters directly in the 'ports' table based on your schema.
-	    // The original logic was incorrectly targeting 'ports_statistics'.
-	    DB::table('ports')->where('port_id', $portId)->update([
-	        'ifInOctets' => $portData['rx_bytes'] ?? 0,
-	        'ifOutOctets' => $portData['tx_bytes'] ?? 0,
-	        'ifInUcastPkts' => $portData['rx_packets'] ?? 0,
-	        'ifOutUcastPkts' => $portData['tx_packets'] ?? 0,
-	        'poll_time' => time(),
-	    ]);
+	        // NOTE: If you still need to populate ports_statistics, you must get the raw values from $portData
+	        // and insert them into ports_statistics, excluding the fields already handled above.
 
-        // NOTE: If you still need to populate ports_statistics, you must get the raw values from $portData
-        // and insert them into ports_statistics, excluding the fields already handled above.
+		    Log::info("Updated port {$ifName} metrics for device {$device->hostname}");
+		}
 
-	    Log::info("Updated port {$ifName} metrics for device {$device->hostname}");
-	}
+		protected function storeDriveStorageData($device, $storageData)
+		{
+		    if (!isset($storageData['name'])) {
+		        Log::warning("Missing storage name for device {$device->hostname}");
+		        return;
+		    }
 
-	protected function storeDriveStorageData($device, $storageData)
-	{
-	    if (!isset($storageData['name'])) {
-	        Log::warning("Missing storage name for device {$device->hostname}");
-	        return;
-	    }
+		    $descr = $storageData['name'];
+		    $size = $storageData['size'] ?? 0;
+		    $used = $storageData['used'] ?? 0;
 
-	    $descr = $storageData['name'];
-	    $size = $storageData['size'] ?? 0;
-	    $used = $storageData['used'] ?? 0;
+		    DB::table('storage')->updateOrInsert(
+		        ['device_id' => $device->device_id, 'storage_descr' => $descr],
+		        [
+		            'storage_type' => $storageData['type'] ?? 'purestorage',
+		            'storage_size' => $size,
+		            'storage_used' => $used,
+		            'storage_free' => max(0, $size - $used),
+		            'storage_perc' => $size > 0 ? round(($used / $size) * 100, 0) : 0, // Round to integer for storage_perc
+		            // 'updated_at' is not a native column in the storage table schema, so we omit it
+		        ]
+		    );
 
-	    DB::table('storage')->updateOrInsert(
-	        ['device_id' => $device->device_id, 'storage_descr' => $descr],
-	        [
-	            'storage_type' => $storageData['type'] ?? 'purestorage',
-	            'storage_size' => $size,
-	            'storage_used' => $used,
-	            'storage_free' => max(0, $size - $used),
-	            'storage_perc' => $size > 0 ? round(($used / $size) * 100, 0) : 0, // Round to integer for storage_perc
-	            // 'updated_at' is not a native column in the storage table schema, so we omit it
-	        ]
-	    );
-
-	    Log::info("Updated storage {$descr} metrics for device {$device->hostname}");
-	}
-
-    // The rest of the Api.php helper methods (cleanupStaleResources, checkRateLimit, etc.) are omitted for brevity,
-    // but would be included here to complete the class.
+		    Log::info("Updated storage {$descr} metrics for device {$device->hostname}");
+		}
 
     protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
     {
