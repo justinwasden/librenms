@@ -460,11 +460,11 @@ class DataMatcher
             ->first();
 
 
-//        $data = [
-//            'sensor_current' => $value,
-//            'sensor_prev' => $sensor->sensor_current ?? null,
-//            'lastupdate' => now(),
-//        ];
+        $data = [
+            'sensor_current' => $value,
+            'sensor_prev' => $sensor->sensor_current ?? null,
+            'lastupdate' => now(),
+        ];
 
         if ($sensor) {
             DB::table('sensors')
