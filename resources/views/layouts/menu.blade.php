@@ -212,7 +212,7 @@
 												    </a>
 												    <ul class="dropdown-menu">
 												        <li>
-												            <a href="{{ route('services.templates.index') }}">
+												            <a href="{{ route('settings.rest-api.templates.index') }}">
 												                <i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
 												            </a>
 												        </li>
