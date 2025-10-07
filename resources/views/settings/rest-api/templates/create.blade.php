@@ -9,12 +9,12 @@
             </div>
             <div class="card-body">
                 {{-- FIX: Use the correct store route (no parameters needed) --}}
-                <form action="{{ route('devices.rest-api.templates.store') }}" method="POST">
+                <form action="{{ route('settings.rest-api.templates.store') }}" method="POST">
                     @csrf
                     @include('settings.rest-api.templates._form')
                     <button type="submit" class="btn btn-primary">Create</button>
                     {{-- NEW: Cancel Button --}}
-                    <a href="{{ route('devices.rest-api.templates.index') }}" class="btn btn-default">Cancel</a>
+                    <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default">Cancel</a>
                 </form>
             </div>
         </div>

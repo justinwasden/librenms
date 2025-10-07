@@ -7,19 +7,19 @@
     [x-cloak] { display: none !important; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
-    
+
     /* Enhanced tab styling */
     .nav-tabs .nav-link {
         color: #495057;
         border: 1px solid transparent;
         transition: all 0.2s ease;
     }
-    
+
     .nav-tabs .nav-link:hover {
         background-color: #f8f9fa;
         border-color: #dee2e6 #dee2e6 transparent;
     }
-    
+
     .nav-tabs .nav-link.active {
         color: #007bff;
         background-color: #fff;
@@ -27,7 +27,7 @@
         border-bottom-color: transparent;
         font-weight: 600;
     }
-    
+
     .nav-tabs .nav-link i {
         margin-right: 6px;
     }
@@ -47,13 +47,13 @@
                     <div class="card-header">
                         <h3 class="card-title">Edit Template: {{ $template->name }}</h3>
                         <div class="card-tools">
-                            <a href="{{ route('devices.rest-api.templates.index') }}" class="btn btn-default btn-sm">
+                            <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default btn-sm">
                                 <i class="fas fa-arrow-left"></i> Back to Templates
                             </a>
                         </div>
                     </div>
 
-                    <form action="{{ route('devices.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
+                    <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                         @csrf
                         @method('PUT')
 
@@ -63,14 +63,14 @@
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label for="name">Template Name <span class="text-danger">*</span></label>
-                                        <input type="text" name="name" id="name" class="form-control" 
+                                        <input type="text" name="name" id="name" class="form-control"
                                                value="{{ old('name', $template->name) }}" required>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label for="vendor">Vendor</label>
-                                        <input type="text" name="vendor" id="vendor" class="form-control" 
+                                        <input type="text" name="vendor" id="vendor" class="form-control"
                                                value="{{ old('vendor', $template->vendor) }}">
                                     </div>
                                 </div>
@@ -87,8 +87,8 @@
                             {{-- Tabs Navigation --}}
                             <ul class="nav nav-tabs mb-3" role="tablist" style="border-bottom: 2px solid #dee2e6;">
                                 <li class="nav-item">
-                                    <a class="nav-link" 
-                                       :class="{ 'active': activeTab === 'connection' }" 
+                                    <a class="nav-link"
+                                       :class="{ 'active': activeTab === 'connection' }"
                                        @click.prevent="activeTab = 'connection'"
                                        href="#"
                                        style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
@@ -96,8 +96,8 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" 
-                                       :class="{ 'active': activeTab === 'endpoints' }" 
+                                    <a class="nav-link"
+                                       :class="{ 'active': activeTab === 'endpoints' }"
                                        @click.prevent="activeTab = 'endpoints'"
                                        href="#"
                                        style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
@@ -105,8 +105,8 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" 
-                                       :class="{ 'active': activeTab === 'preview' }" 
+                                    <a class="nav-link"
+                                       :class="{ 'active': activeTab === 'preview' }"
                                        @click.prevent="activeTab = 'preview'"
                                        href="#"
                                        style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
@@ -136,7 +136,7 @@
                                             <div class="card mb-3">
                                                 <div class="card-header bg-info text-white">
                                                     <h5 class="mb-0">
-                                                        <i class="fas fa-server"></i> 
+                                                        <i class="fas fa-server"></i>
                                                         {{ $connection['name'] ?? 'Unnamed Connection' }}
                                                         <small class="ml-2">({{ $connection['base_url'] ?? 'No URL' }})</small>
                                                     </h5>
@@ -162,7 +162,7 @@
                                                                         </button>
                                                                     </div>
 
-                                                                    <div x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'" 
+                                                                    <div x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'"
                                                                          x-cloak
                                                                          x-transition:enter="transition ease-out duration-200"
                                                                          x-transition:enter-start="opacity-0 transform scale-95"
@@ -201,7 +201,7 @@
 
                         <div class="card-footer">
                             <div class="d-flex justify-content-between">
-                                <a href="{{ route('devices.rest-api.templates.index') }}" class="btn btn-default">
+                                <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default">
                                     <i class="fas fa-times"></i> Cancel
                                 </a>
                                 <button type="submit" class="btn btn-primary">
@@ -221,12 +221,12 @@ function templateEditor() {
     return {
         activeTab: 'connection',
         openEndpoint: null,
-        
+
         init() {
             // Initialize
             console.log('Template editor initialized');
         },
-        
+
         toggleEndpoint(endpointId) {
             if (this.openEndpoint === endpointId) {
                 this.openEndpoint = null;

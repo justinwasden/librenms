@@ -82,7 +82,7 @@
                                             </td>
                                             <td class="text-right">
                                                 <div class="btn-group btn-group-sm">
-                                                    <a href="{{ route('devices.rest-api.templates.edit', $template->id) }}"
+                                                    <a href="{{ route('settings.rest-api.templates.edit', $template->id) }}"
                                                        class="btn btn-info"
                                                        title="Edit Template">
                                                         <i class="fas fa-edit"></i> Edit
@@ -118,7 +118,7 @@
                                                     </div>
                                                     <div class="modal-footer">
                                                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                                                        <form action="{{ route('devices.rest-api.templates.destroy', $template->id) }}" method="POST" class="d-inline">
+                                                        <form action="{{ route('settings.rest-api.templates.destroy', $template->id) }}" method="POST" class="d-inline">
                                                             @csrf
                                                             @method('DELETE')
                                                             <button type="submit" class="btn btn-danger">

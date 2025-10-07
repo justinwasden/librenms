@@ -1,7 +1,7 @@
 {{-- /resources/views/settings/rest-api/templates/partials/preview.blade.php --}}
 <div class="p-3" x-data="templateTester()">
     <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i> 
+        <i class="fas fa-info-circle"></i>
         <strong>Test Template</strong> - Test this template's API connections without applying it to a device
     </div>
 
@@ -14,7 +14,7 @@
             <option value="">-- Select a device --</option>
             @foreach(\App\Models\Device::orderBy('hostname')->get() as $device)
                 <option value="{{ $device->device_id }}">
-                    {{ $device->hostname }} 
+                    {{ $device->hostname }}
                     @if($device->ip)
                         ({{ $device->ip }})
                     @endif
@@ -70,7 +70,7 @@
         <div class="card-header bg-secondary text-white">
             <h6 class="mb-0">
                 <i class="fas fa-eye"></i> Variable Preview
-                <button type="button" 
+                <button type="button"
                         class="btn btn-sm btn-outline-light float-right"
                         @click="showPreview = !showPreview">
                     <i class="fas" :class="showPreview ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
@@ -143,11 +143,11 @@
                         <label for="timeout" class="mb-1">
                             <small>Timeout (seconds)</small>
                         </label>
-                        <input type="number" 
-                               class="form-control form-control-sm" 
-                               id="timeout" 
-                               x-model="timeout" 
-                               min="1" 
+                        <input type="number"
+                               class="form-control form-control-sm"
+                               id="timeout"
+                               x-model="timeout"
+                               min="1"
                                max="300"
                                placeholder="30">
                     </div>
@@ -158,8 +158,8 @@
 
     {{-- Run Test Button --}}
     <div class="form-group">
-        <button type="button" 
-                class="btn btn-primary btn-lg btn-block" 
+        <button type="button"
+                class="btn btn-primary btn-lg btn-block"
                 @click="runTest()"
                 :disabled="!selectedDeviceId || testing">
             <i class="fas" :class="testing ? 'fa-spinner fa-spin' : 'fa-play'"></i>
@@ -229,7 +229,7 @@
                                     <td><strong>Success Rate:</strong></td>
                                     <td>
                                         <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar" 
+                                            <div class="progress-bar"
                                                  :class="testSummary?.success_rate === 100 ? 'bg-success' : 'bg-warning'"
                                                  :style="`width: ${testSummary?.success_rate}%`">
                                                 <span x-text="testSummary?.success_rate + '%'"></span>
@@ -247,7 +247,7 @@
                     <h6>Endpoint Results</h6>
                     <template x-for="(result, index) in endpointResults" :key="index">
                         <div class="card mb-2">
-                            <div class="card-header p-2" 
+                            <div class="card-header p-2"
                                  :class="result.success ? 'bg-light' : 'bg-danger text-white'">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span>
@@ -255,7 +255,7 @@
                                         <strong x-text="result.name"></strong>
                                     </span>
                                     <div>
-                                        <span class="badge mr-2" 
+                                        <span class="badge mr-2"
                                               :class="result.success ? 'badge-success' : 'badge-danger'"
                                               x-text="result.status_code || 'Error'"></span>
                                         <span class="badge badge-info" x-text="result.response_time + 'ms'"></span>
@@ -266,7 +266,7 @@
                                 <div class="row mb-2">
                                     <div class="col-md-8">
                                         <small>
-                                            <strong>URL:</strong> 
+                                            <strong>URL:</strong>
                                             <code x-text="result.url"></code>
                                         </small>
                                     </div>
@@ -276,29 +276,29 @@
                                         </small>
                                     </div>
                                 </div>
-                                
+
                                 <div x-show="result.error" class="mt-2">
                                     <div class="alert alert-danger mb-2">
                                         <small><strong>Error:</strong> <span x-text="result.error"></span></small>
                                     </div>
                                 </div>
-                                
+
                                 <div x-show="result.response_preview" class="mt-2">
                                     <div class="btn-group btn-group-sm mb-2">
-                                        <button type="button" 
+                                        <button type="button"
                                                 class="btn btn-outline-secondary"
                                                 @click="result.showResponse = !result.showResponse">
                                             <i class="fas" :class="result.showResponse ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                                             <span x-text="result.showResponse ? 'Hide' : 'Show'"></span> Response
                                         </button>
-                                        <button type="button" 
+                                        <button type="button"
                                                 class="btn btn-outline-secondary"
                                                 @click="copyToClipboard(result.response_preview)"
                                                 title="Copy response to clipboard">
                                             <i class="fas fa-copy"></i>
                                         </button>
                                     </div>
-                                    
+
                                     <div x-show="result.showResponse" x-cloak class="mt-2">
                                         <pre class="bg-dark text-light p-2 rounded" style="max-height: 400px; overflow-y: auto; font-size: 11px;"><code x-text="result.response_preview"></code></pre>
                                     </div>
@@ -337,15 +337,15 @@ function templateTester() {
         showPreview: false,
         previewData: null,
         availableEndpoints: [],
-        
+
         init() {
             this.parseEndpoints();
         },
-        
+
         parseEndpoints() {
             const templateData = @json($template->template_data);
             const endpoints = [];
-            
+
             if (templateData.connections) {
                 templateData.connections.forEach((conn, cIndex) => {
                     if (conn.endpoints) {
@@ -361,21 +361,21 @@ function templateTester() {
                     }
                 });
             }
-            
+
             this.availableEndpoints = endpoints;
         },
-        
+
         async updatePreview() {
             if (!this.selectedDeviceId) {
                 this.previewData = null;
                 return;
             }
-            
+
             try {
                 const response = await fetch(`/ajax/select/device?q=${this.selectedDeviceId}`);
                 const data = await response.json();
                 const device = data.results ? data.results[0] : null;
-                
+
                 if (device) {
                     this.previewData = {
                         '{device_hostname}': device.hostname || device.text,
@@ -388,19 +388,19 @@ function templateTester() {
                 console.error('Error fetching device info:', error);
             }
         },
-        
+
         async runTest() {
             if (!this.selectedDeviceId) {
                 alert('Please select a device to test');
                 return;
             }
-            
+
             this.testing = true;
             this.hasResults = false;
             this.errorMessage = '';
-            
+
             try {
-                const response = await fetch('{{ route("devices.rest-api.templates.test", $template->id) }}', {
+                const response = await fetch('{{ route("settings.rest-api.templates.test", $template->id) }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -418,9 +418,9 @@ function templateTester() {
                         timeout: this.timeout,
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     this.testSuccess = data.success;
                     this.testSummary = data.summary;
@@ -443,7 +443,7 @@ function templateTester() {
                 this.testing = false;
             }
         },
-        
+
         copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
                 alert('Copied to clipboard!');
@@ -451,7 +451,7 @@ function templateTester() {
                 console.error('Failed to copy:', err);
             });
         },
-        
+
         copyResults() {
             const results = {
                 summary: this.testSummary,
@@ -459,7 +459,7 @@ function templateTester() {
             };
             this.copyToClipboard(JSON.stringify(results, null, 2));
         },
-        
+
         downloadResults() {
             const results = {
                 template: '{{ $template->name }}',
@@ -467,7 +467,7 @@ function templateTester() {
                 summary: this.testSummary,
                 endpoints: this.endpointResults
             };
-            
+
             const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -476,7 +476,7 @@ function templateTester() {
             a.click();
             URL.revokeObjectURL(url);
         },
-        
+
         clearResults() {
             this.hasResults = false;
             this.testSuccess = false;
