@@ -417,15 +417,9 @@ class Api
 		private function storeHardwareComponentData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
 		    $entPhysicalClass = $this->determineEntPhysicalClass($item_data['type'] ?? 'other');
-		    // Ensure this component gets a stable index or uses the existing one
 		    $entPhysicalIndex = $this->generateUniqueEntPhysicalIndex($device->device_id, $resource_id, $item_data);
 
-		    // Determine operational status
-		    $entPhysicalOperStatus = null;
-		    if (isset($item_data['status'])) {
-		        $status_api = strtolower($item_data['status']);
-		        $entPhysicalOperStatus = in_array($status_api, ['ok', 'online', 'up', 'ready']) ? 'up' : 'down';
-		    }
+		    // NOTE: Removed all logic related to entPhysicalOperStatus to fix the schema error.
 
 		    $physical_data = [
 		        'device_id'              => $device->device_id,
@@ -433,10 +427,10 @@ class Api
 		        'entPhysicalDescr'       => $item_data['name'] ?? $resource_name,
 		        'entPhysicalClass'       => $entPhysicalClass,
 		        'entPhysicalName'        => $item_data['name'] ?? $resource_name,
-		        'entPhysicalOperStatus'  => $entPhysicalOperStatus,
 		        'entPhysicalSerialNum'   => $item_data['serial'] ?? null,
 		        'entPhysicalModelName'   => $item_data['model'] ?? null,
 		        'last_discovered'        => Carbon::now(),
+		        // entPhysicalOperStatus is intentionally removed from insert data
 		    ];
 
 		    // Check for existing component using the generated stable index (primary key equivalent)
@@ -446,18 +440,16 @@ class Api
 		        ->first();
 
 		    if (!$existing_component) {
-		        $physical_data['entPhysicalIndex'] = $entPhysicalIndex; // Ensure explicit index is used for insert
+		        $physical_data['entPhysicalIndex'] = $entPhysicalIndex;
 		        DB::table('entPhysical')->insertGetId($physical_data);
 		        Log::info("API Poller: Created new entPhysical {$resource_name} (Index: {$entPhysicalIndex})");
 		    } else {
 		        DB::table('entPhysical')
 		            ->where('entPhysical_id', $existing_component->entPhysical_id)
 		            ->update($physical_data);
-		        // Do not update entPhysicalIndex on existing records to maintain RRD linkage
 		        Log::debug("API Poller: Updated existing entPhysical {$resource_name} (ID: {$existing_component->entPhysical_id})");
 		    }
 		}
-
 		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
 		    // Logic extracted from DeviceApiPoller.php reference
