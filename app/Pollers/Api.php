@@ -513,9 +513,9 @@ class Api
 		    }
 		}
 
+
 		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
-		    // Logic extracted from DeviceApiPoller.php reference
 		    $storage_index = $resource_id;
 		    $drive_capacity = $item_data['capacity'] ?? 0;
 		    $storage_size = (int)$drive_capacity;
@@ -527,7 +527,6 @@ class Api
 		        ->where('storage_index', $storage_index)
 		        ->first();
 
-		    // REMOVED: The problematic 'last_polled' field to fix the SQL error.
 		    $storage_data = [
 		        'storage_size'      => $storage_size,
 		        'storage_used'      => $storage_used,
@@ -537,18 +536,15 @@ class Api
 		        'type'              => 'fixed',
 		        'storage_descr'     => $resource_name . " (" . ($item_data['type'] ?? 'unknown') . ")",
 		        'storage_type'      => 'rest-api-storage', // A clear type
-		        // 'last_polled' field removed.
 		    ];
 
 		    if (!$existing_storage) {
 		        $storage_data['device_id'] = $device->device_id;
 		        $storage_data['storage_index'] = $storage_index;
-		        $storage_data['created_at'] = Carbon::now();
-		        // INSERT statement uses only safe fields
+		        // The 'created_at' line is removed here to fix the SQL error.
 		        DB::table('storage')->insertGetId($storage_data);
 		        Log::info("API Poller: Created new storage {$resource_name} (Index: {$storage_index})");
 		    } else {
-		        // UPDATE statement should also skip 'last_polled'
 		        DB::table('storage')
 		            ->where('storage_id', $existing_storage->storage_id)
 		            ->update($storage_data);
