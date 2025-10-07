@@ -29,7 +29,8 @@
             {{-- Action Buttons --}}
 						<div class="row mb-3">
 						    <div class="col-md-12">
-						        {{ route(
+						        {{-- Corrected 'Create New Mapping' link --}}
+						        <a href="{{ route('settings.metric-field-mappings.create') }}" class="btn btn-primary">
 						            <i class="fa fa-plus"></i> Create New Mapping
 						        </a>
 
@@ -41,14 +42,16 @@
 						            <i class="fa fa-trash"></i> Delete All Unmatched
 						        </button>
 
-						        {{ route(
+						        {{-- Corrected 'Import from JSON' form --}}
+                                <form action="{{ route('settings.metric-field-mappings.import') }}" method="POST" style="display: inline;">
 						            @csrf
 						            <button type="submit" class="btn btn-sm btn-primary">
 						                <i class="fa fa-upload"></i> Import from JSON
 						            </button>
 						        </form>
 
-						        {{ route(
+						        {{-- Corrected 'Export to JSON' link --}}
+						        <a href="{{ route('settings.metric-field-mappings.export') }}" class="btn btn-info">
 						            <i class="fa fa-download"></i> Export to JSON
 						        </a>
 						    </div>
