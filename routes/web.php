@@ -150,14 +150,14 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
         Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
         Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
-				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
-				Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
         });
 
         // Metric Field Mappings
         Route::prefix('settings')->name('settings.')->group(function () {
             Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
                 ->parameters(['metric-field-mappings' => 'mapping']);
+    				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
+		    		Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
             Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
             Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
