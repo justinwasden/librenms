@@ -91,11 +91,12 @@ class RestApiTemplateController extends Controller
             }
         }
 
-        $template->update($validated);
+            $template->update($validated);
 
-        return redirect()
-            ->route('devices.rest-api.templates.edit', $template->id)
-            ->with('success', 'Template updated successfully.');
+				    return redirect()
+				        // FIX: Change 'devices.rest-api' to the correct 'settings.rest-api' prefix
+				        ->route('settings.rest-api.templates.edit', $template->id)
+				        ->with('success', 'Template updated successfully.');
     }
 
     public function destroy(RestApiTemplate $template)
