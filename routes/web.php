@@ -171,25 +171,26 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
 		        Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
 		        Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
-		    });
-
-        Route::prefix('devices')->name('devices.')->group(function () {
-        // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
-        Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-        ->parameters(['rest-api-templates' => 'template'])
-        ->names([
-        'index'   => 'rest-api.templates.index',
-        'create'  => 'rest-api.templates.create',
-        'store'   => 'rest-api.templates.store',
-        'show'    => 'rest-api.templates.show',
-        'edit'    => 'rest-api.templates.edit',
-        'update'  => 'rest-api.templates.update',
-        'destroy' => 'rest-api.templates.destroy',
+		        Route::resource('rest-api-templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+			        ->parameters(['rest-api-templates' => 'template'])
+			        ->names([
+			        'index'   => 'rest-api.templates.index',
+			        'create'  => 'rest-api.templates.create',
+			        'store'   => 'rest-api.templates.store',
+			        'show'    => 'rest-api.templates.show',
+			        'edit'    => 'rest-api.templates.edit',
+			        'update'  => 'rest-api.templates.update',
+			        'destroy' => 'rest-api.templates.destroy',
         ]);
 
             // Test template endpoint
             Route::post('rest-api-templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
                  ->name('rest-api.templates.test');
+
+		    });
+
+        Route::prefix('devices')->name('devices.')->group(function () {
+        // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
         });
 
 
