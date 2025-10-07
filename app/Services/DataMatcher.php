@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\MetricFieldMapping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class DataMatcher
 {
@@ -37,12 +38,12 @@ class DataMatcher
 		        'temperature' => 'sensor_current',
 		        'temp' => 'sensor_current',
 		        'power' => 'sensor_current',
-            	'power_consumption' => 'sensor_current',
+           	'power_consumption' => 'sensor_current',
 		        'voltage' => 'sensor_current',
 		        'volt' => 'sensor_current',
 		        'current' => 'sensor_current',
 		        'fan_speed' => 'sensor_current',
-            	'fanspeed' => 'sensor_current',
+            'fanspeed' => 'sensor_current',
  		        'humidity' => 'sensor_current',
 		        'latency' => 'sensor_current',
 		        'iops' => 'sensor_current',
@@ -50,8 +51,6 @@ class DataMatcher
 		        'writes_per_sec' => 'sensor_current',
 		        'data_reduction' => 'sensor_current',
 		        'total_reduction' => 'sensor_current',
-		        'usec_per_read_op' => 'sensor_current',
-		        'usec_per_write_op' => 'sensor_current',
 		        'drive_protocol' => 'sensor_current',
 		        'bytes_per_op' => 'sensor_current',
 		        'bytes_per_read' => 'sensor_current',
@@ -73,7 +72,7 @@ class DataMatcher
 		        'transmitted_packets_per_sec' => 'sensor_current',
 		        'total_errors_per_sec' => 'sensor_current',
 		        'drive_status' => 'sensor_current',
-  	          	'tmp' => 'temperature',
+  	        'tmp' => 'sensor_current',
 
 		    ],
 		    'ports' => [
@@ -200,9 +199,7 @@ class DataMatcher
 				    'errors' => $this->errorCount,
 				];
 
-        if ($this->matchedCount > 0 || $this->unmatchedCount > 0) {
-            Log::info("DataMatcher for device {$device->hostname}: {$this->matchedCount} matched, {$this->unmatchedCount} unmatched, {$this->errorCount} errors");
-        }
+        if ($this->matchedCount > 0 || $this->unmatchedCount > 0) { Log::info(...); } return [ 'device' => $device->hostname, 'matched' => $this->matchedCount, 'unmatched' => $this->unmatchedCount, 'errors' => $this->errorCount, ];
 
         return $this->getStats();
     }
@@ -478,11 +475,12 @@ class DataMatcher
             ->where('sensor_index', $sensorIndex)
             ->first();
 
-        $data = [
-            'sensor_current' => $value,
-            'sensor_prev' => $sensor->sensor_current ?? null,
-            'lastupdate' => now(),
-        ];
+
+//        $data = [
+//            'sensor_current' => $value,
+//            'sensor_prev' => $sensor->sensor_current ?? null,
+//            'lastupdate' => now(),
+//        ];
 
         if ($sensor) {
             DB::table('sensors')
@@ -689,8 +687,8 @@ class DataMatcher
         return $mapping;
     }
 
-    protected function createPlaceholderMapping($metric, $device): MetricFieldMapping
-	{
+		protected function createPlaceholderMapping($metric, $device): MetricFieldMapping
+		{
 		    return MetricFieldMapping::updateOrCreate(
 		        [
 		            'metric_name' => $metric->metric_name,
@@ -707,7 +705,7 @@ class DataMatcher
 		            'last_matched_device_id' => $device->device_id,
 		        ]
 		    );
-	}
+		}
 
     protected function getStats(): array
     {

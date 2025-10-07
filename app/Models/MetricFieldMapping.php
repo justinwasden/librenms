@@ -34,17 +34,11 @@ class MetricFieldMapping extends Model
         'multiplier' => 'decimal:4',
     ];
 
-    /**
-     * Get the last device that matched this mapping
-     */
     public function lastMatchedDevice(): BelongsTo
     {
         return $this->belongsTo(Device::class, 'last_matched_device_id', 'device_id');
     }
 
-    /**
-     * Scope to get mappings for a specific metric
-     */
     public function scopeForMetric($query, string $metricName, ?string $resourceType = null)
     {
         return $query->where('metric_name', strtolower($metricName))
@@ -55,9 +49,6 @@ class MetricFieldMapping extends Model
             ->where('enabled', true);
     }
 
-    /**
-     * Scope to get mappings for a specific device context
-     */
     public function scopeForDevice($query, Device $device)
     {
         return $query->where(function ($q) use ($device) {
@@ -71,50 +62,35 @@ class MetricFieldMapping extends Model
         ->orderByRaw('vendor IS NULL ASC, os IS NULL ASC'); // Prefer specific over generic
     }
 
-    /**
-     * Scope to get only auto-learned mappings
-     */
     public function scopeAutoLearned($query)
     {
         return $query->where('auto_learned', true);
     }
 
-    /**
-     * Scope to get only manually created mappings
-     */
     public function scopeManual($query)
     {
         return $query->where('auto_learned', false);
     }
 
-    /**
-     * Scope to get unmatched placeholder mappings
-     */
     public function scopeUnmatched($query)
     {
         return $query->where('librenms_table', 'unmatched')
             ->orWhere('librenms_field', 'unmatched');
     }
 
-    /**
-     * Check if this is an unmatched placeholder
-     */
     public function isUnmatched(): bool
     {
-        return $this->librenms_table === 'unmatched' || $this->librenms_field === 'unmatched';
+        return !$this->enabled || empty($this->librenms_table) || empty($this->librenms_field);
     }
 
-    /**
-     * Get a human-readable display name
-     */
     public function getDisplayNameAttribute(): string
     {
         $parts = [$this->metric_name];
-        
+
         if ($this->resource_type) {
             $parts[] = "({$this->resource_type})";
         }
-        
+
         if ($this->vendor || $this->os) {
             $context = [];
             if ($this->vendor) $context[] = $this->vendor;
@@ -125,21 +101,15 @@ class MetricFieldMapping extends Model
         return implode(' ', $parts);
     }
 
-    /**
-     * Get the target field description
-     */
     public function getTargetAttribute(): string
     {
         if ($this->isUnmatched()) {
             return 'Unmatched';
         }
-        
+
         return "{$this->librenms_table}.{$this->librenms_field}";
     }
 
-    /**
-     * Apply value transformation based on multiplier and data type
-     */
     public function transformValue($value)
     {
         if ($value === null) {
