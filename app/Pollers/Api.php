@@ -464,16 +464,13 @@ class Api
 
 		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
-		    // Safely retrieve nested data, defaulting to an empty array if 'eth' is missing.
-		    $eth_data = data_get($item_data, 'eth', []);
-
-		    // Use data_get for the status, defaulting to true
+		    // Use data_get for safe nested access, eliminating risk of array-key-not-found errors.
 		    $enabled_status = data_get($item_data, 'enabled') ?? true;
 
-		    // Safely extract fields
-		    $mac_address = $eth_data['mac_address'] ?? null;
-		    $mtu = $eth_data['mtu'] ?? 1500;
-		    $ifAlias = data_get($item_data, 'services.0'); // Safe access to first element of services array
+		    // Safely extract deeply nested fields
+		    $mac_address = data_get($item_data, 'eth.mac_address');
+		    $mtu = data_get($item_data, 'eth.mtu') ?? 1500;
+		    $ifAlias = data_get($item_data, 'services.0');
 
 		    // Create a stable, deterministic ifIndex
 		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
@@ -490,16 +487,16 @@ class Api
 		        })
 		        ->first();
 
-		    // Safe fields for insert, ensuring compatibility with your schema
+		    // Safe fields for insert
 		    $port_data = [
 		        'ifName'        => $resource_name,
-		        'ifDescr'       => $item_data['name'] ?? $resource_name,
+		        'ifDescr'       => data_get($item_data, 'name') ?? $resource_name,
 		        'ifAlias'       => $ifAlias,
 		        'ifIndex'       => $ifIndex,
-		        'ifType'        => 'ethernetCsmacd', // Default to common type
+		        'ifType'        => 'ethernetCsmacd', // Default type
 		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
 		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
-		        'ifSpeed'       => (int)($item_data['speed'] ?? 0),
+		        'ifSpeed'       => (int)(data_get($item_data, 'speed') ?? 0),
 		        'ifMtu'         => (int)$mtu,
 		        'ifPhysAddress' => $mac_address,
 		        'port_descr_type' => 'rest-api',
