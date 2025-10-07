@@ -197,6 +197,7 @@
 										    </li>
 
 										    <li role="presentation" class="divider"></li>
+
 												<li class="dropdown-submenu">
 												    #
 												        <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
@@ -219,7 +220,6 @@
 												        </li>
 												    </ul>
 												</li>
-
 										@endadmin
 
                     </ul>
