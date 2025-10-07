@@ -171,45 +171,36 @@ class Api
         $this->cleanupStaleResources($endpoint, $currentResourceIds);
     }
 
-    protected function normalizeResourceType(?string $resourceType): string
-    {
-        if (!$resourceType) return 'unknown';
 
-        $type = strtolower(trim($resourceType));
-        $mappings = [
-            'array' => 'storage',
-            'controller' => 'device',
-            // ... (other mappings) ...
-            'volume' => 'storage',
-            'disk' => 'storage',
-            // ...
-        ];
+		protected function normalizeResourceType(?string $resourceType): string
+		{
+		    if (!$resourceType) return 'unknown';
 
-        // FIX: Change 'storage' and related items to a valid Sensor Enum type,
-        //      like 'state' or 'count', to pass the check in ObjectCache.php.
-        //      If they are just counting storage objects or reporting status, 'state' or 'count' works.
+		    $type = strtolower(trim($resourceType));
 
-        if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
-            return 'count'; // Use 'count' or 'state' to pass the Enum check
-        }
+		    // Normalize known problematic types to valid enum values
+		    if (in_array($type, ['array', 'volume', 'disk', 'storage'])) {
+		        return 'count'; // or 'state' depending on what the metric represents
+		    }
 
-        // Re-implement the fixed map without the conflicting value
-        $fixedMappings = [
-            'controller' => 'device',
-            'host' => 'device',
-            'network' => 'port',
-            'interface' => 'port',
-            'fan' => 'sensor',
-            'temperature' => 'sensor',
-            'power-supply' => 'sensor',
-            'latency' => 'performance',
-            'iops' => 'performance',
-            'throughput' => 'performance',
-            'bandwidth' => 'performance',
-        ];
+		    // Valid enum mappings
+		    $validMappings = [
+		        'controller'     => 'device',
+		        'host'           => 'device',
+		        'network'        => 'port',
+		        'interface'      => 'port',
+		        'fan'            => 'sensor',
+		        'temperature'    => 'temperature',
+		        'power-supply'   => 'power',
+		        'latency'        => 'delay',
+		        'iops'           => 'count',
+		        'throughput'     => 'performance',
+		        'bandwidth'      => 'performance',
+		    ];
 
-        return $fixedMappings[$type] ?? $type;
-    }
+		    return $validMappings[$type] ?? 'state'; // fallback to 'state' if unknown
+		}
+
 
     protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
     {
