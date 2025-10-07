@@ -462,6 +462,59 @@ class Api
 		    Log::info("Updated component {$name} for device {$device->hostname}");
 		}
 
+		/**
+ * Fallback method for unknown or generic resource types.
+ * Saves metrics to the device_api_metrics table when no specialized handler exists.
+ *
+ * @param \App\Models\Device $device
+ * @param array $data
+ * @param string $resourceType
+ * @return void
+ */
+		protected function storeGenericApiMetrics($device, array $data, string $resourceType)
+		{
+		    if (empty($data)) {
+		        Log::warning("No data to store for generic resource type: {$resourceType} on device {$device->hostname}");
+		        return;
+		    }
+
+		    // Normalize resource type for table consistency
+		    $resourceType = strtolower($resourceType);
+
+		    foreach ($data as $metricName => $metricValue) {
+		        if (is_array($metricValue)) {
+		            // Flatten nested data if needed
+		            foreach ($metricValue as $subKey => $subValue) {
+		                $metricKey = "{$metricName}_{$subKey}";
+		                DB::table('device_api_metrics')->updateOrInsert(
+		                    [
+		                        'device_id' => $device->device_id,
+		                        'metric' => $metricKey,
+		                        'resource_type' => $resourceType,
+		                    ],
+		                    [
+		                        'value' => $subValue,
+		                        'updated_at' => now(),
+		                    ]
+		                );
+		            }
+		        } else {
+		            DB::table('device_api_metrics')->updateOrInsert(
+		                [
+		                    'device_id' => $device->device_id,
+		                    'metric' => $metricName,
+		                    'resource_type' => $resourceType,
+		                ],
+		                [
+		                    'value' => $metricValue,
+		                    'updated_at' => now(),
+		                ]
+		            );
+		        }
+		    }
+
+		    Log::info("Stored generic {$resourceType} metrics for device {$device->hostname}");
+		}
 
 //		private function storeHardwareComponentData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 //		{
@@ -684,23 +737,23 @@ class Api
 		    }
 		}
 
-		protected function saveGenericMetrics(string $resourceType, array $metrics): void
-		{
-		    foreach ($metrics as $metricName => $value) {
-		        DB::table('pure_storage_metrics')->updateOrInsert(
-		            [
-		                'device_id'     => $this->device->device_id,
-		                'resource_type' => $resourceType,
-		                'metric_name'   => $metricName,
-		            ],
-		            [
-		                'metric_value'  => $value,
-		                'updated_at'    => now(),
-		            ]
-		        );
-		    }
-		}
-
+//		protected function saveGenericMetrics(string $resourceType, array $metrics): void
+//		{
+//		    foreach ($metrics as $metricName => $value) {
+//		        DB::table('pure_storage_metrics')->updateOrInsert(
+//		            [
+//		                'device_id'     => $this->device->device_id,
+//		                'resource_type' => $resourceType,
+//		                'metric_name'   => $metricName,
+//		            ],
+//		            [
+//		                'metric_value'  => $value,
+//		                'updated_at'    => now(),
+//		            ]
+//		        );
+//		    }
+//		}
+//
 //		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 //		{
 //		    $storage_index = $resource_id;
