@@ -252,306 +252,517 @@ class Api
 		    return $validMappings[$type] ?? 'state'; // fallback to 'state'
 		}
 
-    protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
-    {
-        $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
-        $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
+//    protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
+//    {
+//        $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
+//        $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
+//
+//        if (!$resourceId && !$resourceName) {
+//            Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
+//            return;
+//        }
+//
+//        $resourceId = $resourceId ?? $resourceName;
+//        $resourceName = $resourceName ?? $resourceId;
+//
+//
+//		    $itemDataForEntity = Arr::isList($item) ? ['name' => $resourceName, 'id' => $resourceId] : $item;
+//		    $itemDataForEntity['type'] = data_get($item, 'type') ?? $endpoint->resource_type; // Pass the type/class hint
+//		    $itemDataForEntity['serial'] = data_get($item, 'serial') ?? null;
+//		    $itemDataForEntity['model'] = data_get($item, 'model') ?? null;
+//
+//		    if ($resourceType === 'port' || $resourceType === 'interface') {
+//		        // Need to extract deeply nested port/eth data for creation
+//		        $ethData = data_get($item, 'eth') ?? [];
+//		        $portDataForEntity = array_merge($itemDataForEntity, $item); // Merge all data, keeping type hint
+//		        $portDataForEntity['eth'] = $ethData;
+//		        $this->storePortData($this->device, $resourceId, $resourceName, $portDataForEntity);
+//		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
+//		        // Drives/Volumes should be created in the storage table
+//		        $this->storeDriveStorageData($this->device, $resourceId, $resourceName, $itemDataForEntity);
+//		    } elseif (in_array($resourceType, ['device', 'sensor', 'processor']) || $itemDataForEntity['type'] === 'controller' || $itemDataForEntity['type'] === 'chassis') {
+//		        // Controllers, Fans, Temp Sensors, etc., go to entPhysical
+//		        $this->storeHardwareComponentData($this->device, $resourceId, $resourceName, $itemDataForEntity);
+//		    }
+//
+//        $collectedAt = Carbon::now();
+//
+//        $existingMetrics = DB::table('device_api_metrics')
+//            ->where('device_id', $this->device->device_id)
+//            ->where('api_endpoint_id', $endpoint->id)
+//            ->where('resource_id', $resourceId)
+//            ->get()
+//            ->keyBy('metric_name');
+//
+//        $metricsToInsert = [];
+//        $metricsToUpdate = [];
+//        $processedMetricNames = [];
+//
+//        foreach ($endpoint->metric_map as $metricName => $apiPath) {
+//            try {
+//                $value = data_get($item, $apiPath);
+//                $processedMetricNames[] = $metricName;
+//
+//                if ($value === null) {
+//                    continue;
+//                }
+//
+//                $isNumeric = is_numeric($value);
+//                $numericValue = $isNumeric ? (float)$value : null;
+//                $stringValue = null;
+//
+//                if (!$isNumeric) {
+//                    if (is_array($value) || is_object($value)) {
+//                        $stringValue = json_encode($value);
+//                    } else {
+//                        $stringValue = (string)$value;
+//                    }
+//                }
+//
+//                if (isset($existingMetrics[$metricName])) {
+//                    $existing = $existingMetrics[$metricName];
+//                    $valueChanged = false;
+//
+//                    if ($isNumeric) {
+//                        $valueChanged = abs($existing->value - $numericValue) > 0.0001;
+//                    } else {
+//                        $valueChanged = $existing->string_value !== $stringValue;
+//                    }
+//
+//                    if ($valueChanged) {
+//                        $metricsToUpdate[] = [
+//                            'id' => $existing->id,
+//                            'value' => $numericValue,
+//                            'string_value' => $stringValue,
+//                            'collected_at' => $collectedAt,
+//                            'updated_at' => $collectedAt,
+//                        ];
+//
+//                        Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+//                    } else {
+//                        DB::table('device_api_metrics')
+//                            ->where('id', $existing->id)
+//                            ->update([
+//                                'collected_at' => $collectedAt,
+//                                'updated_at' => $collectedAt,
+//                            ]);
+//                    }
+//                } else {
+//                    $metricsToInsert[] = [
+//                        'device_id' => $this->device->device_id,
+//                        'api_endpoint_id' => $endpoint->id,
+//                        'api_connection_id' => $connectionId,
+//                        'resource_type' => $resourceType,
+//                        'resource_id' => $resourceId,
+//                        'resource_name' => $resourceName,
+//                        'metric_name' => $metricName,
+//                        'metric_type' => 'gauge',
+//                        'value' => $numericValue,
+//                        'string_value' => $stringValue,
+//                        'raw_response' => null,
+//                        'collected_at' => $collectedAt,
+//                        'created_at' => $collectedAt,
+//                        'updated_at' => $collectedAt,
+//                    ];
+//                    Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+//                }
+//
+//            } catch (\Exception $e) {
+//                Log::error("Error processing metric {$metricName}: " . $e->getMessage());
+//            }
+//        }
+//
+//        // Delete obsolete metrics
+//        $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
+//        if ($metricsToDelete->isNotEmpty()) {
+//            DB::table('device_api_metrics')
+//                ->where('device_id', $this->device->device_id)
+//                ->where('api_endpoint_id', $endpoint->id)
+//                ->where('resource_id', $resourceId)
+//                ->whereIn('metric_name', $metricsToDelete->toArray())
+//                ->delete();
+//            Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
+//        }
+//
+//        // Batch insert new metrics
+//        if (!empty($metricsToInsert)) {
+//            try {
+//                DB::table('device_api_metrics')->insert($metricsToInsert);
+//                Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
+//            } catch (\Exception $e) {
+//                Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
+//            }
+//        }
+//
+//        // Batch update changed metrics
+//        if (!empty($metricsToUpdate)) {
+//            try {
+//                foreach ($metricsToUpdate as $metric) {
+//                    DB::table('device_api_metrics')
+//                        ->where('id', $metric['id'])
+//                        ->update([
+//                            'value' => $metric['value'],
+//                            'string_value' => $metric['string_value'],
+//                            'collected_at' => $metric['collected_at'],
+//                            'updated_at' => $metric['updated_at'],
+//                        ]);
+//                }
+//                Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
+//            } catch (\Exception $e) {
+//                Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
+//            }
+//        }
+//    }
+//
 
-        if (!$resourceId && !$resourceName) {
-            Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
-            return;
-        }
-
-        $resourceId = $resourceId ?? $resourceName;
-        $resourceName = $resourceName ?? $resourceId;
-
-
-		    $itemDataForEntity = Arr::isList($item) ? ['name' => $resourceName, 'id' => $resourceId] : $item;
-		    $itemDataForEntity['type'] = data_get($item, 'type') ?? $endpoint->resource_type; // Pass the type/class hint
-		    $itemDataForEntity['serial'] = data_get($item, 'serial') ?? null;
-		    $itemDataForEntity['model'] = data_get($item, 'model') ?? null;
-
-		    if ($resourceType === 'port' || $resourceType === 'interface') {
-		        // Need to extract deeply nested port/eth data for creation
-		        $ethData = data_get($item, 'eth') ?? [];
-		        $portDataForEntity = array_merge($itemDataForEntity, $item); // Merge all data, keeping type hint
-		        $portDataForEntity['eth'] = $ethData;
-		        $this->storePortData($this->device, $resourceId, $resourceName, $portDataForEntity);
-		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
-		        // Drives/Volumes should be created in the storage table
-		        $this->storeDriveStorageData($this->device, $resourceId, $resourceName, $itemDataForEntity);
-		    } elseif (in_array($resourceType, ['device', 'sensor', 'processor']) || $itemDataForEntity['type'] === 'controller' || $itemDataForEntity['type'] === 'chassis') {
-		        // Controllers, Fans, Temp Sensors, etc., go to entPhysical
-		        $this->storeHardwareComponentData($this->device, $resourceId, $resourceName, $itemDataForEntity);
-		    }
-
-        $collectedAt = Carbon::now();
-
-        $existingMetrics = DB::table('device_api_metrics')
-            ->where('device_id', $this->device->device_id)
-            ->where('api_endpoint_id', $endpoint->id)
-            ->where('resource_id', $resourceId)
-            ->get()
-            ->keyBy('metric_name');
-
-        $metricsToInsert = [];
-        $metricsToUpdate = [];
-        $processedMetricNames = [];
-
-        foreach ($endpoint->metric_map as $metricName => $apiPath) {
-            try {
-                $value = data_get($item, $apiPath);
-                $processedMetricNames[] = $metricName;
-
-                if ($value === null) {
-                    continue;
-                }
-
-                $isNumeric = is_numeric($value);
-                $numericValue = $isNumeric ? (float)$value : null;
-                $stringValue = null;
-
-                if (!$isNumeric) {
-                    if (is_array($value) || is_object($value)) {
-                        $stringValue = json_encode($value);
-                    } else {
-                        $stringValue = (string)$value;
-                    }
-                }
-
-                if (isset($existingMetrics[$metricName])) {
-                    $existing = $existingMetrics[$metricName];
-                    $valueChanged = false;
-
-                    if ($isNumeric) {
-                        $valueChanged = abs($existing->value - $numericValue) > 0.0001;
-                    } else {
-                        $valueChanged = $existing->string_value !== $stringValue;
-                    }
-
-                    if ($valueChanged) {
-                        $metricsToUpdate[] = [
-                            'id' => $existing->id,
-                            'value' => $numericValue,
-                            'string_value' => $stringValue,
-                            'collected_at' => $collectedAt,
-                            'updated_at' => $collectedAt,
-                        ];
-
-                        Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
-                    } else {
-                        DB::table('device_api_metrics')
-                            ->where('id', $existing->id)
-                            ->update([
-                                'collected_at' => $collectedAt,
-                                'updated_at' => $collectedAt,
-                            ]);
-                    }
-                } else {
-                    $metricsToInsert[] = [
-                        'device_id' => $this->device->device_id,
-                        'api_endpoint_id' => $endpoint->id,
-                        'api_connection_id' => $connectionId,
-                        'resource_type' => $resourceType,
-                        'resource_id' => $resourceId,
-                        'resource_name' => $resourceName,
-                        'metric_name' => $metricName,
-                        'metric_type' => 'gauge',
-                        'value' => $numericValue,
-                        'string_value' => $stringValue,
-                        'raw_response' => null,
-                        'collected_at' => $collectedAt,
-                        'created_at' => $collectedAt,
-                        'updated_at' => $collectedAt,
-                    ];
-                    Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
-                }
-
-            } catch (\Exception $e) {
-                Log::error("Error processing metric {$metricName}: " . $e->getMessage());
-            }
-        }
-
-        // Delete obsolete metrics
-        $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
-        if ($metricsToDelete->isNotEmpty()) {
-            DB::table('device_api_metrics')
-                ->where('device_id', $this->device->device_id)
-                ->where('api_endpoint_id', $endpoint->id)
-                ->where('resource_id', $resourceId)
-                ->whereIn('metric_name', $metricsToDelete->toArray())
-                ->delete();
-            Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
-        }
-
-        // Batch insert new metrics
-        if (!empty($metricsToInsert)) {
-            try {
-                DB::table('device_api_metrics')->insert($metricsToInsert);
-                Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
-            } catch (\Exception $e) {
-                Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
-            }
-        }
-
-        // Batch update changed metrics
-        if (!empty($metricsToUpdate)) {
-            try {
-                foreach ($metricsToUpdate as $metric) {
-                    DB::table('device_api_metrics')
-                        ->where('id', $metric['id'])
-                        ->update([
-                            'value' => $metric['value'],
-                            'string_value' => $metric['string_value'],
-                            'collected_at' => $metric['collected_at'],
-                            'updated_at' => $metric['updated_at'],
-                        ]);
-                }
-                Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
-            } catch (\Exception $e) {
-                Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
-            }
-        }
-    }
-
-		private function storeHardwareComponentData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		protected function storeResourceMetrics($endpoint, $data, $resourceType, $connectionId)
 		{
-		    $entPhysicalClass = $this->determineEntPhysicalClass($item_data['type'] ?? 'other');
-		    $entPhysicalIndex = $this->generateUniqueEntPhysicalIndex($device->device_id, $resource_id, $item_data);
+		    $resourceType = strtolower($resourceType);
 
-		    // NOTE: last_discovered and entPhysicalOperStatus are removed to prevent SQLSTATE[42S22] errors.
+		    switch ($resourceType) {
+		        case 'port':
+		        case 'network-interface':
+		            $this->storePortData($this->device, $data);
+		            break;
 
-		    $physical_data = [
-		        'device_id'              => $device->device_id,
-		        'entPhysicalIndex'       => $entPhysicalIndex,
-		        'entPhysicalDescr'       => $item_data['name'] ?? $resource_name,
-		        'entPhysicalClass'       => $entPhysicalClass,
-		        'entPhysicalName'        => $item_data['name'] ?? $resource_name,
-		        'entPhysicalSerialNum'   => $item_data['serial'] ?? null,
-		        'entPhysicalModelName'   => $item_data['model'] ?? null,
+		        case 'drive':
+		        case 'storage':
+		        case 'array':
+		            $this->storeDriveStorageData($this->device, $data);
+		            break;
 
-		        // The fields below are safely included based on your DESCRIBE output
-		        'entPhysicalHardwareRev' => $item_data['hw_revision'] ?? null,
-		        'entPhysicalFirmwareRev' => $item_data['fw_revision'] ?? null,
-		        'entPhysicalSoftwareRev' => $item_data['sw_revision'] ?? null,
-		        'entPhysicalAlias'       => $item_data['alias'] ?? null,
-		        'entPhysicalAssetID'     => $item_data['asset_id'] ?? null,
-		        'entPhysicalVendorType'  => $item_data['vendor_type'] ?? 'API-REST',
-		        'entPhysicalIsFRU'       => 'true', // Assuming API components are field-replaceable
+		        case 'controller':
+		        case 'hardware':
+		            $this->storeHardwareComponentData($this->device, $data);
+		            break;
 
-		        // Non-nullable integer fields
-		        'entPhysicalContainedIn' => 0,
-		        'entPhysicalParentRelPos' => -1,
-		    ];
-
-		    // Check for existing component using the generated stable index
-		    $existing_component = DB::table('entPhysical')
-		        ->where('device_id', $device->device_id)
-		        ->where('entPhysicalIndex', $entPhysicalIndex)
-		        ->first();
-
-		    if (!$existing_component) {
-		        $physical_data['entPhysicalIndex'] = $entPhysicalIndex;
-		        DB::table('entPhysical')->insertGetId($physical_data);
-		        Log::info("API Poller: Created new entPhysical {$resource_name} (Index: {$entPhysicalIndex})");
-		    } else {
-		        DB::table('entPhysical')
-		            ->where('entPhysical_id', $existing_component->entPhysical_id)
-		            ->update($physical_data);
-		        Log::debug("API Poller: Updated existing entPhysical {$resource_name} (ID: {$existing_component->entPhysical_id})");
+		        default:
+		            // Fallback to generic metrics table
+		            $this->storeGenericApiMetrics($this->device, $data, $resourceType);
+		            break;
 		    }
 		}
 
-		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		protected function storeHardwareComponentData($device, $componentData)
 		{
-		    // Use data_get for safe nested access, eliminating risk of array-key-not-found errors.
-		    $enabled_status = data_get($item_data, 'enabled') ?? true;
+		    $name = $componentData['name'] ?? 'unknown';
+		    $status = $componentData['status'] ?? 'ok';
+		    $temperature = $componentData['temperature'] ?? null;
 
-		    // Safely extract deeply nested fields
-		    $mac_address = data_get($item_data, 'eth.mac_address');
-		    $mtu = data_get($item_data, 'eth.mtu') ?? 1500;
-		    $ifAlias = data_get($item_data, 'services.0');
+		    DB::table('device_components')->updateOrInsert(
+		        ['device_id' => $device->device_id, 'label' => $name],
+		        [
+		            'type' => $componentData['type'] ?? 'controller',
+		            'status' => $status,
+		            'temperature' => $temperature,
+		            'updated_at' => now(),
+		        ]
+		    );
 
-		    // Create a stable, deterministic ifIndex
-		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
+		    Log::info("Updated component {$name} for device {$device->hostname}");
+		}
 
-		    // Find existing port by name or MAC
-		    $existing_port = DB::table('ports')
+
+//		private function storeHardwareComponentData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+//		{
+//		    $entPhysicalClass = $this->determineEntPhysicalClass($item_data['type'] ?? 'other');
+//		    $entPhysicalIndex = $this->generateUniqueEntPhysicalIndex($device->device_id, $resource_id, $item_data);
+//
+//		    // NOTE: last_discovered and entPhysicalOperStatus are removed to prevent SQLSTATE[42S22] errors.
+//
+//		    $physical_data = [
+//		        'device_id'              => $device->device_id,
+//		        'entPhysicalIndex'       => $entPhysicalIndex,
+//		        'entPhysicalDescr'       => $item_data['name'] ?? $resource_name,
+//		        'entPhysicalClass'       => $entPhysicalClass,
+//		        'entPhysicalName'        => $item_data['name'] ?? $resource_name,
+//		        'entPhysicalSerialNum'   => $item_data['serial'] ?? null,
+//		        'entPhysicalModelName'   => $item_data['model'] ?? null,
+//
+//		        // The fields below are safely included based on your DESCRIBE output
+//		        'entPhysicalHardwareRev' => $item_data['hw_revision'] ?? null,
+//		        'entPhysicalFirmwareRev' => $item_data['fw_revision'] ?? null,
+//		        'entPhysicalSoftwareRev' => $item_data['sw_revision'] ?? null,
+//		        'entPhysicalAlias'       => $item_data['alias'] ?? null,
+//		        'entPhysicalAssetID'     => $item_data['asset_id'] ?? null,
+//		        'entPhysicalVendorType'  => $item_data['vendor_type'] ?? 'API-REST',
+//		        'entPhysicalIsFRU'       => 'true', // Assuming API components are field-replaceable
+//
+//		        // Non-nullable integer fields
+//		        'entPhysicalContainedIn' => 0,
+//		        'entPhysicalParentRelPos' => -1,
+//		    ];
+//
+//		    // Check for existing component using the generated stable index
+//		    $existing_component = DB::table('entPhysical')
+//		        ->where('device_id', $device->device_id)
+//		        ->where('entPhysicalIndex', $entPhysicalIndex)
+//		        ->first();
+//
+//		    if (!$existing_component) {
+//		        $physical_data['entPhysicalIndex'] = $entPhysicalIndex;
+//		        DB::table('entPhysical')->insertGetId($physical_data);
+//		        Log::info("API Poller: Created new entPhysical {$resource_name} (Index: {$entPhysicalIndex})");
+//		    } else {
+//		        DB::table('entPhysical')
+//		            ->where('entPhysical_id', $existing_component->entPhysical_id)
+//		            ->update($physical_data);
+//		        Log::debug("API Poller: Updated existing entPhysical {$resource_name} (ID: {$existing_component->entPhysical_id})");
+//		    }
+//		}
+//
+		protected function storePortData($device, $portData)
+		{
+		    if (!isset($portData['name'])) {
+		        Log::warning("Missing port name for device {$device->hostname}");
+		        return;
+		    }
+
+		    $ifName = $portData['name'];
+		    $ifDescr = $portData['description'] ?? $ifName;
+		    $ifIndex = $portData['index'] ?? crc32($ifName); // fallback unique index
+
+		    // Find or create port entry
+		    $port = DB::table('ports')
 		        ->where('device_id', $device->device_id)
-		        ->where(function ($query) use ($resource_name, $mac_address) {
-		            $query->where('ifName', $resource_name)
-		                  ->orWhere('ifDescr', $resource_name);
-		            if ($mac_address) {
-		                $query->orWhere('ifPhysAddress', $mac_address);
-		            }
+		        ->where(function ($query) use ($ifIndex, $ifName) {
+		            $query->where('ifIndex', $ifIndex)->orWhere('ifName', $ifName);
 		        })
 		        ->first();
 
-		    // Safe fields for insert
-		    $port_data = [
-		        'ifName'        => $resource_name,
-		        'ifDescr'       => data_get($item_data, 'name') ?? $resource_name,
-		        'ifAlias'       => $ifAlias,
-		        'ifIndex'       => $ifIndex,
-		        'ifType'        => 'ethernetCsmacd', // Default type
-		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
-		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
-		        'ifSpeed'       => (int)(data_get($item_data, 'speed') ?? 0),
-		        'ifMtu'         => (int)$mtu,
-		        'ifPhysAddress' => $mac_address,
-		        'port_descr_type' => 'rest-api',
-		        'disabled'      => (int)($enabled_status === false ? 1 : 0),
-		        'poll_time'     => time(),
-		    ];
-
-		    if (!$existing_port) {
-		        $port_data['device_id'] = $device->device_id;
-		        DB::table('ports')->insertGetId($port_data);
-		        Log::info("API Poller: Created new port {$resource_name} (Index: {$ifIndex})");
+		    if (!$port) {
+		        $portId = DB::table('ports')->insertGetId([
+		            'device_id' => $device->device_id,
+		            'ifIndex' => $ifIndex,
+		            'ifName' => $ifName,
+		            'ifDescr' => $ifDescr,
+		            'ifType' => $portData['type'] ?? 'ethernetCsmacd',
+		            'ifSpeed' => $portData['speed'] ?? 0,
+		            'ifOperStatus' => $portData['status'] ?? 'up',
+		            'ifAdminStatus' => 'up',
+		            'ifAlias' => $portData['alias'] ?? null,
+		            'ifLastChange' => now(),
+		        ]);
 		    } else {
-		        DB::table('ports')
-		            ->where('port_id', $existing_port->port_id)
-		            ->update($port_data);
-		        Log::debug("API Poller: Updated existing port {$resource_name} (ID: {$existing_port->port_id})");
+		        $portId = $port->port_id;
+		        DB::table('ports')->where('port_id', $portId)->update([
+		            'ifSpeed' => $portData['speed'] ?? $port->ifSpeed,
+		            'ifOperStatus' => $portData['status'] ?? $port->ifOperStatus,
+		            'ifLastChange' => now(),
+		        ]);
+		    }
+
+		    // Update performance counters in ports_statistics
+		    DB::table('ports_statistics')->updateOrInsert(
+		        ['port_id' => $portId],
+		        [
+		            'ifInOctets' => $portData['rx_bytes'] ?? 0,
+		            'ifOutOctets' => $portData['tx_bytes'] ?? 0,
+		            'ifInUcastPkts' => $portData['rx_packets'] ?? 0,
+		            'ifOutUcastPkts' => $portData['tx_packets'] ?? 0,
+		            'poll_time' => time(),
+		        ]
+		    );
+
+		    Log::info("Updated port {$ifName} metrics for device {$device->hostname}");
+		}
+
+//		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+//		{
+//		    // Use data_get for safe nested access, eliminating risk of array-key-not-found errors.
+//		    $enabled_status = data_get($item_data, 'enabled') ?? true;
+//
+//		    // Safely extract deeply nested fields
+//		    $mac_address = data_get($item_data, 'eth.mac_address');
+//		    $mtu = data_get($item_data, 'eth.mtu') ?? 1500;
+//		    $ifAlias = data_get($item_data, 'services.0');
+//
+//		    // Create a stable, deterministic ifIndex
+//		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
+//
+//		    // Find existing port by name or MAC
+//		    $existing_port = DB::table('ports')
+//		        ->where('device_id', $device->device_id)
+//		        ->where(function ($query) use ($resource_name, $mac_address) {
+//		            $query->where('ifName', $resource_name)
+//		                  ->orWhere('ifDescr', $resource_name);
+//		            if ($mac_address) {
+//		                $query->orWhere('ifPhysAddress', $mac_address);
+//		            }
+//		        })
+//		        ->first();
+//
+//		    // Safe fields for insert
+//		    $port_data = [
+//		        'ifName'        => $resource_name,
+//		        'ifDescr'       => data_get($item_data, 'name') ?? $resource_name,
+//		        'ifAlias'       => $ifAlias,
+//		        'ifIndex'       => $ifIndex,
+//		        'ifType'        => 'ethernetCsmacd', // Default type
+//		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
+//		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
+//		        'ifSpeed'       => (int)(data_get($item_data, 'speed') ?? 0),
+//		        'ifMtu'         => (int)$mtu,
+//		        'ifPhysAddress' => $mac_address,
+//		        'port_descr_type' => 'rest-api',
+//		        'disabled'      => (int)($enabled_status === false ? 1 : 0),
+//		        'poll_time'     => time(),
+//		    ];
+//
+//		    if (!$existing_port) {
+//		        $port_data['device_id'] = $device->device_id;
+//		        DB::table('ports')->insertGetId($port_data);
+//		        Log::info("API Poller: Created new port {$resource_name} (Index: {$ifIndex})");
+//		    } else {
+//		        DB::table('ports')
+//		            ->where('port_id', $existing_port->port_id)
+//		            ->update($port_data);
+//		        Log::debug("API Poller: Updated existing port {$resource_name} (ID: {$existing_port->port_id})");
+//		    }
+//		}
+
+//		protected function savePortMetrics(array $interfaces): void
+//		{
+//		    foreach ($interfaces as $ifName => $metrics) {
+//		        // Try to find an existing port
+//		        $port = DB::table('ports')
+//		            ->where('device_id', $this->device->device_id)
+//		            ->where(function ($query) use ($ifName) {
+//		                $query->where('ifName', $ifName)
+//		                      ->orWhere('ifDescr', $ifName)
+//		                      ->orWhere('ifAlias', $ifName);
+//		            })
+//		            ->first();
+//
+//		        // If no matching port, create one for completeness
+//		        if (!$port) {
+//		            $portId = DB::table('ports')->insertGetId([
+//		                'device_id'  => $this->device->device_id,
+//		                'ifName'     => $ifName,
+//		                'ifDescr'    => $ifName,
+//		                'ifAlias'    => $ifName,
+//		                'ifType'     => $metrics['type'] ?? 'ethernetCsmacd',
+//		                'ifSpeed'    => $metrics['speed'] ?? 0,
+//		                'ifOperStatus' => $metrics['status'] ?? 'up',
+//		                'ifAdminStatus' => 'up',
+//		                'ifLastChange' => now(),
+//		                'poll_time'  => time(),
+//		                'poll_prev'  => time(),
+//		            ]);
+//		        } else {
+//		            $portId = $port->port_id;
+//		        }
+//
+//		        // Update port statistics
+//		        DB::table('ports_statistics')->updateOrInsert(
+//		            ['port_id' => $portId],
+//		            [
+//		                'ifInOctets'   => $metrics['rx_bytes'] ?? 0,
+//		                'ifOutOctets'  => $metrics['tx_bytes'] ?? 0,
+//		                'ifInErrors'   => $metrics['rx_errors'] ?? 0,
+//		                'ifOutErrors'  => $metrics['tx_errors'] ?? 0,
+//		                'ifInUcastPkts' => $metrics['rx_packets'] ?? 0,
+//		                'ifOutUcastPkts' => $metrics['tx_packets'] ?? 0,
+//		                'poll_time'    => time(),
+//		                'updated_at'   => now(),
+//		            ]
+//		        );
+//		    }
+//		}
+
+		protected function saveMetrics(string $resourceType, array $metrics): void
+		{
+		    switch ($resourceType) {
+		        case 'network-interfaces':
+		        case 'ports':
+		            $this->savePortMetrics($metrics);
+		            break;
+
+		        default:
+		            $this->saveGenericMetrics($resourceType, $metrics);
+		            break;
 		    }
 		}
 
-		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		protected function saveGenericMetrics(string $resourceType, array $metrics): void
 		{
-		    $storage_index = $resource_id;
-		    $drive_capacity = $item_data['capacity'] ?? 0;
-		    $storage_size = (int)$drive_capacity;
-		    $storage_used = 0;
-		    $storage_free = $storage_size;
-
-		    $existing_storage = DB::table('storage')
-		        ->where('device_id', $device->device_id)
-		        ->where('storage_index', $storage_index)
-		        ->first();
-
-		    $storage_data = [
-		        'storage_size'      => $storage_size,
-		        'storage_used'      => $storage_used,
-		        'storage_free'      => $storage_free,
-		        'storage_units'     => 1,
-		        'storage_perc'      => 0,
-		        'type'              => 'fixed',
-		        'storage_descr'     => $resource_name . " (" . ($item_data['type'] ?? 'unknown') . ")",
-		        'storage_type'      => 'rest-api-storage', // A clear type
-		    ];
-
-		    if (!$existing_storage) {
-		        $storage_data['device_id'] = $device->device_id;
-		        $storage_data['storage_index'] = $storage_index;
-		        // The 'created_at' line is removed here to fix the SQL error.
-		        DB::table('storage')->insertGetId($storage_data);
-		        Log::info("API Poller: Created new storage {$resource_name} (Index: {$storage_index})");
-		    } else {
-		        DB::table('storage')
-		            ->where('storage_id', $existing_storage->storage_id)
-		            ->update($storage_data);
-		        Log::debug("API Poller: Updated existing storage {$resource_name} (ID: {$existing_storage->storage_id})");
+		    foreach ($metrics as $metricName => $value) {
+		        DB::table('pure_storage_metrics')->updateOrInsert(
+		            [
+		                'device_id'     => $this->device->device_id,
+		                'resource_type' => $resourceType,
+		                'metric_name'   => $metricName,
+		            ],
+		            [
+		                'metric_value'  => $value,
+		                'updated_at'    => now(),
+		            ]
+		        );
 		    }
+		}
+
+//		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+//		{
+//		    $storage_index = $resource_id;
+//		    $drive_capacity = $item_data['capacity'] ?? 0;
+//		    $storage_size = (int)$drive_capacity;
+//		    $storage_used = 0;
+//		    $storage_free = $storage_size;
+//
+//		    $existing_storage = DB::table('storage')
+//		        ->where('device_id', $device->device_id)
+//		        ->where('storage_index', $storage_index)
+//		        ->first();
+//
+//		    $storage_data = [
+//		        'storage_size'      => $storage_size,
+//		        'storage_used'      => $storage_used,
+//		        'storage_free'      => $storage_free,
+//		        'storage_units'     => 1,
+//		        'storage_perc'      => 0,
+//		        'type'              => 'fixed',
+//		        'storage_descr'     => $resource_name . " (" . ($item_data['type'] ?? 'unknown') . ")",
+//		        'storage_type'      => 'rest-api-storage', // A clear type
+//		    ];
+//
+//		    if (!$existing_storage) {
+//		        $storage_data['device_id'] = $device->device_id;
+//		        $storage_data['storage_index'] = $storage_index;
+//		        // The 'created_at' line is removed here to fix the SQL error.
+//		        DB::table('storage')->insertGetId($storage_data);
+//		        Log::info("API Poller: Created new storage {$resource_name} (Index: {$storage_index})");
+//		    } else {
+//		        DB::table('storage')
+//		            ->where('storage_id', $existing_storage->storage_id)
+//		            ->update($storage_data);
+//		        Log::debug("API Poller: Updated existing storage {$resource_name} (ID: {$existing_storage->storage_id})");
+//		    }
+//		}
+//
+		protected function storeDriveStorageData($device, $storageData)
+		{
+		    if (!isset($storageData['name'])) {
+		        Log::warning("Missing storage name for device {$device->hostname}");
+		        return;
+		    }
+
+		    $descr = $storageData['name'];
+		    $size = $storageData['size'] ?? 0;
+		    $used = $storageData['used'] ?? 0;
+
+		    DB::table('storage')->updateOrInsert(
+		        ['device_id' => $device->device_id, 'storage_descr' => $descr],
+		        [
+		            'storage_type' => $storageData['type'] ?? 'purestorage',
+		            'storage_size' => $size,
+		            'storage_used' => $used,
+		            'storage_free' => max(0, $size - $used),
+		            'storage_perc' => $size > 0 ? round(($used / $size) * 100, 2) : 0,
+		            'updated_at' => now(),
+		        ]
+		    );
+
+		    Log::info("Updated storage {$descr} metrics for device {$device->hostname}");
 		}
 
     protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
@@ -595,19 +806,6 @@ class Api
         });
 
         return count($requests) < $connection->rate_limit;
-    }
-
-    protected function updateRateLimit($connection): void
-    {
-        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
-            return;
-        }
-
-        $cacheKey = "rest_api_rate_limit:{$connection->id}";
-        $requests = Cache::get($cacheKey, []);
-        $requests[] = Carbon::now()->toDateTimeString();
-
-        Cache::put($cacheKey, $requests, 120);
     }
 
     protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
@@ -743,4 +941,19 @@ class Api
 		        })
 		        ->first();
 		}
+
+    protected function updateRateLimit($connection): void
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return;
+        }
+
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
+        $requests[] = Carbon::now()->toDateTimeString();
+
+        Cache::put($cacheKey, $requests, 120);
+    }
+
+
 }
