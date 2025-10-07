@@ -683,8 +683,10 @@ class DataMatcher
 		            'os' => $device->os ?? null,
 		        ],
 		        [
-		            'librenms_table' => null,
-		            'librenms_field' => null,
+
+		            'librenms_table' => '',
+		            'librenms_field' => '',
+
 		            'enabled' => false,
 		            'auto_learned' => true,
 		            'last_seen_at' => now(),
@@ -692,6 +694,7 @@ class DataMatcher
 		        ]
 		    );
 		}
+
 
     protected function getStats(): array
     {
