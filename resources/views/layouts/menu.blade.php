@@ -184,16 +184,22 @@
                                                               aria-hidden="true"></i> {{ __('Delete Device') }}</a></li>
 
                     		                        <li role="presentation" class="divider"></li>
-                        <li>
-                            <a href="{{ route('devices.rest-api.templates.index') }}">
-                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
-                            </a>
-                        </li>
-												<li>
-                            <a href="{{ route('settings.rest-api.credentials.index') }}">
-                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
-                            </a>
-                        </li>
+
+                        <li role="presentation" class="divider"></li>
+                        <li class="dropdown-submenu">
+                            <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
+                            <li>
+		                            <a href="{{ route('devices.rest-api.templates.index') }}">
+		                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
+		                            </a>
+				                        </li>
+																<li>
+		                            <a href="{{ route('settings.rest-api.credentials.index') }}">
+		                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
+		                            </a>
+				                        </li>
+		                    </li>
+
 										@endadmin
 
                     </ul>

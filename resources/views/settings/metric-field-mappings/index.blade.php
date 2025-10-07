@@ -40,6 +40,14 @@
                     <button type="button" class="btn btn-warning" onclick="confirmBulkDelete()">
                         <i class="fa fa-trash"></i> Delete All Unmatched
                     </button>
+
+										{{ route(
+										    @csrf
+										    <button type="submit" class="btn btn-sm btn-primary">Import from JSON</button>
+										</form>
+
+										{{ route(Export to JSON</a>
+
                 </div>
             </div>
 
@@ -242,19 +250,19 @@ function confirmBulkDelete() {
         var form = document.createElement('form');
         form.method = 'POST';
         form.action = '{{ route("settings.metric-field-mappings.bulk-delete-unmatched") }}';
-        
+
         var csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = '_token';
         csrfInput.value = '{{ csrf_token() }}';
         form.appendChild(csrfInput);
-        
+
         var methodInput = document.createElement('input');
         methodInput.type = 'hidden';
         methodInput.name = '_method';
         methodInput.value = 'DELETE';
         form.appendChild(methodInput);
-        
+
         document.body.appendChild(form);
         form.submit();
     }

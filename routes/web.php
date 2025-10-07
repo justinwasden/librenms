@@ -181,7 +181,7 @@ Route::middleware(['auth'])->group(function () {
         'update'  => 'rest-api.templates.update',
         'destroy' => 'rest-api.templates.destroy',
         ]);
-            
+
             // Test template endpoint
             Route::post('rest-api-templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
                  ->name('rest-api.templates.test');
@@ -189,7 +189,8 @@ Route::middleware(['auth'])->group(function () {
 
 
         Route::get('settings/{tab?}/{section?}', [SettingsController::class, 'index'])->name('settings');
-
+				Route::post('/settings/metric-field-mappings/import', [MetricFieldMappingController::class, 'importFromJson'])->name('settings.metric-field-mappings.import');
+				Route::get('/settings/metric-field-mappings/export', [MetricFieldMappingController::class, 'exportToJson'])->name('settings.metric-field-mappings.export');
     });
 
     // fallback device routes
@@ -258,6 +259,7 @@ Route::middleware(['auth'])->group(function () {
 
         // Metric Field Mapping Routes
         require __DIR__ . '/metric_field_mapping_routes.php';
+
     });
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
