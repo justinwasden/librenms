@@ -170,15 +170,21 @@
 
 										    @can('manage', \App\Models\DeviceGroup::class)
 										        <li>
-										            {{ url(
+										            <a href="{{ route('device-groups.index') }}">
 										                <i class="fa fa-th fa-fw fa-lg" aria-hidden="true"></i> {{ __('Manage Groups') }}
-										            </a            <i class="fa fa-group fa-fw fa-lg"></i> {{ __('Device Dependencies') }}
+										            </a>
+										        </li>
+                                            @endcan
+
+										    <li>
+										        <a href="{{ url('dependancy/device') }}">
+										            <i class="fa fa-group fa-fw fa-lg"></i> {{ __('Device Dependencies') }}
 										        </a>
 										    </li>
 
 										    @if($show_vmwinfo)
 										        <li>
-										            {{ url(
+										            <a href="{{ url('vmware') }}">
 										                <i class="fa fa-cog fa-fw fa-lg"></i> {{ __('Virtual Machines') }}
 										            </a>
 										        </li>
@@ -187,34 +193,36 @@
 										    <li role="presentation" class="divider"></li>
 
 										    <li>
-										        <a href="{{ url('   <i class="fa fa-plus fa-fw fa-lg" aria-hidden="true"></i> {{ __('Add Device') }}
+										        <a href="{{ url('addhost') }}">
+										            <i class="fa fa-plus fa-fw fa-lg" aria-hidden="true"></i> {{ __('Add Device') }}
 										        </a>
 										    </li>
 
 										    <li>
-										        <a href="{{ url     <i class="fa fa-trash fa-fw fa-lg" aria-hidden="true"></i> {{ __('Delete Device') }}
+										        <a href="{{ url('deletehost') }}">
+										            <i class="fa fa-trash fa-fw fa-lg" aria-hidden="true"></i> {{ __('Delete Device') }}
 										        </a>
 										    </li>
 
 										    <li role="presentation" class="divider"></li>
 
 												<li class="dropdown-submenu">
-												    #
+												    <a href="{{ route('api.poller.settings') }}">
 												        <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
 												    </a>
 												    <ul class="dropdown-menu">
 												        <li>
-												            {{ route(
+												            <a href="{{ route('api.templates.index') }}">
 												                <i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
 												            </a>
 												        </li>
 												        <li>
-												            {{ route(
+												            <a href="{{ route('api.credentials.index') }}">
 												                <i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
 												            </a>
 												        </li>
 												        <li>
-												            {{ route(
+												            <a href="{{ route('api.field.mappings') }}">
 												                <i class="fa fa-sliders fa-fw fa-lg" aria-hidden="true"></i> {{ __('Metric Field Mappings') }}
 												            </a>
 												        </li>
