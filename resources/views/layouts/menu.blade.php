@@ -217,7 +217,7 @@
 												            </a>
 												        </li>
 												        <li>
-												            <a href="{{ route('rest-api.credentials.index') }}">
+												            <a href="{{ route('settings.rest-api.credentials.index') }}">
 												                <i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
 												            </a>
 												        </li>
