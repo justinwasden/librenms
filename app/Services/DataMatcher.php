@@ -448,9 +448,10 @@ class DataMatcher
 
     protected function updateSensor(Device $device, $metric, MetricFieldMapping $mapping, $value): void
     {
-        // Get the sensor class based on the metric name using the updated map
+        // Determine the sensor class and index for unique identification
         $sensorClass = $this->determineSensorClass($metric->metric_name);
         $sensorIndex = $this->generateSensorIndex($metric);
+        $resourceName = $metric->resource_name ?? $metric->resource_id;
 
         $sensor = DB::table('sensors')
             ->where('device_id', $device->device_id)
@@ -459,17 +460,25 @@ class DataMatcher
             ->where('sensor_index', $sensorIndex)
             ->first();
 
+        $collectedAt = now();
+        $isNumericValue = is_numeric($metric->value) && $metric->value !== null;
 
         $data = [
-            'sensor_current' => $value,
+            // Only use the numeric 'value' column from device_api_metrics for sensor_current
+            'sensor_current' => $isNumericValue ? $metric->value : ($sensor->sensor_current ?? null),
             'sensor_prev' => $sensor->sensor_current ?? null,
-            'lastupdate' => now(),
+            'lastupdate' => $collectedAt,
         ];
 
-
-        if ($mapping->librenms_field === 'sensor_current' && !is_numeric($value)) {
-            $data['sensor_descr'] = $metric->resource_name . ' (' . $value . ')';
-            $data['sensor_current'] = null;
+        // Custom handling for status strings (like 'healthy' or 'unused')
+        // We update the sensor's description or use a dedicated string column if available.
+        if (!$isNumericValue) {
+            // Use the string_value for descriptive status on the sensor
+            // We prepend the resource name to the string for clarity in the UI.
+            $data['sensor_descr'] = "{$resourceName} Status: {$metric->string_value}";
+        } else {
+             // If a numeric value exists, use the original resource name for the description
+             $data['sensor_descr'] = $resourceName;
         }
 
         if ($sensor) {
@@ -477,21 +486,23 @@ class DataMatcher
                 ->where('sensor_id', $sensor->sensor_id)
                 ->update($data);
 
-            Log::debug("Updated sensor {$sensorClass} ({$sensorIndex}) = {$value} for device {$device->hostname}");
+            $this->logDebug("Updated sensor {$sensorClass} ({$sensorIndex}) = " . ($data['sensor_current'] ?? $data['sensor_descr']) . " for device {$device->hostname}");
         } else {
             // Create new sensor
             DB::table('sensors')->insert(array_merge($data, [
                 'device_id' => $device->device_id,
                 'sensor_class' => $sensorClass,
-                'sensor_type' => 'rest-api',
+                'sensor_type' => 'rest-api', // Indicates REST API source
                 'sensor_index' => $sensorIndex,
-                'sensor_descr' => $metric->resource_name ?? $metric->metric_name,
-                'sensor_oid' => '',
+                'sensor_oid' => $metric->metric_name, // Store the metric name as the OID identifier
                 'poller_type' => 'rest-api',
             ]));
 
-            Log::info("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
+            $this->logDebug("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
         }
+
+        // CRITICAL FIX: Ensure the metric is marked as matched after a successful DB operation
+        $this->markAsMatched($metric, $mapping);
     }
 
     protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
