@@ -190,6 +190,56 @@
                                             <i class="fas fa-info-circle"></i> No connections defined in template. Please add connection data in the Connection tab.
                                         </div>
                                     @endif
+
+                                    {{-- Start NEW ENDPOINT ADDITION Block --}}
+																				<div class="card mb-3 mt-4" x-show="templateData.connections && templateData.connections.length > 0">
+																				    <div class="card-header bg-success text-white p-2">
+																				        <h6 class="mb-0">
+																				            <i class="fas fa-plus"></i> Add New Endpoint
+																				        </h6>
+																				    </div>
+																				    <div class="card-body">
+																				        <div class="alert alert-info py-2">
+																				            Endpoints will be added to the <strong>{{ $connections[0]['name'] ?? 'Primary Connection' }}</strong>.
+																				        </div>
+
+																				        <button type="button" class="btn btn-success btn-sm mb-3" @click="addNewEndpoint()">
+																				            <i class="fas fa-plus-circle"></i> Add Endpoint Form
+																				        </button>
+
+																				        {{-- Container for dynamically added endpoint forms --}}
+																				        <div id="new-endpoints-container">
+																				            {{-- Dynamic forms will be appended here --}}
+																				        </div>
+																				    </div>
+																				</div>
+																				{{-- End NEW ENDPOINT ADDITION Block --}}
+
+																				{{-- HIDDEN TEMPLATE: The actual form structure to be cloned by JavaScript --}}
+																				<template id="new-endpoint-template">
+																				    @php
+																				    // We use a non-numeric string placeholder for JavaScript to replace
+																				    $js_placeholder_index = '__NEW_ENDPOINT_INDEX__';
+																				    $js_connection_index = 0; // Assuming only one connection is edited at a time for simplicity
+																				    @endphp
+																				    <div class="card mb-3 new-endpoint-item">
+																				        <div class="card-header bg-light-gray">
+																				            <h6 class="mb-0">New Endpoint <small class="text-danger">(Unsaved)</small>
+																				                <button type="button" class="close text-danger remove-endpoint float-right" aria-label="Remove">
+																				                    <span>&times;</span>
+																				                </button>
+																				            </h6>
+																				        </div>
+																				        <div class="card-body">
+																				            {{-- Re-use the existing partial with placeholders --}}
+																				            @include('settings.rest-api.templates.partials.endpoint-form', [
+																				                'connectionIndex' => $js_connection_index,
+																				                'endpointIndex' => $js_placeholder_index,
+																				                'endpoint' => [], // Empty array for initial state
+																				            ])
+																				        </div>
+																				    </div>
+																				</template>
                                 </div>
 
                                 {{-- Preview Tab --}}
@@ -221,6 +271,10 @@ function templateEditor() {
     return {
         activeTab: 'connection',
         openEndpoint: null,
+        // New reactive property for connections data from the template
+        templateData: @json($template->template_data),
+        // Counter for generating unique indexes for new endpoints
+        newEndpointCount: 0,
 
         init() {
             // Initialize
@@ -233,6 +287,43 @@ function templateEditor() {
             } else {
                 this.openEndpoint = endpointId;
             }
+        },
+
+        // NEW METHOD: Clone the template form and insert it
+        addNewEndpoint() {
+            const template = document.getElementById('new-endpoint-template');
+            const container = document.getElementById('new-endpoints-container');
+
+            if (!template || !container) return;
+
+            const clone = template.content.cloneNode(true);
+            const newIndex = 'new_' + this.newEndpointCount;
+
+            // Find all inputs and update their names with the unique index
+            clone.querySelectorAll('*').forEach(el => {
+                if (el.name) {
+                    el.name = el.name.replace('__NEW_ENDPOINT_INDEX__', newIndex);
+                }
+                if (el.id) {
+                    el.id = el.id.replace('__NEW_ENDPOINT_INDEX__', newIndex);
+                }
+                // Update the hidden metric map name for the controller logic to find it
+                if (el.tagName === 'TEXTAREA' && el.name === 'metric_map_json') {
+                    el.name = `template_data[connections][0][endpoints][${newIndex}][metric_map]`;
+                    // The metric_map needs to be initialized as an empty object for the form.
+                    el.value = JSON.stringify({}, null, 4);
+                }
+            });
+
+            // Add listener to remove the endpoint form
+            const removeButton = clone.querySelector('.remove-endpoint');
+            removeButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.target.closest('.new-endpoint-item').remove();
+            });
+
+            container.appendChild(clone);
+            this.newEndpointCount++;
         }
     }
 }
