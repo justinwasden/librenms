@@ -155,7 +155,7 @@ Route::middleware(['auth'])->group(function () {
         // Metric Field Mappings
         Route::prefix('settings')->name('settings.')->group(function () {
             Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
-                ->parameters(['metric-field-mappings' => 'mapping']);
+                ->parameters(['metric-field-mappings' => 'mapping'])
                 ->except(['show']);
 
             Route::post('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
