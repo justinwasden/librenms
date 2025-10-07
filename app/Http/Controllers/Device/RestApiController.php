@@ -22,7 +22,18 @@ class RestApiController extends Controller
         $credentials = \App\Models\RestApiCredential::all();
         $device->load('restApiConnections.endpoints', 'restApiConnections.credential');
         // Filter templates by vendor/OS (as per RestApiTemplate scope)
-        $templates = RestApiTemplate::forDevice($device)->get();
+        $templates = \App\Models\RestApiTemplate::all()
+   				 ->sortByDesc(function ($template) use ($device) {
+		        // Simple prioritization logic: 2 if OS matches, 1 if Vendor matches, 0 otherwise.
+		        $score = 0;
+		        if ($template->os && str_contains($device->os, $template->os)) {
+		            $score += 2;
+		        }
+		        if ($template->vendor && str_contains($device->vendor, $template->vendor)) {
+		            $score += 1;
+		        }
+        return $score;
+    });
 
         return view('device.edit.rest-api', compact('device', 'templates', 'credentials'));
     }
