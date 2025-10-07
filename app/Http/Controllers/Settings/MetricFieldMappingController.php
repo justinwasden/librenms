@@ -286,4 +286,13 @@ class MetricFieldMappingController extends Controller
 
 		    return back()->with('success', 'Mappings imported successfully.');
 		}
+
+		public function exportToJson()
+		{
+		    $mappings = \App\Models\MetricFieldMapping::all();
+		    $json = $mappings->toJson(JSON_PRETTY_PRINT);
+		    Storage::put('exports/metric_field_mappings.json', $json);
+
+		    return response()->download(storage_path('app/exports/metric_field_mappings.json'));
+		}
 }

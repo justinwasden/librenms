@@ -165,41 +165,57 @@
                             </ul>
                         </li>
                     @endif
-                    @admin
-                        <li role="presentation" class="divider"></li>
-                        @can('manage', \App\Models\DeviceGroup::class)
-                            <li><a href="{{ url('device-groups') }}"><i class="fa fa-th fa-fw fa-lg"
-                                                                        aria-hidden="true"></i> {{ __('Manage Groups') }}
-                                </a></li>
-                        @endcan
-                        <li><a href="{{ url('device-dependencies') }}"><i class="fa fa-group fa-fw fa-lg"></i> {{ __('Device Dependencies') }}</a></li>
-                        @if($show_vmwinfo)
-                            <li><a href="{{ url('vminfo') }}"><i
-                                        class="fa fa-cog fa-fw fa-lg"></i> {{ __('Virtual Machines') }}</a></li>
-                        @endif
-                        <li role="presentation" class="divider"></li>
-                        <li><a href="{{ url('addhost') }}"><i class="fa fa-plus fa-fw fa-lg"
-                                                              aria-hidden="true"></i> {{ __('Add Device') }}</a></li>
-                        <li><a href="{{ url('delhost') }}"><i class="fa fa-trash fa-fw fa-lg"
-                                                              aria-hidden="true"></i> {{ __('Delete Device') }}</a></li>
+										@admin
+										    <li role="presentation" class="divider"></li>
 
-                    		                        <li role="presentation" class="divider"></li>
+										    @can('manage', \App\Models\DeviceGroup::class)
+										        <li>
+										            {{ url(
+										                <i class="fa fa-th fa-fw fa-lg" aria-hidden="true"></i> {{ __('Manage Groups') }}
+										            </a            <i class="fa fa-group fa-fw fa-lg"></i> {{ __('Device Dependencies') }}
+										        </a>
+										    </li>
 
-                        <li role="presentation" class="divider"></li>
-                        <li class="dropdown-submenu">
-                            <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('Device API Polling') }}
-                            <li>
-		                            <a href="{{ route('devices.rest-api.templates.index') }}">
-		                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
-		                            </a>
-				                        </li>
-																<li>
-		                            <a href="{{ route('settings.rest-api.credentials.index') }}">
-		                                <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
-		                            </a>
-				                        </li>
-		                    </li>
+										    @if($show_vmwinfo)
+										        <li>
+										            {{ url(
+										                <i class="fa fa-cog fa-fw fa-lg"></i> {{ __('Virtual Machines') }}
+										            </a>
+										        </li>
+										    @endif
 
+										    <li role="presentation" class="divider"></li>
+
+										    <li>
+										        <a href="{{ url('   <i class="fa fa-plus fa-fw fa-lg" aria-hidden="true"></i> {{ __('Add Device') }}
+										        </a>
+										    </li>
+
+										    <li>
+										        <a href="{{ url     <i class="fa fa-trash fa-fw fa-lg" aria-hidden="true"></i> {{ __('Delete Device') }}
+										        </a>
+										    </li>
+
+										    <li role="presentation" class="divider"></li>
+
+										    <li class="dropdown-submenu">
+										        #
+										            <                {{ route(
+										                    <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
+										                </a>
+										            </li>
+										            <li>
+										                {{ route(
+										                    <i class="fa fa-cloud fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
+										                </a>
+										            </li>
+										            <li>
+															    {{ route(
+															        <i class="fa fa-sliders fa-fw fa-lg"></i> {{ __('Metric Field Mappings') }}
+															    </a>
+															</li>
+										        </ul>
+										    </li>
 										@endadmin
 
                     </ul>
