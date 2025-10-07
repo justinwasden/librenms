@@ -138,6 +138,58 @@ class Api
         }
     }
 
+    private function determineEntPhysicalClass(string $type): string
+		{
+		    $type = strtolower($type);
+		    switch ($type) {
+		        case 'controller':
+		        case 'ct':              return 'cpu';
+		        case 'power_supply':
+		        case 'pwr':             return 'powerSupply';
+		        case 'fan':
+		        case 'cooling':         return 'fan';
+		        case 'chassis':         return 'chassis';
+		        case 'drive_bay':
+		        case 'nvram_bay':
+		        case 'ssd':             return 'disk';
+		        case 'eth_port':        return 'port';
+		        case 'temp_sensor':     return 'sensor';
+		        default:                return 'other';
+		    }
+		}
+
+		private function generateUniqueEntPhysicalIndex(int $device_id, string $resource_id, array $item_data = []): int
+		{
+		    $unique_id_part = $item_data['serial'] ?? $item_data['uuid'] ?? $resource_id;
+		    $component_type = $item_data['type'] ?? 'unknown_type';
+
+		    $stable_seed = $unique_id_part . '_' . $component_type . '_' . crc32(json_encode($item_data));
+		    $hash_value = crc32($stable_seed);
+
+		    // Limit index to MySQL's signed INT range (1 to 2147483647).
+		    $generated_index = abs($hash_value);
+		    $current_index = ($generated_index % 2147483646) + 1;
+
+		    // Safety check against collisions
+		    $attempt = 0;
+		    while (DB::table('entPhysical')
+		        ->where('device_id', $device_id)
+		        ->where('entPhysicalIndex', $current_index)
+		        ->exists()) {
+
+		        $attempt++;
+		        $current_index++;
+
+		        if ($attempt > 100 || $current_index > 2147483647) {
+		            // Log an error and stop execution if unable to find a unique index
+		            Log::critical("Failed to generate unique entPhysicalIndex for device {$device_id}");
+		            throw new Exception("Entity index generation failed.");
+		        }
+		    }
+
+		    return $current_index;
+		}
+
     protected function processApiResponse(RestApiEndpoint $endpoint, array $data, int $connectionId)
     {
         $resourceType = $this->normalizeResourceType($endpoint->resource_type ?? 'unknown');
@@ -212,6 +264,26 @@ class Api
 
         $resourceId = $resourceId ?? $resourceName;
         $resourceName = $resourceName ?? $resourceId;
+
+
+		    $itemDataForEntity = Arr::isList($item) ? ['name' => $resourceName, 'id' => $resourceId] : $item;
+		    $itemDataForEntity['type'] = data_get($item, 'type') ?? $endpoint->resource_type; // Pass the type/class hint
+		    $itemDataForEntity['serial'] = data_get($item, 'serial') ?? null;
+		    $itemDataForEntity['model'] = data_get($item, 'model') ?? null;
+
+		    if ($resourceType === 'port' || $resourceType === 'interface') {
+		        // Need to extract deeply nested port/eth data for creation
+		        $ethData = data_get($item, 'eth') ?? [];
+		        $portDataForEntity = array_merge($itemDataForEntity, $item); // Merge all data, keeping type hint
+		        $portDataForEntity['eth'] = $ethData;
+		        $this->storePortData($this->device, $resourceId, $resourceName, $portDataForEntity);
+		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
+		        // Drives/Volumes should be created in the storage table
+		        $this->storeDriveStorageData($this->device, $resourceId, $resourceName, $itemDataForEntity);
+		    } elseif (in_array($resourceType, ['device', 'sensor', 'processor']) || $itemDataForEntity['type'] === 'controller' || $itemDataForEntity['type'] === 'chassis') {
+		        // Controllers, Fans, Temp Sensors, etc., go to entPhysical
+		        $this->storeHardwareComponentData($this->device, $resourceId, $resourceName, $itemDataForEntity);
+		    }
 
         $collectedAt = Carbon::now();
 
@@ -341,6 +413,141 @@ class Api
             }
         }
     }
+
+		private function storeHardwareComponentData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		{
+		    $entPhysicalClass = $this->determineEntPhysicalClass($item_data['type'] ?? 'other');
+		    // Ensure this component gets a stable index or uses the existing one
+		    $entPhysicalIndex = $this->generateUniqueEntPhysicalIndex($device->device_id, $resource_id, $item_data);
+
+		    // Determine operational status
+		    $entPhysicalOperStatus = null;
+		    if (isset($item_data['status'])) {
+		        $status_api = strtolower($item_data['status']);
+		        $entPhysicalOperStatus = in_array($status_api, ['ok', 'online', 'up', 'ready']) ? 'up' : 'down';
+		    }
+
+		    $physical_data = [
+		        'device_id'              => $device->device_id,
+		        'entPhysicalIndex'       => $entPhysicalIndex,
+		        'entPhysicalDescr'       => $item_data['name'] ?? $resource_name,
+		        'entPhysicalClass'       => $entPhysicalClass,
+		        'entPhysicalName'        => $item_data['name'] ?? $resource_name,
+		        'entPhysicalOperStatus'  => $entPhysicalOperStatus,
+		        'entPhysicalSerialNum'   => $item_data['serial'] ?? null,
+		        'entPhysicalModelName'   => $item_data['model'] ?? null,
+		        'last_discovered'        => Carbon::now(),
+		    ];
+
+		    // Check for existing component using the generated stable index (primary key equivalent)
+		    $existing_component = DB::table('entPhysical')
+		        ->where('device_id', $device->device_id)
+		        ->where('entPhysicalIndex', $entPhysicalIndex)
+		        ->first();
+
+		    if (!$existing_component) {
+		        $physical_data['entPhysicalIndex'] = $entPhysicalIndex; // Ensure explicit index is used for insert
+		        DB::table('entPhysical')->insertGetId($physical_data);
+		        Log::info("API Poller: Created new entPhysical {$resource_name} (Index: {$entPhysicalIndex})");
+		    } else {
+		        DB::table('entPhysical')
+		            ->where('entPhysical_id', $existing_component->entPhysical_id)
+		            ->update($physical_data);
+		        // Do not update entPhysicalIndex on existing records to maintain RRD linkage
+		        Log::debug("API Poller: Updated existing entPhysical {$resource_name} (ID: {$existing_component->entPhysical_id})");
+		    }
+		}
+
+		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		{
+		    // Logic extracted from DeviceApiPoller.php reference
+		    $enabled_status = $item_data['enabled'] ?? null;
+		    if ($enabled_status === null) return;
+
+		    $mac_address = $item_data['eth']['mac_address'] ?? null;
+
+		    // Simple deterministic ifIndex (for ports, use a separate index range if needed)
+		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
+
+		    // Find existing port by name or MAC
+		    $existing_port = DB::table('ports')
+		        ->where('device_id', $device->device_id)
+		        ->where(function ($query) use ($resource_name, $mac_address) {
+		            $query->where('ifName', $resource_name)
+		                  ->orWhere('ifDescr', $resource_name);
+		            if ($mac_address) {
+		                $query->orWhere('ifPhysAddress', $mac_address);
+		            }
+		        })
+		        ->first();
+
+		    $port_data = [
+		        'ifName'        => $resource_name,
+		        'ifDescr'       => $item_data['name'] ?? $resource_name,
+		        'ifAlias'       => $item_data['services'][0] ?? null,
+		        'ifType'        => 'ethernetCsmacd',
+		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
+		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
+		        'ifSpeed'       => (int) ($item_data['speed'] ?? 0),
+		        'ifMtu'         => (int) (($item_data['eth']['mtu'] ?? null) ?? 1500),
+		        'ifPhysAddress' => $mac_address,
+		        'poll_time'     => time(),
+		        'port_descr_type' => 'rest-api',
+		        'disabled'      => (int) ($enabled_status === false ? 1 : 0),
+		        'ifIndex'       => $ifIndex,
+		    ];
+
+		    if (!$existing_port) {
+		        $port_data['device_id'] = $device->device_id;
+		        DB::table('ports')->insertGetId($port_data);
+		        Log::info("API Poller: Created new port {$resource_name} (Index: {$ifIndex})");
+		    } else {
+		        DB::table('ports')
+		            ->where('port_id', $existing_port->port_id)
+		            ->update($port_data);
+		        Log::debug("API Poller: Updated existing port {$resource_name} (ID: {$existing_port->port_id})");
+		    }
+		}
+
+		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
+		{
+		    // Logic extracted from DeviceApiPoller.php reference
+		    $storage_index = $resource_id;
+		    $drive_capacity = $item_data['capacity'] ?? 0;
+		    $storage_size = (int)$drive_capacity;
+		    $storage_used = 0;
+		    $storage_free = $storage_size;
+
+		    $existing_storage = DB::table('storage')
+		        ->where('device_id', $device->device_id)
+		        ->where('storage_index', $storage_index)
+		        ->first();
+
+		    $storage_data = [
+		        'storage_size'      => $storage_size,
+		        'storage_used'      => $storage_used,
+		        'storage_free'      => $storage_free,
+		        'storage_units'     => 1,
+		        'storage_perc'      => 0,
+		        'type'              => 'fixed',
+		        'storage_descr'     => $resource_name . " (" . ($item_data['type'] ?? 'unknown') . ")",
+		        'storage_type'      => 'rest-api-storage', // A clear type
+		        'last_polled'       => Carbon::now(),
+		    ];
+
+		    if (!$existing_storage) {
+		        $storage_data['device_id'] = $device->device_id;
+		        $storage_data['storage_index'] = $storage_index;
+		        $storage_data['created_at'] = Carbon::now();
+		        DB::table('storage')->insertGetId($storage_data);
+		        Log::info("API Poller: Created new storage {$resource_name} (Index: {$storage_index})");
+		    } else {
+		        DB::table('storage')
+		            ->where('storage_id', $existing_storage->storage_id)
+		            ->update($storage_data);
+		        Log::debug("API Poller: Updated existing storage {$resource_name} (ID: {$existing_storage->storage_id})");
+		    }
+		}
 
     protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
     {

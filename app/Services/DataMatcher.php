@@ -447,133 +447,142 @@ class DataMatcher
 		}
 
     protected function updateSensor(Device $device, $metric, MetricFieldMapping $mapping, $value): void
-    {
-        // Determine the sensor class and index for unique identification
-        $sensorClass = $this->determineResourceClass($mapping->librenms_table, $metric->metric_name);
-        $sensorIndex = $this->generateSensorIndex($metric);
-        $resourceName = $metric->resource_name ?? $metric->resource_id;
-
-        $sensor = DB::table('sensors')
-            ->where('device_id', $device->device_id)
-            ->where('sensor_class', $sensorClass)
-            ->where('sensor_type', 'rest-api')
-            ->where('sensor_index', $sensorIndex)
-            ->first();
-
-        $collectedAt = $metric->collected_at;
-        $isNumericValue = is_numeric($metric->value) && $metric->value !== null;
-
-        $data = [
-            // Only set sensor_current if the API provided a usable numeric value
-            'sensor_current' => $isNumericValue ? (float)$metric->value : ($sensor->sensor_current ?? null),
-            'sensor_prev' => $sensor->sensor_current ?? null,
-            'lastupdate' => $collectedAt,
-        ];
-
-        // Use the string_value for descriptive status on the sensor if it's a non-numeric status metric
-        if (!$isNumericValue && $metric->string_value !== null && $mapping->librenms_field === 'sensor_current') {
-            // Write the status string to sensor_descr or another available string field
-            $data['sensor_descr'] = "{$resourceName} Status: {$metric->string_value}";
-        } elseif (!$sensor) {
-             // If creating a new sensor, set the initial description from the resource name
-             $data['sensor_descr'] = $resourceName;
-        }
-
-
-        if ($sensor) {
-            DB::table('sensors')
-                ->where('sensor_id', $sensor->sensor_id)
-                ->update($data);
-            $this->logDebug("Updated sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
-        } else {
-            // Create new sensor
-            DB::table('sensors')->insert(array_merge($data, [
-                'device_id' => $device->device_id,
-                'sensor_class' => $sensorClass,
-                'sensor_type' => 'rest-api',
-                'sensor_index' => $sensorIndex,
-                'sensor_oid' => $metric->metric_name,
-                'poller_type' => 'rest-api',
-            ]));
-            $this->logDebug("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
-        }
-
-        // CRITICAL: Mark as matched only on success to allow metrics to be deleted
-        $this->markAsMatched($metric, $mapping);
-    }
-
-    protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
 		{
-			    $name = $this->normalizeResourceName($metric->resource_name);
-			    $id = $this->normalizeResourceName($metric->resource_id);
+		    // Determine the sensor class (e.g., 'temperature', 'fanspeed', 'delay')
+		    $sensorClass = $this->determineSensorClass($metric->metric_name);
+		    $sensorIndex = $metric->resource_id ?? md5($metric->metric_name); // Use resource_id as index
 
-			    $ports = DB::table('ports')
-			        ->where('device_id', $device->device_id)
-			        ->get();
+		    // Try to find an existing sensor
+		    $sensor = DB::table('sensors')
+		        ->where('device_id', $device->device_id)
+		        ->where('sensor_class', $sensorClass)
+		        ->where('sensor_type', 'rest-api') // Use a consistent type for API polls
+		        ->where('sensor_index', $sensorIndex)
+		        ->first();
 
-			    foreach ($ports as $port) {
-			        $portKey = $this->normalizeResourceName($port->ifName)
-			            ?? $this->normalizeResourceName($port->ifDescr)
-			            ?? $this->normalizeResourceName($port->ifAlias);
+		    // Prepare data payload
+		    $data = [
+		        'sensor_current' => is_numeric($value) ? (float) $value : 0,
+		        'lastupdate' => now(),
+		    ];
 
-			        if ($portKey && ($portKey === $name || $portKey === $id)) {
-			            DB::table('ports')
-			                ->where('port_id', $port->port_id)
-			                ->update([
-			                    $mapping->librenms_field => $value,
-			                    'poll_time' => time(),
-			                ]);
+		    if ($sensor) {
+		        // Update existing sensor
+		        DB::table('sensors')
+		            ->where('sensor_id', $sensor->sensor_id)
+		            ->update($data);
 
-			            Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
-			            return;
-			        }
-			    }
+		        Log::debug("Updated sensor {$sensorClass} ({$sensorIndex}) = {$value} for device {$device->hostname}");
+		    } else {
+		        // Insert new sensor (Creation)
+		        DB::table('sensors')->insert(array_merge($data, [
+		            'device_id' => $device->device_id,
+		            'sensor_class' => $sensorClass,
+		            'sensor_type' => 'rest-api',
+		            'sensor_index' => $sensorIndex,
+		            'sensor_descr' => $metric->resource_name ?? $metric->metric_name,
+		            'sensor_oid' => '', // API sensors don't use OID
+		            'poller_type' => 'rest-api',
+		            'created_at' => now(),
+		        ]));
 
-			    Log::warning("No matching port found for {$metric->metric_name} on {$device->hostname}");
+		        Log::info("Created new sensor {$sensorClass} ({$sensorIndex}) for device {$device->hostname}");
+		    }
+		}
+
+		protected function determineSensorClass(string $metricName): string
+		{
+		    $metricName = str_replace(['-', ' '], '_', strtolower($metricName));
+
+		    if (str_contains($metricName, 'temp') || str_contains($metricName, 'thermal') || $metricName === 'tmp') {
+		        return 'temperature';
+		    }
+		    if (str_contains($metricName, 'volt')) {
+		        return 'voltage';
+		    }
+		    if (str_contains($metricName, 'power') || str_contains($metricName, 'watt')) {
+		        return 'power';
+		    }
+		    if (str_contains($metricName, 'fan') || str_contains($metricName, 'rpm')) {
+		        return 'fanspeed';
+		    }
+		    if (str_contains($metricName, 'usec_per') || str_contains($metricName, 'latency')) {
+		        return 'delay';
+		    }
+		    if (str_contains($metricName, 'reads_per_sec') || str_contains($metricName, 'writes_per_sec')) {
+		        return 'count';
+		    }
+
+		    return 'state';
+		}
+
+		protected function updatePort(Device $device, $metric, MetricFieldMapping $mapping, $value): void
+		{
+		    $name = $this->normalizeResourceName($metric->resource_name);
+		    $id = $this->normalizeResourceName($metric->resource_id);
+
+		    // Look for the port by ifName, ifDescr, or ifAlias
+		    $port = DB::table('ports')
+		        ->where('device_id', $device->device_id)
+		        ->where(function ($q) use ($name, $id) {
+		            $q->where(DB::raw('LOWER(REPLACE(REPLACE(ifName, " ", ""), "_", ""))'), $name)
+		              ->orWhere(DB::raw('LOWER(REPLACE(REPLACE(ifDescr, " ", ""), "_", ""))'), $name)
+		              ->orWhere(DB::raw('LOWER(REPLACE(REPLACE(ifAlias, " ", ""), "_", ""))'), $name)
+		              ->orWhere(DB::raw('LOWER(REPLACE(REPLACE(ifName, " ", ""), "_", ""))'), $id);
+		        })
+		        ->first();
+
+		    if ($port) {
+		        // If port is found, update the specific field
+		        DB::table('ports')
+		            ->where('port_id', $port->port_id)
+		            ->update([
+		                $mapping->librenms_field => $value,
+		                'poll_time' => time(),
+		            ]);
+
+		        Log::debug("Updated port {$port->ifName} {$mapping->librenms_field} = {$value}");
+		    } else {
+		        // If the port entity doesn't exist, this metric cannot be committed.
+		        // The entity creation step (from the device poller logic) is required first.
+		        Log::warning("No matching port found for {$metric->metric_name} (resource: {$metric->resource_name}) on {$device->hostname}");
+		    }
 		}
 
     protected function updateStorage(Device $device, $metric, MetricFieldMapping $mapping, $value): void
-    {
-        $resourceName = $metric->resource_name ?? $metric->resource_id;
+		{
+		    // Try to find storage by resource_id or resource_name
+		    $storage = DB::table('storage')
+		        ->where('device_id', $device->device_id)
+		        ->where(function ($q) use ($metric) {
+		            $q->where('storage_descr', $metric->resource_name)
+		              ->orWhere('storage_descr', $metric->resource_id)
+		              ->orWhere('storage_index', $metric->resource_id);
+		        })
+		        ->first();
 
-        $storage = DB::table('storage')
-            ->where('device_id', $device->device_id)
-            ->where(function ($q) use ($resourceName) {
-                $q->where('storage_descr', $resourceName)
-                  ->orWhere('storage_descr', 'like', "%{$resourceName}%");
-            })
-            ->first();
+		    if ($storage) {
+		        $updateData = [
+		            $mapping->librenms_field => $value,
+		        ];
 
-        if ($storage) {
-            $updateData = [
-                $mapping->librenms_field => (float)$value, // Explicitly cast to float/double for large numbers
-            ];
+		        // If updating storage_used or storage_size, recalculate free space and percentage
+		        $size = $mapping->librenms_field === 'storage_size' ? $value : $storage->storage_size;
+		        $used = $mapping->librenms_field === 'storage_used' ? $value : $storage->storage_used;
 
-            // Recalculate percentage if updating size or used
-            $isCapacityMetric = in_array($mapping->librenms_field, ['storage_size', 'storage_used']);
+		        $updateData['storage_free'] = max(0, $size - $used);
+		        $updateData['storage_perc'] = $size > 0 ? round(($used / $size) * 100, 2) : 0;
+		        $updateData['last_polled'] = now();
 
-            if ($isCapacityMetric) {
-                // Read current or incoming values
-                $size = ($mapping->librenms_field === 'storage_size') ? (float)$value : (float)($storage->storage_size ?? 0);
-                $used = ($mapping->librenms_field === 'storage_used') ? (float)$value : (float)($storage->storage_used ?? 0);
+		        DB::table('storage')
+		            ->where('storage_id', $storage->storage_id)
+		            ->update($updateData);
 
-                $updateData['storage_free'] = $size - $used;
-                $updateData['storage_perc'] = ($size > 0) ? round(($used / $size) * 100, 2) : 0;
-            }
-
-            // Update the record
-            DB::table('storage')
-                ->where('storage_id', $storage->storage_id)
-                ->update($updateData);
-
-            $this->logDebug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value} for device {$device->hostname}");
-
-            // CRITICAL: Mark as matched only on success to allow metrics to be deleted
-            $this->markAsMatched($metric, $mapping);
-        } else {
-            $this->logWarning("Storage not found for metric {$metric->metric_name} (resource: {$resourceName}) on device {$device->hostname}");
-        }
-    }
+		        Log::debug("Updated storage {$storage->storage_descr} {$mapping->librenms_field} = {$value}");
+		    } else {
+		        Log::warning("Storage not found for metric {$metric->metric_name} (resource: {$metric->resource_name}) on {$device->hostname}");
+		    }
+		}
 
     protected function updateStandardTable(Device $device, MetricFieldMapping $mapping, $value): void
     {
@@ -590,63 +599,6 @@ class DataMatcher
         }
     }
 
-    protected function determineSensorClass(string $metricName): string
-		{
-			    $metricName = strtolower($metricName);
-
-					Log::debug("Sensor class resolved for metric '{$metricName}' as '{$sensorClass}'");
-
-			    // Step 1: Direct keyword mapping from class property
-			    $validClasses = [
-			        'temperature', 'voltage', 'current', 'power', 'fanspeed',
-			        'humidity', 'frequency', 'signal', 'load', 'state',
-			        'count', 'delay', 'ratio'
-			    ];
-
-			    foreach ($this->sensorClassMap as $keyword => $class) {
-			        if (str_contains($metricName, $keyword)) {
-			            return in_array($class, $validClasses, true) ? $class : 'state';
-			        }
-			    }
-
-			    // Step 2: Fallback pattern-based classification
-			    $fallbackRules = [
-			        '/(_|^)latency($|_)/'       => 'delay',
-			        '/(_|^)delay($|_)/'         => 'delay',
-			        '/(_|^)time($|_)/'          => 'delay',
-			        '/(_|^)duration($|_)/'      => 'delay',
-
-			        '/(_|^)rate($|_)/'          => 'ratio',   // e.g. cache_miss_rate
-			        '/(_|^)percent($|_)/'       => 'ratio',
-			        '/(_|^)ratio($|_)/'         => 'ratio',
-			        '/(_|^)util($|_)/'          => 'ratio',
-			        '/(_|^)usage($|_)/'         => 'ratio',
-
-			        '/(_|^)count($|_)/'         => 'count',   // e.g. packet_count
-			        '/(_|^)number($|_)/'        => 'count',
-			        '/(_|^)total($|_)/'         => 'count',
-			        '/(_|^)hits($|_)/'          => 'count',
-			        '/(_|^)misses($|_)/'        => 'count',
-			        '/(_|^)ops($|_)/'           => 'count',
-			        '/(_|^)requests($|_)/'      => 'count',
-			        '/(_|^)connections($|_)/'   => 'count',
-
-			        '/(_|^)temperature($|_)/'   => 'temperature',
-			        '/(_|^)voltage($|_)/'       => 'voltage',
-			        '/(_|^)power($|_)/'         => 'power',
-			        '/(_|^)current($|_)/'       => 'current',
-			        '/(_|^)fan($|_)/'           => 'fanspeed',
-			    ];
-
-			    foreach ($fallbackRules as $pattern => $class) {
-			        if (preg_match($pattern, $metricName)) {
-			            return $class;
-			        }
-			    }
-
-			    // Step 3: Default fallback
-			    return 'state';
-		}
 
     protected function normalizeResourceName(?string $name): ?string
 		{
