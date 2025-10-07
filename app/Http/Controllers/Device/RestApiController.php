@@ -142,7 +142,7 @@ class RestApiController extends Controller
 
         $connection->update($validated);
 
-        return redirect()->route('device.edit.rest-api', $device)->with('success', 'Connection updated successfully.');
+        return redirect()->route('settings.rest-api.templates.edit', $device)->with('success', 'Connection updated successfully.');
     }
 
     public function updateConnectionCredential(Request $request, Device $device, RestApiConnection $connection)
