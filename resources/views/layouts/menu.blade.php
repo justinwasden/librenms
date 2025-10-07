@@ -212,17 +212,17 @@
 												    </a>
 												    <ul class="dropdown-menu">
 												        <li>
-												            <a href="{{ route('rest-api.templates.index') }}">
+												            <a href="{{ route('settings.rest-api.templates.index') }}">
 												                <i class="fa fa-file-code-o fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Templates') }}
 												            </a>
 												        </li>
 												        <li>
-												            <a href="{{ route('rest-api.credentials.index') }}">
+												            <a href="{{ route('setings.rest-api.credentials.index') }}">
 												                <i class="fa fa-key fa-fw fa-lg" aria-hidden="true"></i> {{ __('REST API Credentials') }}
 												            </a>
 												        </li>
 												        <li>
-												            <a href="{{ route('rest-api.field.mappings') }}">
+												            <a href="{{ route('settings.metric-field-mappings.index') }}">
 												                <i class="fa fa-sliders fa-fw fa-lg" aria-hidden="true"></i> {{ __('Metric Field Mappings') }}
 												            </a>
 												        </li>
