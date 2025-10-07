@@ -108,25 +108,33 @@ class RestApiController extends Controller
     }
 
     public function updateConnection(Request $request, Device $device, RestApiConnection $connection)
-    {
-        Gate::authorize('update', $device);
+		{
+		    Gate::authorize('update', $device);
 
-        if ($connection->device_id !== $device->device_id) {
-            abort(404);
-        }
+		    if ($connection->device_id !== $device->device_id) {
+		        abort(404);
+		    }
 
-        // Flexible validation for base_url
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'base_url' => ['required', 'string', 'max:2048', function($attribute, $value, $fail) {
-                // Allow any string that starts with http:// or https://
-                // This is less strict than Laravel's 'url' rule which requires DNS-resolvable hostnames
-                if (!preg_match('/^https?:\/\/.+/', $value)) {
-                    $fail('The base url must start with http:// or https://');
-                }
-            }],
-            'rate_limit' => 'nullable|integer|min:1',
-        ]);
+		    // --- FIX START: PIVOT TO STORE ENDPOINT ---
+		    if ($request->input('action_type') === 'add_endpoint') {
+		        // This is the correct entry point when submitting the 'Add Endpoint' modal.
+		        // It immediately skips connection validation and proceeds to store the new endpoint.
+		        return $this->storeEndpoint($request, $device, $connection);
+		    }
+		    // --- FIX END ---
+
+		    // Original Validation for CONNECTION UPDATE follows:
+		    $validated = $request->validate([
+		        'name' => 'required|string|max:255',
+		        'base_url' => ['required', 'string', 'max:2048', function($attribute, $value, $fail) {
+		            // Allow any string that starts with http:// or https://
+		            if (!preg_match('/^https?:\/\/.+/', $value)) {
+		                $fail('The base url must start with http:// or https://');
+		            }
+		        }],
+		        'rate_limit' => 'nullable|integer|min:1',
+		    ]);
+
 
         // Handle checkboxes
         $validated['enabled'] = $request->has('enabled');
