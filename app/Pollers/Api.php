@@ -464,13 +464,14 @@ class Api
 
 		private function storePortData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
-		    // Logic extracted from DeviceApiPoller.php reference
-		    $enabled_status = $item_data['enabled'] ?? null;
-		    if ($enabled_status === null) return;
+		    // FIX: Default 'enabled' to true if missing, instead of exiting on null.
+		    $enabled_status = $item_data['enabled'] ?? true;
 
+		    // Ensure nested fields are accessed correctly based on API response structure
 		    $mac_address = $item_data['eth']['mac_address'] ?? null;
+		    $mtu = $item_data['eth']['mtu'] ?? 1500;
 
-		    // Simple deterministic ifIndex (for ports, use a separate index range if needed)
+		    // Create a deterministic ifIndex
 		    $ifIndex = 1000 + (abs(crc32($device->device_id . $resource_name)) % 100000);
 
 		    // Find existing port by name or MAC
@@ -489,11 +490,11 @@ class Api
 		        'ifName'        => $resource_name,
 		        'ifDescr'       => $item_data['name'] ?? $resource_name,
 		        'ifAlias'       => $item_data['services'][0] ?? null,
-		        'ifType'        => 'ethernetCsmacd',
+		        'ifType'        => 'ethernetCsmacd', // Standard Ethernet type
 		        'ifOperStatus'  => $enabled_status ? 'up' : 'down',
 		        'ifAdminStatus' => $enabled_status ? 'up' : 'down',
 		        'ifSpeed'       => (int) ($item_data['speed'] ?? 0),
-		        'ifMtu'         => (int) (($item_data['eth']['mtu'] ?? null) ?? 1500),
+		        'ifMtu'         => (int) $mtu,
 		        'ifPhysAddress' => $mac_address,
 		        'poll_time'     => time(),
 		        'port_descr_type' => 'rest-api',
@@ -512,7 +513,6 @@ class Api
 		        Log::debug("API Poller: Updated existing port {$resource_name} (ID: {$existing_port->port_id})");
 		    }
 		}
-
 
 		private function storeDriveStorageData(Device $device, string $resource_id, string $resource_name, array $item_data): void
 		{
