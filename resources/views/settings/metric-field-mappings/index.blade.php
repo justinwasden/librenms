@@ -42,13 +42,10 @@
 						            <i class="fa fa-trash"></i> Delete All Unmatched
 						        </button>
 
-						        {{-- Corrected 'Import from JSON' form --}}
-                                <form action="{{ route('settings.metric-field-mappings.import') }}" method="POST" style="display: inline;">
-						            @csrf
-						            <button type="submit" class="btn btn-sm btn-primary">
-						                <i class="fa fa-upload"></i> Import from JSON
-						            </button>
-						        </form>
+						        {{-- Corrected 'Import from JSON' link to SHOW THE FORM --}}
+										<a href="{{ route('settings.metric-field-mappings.import.show') }}" class="btn btn-sm btn-primary" style="display: inline-block; vertical-align: middle;">
+										    <i class="fa fa-upload"></i> Import from JSON
+										</a>
 
 						        {{-- Corrected 'Export to JSON' link --}}
 						        <a href="{{ route('settings.metric-field-mappings.export') }}" class="btn btn-info">

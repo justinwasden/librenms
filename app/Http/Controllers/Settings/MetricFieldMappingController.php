@@ -8,6 +8,8 @@ use App\Models\Device;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 
 class MetricFieldMappingController extends Controller
 {
@@ -261,32 +263,95 @@ class MetricFieldMappingController extends Controller
     }
 
     public function importFromJson(Request $request)
-		{
-		    $path = storage_path('app/resource_mappings.json');
-		    if (!file_exists($path)) {
-		        return back()->with('error', 'Mapping file not found.');
-		    }
+    {
+        // 1. Validate File Upload and Type
+        $request->validate([
+            'mapping_file' => 'required|file|mimes:json,txt', // Only allow JSON or plain text for safety
+            'overwrite' => 'nullable|boolean',
+        ], [
+            'mapping_file.mimes' => 'The uploaded file must be a JSON file.',
+        ]);
 
-		    $json = json_decode(file_get_contents($path), true);
-		    $mappings = $json['metric_field_mappings'] ?? [];
+        $file = $request->file('mapping_file');
+        $jsonContent = file_get_contents($file->getRealPath());
+        $mappings = json_decode($jsonContent, true);
 
-		    foreach ($mappings as $map) {
-		        \App\Models\MetricFieldMapping::updateOrCreate([
-		            'metric_name' => $map['metric_name'],
-		            'resource_type' => $map['resource_type'] ?? null,
-		            'vendor' => $map['vendor'] ?? null,
-		            'os' => $map['os'] ?? null,
-		        ], [
-		            'librenms_table' => $map['librenms_table'],
-		            'librenms_field' => $map['librenms_field'],
-		            'enabled' => true,
-		            'auto_learned' => false,
-		            'last_seen_at' => now(),
-		        ]);
-		    }
+        // 2. Validate JSON Structure (Must be a decode-able array)
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($mappings)) {
+            return redirect()->route('settings.metric-field-mappings.index')
+                ->with('error', 'The uploaded file is not a valid JSON array of mappings.');
+        }
 
-		    return back()->with('success', 'Mappings imported successfully.');
-		}
+        $overwrite = (bool) $request->input('overwrite', false);
+        $importedCount = 0;
+        $failedCount = 0;
+        $errors = [];
+
+        // 3. Define Validation Rules for each Mapping Object
+        $rules = [
+            'metric_name'   => 'required|string|max:255',
+            'resource_type' => 'nullable|string|max:255',
+            'vendor'        => 'nullable|string|max:255',
+            'os'            => 'nullable|string|max:255',
+            'librenms_table' => 'required|string|max:255',
+            'librenms_field' => 'required|string|max:255',
+            'data_type'     => 'required|in:gauge,counter,rate', // Example types
+            'enabled'       => 'nullable|boolean',
+        ];
+
+        // 4. Loop through and validate each mapping
+        foreach ($mappings as $key => $mappingData) {
+            $validator = Validator::make($mappingData, $rules);
+
+            if ($validator->fails()) {
+                $errors[] = "Mapping #{$key} failed validation: " . $validator->errors()->all()[0];
+                $failedCount++;
+                continue;
+            }
+
+            // 5. Check for existence (only required if NOT overwriting)
+            $exists = \App\Models\MetricFieldMapping::where([
+                'metric_name' => $mappingData['metric_name'],
+                'vendor'      => $mappingData['vendor'] ?? null,
+                'os'          => $mappingData['os'] ?? null,
+            ])->first();
+
+            if ($exists && ! $overwrite) {
+                // Skip if exists and we are not overwriting
+                $failedCount++;
+                continue;
+            }
+
+            // 6. Import/Update the mapping
+            try {
+                \App\Models\MetricFieldMapping::updateOrCreate(
+                    [
+                        'metric_name' => $mappingData['metric_name'],
+                        'vendor'      => $mappingData['vendor'] ?? null,
+                        'os'          => $mappingData['os'] ?? null,
+                    ],
+                    array_merge($mappingData, ['auto_learned' => false]) // Mark as manual import
+                );
+                $importedCount++;
+            } catch (\Exception $e) {
+                $errors[] = "Mapping #{$key} failed database insertion: " . $e->getMessage();
+                $failedCount++;
+            }
+        }
+
+        // 7. Return Result
+        if ($failedCount > 0) {
+            $errorMessage = "Import finished. {$importedCount} mappings imported/updated. {$failedCount} failed or skipped.";
+            if (! empty($errors)) {
+                $errorMessage .= " Errors: " . implode('; ', array_slice($errors, 0, 3)) . (count($errors) > 3 ? '...' : '');
+            }
+            return redirect()->route('settings.metric-field-mappings.index')
+                ->with('error', $errorMessage);
+        }
+
+        return redirect()->route('settings.metric-field-mappings.index')
+            ->with('success', "Successfully imported/updated {$importedCount} metric field mappings.");
+    }
 
 		public function exportToJson()
 		{
@@ -295,5 +360,10 @@ class MetricFieldMappingController extends Controller
 		    Storage::put('exports/metric_field_mappings.json', $json);
 
 		    return response()->download(storage_path('app/exports/metric_field_mappings.json'));
+		}
+
+		public function showImportForm()
+		{
+		    return view('settings.metric-field-mappings.import');
 		}
 }
