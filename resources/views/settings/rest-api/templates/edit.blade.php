@@ -15,16 +15,32 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
-    /* FIX: Maximize modal content width */
-    #endpointsModal .modal-dialog {
-        max-width: 95%; /* Makes it much wider than standard XL (approx. 2x wider than standard large) */
-    }
-    /* Scrollable form content on the right pane */
-    .endpoint-form-scroll {
-        max-height: 70vh;
-        overflow-y: auto;
-        padding-right: 15px; /* space for scrollbar */
-    }
+/* Fix Manage Endpoints modal width */
+#endpointsModal .modal-dialog {
+    max-width: 98vw !important;   /* nearly full viewport width */
+    width: 98vw !important;
+    margin: 1vh auto;             /* small margin top/bottom */
+}
+
+#endpointsModal .modal-content {
+    height: 90vh;                 /* taller view */
+    overflow: hidden;
+}
+
+#endpointsModal .modal-body {
+    height: calc(90vh - 130px);   /* leave room for header/footer */
+    overflow-y: auto;
+}
+
+/* Adjust column proportions */
+#endpointsModal .col-md-3 {
+    flex: 0 0 25%;
+    max-width: 25%;
+}
+#endpointsModal .col-md-9 {
+    flex: 0 0 75%;
+    max-width: 75%;
+}
 </style>
 @endpush
 
