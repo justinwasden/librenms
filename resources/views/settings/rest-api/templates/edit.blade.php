@@ -5,10 +5,41 @@
 @push('styles')
 <style>
     [x-cloak] { display: none !important; }
-    .action-card { transition: transform 0.2s, box-shadow 0.2s; }
-    .action-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,.1); }
-    #endpointsModal .modal-dialog { max-width: 95%; }
-    .endpoint-form-scroll { max-height: 70vh; overflow-y: auto; padding-right: 15px; }
+
+    .action-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,.1);
+    }
+
+    #endpointsModal .modal-dialog {
+        max-width: 75vw !important;
+        width: 98vw !important;
+        margin: 1vh auto;
+    }
+    #endpointsModal .modal-content {
+        height: 90vh;
+        overflow: hidden;
+    }
+    #endpointsModal .modal-body {
+        height: calc(90vh - 130px);
+        overflow-y: auto;
+    }
+    #endpointsModal .col-md-3 {
+        flex: 0 0 25%;
+        max-width: 25%;
+    }
+    #endpointsModal .col-md-9 {
+        flex: 0 0 75%;
+        max-width: 75%;
+    }
+    .endpoint-dirty {
+        border-left: 4px solid #28a745;
+        padding-left: 10px;
+        transition: border 0.3s;
+    }
 </style>
 @endpush
 
