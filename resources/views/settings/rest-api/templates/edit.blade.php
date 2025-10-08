@@ -375,6 +375,23 @@ function endpointManager() {
             this.activeEndpointName = '';
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, {}, 'new_' + Date.now());
             this.isFormDirty = true;
+        },
+        saveEndpointChanges() {
+            if (this.selectedEndpointIndex === null) return;
+
+            // parse metric_map_json into JSON
+            try {
+                this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
+            } catch(e) {
+                alert('Metric Mapping JSON is invalid. Please fix before saving.');
+                return;
+            }
+
+            // update original array
+            this.endpoints[this.selectedEndpointIndex] = {...this.selectedEndpoint};
+
+            // OPTIONAL: send AJAX to server here
+            console.log('Endpoint saved:', this.selectedEndpoint);
         }
     }
 }
