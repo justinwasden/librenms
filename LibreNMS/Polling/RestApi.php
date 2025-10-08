@@ -1,6 +1,6 @@
 <?php
 
-use App\RestApi\Pollers\RestApiPoller;
+use App\Pollers\RestApiPoller;
 
 class RestApi extends \LibreNMS\Poller\PollerModule
 {

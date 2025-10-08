@@ -1,6 +1,6 @@
 <?php
 
-use App\RestApi\Discovery\RestApiDiscovery;
+use App\Discovery\RestApiDiscovery;
 
 class RestApi extends \LibreNMS\Discovery\DiscoveryModule
 {
