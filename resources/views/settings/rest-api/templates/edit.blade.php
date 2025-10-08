@@ -286,33 +286,51 @@
 
                         <!-- RIGHT PANE: Detail Form (Wider width) -->
 												<div class="col-md-9" :class="{ 'endpoint-dirty': isFormDirty }">
-												    <template x-if="activeEndpointIndex || isAddingNew">
-												        <div>
-												            <h6 class="mb-3" x-html="isAddingNew
-												                ? '<i class=\'fas fa-plus-square text-success\'></i> New Endpoint Details'
-												                : '<i class=\'fas fa-edit text-primary\'></i> Edit Endpoint: ' + activeEndpointName"></h6>
+										    <template x-if="activeEndpointIndex || isAddingNew">
+										        <form id="endpoint-detail-form" class="endpoint-form-scroll" @submit.prevent="saveEndpointChanges">
+										            <h6 class="mb-3" x-text="isAddingNew ? 'New Endpoint Details' : 'Edit Endpoint: ' + activeEndpointName"></h6>
 
-												            <div id="endpoint-detail-container" @input="isFormDirty = true" x-html="currentEndpointFormHtml"></div>
+										            <div class="form-group">
+										                <label for="endpoint_name">Endpoint Name</label>
+										                <input type="text" x-model="activeEndpointData.name" class="form-control" required>
+										            </div>
 
-												            <!-- Inline Save / Cancel Buttons -->
-												            <div x-show="isFormDirty" x-transition class="mt-3 text-right">
-												                <button type="button" class="btn btn-secondary mr-2" @click="cancelEndpointChanges">
-												                    <i class="fas fa-undo"></i> Cancel Changes
-												                </button>
-												                <button type="button" class="btn btn-success" @click="saveEndpointChanges">
-												                    <i class="fas fa-save"></i> Save Endpoint
-												                </button>
-												            </div>
-												        </div>
-												    </template>
+										            <div class="form-group">
+										                <label for="endpoint_path">Path</label>
+										                <input type="text" x-model="activeEndpointData.path" class="form-control">
+										            </div>
 
-												    <template x-if="!activeEndpointIndex && !isAddingNew">
-												        <div class="alert alert-warning text-center mt-5">
-												            <i class="fas fa-hand-point-left fa-2x"></i><br>
-												            Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
-												        </div>
-												    </template>
-												</div>
+										            <div class="form-group">
+										                <label for="endpoint_method">Method</label>
+										                <select x-model="activeEndpointData.method" class="form-control">
+										                    <option>GET</option>
+										                    <option>POST</option>
+										                    <option>PUT</option>
+										                    <option>DELETE</option>
+										                </select>
+										            </div>
+
+										            <div class="form-group">
+										                <label for="metric_map">Metric Map (JSON)</label>
+										                <textarea x-model="activeEndpointData.metric_map_json" class="form-control" rows="6"></textarea>
+										                <div class="text-danger mt-1" x-show="activeEndpointData.metric_map_error" x-text="activeEndpointData.metric_map_error"></div>
+										            </div>
+
+										            <div class="mt-3 text-right">
+										                <button type="button" class="btn btn-secondary mr-2" @click="cancelEndpointChanges">Cancel</button>
+										                <button type="submit" class="btn btn-success">Save Endpoint</button>
+										            </div>
+										        </form>
+										    </template>
+
+										    <template x-if="!activeEndpointIndex && !isAddingNew">
+										        <div class="alert alert-warning text-center mt-5">
+										            <i class="fas fa-hand-point-left fa-2x"></i><br>
+										            Select an endpoint from the list or click "Add New Endpoint."
+										        </div>
+										    </template>
+										</div>
+
                         </div> {{-- End Right Pane --}}
                     </div>
 
