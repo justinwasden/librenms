@@ -5,30 +5,29 @@ if (!defined('LibreNMS')) {
     exit;
 }
 
-// Test 1: Can we log anything?
-\Log::info("DEBUG: restapi.inc.php started.");
+// STEP 1: Test simple execution and logging
+\Log::info("DEBUG STEP 1: restapi.inc.php started.");
 
-// Test 2: Can we load the required classes?
+// STEP 2: Test class loading - Fatal error likely happens here
 use App\Discovery\RestApiDiscovery;
 use App\Models\Device;
 
-try {
-    // Test 3: Can we find a device?
-    $deviceModel = Device::where('device_id', $device['device_id'])->first();
+\Log::info("DEBUG STEP 2: Classes were 'use'd."); // This line might be reached
 
-    if ($deviceModel) {
-        \Log::info("DEBUG: Device found: {$deviceModel->hostname}");
-        // Now try to instantiate your main class
-        $disco = new RestApiDiscovery($deviceModel);
-        \Log::info("DEBUG: RestApiDiscovery instantiated successfully.");
-        // $disco->discover(); // Keep the actual logic commented out for now
-    }
+try {
+    // This is often where fatal errors occur if the file isn't autoloaded:
+    // $deviceModel = Device::where('device_id', $device['device_id'])->first();
+
+    // Test 3: Can we successfully instantiate a class?
+    $test_discovery = new RestApiDiscovery((object)['id' => 3, 'hostname' => 'test']);
+    \Log::info("DEBUG STEP 3: RestApiDiscovery instantiated.");
+
 } catch (\Throwable $e) {
-    // Catch ALL exceptions/errors to print something
-    \Log::error("DEBUG: Fatal Error in restapi.inc.php: {$e->getMessage()}");
+    // Use \Throwable to catch any error, even fatal ones
+    \Log::error("DEBUG: Caught exception or error: " . $e->getMessage());
 }
 
-// The poller will execute this if it gets here.
-\Log::info("DEBUG: restapi.inc.php completed.");
+// If execution reaches here, the module should unload cleanly.
+\Log::info("DEBUG STEP 4: restapi.inc.php finished.");
 
 ?>
