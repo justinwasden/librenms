@@ -311,11 +311,14 @@
 function templateEditor() {
     return {
         templateData: @json($template->template_data),
-        init() {}
+        init() {
+            // any initialization logic for templateEditor
+        }
     }
 }
 
 function endpointManager() {
+    // Keep existing helpers exactly as-is
     const escapeHtml = str => str ? str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;') : '';
     const hydrateForm = (html, data, index) => {
         const cIndex = 0;
@@ -344,6 +347,7 @@ function endpointManager() {
         selectedEndpointIndex: null,
         selectedEndpoint: {},
         init() {
+            // Initialize metric_map_json for each endpoint
             this.endpoints.forEach((ep, idx) => {
                 this.endpoints[idx].metric_map_json =
                     typeof ep.metric_map === 'string'
@@ -377,10 +381,10 @@ function endpointManager() {
 
             console.log('Endpoint saved locally:', this.selectedEndpoint);
 
-            // Send AJAX request to Laravel route
+            // AJAX save
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const response = await fetch("{{ route('settings.rest-api.templates.endpoints.save', ['template' => $template->id]) }}", {
+                const response = await fetch(`{{ route('settings.rest-api.templates.endpoints.save', ['template' => $template->id]) }}`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -406,4 +410,3 @@ function endpointManager() {
     };
 }
 </script>
-@endsection
