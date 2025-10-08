@@ -411,3 +411,4 @@ function endpointManager() {
     };
 }
 </script>
+@endsection
