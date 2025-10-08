@@ -15,6 +15,16 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
+    /* Maximize modal content for XL size */
+    #endpointsModal .modal-dialog {
+        max-width: 95%; /* Make it slightly wider than standard XL */
+    }
+    /* Scrollable form content on the right pane */
+    .endpoint-form-scroll {
+        max-height: 70vh;
+        overflow-y: auto;
+        padding-right: 15px; /* space for scrollbar */
+    }
 </style>
 @endpush
 
@@ -37,11 +47,11 @@
                         </div>
                     </div>
 
-                    {{-- Main Form for Basic Info --}}
+                    {{-- Main Form for Basic Info (omitted for brevity) --}}
                     <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                         @csrf
                         @method('PUT')
-
+                        {{-- ... (Basic Info content) ... --}}
                         <div class="card-body">
                             <h5 class="mb-3 text-info"><i class="fas fa-info-circle"></i> Basic Template Information</h5>
 
@@ -94,7 +104,7 @@
 
                             <h5 class="mb-3"><i class="fas fa-tools"></i> Configuration Modules</h5>
 
-                            {{-- Action Card Group --}}
+                            {{-- Action Card Group (omitted for brevity) --}}
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
@@ -135,7 +145,6 @@
                                     </div>
                                 </div>
                             </div>
-
                         </div>
 
                         <div class="card-footer text-right">
@@ -157,7 +166,7 @@
 {{-- MODALS SECTION --}}
 {{-- ---------------------------------------------------------------- --}}
 
-{{-- 1. Connection Modal --}}
+{{-- 1. Connection Modal (omitted for brevity) --}}
 <div class="modal fade" id="connectionModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
@@ -171,10 +180,7 @@
                     </button>
                 </div>
                 <div class="modal-body">
-                    {{-- The content of connection.blade.php --}}
                     @include('settings.rest-api.templates.partials.connection', ['template' => $template])
-
-                    {{-- Hidden field to ensure connection data is processed without side effects on basic fields --}}
                     <input type="hidden" name="action_type" value="update_connection_only">
                 </div>
                 <div class="modal-footer">
@@ -188,9 +194,9 @@
 
 {{-- 2. Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
+    {{-- Set to widest possible standard modal --}}
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
-            {{-- Form for Endpoints, using a two-pane layout with Alpine --}}
             <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST" x-data="endpointManager()">
                 @csrf
                 @method('PUT')
@@ -203,7 +209,7 @@
                 <div class="modal-body">
                     <div class="row">
                         {{-- LEFT PANE: Endpoint List (Smaller width) --}}
-                        <div class="col-md-5 border-right">
+                        <div class="col-md-4 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
                             @php
@@ -211,7 +217,7 @@
                                     ? $template->template_data
                                     : (json_decode($template->template_data, true) ?? []);
                                 $connections = $template_data_array['connections'] ?? [];
-                                $cIndex = 0; // Assuming the primary connection is index 0
+                                $cIndex = 0;
                             @endphp
 
                             @if (isset($connections[$cIndex]))
@@ -259,14 +265,15 @@
                         </div> {{-- End Left Pane --}}
 
                         {{-- RIGHT PANE: Detail Form (Wider width) --}}
-                        <div class="col-md-7">
+                        <div class="col-md-8">
                             <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
                                 <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
-                                {{-- The dynamically rendered form based on selection --}}
-                                <div id="endpoint-detail-container" x-html="currentEndpointFormHtml">
-                                    {{-- Initial Load Placeholder --}}
-                                    <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
+                                <div class="endpoint-form-scroll">
+                                    <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
+                                        {{-- Initial Load Placeholder --}}
+                                        <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
+                                    </div>
                                 </div>
 
                             </div>
@@ -279,25 +286,26 @@
                         </div> {{-- End Right Pane --}}
                     </div>
 
-                    {{-- Hidden field to ensure only endpoint data is processed --}}
                     <input type="hidden" name="action_type" value="update_endpoints_only">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    {{-- A full save is needed to persist all endpoint changes --}}
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save All Endpoints</button>
+                    <button type="submit"
+                            class="btn btn-primary"
+                            :disabled="!isFormDirty">
+                        <i class="fas fa-save"></i> Save All Endpoints
+                    </button>
                 </div>
 
-                {{-- Hidden Template for ALL new endpoint additions, ensuring all fields are present --}}
                 <template id="full-endpoint-template">
                     @php
-                        $js_placeholder_index = '__ACTIVE_INDEX__'; // Using a generic placeholder
+                        $js_placeholder_index = '__ACTIVE_INDEX__';
                         $js_connection_index = 0;
                     @endphp
                     @include('settings.rest-api.templates.partials.endpoint-form', [
                         'connectionIndex' => $js_connection_index,
                         'endpointIndex' => $js_placeholder_index,
-                        'endpoint' => [], // Empty array for initial state
+                        'endpoint' => [],
                     ])
                 </template>
 
@@ -306,7 +314,7 @@
     </div>
 </div>
 
-{{-- 3. Preview Modal (Test Template) --}}
+{{-- 3. Preview Modal (omitted for brevity) --}}
 <div class="modal fade" id="previewModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
@@ -317,7 +325,6 @@
                 </button>
             </div>
             <div class="modal-body">
-                {{-- The content of preview.blade.php --}}
                 @include('settings.rest-api.templates.partials.preview', ['template' => $template])
             </div>
             <div class="modal-footer">
@@ -327,7 +334,9 @@
     </div>
 </div>
 
+
 <script>
+// Base template editor function (unchanged)
 function templateEditor() {
     return {
         openEndpoint: null,
@@ -339,96 +348,128 @@ function templateEditor() {
     }
 }
 
-// Alpine Data for Endpoint Management within the Modal (Two-Pane Logic)
+// Alpine Data for Endpoint Management (Updated)
 function endpointManager() {
+    // Helper to escape HTML entities for injection
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#039;');
+    };
+
+    const hydrateForm = (html, data, index) => {
+        const cIndex = 0;
+        const safeIndex = index.toString().replace(/'/g, '\\\'');
+
+        // 1. Replace the dynamic index placeholder in all field names/IDs
+        html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
+
+        // 2. Hydrate values (focusing on text inputs and textareas)
+        for (const [key, value] of Object.entries(data)) {
+            if (typeof value === 'object' && value !== null) continue;
+            const escapedValue = escapeHtml(String(value));
+
+            // Text inputs
+            html = html.replace(
+                new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]"\\s*value=".*?"`),
+                `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]" value="${escapedValue}"`
+            );
+
+            // Select inputs
+            html = html.replace(
+                new RegExp(`value="${escapedValue}"`),
+                `value="${escapedValue}" selected`
+            );
+        }
+
+        // 3. Special handling for Metric Map (Textarea content)
+        const metricMapValue = data.metric_map ? JSON.stringify(data.metric_map, null, 4) : '';
+        const textareaName = `template_data[connections][${cIndex}][endpoints][${safeIndex}][metric_map]`;
+        const textareaPlaceholder = `__METRIC_MAP_CONTENT__`;
+
+        // Inject the placeholder marker before the closing tag, and replace all metric_map names
+        html = html.replace(
+            new RegExp(`name="${textareaName}">\\s*<\\/textarea>`, 'g'),
+            `name="${textareaName}">${textareaPlaceholder}</textarea>`
+        );
+        html = html.replace(textareaPlaceholder, escapeHtml(metricMapValue));
+
+        // 4. Special handling for Checkbox (enabled)
+        const isEnabled = data.enabled === false ? '' : 'checked';
+        html = html.replace(
+            new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"\\s*name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[enabled\\]"\\s*value="1"`),
+            `id="endpoint_enabled_${cIndex}_${safeIndex}" name="template_data[connections][${cIndex}][endpoints][${safeIndex}][enabled]" value="1" ${isEnabled}`
+        );
+
+        return html;
+    };
+
     return {
         activeEndpointIndex: null,
         activeEndpointData: {},
         activeEndpointName: '',
         isAddingNew: false,
+        isFormDirty: false,        // NEW: Tracks if the form has been edited
         newEndpointCount: 0,
         currentEndpointFormHtml: '',
 
         init() {
-            // Load the empty form template on modal open (or initialization)
-            this.currentEndpointFormHtml = ''; // Initially empty, will show a message
+            // Event listener to reset dirty state when modal is closed successfully
+            $('#endpointsModal').on('hide.bs.modal', (e) => {
+                if (!e.target.contains(e.relatedTarget) && this.isFormDirty) {
+                    if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+                        e.preventDefault();
+                        return;
+                    }
+                }
+                this.isFormDirty = false;
+            });
+
+            // Set up listener for form submission to potentially reset dirty state on success
+            document.getElementById('endpoint-management-form').addEventListener('submit', () => {
+                // If form submits successfully, the state will be clean.
+                // A full page reload/redirect will usually handle this.
+            });
         },
 
-        // Open an existing endpoint for editing
         openEndpoint(index, name, data) {
             this.activeEndpointIndex = index;
             this.activeEndpointName = name;
             this.activeEndpointData = data;
             this.isAddingNew = false;
+            this.isFormDirty = false; // Reset dirty state on selection
 
-            this.currentEndpointFormHtml = this.generateEndpointFormHtml(index, data);
+            this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, data, index);
 
-            // Re-run the JSON validation script for the newly rendered form
             this.$nextTick(() => {
                 this.initializeEndpointScripts(index);
             });
         },
 
-        // Start the process of adding a new endpoint
         openNewEndpoint() {
-            // Ensure unique ID for this session
-            const index = 'new_' + Date.now() + '_' + this.newEndpointCount;
-            this.newEndpointCount++;
+            const index = 'new_' + Date.now();
 
             this.activeEndpointIndex = index;
             this.activeEndpointName = 'New Endpoint';
-            this.activeEndpointData = {name: 'New Endpoint', method: 'GET', poll_interval: 300, enabled: true};
+            this.activeEndpointData = {name: '', method: 'GET', poll_interval: 300, enabled: true, metric_map: {}};
             this.isAddingNew = true;
+            this.isFormDirty = false; // Reset dirty state on creation
 
-            this.currentEndpointFormHtml = this.generateEndpointFormHtml(index, {});
+            this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, this.activeEndpointData, index);
 
-            // Re-run the JSON validation script for the newly rendered form
             this.$nextTick(() => {
                 this.initializeEndpointScripts(index);
             });
         },
 
-        // Helper function to generate the form HTML
-        generateEndpointFormHtml(index, data) {
-            let html = document.getElementById('full-endpoint-template').innerHTML;
-
-            const cIndex = 0; // Assuming primary connection
-            const safeIndex = index.toString().replace(/'/g, '\\\'');
-
-            // 1. Replace the dynamic index placeholder in all field names/IDs
-            html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
-
-            // 2. Add a "Remove" button
-            let removeButton = `
-                <div class="text-right mb-3">
-                    <button type="button" class="btn btn-sm btn-danger" @click="removeEndpoint('${safeIndex}')">
-                        <i class="fas fa-trash"></i> ${index.toString().startsWith('new_') ? 'Remove Unsaved' : 'Delete Existing'} Endpoint
-                    </button>
-                </div>
-            `;
-            html = removeButton + html;
-
-            // 3. Populate initial values for existing endpoints.
-            // This is a minimal implementation; a complete solution would require more complexity.
-            // We focus on the metric map since it's a textarea.
-            const metricMapValue = JSON.stringify(data.metric_map || {}, null, 4);
-            const textareaName = `template_data[connections][${cIndex}][endpoints][${safeIndex}][metric_map]`;
-
-            // Use a temporary placeholder for the value and replace it after the main ID/name substitution
-            const textareaPlaceholder = `__METRIC_MAP_CONTENT__`;
-            html = html.replace(`name="${textareaName}">`, `name="${textareaName}">${textareaPlaceholder}</textarea>`);
-
-            // Inject the metric map value
-            html = html.replace(textareaPlaceholder, metricMapValue);
-
-            return html;
-        },
-
-        // Manual initialization of the JS needed for the endpoint-form partial
         initializeEndpointScripts(index) {
-            const cIndex = 0; // Assuming primary connection
+            const cIndex = 0;
             const uniqueId = `${cIndex}_${index}`;
 
+            // Re-select elements by unique ID since the HTML was re-rendered
             const textarea = document.getElementById(`metric_map_json_${uniqueId}`);
             const beautifyButton = document.getElementById(`beautifyJson_${uniqueId}`);
             const errorDiv = document.getElementById(`jsonError_${uniqueId}`);
@@ -438,7 +479,7 @@ function endpointManager() {
             /**
              * Validate and pretty-print JSON
              */
-            function validateAndFormatJSON() {
+            const validateAndFormatJSON = () => {
                 const value = textarea.value.trim();
                 if (!value) {
                     errorDiv.style.display = 'none';
@@ -448,16 +489,18 @@ function endpointManager() {
                     const parsed = JSON.parse(value);
                     textarea.value = JSON.stringify(parsed, null, 4);
                     errorDiv.style.display = 'none';
+                    this.isFormDirty = true;
                 } catch (e) {
                     errorDiv.textContent = ' Invalid JSON: ' + e.message;
                     errorDiv.style.display = 'block';
                 }
-            }
+            };
 
             /**
-             * Validate while typing (without reformatting)
+             * Set dirty state and validate on input
              */
             textarea.oninput = () => {
+                this.isFormDirty = true;
                 try {
                     JSON.parse(textarea.value);
                     errorDiv.style.display = 'none';
@@ -467,10 +510,15 @@ function endpointManager() {
                 }
             };
 
-            /**
-             * Beautify JSON automatically when focus is lost
-             */
+            // Set dirty state on blur if metric map changed
             textarea.onblur = validateAndFormatJSON;
+
+            // Set dirty state for other fields in the scroll container
+            document.querySelector('.endpoint-form-scroll').addEventListener('input', (e) => {
+                if (e.target.name && e.target.closest('#endpoint-detail-container')) {
+                    this.isFormDirty = true;
+                }
+            });
 
             /**
              * Manual Beautify button
@@ -484,23 +532,18 @@ function endpointManager() {
         },
 
         removeEndpoint(indexToRemove) {
-            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action cannot be undone on save.`)) {
+            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save All Endpoints."`)) {
                 return;
             }
 
-            // To delete an existing endpoint, we must submit a hidden field that signals deletion.
-            // Since we're using a single form for all endpoints, the simplest way is to
-            // inject a hidden 'DELETE' flag for the specific index.
-
-            // For both new and existing, we clear the right pane
+            // Clear the right pane and set dirty state
             this.activeEndpointIndex = null;
             this.isAddingNew = false;
-            this.currentEndpointFormHtml = '<div class="alert alert-success text-center mt-5"><i class="fas fa-check"></i> Endpoint hidden/removed. Click "Save All Endpoints" to apply changes.</div>';
-
-            // --- Crucial Deletion Logic ---
-            const form = document.getElementById('endpoint-management-form');
+            this.isFormDirty = true;
+            this.currentEndpointFormHtml = '<div class="alert alert-danger text-center mt-5"><i class="fas fa-trash"></i> Endpoint marked for deletion or removed from list. Click "Save All Endpoints" to finalize.</div>';
 
             // Create a hidden input to mark for deletion
+            const form = document.getElementById('endpoint-management-form');
             const deleteFlagName = `template_data[connections][0][endpoints][${indexToRemove}][__DELETE_FLAG]`;
             let hiddenInput = form.querySelector(`input[name="${deleteFlagName}"]`);
 
@@ -511,9 +554,9 @@ function endpointManager() {
                 hiddenInput.value = '1';
                 form.appendChild(hiddenInput);
             }
-            // --- End Deletion Logic ---
 
-            alert('Endpoint marked for deletion or removed from unsaved list. Click "Save All Endpoints" to finalize.');
+            // To update the list on the left, you'd need to re-render the modal's list content,
+            // but for now, we rely on the Save button and page reload for visual confirmation.
         },
     }
 }
