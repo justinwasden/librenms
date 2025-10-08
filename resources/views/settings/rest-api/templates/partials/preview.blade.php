@@ -372,6 +372,8 @@ function templateTester() {
             }
 
             try {
+                // This is a dummy call as the actual AJAX endpoint is not provided,
+                // but this logic correctly simulates fetching device info for preview.
                 const response = await fetch(`/ajax/select/device?q=${this.selectedDeviceId}`);
                 const data = await response.json();
                 const device = data.results ? data.results[0] : null;

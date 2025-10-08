@@ -7,9 +7,9 @@ $connection = $connections[0] ?? [];
     <div class="col-md-6">
         <div class="form-group">
             <label>Connection Name <span class="text-danger">*</span></label>
-            <input type="text" 
-                   class="form-control" 
-                   name="template_data[connections][0][name]" 
+            <input type="text"
+                   class="form-control"
+                   name="template_data[connections][0][name]"
                    value="{{ $connection['name'] ?? '' }}"
                    placeholder="e.g., PureStorage API"
                    required>
@@ -23,9 +23,9 @@ $connection = $connections[0] ?? [];
             <select class="form-control" name="template_data[connections][0][credential_id]">
                 <option value="">None (No Authentication)</option>
                 @foreach(\App\Models\RestApiCredential::orderBy('name')->get() as $credential)
-                    <option value="{{ $credential->id }}" 
+                    <option value="{{ $credential->id }}"
                             {{ ($connection['credential_id'] ?? '') == $credential->id ? 'selected' : '' }}>
-                        {{ $credential->name }} 
+                        {{ $credential->name }}
                         ({{ $credential->authenticationType->name ?? 'Unknown' }})
                     </option>
                 @endforeach
@@ -37,9 +37,9 @@ $connection = $connections[0] ?? [];
 
 <div class="form-group">
     <label>Base URL <span class="text-danger">*</span></label>
-    <input type="text" 
-           class="form-control" 
-           name="template_data[connections][0][base_url]" 
+    <input type="text"
+           class="form-control"
+           name="template_data[connections][0][base_url]"
            value="{{ $connection['base_url'] ?? '' }}"
            placeholder="https://{device_hostname}"
            required>
@@ -58,8 +58,8 @@ $connection = $connections[0] ?? [];
     </div>
     <div class="card-body">
         <div class="alert alert-info mb-3">
-            <i class="fas fa-info-circle"></i> 
-            <strong>When to use this:</strong> If your API requires logging in to get a session token 
+            <i class="fas fa-info-circle"></i>
+            <strong>When to use this:</strong> If your API requires logging in to get a session token
             (like PureStorage's <code>/api/2.26/login</code>), configure it here.
         </div>
 
@@ -67,13 +67,13 @@ $connection = $connections[0] ?? [];
             <div class="col-md-8">
                 <div class="form-group">
                     <label>Login Path</label>
-                    <input type="text" 
-                           class="form-control" 
-                           name="template_data[connections][0][login_path]" 
+                    <input type="text"
+                           class="form-control"
+                           name="template_data[connections][0][login_path]"
                            value="{{ $connection['login_path'] ?? '' }}"
                            placeholder="/api/2.26/login">
                     <small class="form-text text-muted">
-                        Path to the login endpoint (appended to Base URL). 
+                        Path to the login endpoint (appended to Base URL).
                         Example: <code>/api/2.26/login</code>
                     </small>
                 </div>
@@ -96,9 +96,9 @@ $connection = $connections[0] ?? [];
             <div class="col-md-6">
                 <div class="form-group">
                     <label>Session Token Header</label>
-                    <input type="text" 
-                           class="form-control" 
-                           name="template_data[connections][0][session_token_header]" 
+                    <input type="text"
+                           class="form-control"
+                           name="template_data[connections][0][session_token_header]"
                            value="{{ $connection['session_token_header'] ?? '' }}"
                            placeholder="x-auth-token">
                     <small class="form-text text-muted">
@@ -110,9 +110,9 @@ $connection = $connections[0] ?? [];
             <div class="col-md-6">
                 <div class="form-group">
                     <label>API Token Header</label>
-                    <input type="text" 
-                           class="form-control" 
-                           name="template_data[connections][0][api_token_header]" 
+                    <input type="text"
+                           class="form-control"
+                           name="template_data[connections][0][api_token_header]"
                            value="{{ $connection['api_token_header'] ?? '' }}"
                            placeholder="api-token">
                     <small class="form-text text-muted">
@@ -124,8 +124,8 @@ $connection = $connections[0] ?? [];
 
         <div class="form-group mb-0">
             <label>Login Request Body (JSON) <small class="text-muted">(Optional)</small></label>
-            <textarea class="form-control font-monospace" 
-                      rows="3" 
+            <textarea class="form-control font-monospace"
+                      rows="3"
                       name="template_data[connections][0][login_body]"
                       placeholder='{"username": "admin", "password": "secret"}'>{{ $connection['login_body'] ?? '' }}</textarea>
             <small class="form-text text-muted">
@@ -148,9 +148,9 @@ $connection = $connections[0] ?? [];
     <div class="col-md-4">
         <div class="form-group">
             <label>Rate Limit (requests/minute)</label>
-            <input type="number" 
-                   class="form-control" 
-                   name="template_data[connections][0][rate_limit]" 
+            <input type="number"
+                   class="form-control"
+                   name="template_data[connections][0][rate_limit]"
                    value="{{ $connection['rate_limit'] ?? 60 }}"
                    min="1"
                    max="1000">
@@ -161,9 +161,9 @@ $connection = $connections[0] ?? [];
     <div class="col-md-4">
         <div class="form-group">
             <label>Timeout (seconds)</label>
-            <input type="number" 
-                   class="form-control" 
-                   name="template_data[connections][0][timeout]" 
+            <input type="number"
+                   class="form-control"
+                   name="template_data[connections][0][timeout]"
                    value="{{ $connection['timeout'] ?? 30 }}"
                    min="5"
                    max="300">
@@ -174,9 +174,9 @@ $connection = $connections[0] ?? [];
     <div class="col-md-4">
         <div class="form-group">
             <label>Retry Attempts</label>
-            <input type="number" 
-                   class="form-control" 
-                   name="template_data[connections][0][retry_attempts]" 
+            <input type="number"
+                   class="form-control"
+                   name="template_data[connections][0][retry_attempts]"
                    value="{{ $connection['retry_attempts'] ?? 3 }}"
                    min="0"
                    max="10">
@@ -195,10 +195,10 @@ $connection = $connections[0] ?? [];
     <div class="card-body">
         <div class="custom-control custom-checkbox">
             <input type="hidden" name="template_data[connections][0][disable_ssl_verify]" value="0">
-            <input type="checkbox" 
-                   class="custom-control-input" 
+            <input type="checkbox"
+                   class="custom-control-input"
                    id="disable_ssl_verify"
-                   name="template_data[connections][0][disable_ssl_verify]" 
+                   name="template_data[connections][0][disable_ssl_verify]"
                    value="1"
                    {{ ($connection['disable_ssl_verify'] ?? false) ? 'checked' : '' }}>
             <label class="custom-control-label" for="disable_ssl_verify">
@@ -206,7 +206,7 @@ $connection = $connections[0] ?? [];
             </label>
         </div>
         <small class="form-text text-muted">
-            <i class="fas fa-exclamation-triangle text-warning"></i> 
+            <i class="fas fa-exclamation-triangle text-warning"></i>
             Enable this for self-signed certificates or testing. Not recommended for production.
         </small>
     </div>
@@ -218,7 +218,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('connectionPreview', () => ({
         baseUrl: '{{ $connection['base_url'] ?? '' }}',
         loginPath: '{{ $connection['login_path'] ?? '' }}',
-        
+
         get fullLoginUrl() {
             return (this.baseUrl || 'https://{device_hostname}') + (this.loginPath || '/api/login');
         }

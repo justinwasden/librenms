@@ -3,8 +3,6 @@
     <input type="text" name="name" id="name" class="form-control" value="{{ old('name', $template->name) }}" required>
 </div>
 
-{{-- REMOVED: Vendor and Primary Resource Type fields (Moved to edit.blade.php for the PUT request) --}}
-
 {{-- Kept for simplicity on the Create screen --}}
 <div class="form-group">
     <label for="template_data">Template Data (JSON) <span class="text-danger">*</span></label>

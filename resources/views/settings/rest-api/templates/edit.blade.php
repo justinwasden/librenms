@@ -7,7 +7,7 @@
     /* Retained for Alpine/Modal functionality */
     [x-cloak] { display: none !important; }
 
-    /* NEW: Enhanced Card Layout for Actions */
+    /* Enhanced Card Layout for Actions */
     .action-card {
         transition: transform 0.2s, box-shadow 0.2s;
     }
@@ -38,7 +38,6 @@
                     </div>
 
                     {{-- Main Form for Basic Info --}}
-                    {{-- The form will now only handle the basic fields (name, vendor, description, resource_type) --}}
                     <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                         @csrf
                         @method('PUT')
@@ -56,8 +55,6 @@
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    {{-- Reusing the Vendor/Resource_Type block from _form.blade.php for clarity --}}
-                                    {{-- NOTE: We are removing the vendor/resource_type fields from _form.blade.php and putting them here. --}}
                                     <div class="form-group">
                                         <label for="vendor">Vendor</label>
                                         <input type="text" name="vendor" id="vendor" class="form-control"
@@ -66,7 +63,7 @@
                                 </div>
                             </div>
 
-                            {{-- NEW: Resource Type (Moved from _form.blade.php for the PUT request) --}}
+                            {{-- Resource Type and Description --}}
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <div class="form-group">
@@ -193,7 +190,7 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
-            {{-- We will use a separate form inside the modal for endpoints to simplify saving --}}
+            {{-- Form for Endpoints, using a two-pane layout with Alpine --}}
             <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST" x-data="endpointManager()">
                 @csrf
                 @method('PUT')
@@ -204,96 +201,83 @@
                     </button>
                 </div>
                 <div class="modal-body">
-                    {{-- Dynamic content from the old Endpoints tab (Refactored) --}}
-                    @php
-                        $template_data_array = is_array($template->template_data)
-                            ? $template->template_data
-                            : (json_decode($template->template_data, true) ?? []);
-                        $connections = $template_data_array['connections'] ?? [];
-                    @endphp
+                    <div class="row">
+                        {{-- LEFT PANE: Endpoint List (Smaller width) --}}
+                        <div class="col-md-5 border-right">
+                            <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
-                    @if (count($connections) > 0)
-                        @foreach ($connections as $cIndex => $connection)
-                            <div class="card mb-3">
-                                <div class="card-header bg-primary-light text-dark">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-server"></i>
-                                        Connection: {{ $connection['name'] ?? 'Unnamed Connection' }}
-                                    </h5>
+                            @php
+                                $template_data_array = is_array($template->template_data)
+                                    ? $template->template_data
+                                    : (json_decode($template->template_data, true) ?? []);
+                                $connections = $template_data_array['connections'] ?? [];
+                                $cIndex = 0; // Assuming the primary connection is index 0
+                            @endphp
+
+                            @if (isset($connections[$cIndex]))
+                                <div class="alert alert-info py-2">
+                                    Connection: **{{ $connections[$cIndex]['name'] ?? 'Unnamed Connection' }}**
                                 </div>
 
-                                <div class="card-body">
-                                    <p class="text-muted">Currently editing **{{ $connection['name'] ?? 'Primary Connection' }}** endpoints.</p>
-
-                                    {{-- List of Existing Endpoints --}}
-                                    <div class="list-group mb-4">
-                                        @if (!empty($connection['endpoints']))
-                                            @foreach ($connection['endpoints'] as $eIndex => $endpoint)
-                                                <div class="list-group-item list-group-item-action">
-                                                    <div class="d-flex justify-content-between align-items-center">
-                                                        <div>
-                                                            <h6 class="mb-1">
-                                                                <span class="badge badge-primary">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
-                                                                {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
-                                                            </h6>
-                                                            <small class="text-muted">{{ $endpoint['path'] ?? '' }}</small>
-                                                        </div>
-                                                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                                @click="toggleEndpoint('{{ $cIndex }}-{{ $eIndex }}')">
-                                                            <i class="fas" :class="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-                                                            <span x-text="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'Close Edit' : 'Edit Endpoint'"></span>
-                                                        </button>
-                                                    </div>
-
-                                                    <div x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'"
-                                                        x-cloak
-                                                        x-transition:enter="transition ease-out duration-200"
-                                                        x-transition:enter-start="opacity-0 transform scale-95"
-                                                        x-transition:enter-end="opacity-100 transform scale-100">
-                                                        <hr class="mt-2 mb-3">
-                                                        {{-- The form partial is now inside the modal --}}
-                                                        @include('settings.rest-api.templates.partials.endpoint-form', [
-                                                            'connectionIndex' => $cIndex,
-                                                            'endpointIndex' => $eIndex,
-                                                            'endpoint' => $endpoint,
-                                                            'template' => $template // Pass template for context
-                                                        ])
-                                                    </div>
+                                {{-- List of Existing Endpoints --}}
+                                <div class="list-group mb-4" style="max-height: 600px; overflow-y: auto;">
+                                    @php $connection = $connections[$cIndex]; @endphp
+                                    @if (!empty($connection['endpoints']))
+                                        @foreach ($connection['endpoints'] as $eIndex => $endpoint)
+                                            <a href="#" class="list-group-item list-group-item-action"
+                                               :class="{ 'active': activeEndpointIndex === '{{ $cIndex }}-{{ $eIndex }}' }"
+                                               @click.prevent="openEndpoint('{{ $cIndex }}-{{ $eIndex }}', '{{ $endpoint['name'] ?? 'Unnamed Endpoint' }}', {{ json_encode($endpoint) }})">
+                                                <div class="d-flex w-100 justify-content-between">
+                                                    <h6 class="mb-1">
+                                                        <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
+                                                        {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
+                                                    </h6>
+                                                    <small class="text-{{ ($endpoint['enabled'] ?? true) ? 'success' : 'danger' }}">
+                                                        {{ ($endpoint['enabled'] ?? true) ? 'Enabled' : 'Disabled' }}
+                                                    </small>
                                                 </div>
-                                            @endforeach
-                                        @else
-                                            <div class="alert alert-warning text-center">
-                                                <i class="fas fa-info-circle"></i> No endpoints defined. Use the button below to add your first one.
-                                            </div>
-                                        @endif
-                                    </div>
-
-                                    {{-- Add New Endpoint Section --}}
-                                    <div class="card border-success">
-                                        <div class="card-header bg-success text-white p-2">
-                                            <h6 class="mb-0">
-                                                <i class="fas fa-plus"></i> Add New Endpoint
-                                                <button type="button" class="btn btn-sm btn-outline-light float-right" @click="addNewEndpoint()">
-                                                    <i class="fas fa-plus-circle"></i> Add Endpoint Form
-                                                </button>
-                                            </h6>
+                                                <small>{{ $endpoint['path'] ?? 'No Path' }}</small>
+                                            </a>
+                                        @endforeach
+                                    @else
+                                        <div class="text-muted text-center py-3">
+                                            No endpoints defined.
                                         </div>
-                                        <div class="card-body">
-                                            {{-- Container for dynamically added endpoint forms --}}
-                                            <div id="new-endpoints-container">
-                                                {{-- Dynamic forms will be appended here --}}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    @endif
+                                </div>
+                            @else
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-exclamation-triangle"></i> No connection configured.
+                                </div>
+                            @endif
 
+                            {{-- "Add New" Button --}}
+                            <button type="button" class="btn btn-success btn-block mt-3"
+                                    @click="openNewEndpoint()">
+                                <i class="fas fa-plus-circle"></i> Add New Endpoint
+                            </button>
+                        </div> {{-- End Left Pane --}}
+
+                        {{-- RIGHT PANE: Detail Form (Wider width) --}}
+                        <div class="col-md-7">
+                            <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
+                                <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
+
+                                {{-- The dynamically rendered form based on selection --}}
+                                <div id="endpoint-detail-container" x-html="currentEndpointFormHtml">
+                                    {{-- Initial Load Placeholder --}}
+                                    <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
+                                </div>
+
+                            </div>
+                            <div x-show="!activeEndpointIndex && !isAddingNew">
+                                <div class="alert alert-warning text-center mt-5">
+                                    <i class="fas fa-hand-point-left fa-2x"></i><br>
+                                    Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
                                 </div>
                             </div>
-                        @endforeach
-                    @else
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle"></i> No connections defined in template. Please configure your connection in the **Connection Settings** modal first.
-                        </div>
-                    @endif
+                        </div> {{-- End Right Pane --}}
+                    </div>
 
                     {{-- Hidden field to ensure only endpoint data is processed --}}
                     <input type="hidden" name="action_type" value="update_endpoints_only">
@@ -303,36 +287,24 @@
                     {{-- A full save is needed to persist all endpoint changes --}}
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save All Endpoints</button>
                 </div>
+
+                {{-- Hidden Template for ALL new endpoint additions, ensuring all fields are present --}}
+                <template id="full-endpoint-template">
+                    @php
+                        $js_placeholder_index = '__ACTIVE_INDEX__'; // Using a generic placeholder
+                        $js_connection_index = 0;
+                    @endphp
+                    @include('settings.rest-api.templates.partials.endpoint-form', [
+                        'connectionIndex' => $js_connection_index,
+                        'endpointIndex' => $js_placeholder_index,
+                        'endpoint' => [], // Empty array for initial state
+                    ])
+                </template>
+
             </form>
         </div>
     </div>
 </div>
-
-{{-- HIDDEN TEMPLATE: The actual form structure to be cloned by JavaScript --}}
-<template id="new-endpoint-template">
-    @php
-    $js_placeholder_index = '__NEW_ENDPOINT_INDEX__';
-    $js_connection_index = 0; // Assuming only one connection is edited at a time for simplicity
-    @endphp
-    <div class="card mb-3 new-endpoint-item border-warning">
-        <div class="card-header bg-warning p-2">
-            <h6 class="mb-0">New Endpoint <small class="text-danger">(Unsaved)</small>
-                <button type="button" class="close text-danger remove-endpoint float-right" aria-label="Remove">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </h6>
-        </div>
-        <div class="card-body">
-            {{-- Re-use the existing partial with placeholders --}}
-            @include('settings.rest-api.templates.partials.endpoint-form', [
-                'connectionIndex' => $js_connection_index,
-                'endpointIndex' => $js_placeholder_index,
-                'endpoint' => [], // Empty array for initial state
-                'template' => $template // Pass template for context
-            ])
-        </div>
-    </div>
-</template>
 
 {{-- 3. Preview Modal (Test Template) --}}
 <div class="modal fade" id="previewModal" tabindex="-1" role="dialog" aria-hidden="true">
@@ -358,75 +330,191 @@
 <script>
 function templateEditor() {
     return {
-        // We no longer need activeTab here, as the tabs are replaced by modals
         openEndpoint: null,
         templateData: @json($template->template_data),
 
         init() {
-            // Optional: Re-run endpoint parsing logic if needed for external JS/Alpine components
-        },
-
-        // This is now used by the Endpoints Modal to manage existing endpoint forms
-        toggleEndpoint(endpointId) {
-            if (this.openEndpoint === endpointId) {
-                this.openEndpoint = null;
-            } else {
-                this.openEndpoint = endpointId;
-            }
+            // Initialization for the main page
         },
     }
 }
 
-// NEW Alpine Data for Endpoint Management within the Modal
+// Alpine Data for Endpoint Management within the Modal (Two-Pane Logic)
 function endpointManager() {
     return {
-        openEndpoint: null,
+        activeEndpointIndex: null,
+        activeEndpointData: {},
+        activeEndpointName: '',
+        isAddingNew: false,
         newEndpointCount: 0,
+        currentEndpointFormHtml: '',
 
-        toggleEndpoint(endpointId) {
-            if (this.openEndpoint === endpointId) {
-                this.openEndpoint = null;
-            } else {
-                this.openEndpoint = endpointId;
+        init() {
+            // Load the empty form template on modal open (or initialization)
+            this.currentEndpointFormHtml = ''; // Initially empty, will show a message
+        },
+
+        // Open an existing endpoint for editing
+        openEndpoint(index, name, data) {
+            this.activeEndpointIndex = index;
+            this.activeEndpointName = name;
+            this.activeEndpointData = data;
+            this.isAddingNew = false;
+
+            this.currentEndpointFormHtml = this.generateEndpointFormHtml(index, data);
+
+            // Re-run the JSON validation script for the newly rendered form
+            this.$nextTick(() => {
+                this.initializeEndpointScripts(index);
+            });
+        },
+
+        // Start the process of adding a new endpoint
+        openNewEndpoint() {
+            // Ensure unique ID for this session
+            const index = 'new_' + Date.now() + '_' + this.newEndpointCount;
+            this.newEndpointCount++;
+
+            this.activeEndpointIndex = index;
+            this.activeEndpointName = 'New Endpoint';
+            this.activeEndpointData = {name: 'New Endpoint', method: 'GET', poll_interval: 300, enabled: true};
+            this.isAddingNew = true;
+
+            this.currentEndpointFormHtml = this.generateEndpointFormHtml(index, {});
+
+            // Re-run the JSON validation script for the newly rendered form
+            this.$nextTick(() => {
+                this.initializeEndpointScripts(index);
+            });
+        },
+
+        // Helper function to generate the form HTML
+        generateEndpointFormHtml(index, data) {
+            let html = document.getElementById('full-endpoint-template').innerHTML;
+
+            const cIndex = 0; // Assuming primary connection
+            const safeIndex = index.toString().replace(/'/g, '\\\'');
+
+            // 1. Replace the dynamic index placeholder in all field names/IDs
+            html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
+
+            // 2. Add a "Remove" button
+            let removeButton = `
+                <div class="text-right mb-3">
+                    <button type="button" class="btn btn-sm btn-danger" @click="removeEndpoint('${safeIndex}')">
+                        <i class="fas fa-trash"></i> ${index.toString().startsWith('new_') ? 'Remove Unsaved' : 'Delete Existing'} Endpoint
+                    </button>
+                </div>
+            `;
+            html = removeButton + html;
+
+            // 3. Populate initial values for existing endpoints.
+            // This is a minimal implementation; a complete solution would require more complexity.
+            // We focus on the metric map since it's a textarea.
+            const metricMapValue = JSON.stringify(data.metric_map || {}, null, 4);
+            const textareaName = `template_data[connections][${cIndex}][endpoints][${safeIndex}][metric_map]`;
+
+            // Use a temporary placeholder for the value and replace it after the main ID/name substitution
+            const textareaPlaceholder = `__METRIC_MAP_CONTENT__`;
+            html = html.replace(`name="${textareaName}">`, `name="${textareaName}">${textareaPlaceholder}</textarea>`);
+
+            // Inject the metric map value
+            html = html.replace(textareaPlaceholder, metricMapValue);
+
+            return html;
+        },
+
+        // Manual initialization of the JS needed for the endpoint-form partial
+        initializeEndpointScripts(index) {
+            const cIndex = 0; // Assuming primary connection
+            const uniqueId = `${cIndex}_${index}`;
+
+            const textarea = document.getElementById(`metric_map_json_${uniqueId}`);
+            const beautifyButton = document.getElementById(`beautifyJson_${uniqueId}`);
+            const errorDiv = document.getElementById(`jsonError_${uniqueId}`);
+
+            if (!textarea) return;
+
+            /**
+             * Validate and pretty-print JSON
+             */
+            function validateAndFormatJSON() {
+                const value = textarea.value.trim();
+                if (!value) {
+                    errorDiv.style.display = 'none';
+                    return;
+                }
+                try {
+                    const parsed = JSON.parse(value);
+                    textarea.value = JSON.stringify(parsed, null, 4);
+                    errorDiv.style.display = 'none';
+                } catch (e) {
+                    errorDiv.textContent = ' Invalid JSON: ' + e.message;
+                    errorDiv.style.display = 'block';
+                }
+            }
+
+            /**
+             * Validate while typing (without reformatting)
+             */
+            textarea.oninput = () => {
+                try {
+                    JSON.parse(textarea.value);
+                    errorDiv.style.display = 'none';
+                } catch (e) {
+                    errorDiv.textContent = ' Invalid JSON: ' + e.message;
+                    errorDiv.style.display = 'block';
+                }
+            };
+
+            /**
+             * Beautify JSON automatically when focus is lost
+             */
+            textarea.onblur = validateAndFormatJSON;
+
+            /**
+             * Manual Beautify button
+             */
+            if (beautifyButton) {
+                beautifyButton.onclick = function(e) {
+                    e.preventDefault();
+                    validateAndFormatJSON();
+                };
             }
         },
 
-        addNewEndpoint() {
-            const template = document.getElementById('new-endpoint-template');
-            const container = document.getElementById('new-endpoints-container');
+        removeEndpoint(indexToRemove) {
+            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action cannot be undone on save.`)) {
+                return;
+            }
 
-            if (!template || !container) return;
+            // To delete an existing endpoint, we must submit a hidden field that signals deletion.
+            // Since we're using a single form for all endpoints, the simplest way is to
+            // inject a hidden 'DELETE' flag for the specific index.
 
-            const clone = template.content.cloneNode(true);
-            const newIndex = 'new_' + this.newEndpointCount;
+            // For both new and existing, we clear the right pane
+            this.activeEndpointIndex = null;
+            this.isAddingNew = false;
+            this.currentEndpointFormHtml = '<div class="alert alert-success text-center mt-5"><i class="fas fa-check"></i> Endpoint hidden/removed. Click "Save All Endpoints" to apply changes.</div>';
 
-            // Find all inputs and update their names with the unique index
-            clone.querySelectorAll('*').forEach(el => {
-                if (el.name) {
-                    // Update index placeholder for both existing and new endpoints
-                    el.name = el.name.replace('__NEW_ENDPOINT_INDEX__', newIndex);
-                }
-                if (el.id) {
-                    el.id = el.id.replace('__NEW_ENDPOINT_INDEX__', newIndex);
-                }
-                // Update the hidden metric map name for the controller logic to find it
-                if (el.tagName === 'TEXTAREA' && el.id === 'metric_map_json') {
-                    // The metric_map needs to be initialized as an empty object for the form.
-                    el.name = `template_data[connections][0][endpoints][${newIndex}][metric_map]`;
-                    el.value = JSON.stringify({}, null, 4);
-                }
-            });
+            // --- Crucial Deletion Logic ---
+            const form = document.getElementById('endpoint-management-form');
 
-            // Add listener to remove the endpoint form
-            const removeButton = clone.querySelector('.remove-endpoint');
-            removeButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.target.closest('.new-endpoint-item').remove();
-            });
+            // Create a hidden input to mark for deletion
+            const deleteFlagName = `template_data[connections][0][endpoints][${indexToRemove}][__DELETE_FLAG]`;
+            let hiddenInput = form.querySelector(`input[name="${deleteFlagName}"]`);
 
-            container.appendChild(clone);
-            this.newEndpointCount++;
-        }
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = deleteFlagName;
+                hiddenInput.value = '1';
+                form.appendChild(hiddenInput);
+            }
+            // --- End Deletion Logic ---
+
+            alert('Endpoint marked for deletion or removed from unsaved list. Click "Save All Endpoints" to finalize.');
+        },
     }
 }
 </script>
