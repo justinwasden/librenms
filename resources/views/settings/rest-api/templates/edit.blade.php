@@ -15,16 +15,15 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
-    /* FIX: Custom class for maximum modal width (equivalent to roughly 98% viewport) */
-    .modal-full-width {
-        max-width: 98% !important;
-        margin: 0.5rem auto;
+    /* FIX: Maximize modal content width */
+    #endpointsModal .modal-dialog {
+        max-width: 95%; /* Makes it much wider than standard XL */
     }
     /* Scrollable form content on the right pane */
     .endpoint-form-scroll {
         max-height: 70vh;
         overflow-y: auto;
-        padding-right: 15px;
+        padding-right: 15px; /* space for scrollbar */
     }
 </style>
 @endpush
@@ -36,7 +35,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="row justify-content-center">
-        <div class="col-md-14 col-lg-9 col-xl-8">
+        <div class="col-md-10 col-lg-9 col-xl-8">
             <div x-data="templateEditor()" x-init="init()">
                 <div class="card">
                     <div class="card-header">
@@ -193,25 +192,25 @@
     </div>
 </div>
 
-{{-- 2. Endpoints Modal (Wider Layout Applied Here) --}}
+{{-- 2. Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-full-width" role="document">
+    {{-- Set to widest possible standard modal --}}
+    <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
-            <form id="endpoint-management-form" action="#" method="POST" x-data="endpointManager()">
+            <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST" x-data="endpointManager()">
                 @csrf
                 @method('PUT')
-
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
                     <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                         <span>&times;</span>
                     </button>
                 </div>
-
                 <div class="modal-body">
                     <div class="row">
                         {{-- LEFT PANE: Endpoint List (Smaller width) --}}
-                        <div class="col-md-4 border-right">
+                        {{-- Adjusted from col-md-4/5 to col-md-3 --}}
+                        <div class="col-md-3 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
                             @php
@@ -267,31 +266,17 @@
                         </div> {{-- End Left Pane --}}
 
                         {{-- RIGHT PANE: Detail Form (Wider width) --}}
-                        <div class="col-md-10"> {{-- Form maximized to 10/12 --}}
+                        {{-- Adjusted from col-md-8/7 to col-md-9 --}}
+                        <div class="col-md-9">
                             <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
                                 <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
                                 <div class="endpoint-form-scroll">
+                                    {{-- @input is crucial for tracking form changes --}}
                                     <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
                                         {{-- Initial Load Placeholder --}}
                                         <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
                                     </div>
-                                </div>
-
-                                {{-- Endpoint-Specific Action Buttons (Delete button removed) --}}
-                                <div class="d-flex justify-content-end pt-3 border-top mt-3" x-show="activeEndpointIndex">
-                                    <button type="button"
-                                            class="btn btn-outline-secondary mr-2"
-                                            @click="cancelEdit()">
-                                        <i class="fas fa-times"></i> Cancel Changes
-                                    </button>
-
-                                    <button type="submit"
-                                            class="btn btn-primary"
-                                            @click.prevent="saveEndpoint(activeEndpointIndex)"
-                                            :disabled="!isFormDirty">
-                                        <i class="fas fa-save"></i> Save Endpoint
-                                    </button>
                                 </div>
 
                             </div>
@@ -303,11 +288,16 @@
                             </div>
                         </div> {{-- End Right Pane --}}
                     </div>
-                </div>
 
-                {{-- Modal Footer only contains the close button --}}
+                    <input type="hidden" name="action_type" value="update_endpoints_only">
+                </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="submit"
+                            class="btn btn-primary"
+                            :disabled="!isFormDirty"> {{-- Disabled when clean --}}
+                        <i class="fas fa-save"></i> Save All Endpoints
+                    </button>
                 </div>
 
                 <template id="full-endpoint-template">
@@ -349,24 +339,20 @@
 
 
 <script>
-// The Alpine logic for endpointManager remains largely the same for save/cancel/dirty-state
-// but is not fully duplicated here for brevity.
-// The critical change is the removal of the delete button logic from the saveEndpoint and removeEndpoint functions.
-
 function templateEditor() {
     return {
         openEndpoint: null,
         templateData: @json($template->template_data),
 
         init() {
-            $('#endpointsModal').on('show.bs.modal', () => {
-                // Real application would refresh the list data here
-            });
+            // Initialization for the main page
         },
     }
 }
 
+// Alpine Data for Endpoint Management (Updated)
 function endpointManager() {
+    // Helper to escape HTML entities for injection
     const escapeHtml = (str) => {
         if (!str) return '';
         return str.replace(/&/g, '&amp;')
@@ -376,12 +362,19 @@ function endpointManager() {
                   .replace(/'/g, '&#039;');
     };
 
+    // Hydrates the form template with endpoint data
     const hydrateForm = (html, data, index) => {
         const cIndex = 0;
         const safeIndex = index.toString().replace(/'/g, '\\\'');
 
+        // 1. Replace the dynamic index placeholder in all field names/IDs
         html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
 
+        // 2. Hydrate values
+        // A simple, direct replacement technique. Note: This can be brittle
+        // if the PHP template changes significantly.
+
+        // --- TEXT INPUTS & SELECTS ---
         const formKeys = ['name', 'path', 'method', 'resource_type', 'poll_interval', 'description', 'response_path'];
         formKeys.forEach(key => {
             const value = data[key] !== undefined ? String(data[key]) : (key === 'poll_interval' ? '300' : '');
@@ -395,12 +388,13 @@ function endpointManager() {
 
             // Hydrate select 'selected' attributes
             html = html.replace(
-                new RegExp(`value="${escapedValue}"(?![^>]*selected)`),
+                new RegExp(`value="${escapedValue}"(?! selected)`), // Avoid double selection
                 `value="${escapedValue}" selected`
             );
 
             // Hydrate textarea values (description)
              if (key === 'description') {
+                 // Description has no value attribute, its value is between tags
                  html = html.replace(
                     new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]">.*?<\\/textarea>`, 's'),
                     `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]">${escapedValue}</textarea>`
@@ -424,46 +418,15 @@ function endpointManager() {
         // 4. Special handling for Checkbox (enabled)
         const isEnabled = data.enabled === false ? '' : 'checked';
         html = html.replace(
-            new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"(.*?)checked`),
-            `id="endpoint_enabled_${cIndex}_${safeIndex}"$1`
+            new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"\\s*name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[enabled\\]"\\s*value="1"(.*?)>`),
+            `id="endpoint_enabled_${cIndex}_${safeIndex}" name="template_data[connections][${cIndex}][endpoints][${safeIndex}][enabled]" value="1" ${isEnabled}>`
         );
-        if (isEnabled) {
-            html = html.replace(
-                new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"\\s*name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[enabled\\]"\\s*value="1"`),
-                `id="endpoint_enabled_${cIndex}_${safeIndex}" name="template_data[connections][${cIndex}][endpoints][${safeIndex}][enabled]" value="1" ${isEnabled}`
-            );
+        // Ensure hidden input for "disabled" state is present for existing endpoints
+        if (html.indexOf('name="template_data[connections][0][endpoints][' + safeIndex + '][enabled]" value="0"') === -1) {
+            html = `<input type="hidden" name="template_data[connections][0][endpoints][${safeIndex}][enabled]" value="0">` + html;
         }
 
         return html;
-    };
-
-    const extractFormData = (index) => {
-        const form = document.getElementById('endpoint-management-form');
-        const formData = new FormData(form);
-        const data = {};
-        const prefix = `template_data[connections][0][endpoints][${index}]`;
-
-        for (const [key, value] of formData.entries()) {
-            if (key.startsWith(prefix)) {
-                const fieldName = key.substring(prefix.length + 2, key.length - 1);
-
-                if (fieldName === 'metric_map') {
-                    try {
-                        data.metric_map = JSON.parse(value);
-                    } catch (e) {
-                        alert('Metric Mapping JSON is invalid and cannot be saved.');
-                        return null;
-                    }
-                } else {
-                    data[fieldName] = value;
-                }
-            }
-        }
-
-        if (!data.hasOwnProperty('enabled')) {
-            data.enabled = 0;
-        }
-        return data;
     };
 
     return {
@@ -474,10 +437,11 @@ function endpointManager() {
         isFormDirty: false,
         newEndpointCount: 0,
         currentEndpointFormHtml: '',
-        initialDataSnapshot: null,
 
         init() {
+            // Event listener to reset dirty state when modal is closed successfully
             $('#endpointsModal').on('hide.bs.modal', (e) => {
+                // If a submit button wasn't clicked, prompt the user if the form is dirty
                 const submitClicked = $(document.activeElement).is('button[type="submit"]');
                 if (!submitClicked && this.isFormDirty) {
                     if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
@@ -487,72 +451,13 @@ function endpointManager() {
                 }
                 this.isFormDirty = false;
             });
-        },
 
-        async saveEndpoint(index) {
-            const endpointData = extractFormData(index);
-            if (!endpointData) return;
-
-            const payload = {
-                action_type: 'update_endpoint_granular',
-                endpoint_index: index,
-                endpoint_data: endpointData,
-                _token: '{{ csrf_token() }}',
-                _method: 'PUT'
-            };
-
-            try {
-                const response = await fetch('{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    alert('Endpoint saved successfully!');
-                    this.isFormDirty = false;
-
-                    // Crucial: Update the internal data snapshot to mark the state as clean
-                    this.activeEndpointData = data.updated_endpoint_data || endpointData;
-                    this.initialDataSnapshot = JSON.stringify(this.activeEndpointData);
-
-                    if (this.isAddingNew) {
-                        this.activeEndpointIndex = data.new_index || index;
-                        this.isAddingNew = false;
-                        // Reload page to refresh the list on the left with the new endpoint
-                        window.location.reload();
-                    }
-
-                } else {
-                    alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
-                }
-            } catch (error) {
-                console.error('Save error:', error);
-                alert('A network error occurred while saving.');
-            }
-        },
-
-        cancelEdit() {
-            if (!this.isFormDirty || confirm('Discard all unsaved changes for this endpoint?')) {
-                if (this.isAddingNew) {
-                    this.activeEndpointIndex = null;
-                    this.isAddingNew = false;
-                    this.currentEndpointFormHtml = '<div class="alert alert-warning text-center">Select an endpoint or click \'Add New Endpoint\' to begin editing.</div>';
-                } else {
-                    // Re-open the form with the initial, saved data (from the snapshot)
-                    this.activeEndpointData = JSON.parse(this.initialDataSnapshot);
-                    this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, this.activeEndpointData, this.activeEndpointIndex);
-                    this.$nextTick(() => {
-                        this.initializeEndpointScripts(this.activeEndpointIndex);
-                    });
-                }
-                this.isFormDirty = false;
-            }
+            // Set up listener for form submission to handle success state logic
+            // (Note: full success confirmation typically comes from the backend redirection)
         },
 
         openEndpoint(index, name, data) {
+            // If switching from a dirty form, prompt
             if (this.isFormDirty && this.activeEndpointIndex) {
                  if (!confirm(`You have unsaved changes to ${this.activeEndpointName}. Continue without saving?`)) {
                     return;
@@ -563,18 +468,19 @@ function endpointManager() {
             this.activeEndpointName = name;
             this.activeEndpointData = data;
             this.isAddingNew = false;
-            this.isFormDirty = false;
-            this.initialDataSnapshot = JSON.stringify(data);
+            this.isFormDirty = false; // Reset dirty state on selection
 
+            // Hydrate and render the form
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, data, index);
 
             this.$nextTick(() => {
                 this.initializeEndpointScripts(index);
-                document.querySelector('.endpoint-form-scroll').scrollTop = 0;
+                document.querySelector('.endpoint-form-scroll').scrollTop = 0; // Scroll to top
             });
         },
 
         openNewEndpoint() {
+            // If switching from a dirty form, prompt
             if (this.isFormDirty && this.activeEndpointIndex) {
                  if (!confirm(`You have unsaved changes to ${this.activeEndpointName}. Continue without saving?`)) {
                     return;
@@ -587,14 +493,13 @@ function endpointManager() {
             this.activeEndpointName = 'New Endpoint';
             this.activeEndpointData = {name: '', method: 'GET', poll_interval: 300, enabled: true, metric_map: {}};
             this.isAddingNew = true;
-            this.isFormDirty = false;
-            this.initialDataSnapshot = JSON.stringify(this.activeEndpointData);
+            this.isFormDirty = false; // Reset dirty state on creation
 
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, this.activeEndpointData, index);
 
             this.$nextTick(() => {
                 this.initializeEndpointScripts(index);
-                document.querySelector('.endpoint-form-scroll').scrollTop = 0;
+                document.querySelector('.endpoint-form-scroll').scrollTop = 0; // Scroll to top
             });
         },
 
@@ -602,12 +507,16 @@ function endpointManager() {
             const cIndex = 0;
             const uniqueId = `${cIndex}_${index}`;
 
+            // Re-select elements by unique ID since the HTML was re-rendered
             const textarea = document.getElementById(`metric_map_json_${uniqueId}`);
             const beautifyButton = document.getElementById(`beautifyJson_${uniqueId}`);
             const errorDiv = document.getElementById(`jsonError_${uniqueId}`);
 
             if (!textarea) return;
 
+            /**
+             * Validate and pretty-print JSON
+             */
             const validateAndFormatJSON = () => {
                 const value = textarea.value.trim();
                 if (!value) {
@@ -625,6 +534,9 @@ function endpointManager() {
                 }
             };
 
+            /**
+             * Set dirty state and validate on input
+             */
             textarea.oninput = () => {
                 this.isFormDirty = true;
                 try {
@@ -636,14 +548,19 @@ function endpointManager() {
                 }
             };
 
+            // Set dirty state on blur if metric map changed
             textarea.onblur = validateAndFormatJSON;
 
+            // Set dirty state for other fields in the scroll container
             document.querySelector('.endpoint-form-scroll').addEventListener('input', (e) => {
                 if (e.target.name && e.target.closest('#endpoint-detail-container')) {
                     this.isFormDirty = true;
                 }
             });
 
+            /**
+             * Manual Beautify button
+             */
             if (beautifyButton) {
                 beautifyButton.onclick = function(e) {
                     e.preventDefault();
@@ -652,12 +569,30 @@ function endpointManager() {
             }
         },
 
-        // Delete endpoint is now a dedicated action, similar to save, that hits the backend
         removeEndpoint(indexToRemove) {
-            // Note: The delete button is removed from the form, but this function is kept
-            // in case you re-introduce a dedicated delete button outside the main form.
-            alert('The Delete Endpoint button was removed from the form as requested. If you want to delete, you must temporarily add the button back.');
-        }
+            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save All Endpoints."`)) {
+                return;
+            }
+
+            // Clear the right pane and set dirty state
+            this.activeEndpointIndex = null;
+            this.isAddingNew = false;
+            this.isFormDirty = true;
+            this.currentEndpointFormHtml = '<div class="alert alert-danger text-center mt-5"><i class="fas fa-trash"></i> Endpoint marked for deletion or removed from list. Click "Save All Endpoints" to finalize.</div>';
+
+            // Create a hidden input to mark for deletion
+            const form = document.getElementById('endpoint-management-form');
+            const deleteFlagName = `template_data[connections][0][endpoints][${indexToRemove}][__DELETE_FLAG]`;
+            let hiddenInput = form.querySelector(`input[name="${deleteFlagName}"]`);
+
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = deleteFlagName;
+                hiddenInput.value = '1';
+                form.appendChild(hiddenInput);
+            }
+        },
     }
 }
 </script>
