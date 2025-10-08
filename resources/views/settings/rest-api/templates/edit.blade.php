@@ -284,33 +284,35 @@
                             </button>
                         </div> {{-- End Left Pane --}}
 
-                        {{-- RIGHT PANE: Detail Form (Wider width) --}}
-                        <div class="col-md-9" :class="{ 'endpoint-dirty': isFormDirty }">
-                            <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
-                                <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
+                        <!-- RIGHT PANE: Detail Form (Wider width) -->
+												<div class="col-md-9" :class="{ 'endpoint-dirty': isFormDirty }">
+												    <template x-if="activeEndpointIndex || isAddingNew">
+												        <div>
+												            <h6 class="mb-3" x-html="isAddingNew
+												                ? '<i class=\'fas fa-plus-square text-success\'></i> New Endpoint Details'
+												                : '<i class=\'fas fa-edit text-primary\'></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
-                                <div id="endpoint-detail-container" @input="isFormDirty = true">
-																		    <form id="endpoint-detail-form" x-html="currentEndpointFormHtml"></form>
-                                        {{-- Initial Load Placeholder --}}
-                                        <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
-                                    </div>
-                                </div>
-															 <!-- Inline Save / Cancel Buttons -->
-																<div x-show="isFormDirty" x-transition class="mt-3 text-right" x-cloak>
-																    <button type="button" class="btn btn-secondary mr-2" @click="cancelEndpointChanges">
-																        <i class="fas fa-undo"></i> Cancel Changes
-																    </button>
-																    <button type="button" class="btn btn-success" @click="saveEndpointChanges">
-																        <i class="fas fa-save"></i> Save Endpoint
-																    </button>
-																</div>
-                            </div>
-                            <div x-show="!activeEndpointIndex && !isAddingNew">
-                                <div class="alert alert-warning text-center mt-5">
-                                    <i class="fas fa-hand-point-left fa-2x"></i><br>
-                                    Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
-                                </div>
-                            </div>
+												            <div id="endpoint-detail-container" @input="isFormDirty = true" x-html="currentEndpointFormHtml"></div>
+
+												            <!-- Inline Save / Cancel Buttons -->
+												            <div x-show="isFormDirty" x-transition class="mt-3 text-right">
+												                <button type="button" class="btn btn-secondary mr-2" @click="cancelEndpointChanges">
+												                    <i class="fas fa-undo"></i> Cancel Changes
+												                </button>
+												                <button type="button" class="btn btn-success" @click="saveEndpointChanges">
+												                    <i class="fas fa-save"></i> Save Endpoint
+												                </button>
+												            </div>
+												        </div>
+												    </template>
+
+												    <template x-if="!activeEndpointIndex && !isAddingNew">
+												        <div class="alert alert-warning text-center mt-5">
+												            <i class="fas fa-hand-point-left fa-2x"></i><br>
+												            Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
+												        </div>
+												    </template>
+												</div>
                         </div> {{-- End Right Pane --}}
                     </div>
 
