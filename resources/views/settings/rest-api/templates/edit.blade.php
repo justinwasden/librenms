@@ -206,12 +206,17 @@
                         {{-- Left Pane --}}
                         <div class="col-md-3 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
-                            @php
-                                $template_data_array = is_array($template->template_data) ? $template->template_data : (json_decode($template->template_data, true) ?? []);
-                                $connections = $template_data_array['connections'] ?? [];
-                                $cIndex = 0;
-                                $connection = $connections[$cIndex] ?? [];
-                            @endphp
+																@php
+																    $template_data_array = is_array($template->template_data)
+																        ? $template->template_data
+																        : (json_decode($template->template_data, true) ?? []);
+																    $connections = $template_data_array['connections'] ?? [];
+																    $cIndex = 0;
+																    $connection = $connections[$cIndex] ?? [];
+																    $connection['endpoints'] = is_array($connection['endpoints'] ?? null)
+																        ? $connection['endpoints']
+																        : []; // ensure always array
+																@endphp
 
                             @if(!empty($connection))
                                 <div class="alert alert-info py-2">
