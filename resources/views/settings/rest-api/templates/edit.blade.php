@@ -389,19 +389,37 @@ function endpointManager() {
         },
 
         openEndpoint(index, name, data) {
-            this.activeEndpointIndex = index;
-            this.activeEndpointName = name;
-            this.activeEndpointData = JSON.parse(JSON.stringify(data));
-            this.isAddingNew = false;
-            this.isFormDirty = false;
+				    this.activeEndpointIndex = index;
+				    this.activeEndpointName = name;
+				    this.activeEndpointData = JSON.parse(JSON.stringify(data)); // deep copy
+				    this.isAddingNew = false;
+				    this.isFormDirty = false;
 
-            const templateHtml = document.querySelector('#full-endpoint-template').innerHTML;
-            this.currentEndpointFormHtml = templateHtml.replace(/__ACTIVE_INDEX__/g, index);
+				    const templateHtml = document.querySelector('#full-endpoint-template').innerHTML;
+				    this.currentEndpointFormHtml = templateHtml.replace(/__ACTIVE_INDEX__/g, index);
 
-            this.$nextTick(() => {
-                this.initializeEndpointScripts(index);
-            });
-        },
+				    this.$nextTick(() => {
+				        const cIndex = 0;
+				        // Fill Name
+				        const nameField = document.getElementById(`endpoint_name_${cIndex}_${index}`);
+				        if (nameField) nameField.value = data.name || '';
+
+				        // Fill Path
+				        const pathField = document.getElementById(`endpoint_path_${cIndex}_${index}`);
+				        if (pathField) pathField.value = data.path || '';
+
+				        // Fill Method
+				        const methodField = document.getElementById(`endpoint_method_${cIndex}_${index}`);
+				        if (methodField) methodField.value = data.method || 'GET';
+
+				        // Fill Metric Map JSON
+				        const metricMapField = document.getElementById(`metric_map_json_${cIndex}_${index}`);
+				        if (metricMapField) metricMapField.value = JSON.stringify(data.metric_map || {}, null, 4);
+
+				        // Initialize JSON validation
+				        this.initializeEndpointScripts(index);
+				    });
+				}
 
         openNewEndpoint() {
             const index = 'new_' + Date.now();
