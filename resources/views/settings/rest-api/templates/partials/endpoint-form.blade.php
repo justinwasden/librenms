@@ -1,24 +1,33 @@
 <div class="border rounded p-3 bg-light">
-    <div class="form-group">
-        <label>Endpoint Name <span class="text-danger">*</span></label>
-        <input type="text"
                class="form-control"
-               name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][name]"
-               value="{{ $endpoint['name'] ?? '' }}"
-               required>
+
+    {{-- Row 1: Endpoint Name and Path (Consolidated) --}}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label>Endpoint Name <span class="text-danger">*</span></label>
+                <input type="text"
+                       class="form-control"
+                       name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][name]"
+                       value="{{ $endpoint['name'] ?? '' }}"
+                       required>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="form-group">
+                <label>Path <span class="text-danger">*</span></label>
+                <input type="text"
+                       class="form-control"
+                       name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][path]"
+                       value="{{ $endpoint['path'] ?? '' }}"
+                       placeholder="/api/endpoint"
+                       required>
+                <small class="form-text text-muted">Example: /api/v1/data</small>
+            </div>
+        </div>
     </div>
 
-    <div class="form-group">
-        <label>Path <span class="text-danger">*</span></label>
-        <input type="text"
-               class="form-control"
-               name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][path]"
-               value="{{ $endpoint['path'] ?? '' }}"
-               placeholder="/api/endpoint"
-               required>
-        <small class="form-text text-muted">Example: /api/v1/data</small>
-    </div>
-
+    {{-- Row 2: HTTP Method, Resource Type, and Poll Interval (3-Column Grid) --}}
     <div class="row">
         <div class="col-md-4">
             <div class="form-group">
@@ -71,25 +80,44 @@
         </div>
     </div>
 
-    <div class="form-group">
-        <div class="custom-control custom-checkbox">
-            {{-- Hidden input to ensure a value is always sent --}}
-            <input type="hidden"
-                   name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][enabled]"
-                   value="0">
-            <input type="checkbox"
-                   class="custom-control-input"
-                   id="endpoint_enabled_{{ $connectionIndex }}_{{ $endpointIndex }}"
-                   name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][enabled]"
-                   value="1"
-                   {{ ($endpoint['enabled'] ?? true) ? 'checked' : '' }}>
-            <label class="custom-control-label" for="endpoint_enabled_{{ $connectionIndex }}_{{ $endpointIndex }}">
-                Enable this endpoint
-            </label>
+    {{-- Row 3: Checkbox and Response Path (Consolidated) --}}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <div class="custom-control custom-checkbox pt-4">
+                    {{-- Hidden input to ensure a value is always sent --}}
+                    <input type="hidden"
+                           name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][enabled]"
+                           value="0">
+                    <input type="checkbox"
+                           class="custom-control-input"
+                           id="endpoint_enabled_{{ $connectionIndex }}_{{ $endpointIndex }}"
+                           name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][enabled]"
+                           value="1"
+                           {{ ($endpoint['enabled'] ?? true) ? 'checked' : '' }}>
+                    <label class="custom-control-label" for="endpoint_enabled_{{ $connectionIndex }}_{{ $endpointIndex }}">
+                        Enable this endpoint
+                    </label>
+                </div>
+                <small class="form-text text-muted">Disabled endpoints will not be polled</small>
+            </div>
         </div>
-        <small class="form-text text-muted">Disabled endpoints will not be polled</small>
+        <div class="col-md-6">
+            <div class="form-group">
+                <label>Response Path (Optional)</label>
+                <input type="text"
+                       class="form-control font-monospace"
+                       name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_path]"
+                       value="{{ $endpoint['response_path'] ?? '' }}"
+                       placeholder="$.data.items">
+                <small class="form-text text-muted">
+                    JSONPath to the data array in the response (e.g., <code>$.data.items</code>)
+                </small>
+            </div>
+        </div>
     </div>
 
+    {{-- Row 4: Description (Full Width) --}}
     <div class="form-group">
         <label>Description (Optional)</label>
         <textarea class="form-control"
@@ -98,7 +126,7 @@
                   placeholder="What data does this endpoint provide?">{{ $endpoint['description'] ?? '' }}</textarea>
     </div>
 
-    {{-- Metric Mapping Section --}}
+    {{-- Metric Mapping Section (Card for separation - Full Width) --}}
     <div class="card mb-3">
         <div class="card-header bg-primary text-white">
             <h6 class="mb-0">
@@ -115,7 +143,6 @@
             <div class="form-group">
 						    <label for="metric_map_json_{{ $connectionIndex }}_{{ $endpointIndex }}">Metric Mapping (JSON)</label>
 						    <textarea id="metric_map_json_{{ $connectionIndex }}_{{ $endpointIndex }}"
-                                              {{-- FIX: Corrected name attribute to point to the array field --}}
 						              name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][metric_map]"
 						              class="form-control font-monospace"
 						              rows="10"
@@ -130,20 +157,6 @@
 
 						    <div id="jsonError_{{ $connectionIndex }}_{{ $endpointIndex }}" class="text-danger mt-2" style="display: none;"></div>
 						</div>
-
-
-            <div class="form-group mb-0">
-                <label>Response Path (Optional)</label>
-                <input type="text"
-                       class="form-control font-monospace"
-                       name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_path]"
-                       value="{{ $endpoint['response_path'] ?? '' }}"
-                       placeholder="$.data.items">
-                <small class="form-text text-muted">
-                    JSONPath to the data array in the response. Leave empty if metrics are at root level.<br>
-                    <strong>Example:</strong> <code>$.data.items</code> to access items array in nested response
-                </small>
-            </div>
         </div>
     </div>
 
@@ -154,6 +167,4 @@
                   rows="2"
                   name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_mapping]">{{ is_array($endpoint['response_mapping'] ?? null) ? json_encode($endpoint['response_mapping'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : ($endpoint['response_mapping'] ?? '') }}</textarea>
     </div>
-
-    {{-- The script block is now moved into the main edit.blade.php's Alpine function for dynamic initialization --}}
 </div>
