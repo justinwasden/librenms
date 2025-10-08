@@ -4,32 +4,16 @@
 
 @push('styles')
 <style>
+    /* Retained for Alpine/Modal functionality */
     [x-cloak] { display: none !important; }
-    .tab-pane { display: none; }
-    .tab-pane.active { display: block; }
 
-    /* Enhanced tab styling */
-    .nav-tabs .nav-link {
-        color: #495057;
-        border: 1px solid transparent;
-        transition: all 0.2s ease;
+    /* NEW: Enhanced Card Layout for Actions */
+    .action-card {
+        transition: transform 0.2s, box-shadow 0.2s;
     }
-
-    .nav-tabs .nav-link:hover {
-        background-color: #f8f9fa;
-        border-color: #dee2e6 #dee2e6 transparent;
-    }
-
-    .nav-tabs .nav-link.active {
-        color: #007bff;
-        background-color: #fff;
-        border-color: #dee2e6 #dee2e6 #fff;
-        border-bottom-color: transparent;
-        font-weight: 600;
-    }
-
-    .nav-tabs .nav-link i {
-        margin-right: 6px;
+    .action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
 </style>
 @endpush
@@ -53,11 +37,15 @@
                         </div>
                     </div>
 
+                    {{-- Main Form for Basic Info --}}
+                    {{-- The form will now only handle the basic fields (name, vendor, description, resource_type) --}}
                     <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                         @csrf
                         @method('PUT')
 
                         <div class="card-body">
+                            <h5 class="mb-3 text-info"><i class="fas fa-info-circle"></i> Basic Template Information</h5>
+
                             {{-- Template Basic Info --}}
                             <div class="row mb-4">
                                 <div class="col-md-6">
@@ -68,6 +56,8 @@
                                     </div>
                                 </div>
                                 <div class="col-md-6">
+                                    {{-- Reusing the Vendor/Resource_Type block from _form.blade.php for clarity --}}
+                                    {{-- NOTE: We are removing the vendor/resource_type fields from _form.blade.php and putting them here. --}}
                                     <div class="form-group">
                                         <label for="vendor">Vendor</label>
                                         <input type="text" name="vendor" id="vendor" class="form-control"
@@ -76,188 +66,88 @@
                                 </div>
                             </div>
 
-                            <div class="form-group mb-4">
-                                <label for="description">Description</label>
-                                <textarea name="description" id="description" class="form-control" rows="2">{{ old('description', $template->description) }}</textarea>
+                            {{-- NEW: Resource Type (Moved from _form.blade.php for the PUT request) --}}
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="resource_type">Primary Resource Type</label>
+                                        <select name="resource_type" id="resource_type" class="form-control">
+                                            <option value="">-- None (Generic) --</option>
+                                            <option value="device" {{ old('resource_type', $template->resource_type) === 'device' ? 'selected' : '' }}>Device</option>
+                                            <option value="port" {{ old('resource_type', $template->resource_type) === 'port' ? 'selected' : '' }}>Port/Interface</option>
+                                            <option value="storage" {{ old('resource_type', $template->resource_type) === 'storage' ? 'selected' : '' }}>Storage/Volume</option>
+                                            <option value="sensor" {{ old('resource_type', $template->resource_type) === 'sensor' ? 'selected' : '' }}>Sensor/Health</option>
+                                            <option value="processor" {{ old('resource_type', $template->resource_type) === 'processor' ? 'selected' : '' }}>Processor</option>
+                                            <option value="mempool" {{ old('resource_type', $template->resource_type) === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
+                                            <option value="alert" {{ old('resource_type', $template->resource_type) === 'alert' ? 'selected' : '' }}>Alert/Event</option>
+                                            <option value="custom" {{ old('resource_type', $template->resource_type) === 'custom' ? 'selected' : '' }}>Custom/Other</option>
+                                        </select>
+                                        <small class="form-text text-muted">Primary focus of this template (e.g., set to 'storage' for PureStorage)</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="description">Description</label>
+                                        <textarea name="description" id="description" class="form-control" rows="3">{{ old('description', $template->description) }}</textarea>
+                                    </div>
+                                </div>
                             </div>
 
-                            {{-- Separator --}}
                             <hr class="mb-4" style="border-top: 2px solid #dee2e6;">
 
-                            {{-- Tabs Navigation --}}
-                            <ul class="nav nav-tabs mb-3" role="tablist" style="border-bottom: 2px solid #dee2e6;">
-                                <li class="nav-item">
-                                    <a class="nav-link"
-                                       :class="{ 'active': activeTab === 'connection' }"
-                                       @click.prevent="activeTab = 'connection'"
-                                       href="#"
-                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
-                                        <i class="fas fa-plug"></i> Connection
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link"
-                                       :class="{ 'active': activeTab === 'endpoints' }"
-                                       @click.prevent="activeTab = 'endpoints'"
-                                       href="#"
-                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
-                                        <i class="fas fa-list"></i> Endpoints
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link"
-                                       :class="{ 'active': activeTab === 'preview' }"
-                                       @click.prevent="activeTab = 'preview'"
-                                       href="#"
-                                       style="font-weight: 500; font-size: 15px; padding: 12px 20px;">
-                                        <i class="fas fa-eye"></i> Preview
-                                    </a>
-                                </li>
-                            </ul>
+                            <h5 class="mb-3"><i class="fas fa-tools"></i> Configuration Modules</h5>
 
-                            {{-- Tab Content --}}
-                            <div class="tab-content">
-                                {{-- Connection Tab --}}
-                                <div class="tab-pane" :class="{ 'active': activeTab === 'connection' }">
-                                    @include('settings.rest-api.templates.partials.connection', ['template' => $template])
-                                </div>
-
-                                {{-- Endpoints Tab --}}
-                                <div class="tab-pane" :class="{ 'active': activeTab === 'endpoints' }">
-                                    @php
-                                        $template_data_array = is_array($template->template_data)
-                                            ? $template->template_data
-                                            : (json_decode($template->template_data, true) ?? []);
-                                        $connections = $template_data_array['connections'] ?? [];
-                                    @endphp
-
-                                    @if (count($connections) > 0)
-                                        @foreach ($connections as $cIndex => $connection)
-                                            <div class="card mb-3">
-                                                <div class="card-header bg-info text-white">
-                                                    <h5 class="mb-0">
-                                                        <i class="fas fa-server"></i>
-                                                        {{ $connection['name'] ?? 'Unnamed Connection' }}
-                                                        <small class="ml-2">({{ $connection['base_url'] ?? 'No URL' }})</small>
-                                                    </h5>
-                                                </div>
-
-                                                <div class="card-body">
-                                                    @if (!empty($connection['endpoints']))
-                                                        <div class="list-group">
-                                                            @foreach ($connection['endpoints'] as $eIndex => $endpoint)
-                                                                <div class="list-group-item">
-                                                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                                                        <div>
-                                                                            <h6 class="mb-1">
-                                                                                <span class="badge badge-primary">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
-                                                                                {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
-                                                                            </h6>
-                                                                            <small class="text-muted">{{ $endpoint['path'] ?? '' }}</small>
-                                                                        </div>
-                                                                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                                                @click="toggleEndpoint('{{ $cIndex }}-{{ $eIndex }}')">
-                                                                            <i class="fas" :class="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-                                                                            <span x-text="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'Close' : 'Edit'"></span>
-                                                                        </button>
-                                                                    </div>
-
-                                                                    <div x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'"
-                                                                         x-cloak
-                                                                         x-transition:enter="transition ease-out duration-200"
-                                                                         x-transition:enter-start="opacity-0 transform scale-95"
-                                                                         x-transition:enter-end="opacity-100 transform scale-100">
-                                                                        <hr>
-                                                                        @include('settings.rest-api.templates.partials.endpoint-form', [
-                                                                            'connectionIndex' => $cIndex,
-                                                                            'endpointIndex' => $eIndex,
-                                                                            'endpoint' => $endpoint,
-                                                                        ])
-                                                                    </div>
-                                                                </div>
-                                                            @endforeach
-                                                        </div>
-                                                    @else
-                                                        <p class="text-muted text-center py-3">
-                                                            <i class="fas fa-info-circle"></i> No endpoints defined for this connection.
-                                                        </p>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    @else
-                                        <div class="alert alert-info">
-                                            <i class="fas fa-info-circle"></i> No connections defined in template. Please add connection data in the Connection tab.
+                            {{-- Action Card Group --}}
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <div class="card bg-light action-card h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-plug fa-3x text-info mb-3"></i>
+                                            <h5 class="card-title">Connection Settings</h5>
+                                            <p class="card-text text-muted"><small>Base URL, Credentials, Login Path, and SSL.</small></p>
+                                            <button type="button" class="btn btn-info btn-block mt-3" data-toggle="modal" data-target="#connectionModal">
+                                                <i class="fas fa-edit"></i> Configure Connection
+                                            </button>
                                         </div>
-                                    @endif
-
-                                    {{-- Start NEW ENDPOINT ADDITION Block --}}
-																				<div class="card mb-3 mt-4" x-show="templateData.connections && templateData.connections.length > 0">
-																				    <div class="card-header bg-success text-white p-2">
-																				        <h6 class="mb-0">
-																				            <i class="fas fa-plus"></i> Add New Endpoint
-																				        </h6>
-																				    </div>
-																				    <div class="card-body">
-																				        <div class="alert alert-info py-2">
-																				            Endpoints will be added to the <strong>{{ $connections[0]['name'] ?? 'Primary Connection' }}</strong>.
-																				        </div>
-
-																				        <button type="button" class="btn btn-success btn-sm mb-3" @click="addNewEndpoint()">
-																				            <i class="fas fa-plus-circle"></i> Add Endpoint Form
-																				        </button>
-
-																				        {{-- Container for dynamically added endpoint forms --}}
-																				        <div id="new-endpoints-container">
-																				            {{-- Dynamic forms will be appended here --}}
-																				        </div>
-																				    </div>
-																				</div>
-																				{{-- End NEW ENDPOINT ADDITION Block --}}
-
-																				{{-- HIDDEN TEMPLATE: The actual form structure to be cloned by JavaScript --}}
-																				<template id="new-endpoint-template">
-																				    @php
-																				    // We use a non-numeric string placeholder for JavaScript to replace
-																				    $js_placeholder_index = '__NEW_ENDPOINT_INDEX__';
-																				    $js_connection_index = 0; // Assuming only one connection is edited at a time for simplicity
-																				    @endphp
-																				    <div class="card mb-3 new-endpoint-item">
-																				        <div class="card-header bg-light-gray">
-																				            <h6 class="mb-0">New Endpoint <small class="text-danger">(Unsaved)</small>
-																				                <button type="button" class="close text-danger remove-endpoint float-right" aria-label="Remove">
-																				                    <span>&times;</span>
-																				                </button>
-																				            </h6>
-																				        </div>
-																				        <div class="card-body">
-																				            {{-- Re-use the existing partial with placeholders --}}
-																				            @include('settings.rest-api.templates.partials.endpoint-form', [
-																				                'connectionIndex' => $js_connection_index,
-																				                'endpointIndex' => $js_placeholder_index,
-																				                'endpoint' => [], // Empty array for initial state
-																				            ])
-																				        </div>
-																				    </div>
-																				</template>
+                                    </div>
                                 </div>
 
-                                {{-- Preview Tab --}}
-                                <div class="tab-pane" :class="{ 'active': activeTab === 'preview' }">
-                                    @include('settings.rest-api.templates.partials.preview', ['template' => $template])
+                                <div class="col-md-4 mb-3">
+                                    <div class="card bg-light action-card h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-list fa-3x text-primary mb-3"></i>
+                                            <h5 class="card-title">Endpoint Management</h5>
+                                            <p class="card-text text-muted"><small>Paths, Methods, Metric Mapping, and Intervals.</small></p>
+                                            <button type="button" class="btn btn-primary btn-block mt-3" data-toggle="modal" data-target="#endpointsModal">
+                                                <i class="fas fa-tasks"></i> Manage Endpoints
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <div class="card bg-light action-card h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-eye fa-3x text-success mb-3"></i>
+                                            <h5 class="card-title">Test & Preview</h5>
+                                            <p class="card-text text-muted"><small>Verify API calls against a device before saving.</small></p>
+                                            <button type="button" class="btn btn-success btn-block mt-3" data-toggle="modal" data-target="#previewModal">
+                                                <i class="fas fa-play"></i> Run Test
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+
                         </div>
 
-                        <div class="card-footer">
-                            <div class="d-flex justify-content-between">
-                                <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default">
-                                    <i class="fas fa-times"></i> Cancel
-                                </a>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save"></i> Save Changes
-                                </button>
-                            </div>
+                        <div class="card-footer text-right">
+                            <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Basic Changes
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -266,20 +156,232 @@
     </div>
 </div>
 
+{{-- ---------------------------------------------------------------- --}}
+{{-- MODALS SECTION --}}
+{{-- ---------------------------------------------------------------- --}}
+
+{{-- 1. Connection Modal --}}
+<div class="modal fade" id="connectionModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-plug"></i> Configure API Connection</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    {{-- The content of connection.blade.php --}}
+                    @include('settings.rest-api.templates.partials.connection', ['template' => $template])
+
+                    {{-- Hidden field to ensure connection data is processed without side effects on basic fields --}}
+                    <input type="hidden" name="action_type" value="update_connection_only">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-info"><i class="fas fa-save"></i> Save Connection</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- 2. Endpoints Modal --}}
+<div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            {{-- We will use a separate form inside the modal for endpoints to simplify saving --}}
+            <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST" x-data="endpointManager()">
+                @csrf
+                @method('PUT')
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    {{-- Dynamic content from the old Endpoints tab (Refactored) --}}
+                    @php
+                        $template_data_array = is_array($template->template_data)
+                            ? $template->template_data
+                            : (json_decode($template->template_data, true) ?? []);
+                        $connections = $template_data_array['connections'] ?? [];
+                    @endphp
+
+                    @if (count($connections) > 0)
+                        @foreach ($connections as $cIndex => $connection)
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary-light text-dark">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-server"></i>
+                                        Connection: {{ $connection['name'] ?? 'Unnamed Connection' }}
+                                    </h5>
+                                </div>
+
+                                <div class="card-body">
+                                    <p class="text-muted">Currently editing **{{ $connection['name'] ?? 'Primary Connection' }}** endpoints.</p>
+
+                                    {{-- List of Existing Endpoints --}}
+                                    <div class="list-group mb-4">
+                                        @if (!empty($connection['endpoints']))
+                                            @foreach ($connection['endpoints'] as $eIndex => $endpoint)
+                                                <div class="list-group-item list-group-item-action">
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <div>
+                                                            <h6 class="mb-1">
+                                                                <span class="badge badge-primary">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
+                                                                {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
+                                                            </h6>
+                                                            <small class="text-muted">{{ $endpoint['path'] ?? '' }}</small>
+                                                        </div>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                                @click="toggleEndpoint('{{ $cIndex }}-{{ $eIndex }}')">
+                                                            <i class="fas" :class="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                                            <span x-text="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}' ? 'Close Edit' : 'Edit Endpoint'"></span>
+                                                        </button>
+                                                    </div>
+
+                                                    <div x-show="openEndpoint === '{{ $cIndex }}-{{ $eIndex }}'"
+                                                        x-cloak
+                                                        x-transition:enter="transition ease-out duration-200"
+                                                        x-transition:enter-start="opacity-0 transform scale-95"
+                                                        x-transition:enter-end="opacity-100 transform scale-100">
+                                                        <hr class="mt-2 mb-3">
+                                                        {{-- The form partial is now inside the modal --}}
+                                                        @include('settings.rest-api.templates.partials.endpoint-form', [
+                                                            'connectionIndex' => $cIndex,
+                                                            'endpointIndex' => $eIndex,
+                                                            'endpoint' => $endpoint,
+                                                            'template' => $template // Pass template for context
+                                                        ])
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        @else
+                                            <div class="alert alert-warning text-center">
+                                                <i class="fas fa-info-circle"></i> No endpoints defined. Use the button below to add your first one.
+                                            </div>
+                                        @endif
+                                    </div>
+
+                                    {{-- Add New Endpoint Section --}}
+                                    <div class="card border-success">
+                                        <div class="card-header bg-success text-white p-2">
+                                            <h6 class="mb-0">
+                                                <i class="fas fa-plus"></i> Add New Endpoint
+                                                <button type="button" class="btn btn-sm btn-outline-light float-right" @click="addNewEndpoint()">
+                                                    <i class="fas fa-plus-circle"></i> Add Endpoint Form
+                                                </button>
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            {{-- Container for dynamically added endpoint forms --}}
+                                            <div id="new-endpoints-container">
+                                                {{-- Dynamic forms will be appended here --}}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        @endforeach
+                    @else
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i> No connections defined in template. Please configure your connection in the **Connection Settings** modal first.
+                        </div>
+                    @endif
+
+                    {{-- Hidden field to ensure only endpoint data is processed --}}
+                    <input type="hidden" name="action_type" value="update_endpoints_only">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    {{-- A full save is needed to persist all endpoint changes --}}
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save All Endpoints</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- HIDDEN TEMPLATE: The actual form structure to be cloned by JavaScript --}}
+<template id="new-endpoint-template">
+    @php
+    $js_placeholder_index = '__NEW_ENDPOINT_INDEX__';
+    $js_connection_index = 0; // Assuming only one connection is edited at a time for simplicity
+    @endphp
+    <div class="card mb-3 new-endpoint-item border-warning">
+        <div class="card-header bg-warning p-2">
+            <h6 class="mb-0">New Endpoint <small class="text-danger">(Unsaved)</small>
+                <button type="button" class="close text-danger remove-endpoint float-right" aria-label="Remove">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </h6>
+        </div>
+        <div class="card-body">
+            {{-- Re-use the existing partial with placeholders --}}
+            @include('settings.rest-api.templates.partials.endpoint-form', [
+                'connectionIndex' => $js_connection_index,
+                'endpointIndex' => $js_placeholder_index,
+                'endpoint' => [], // Empty array for initial state
+                'template' => $template // Pass template for context
+            ])
+        </div>
+    </div>
+</template>
+
+{{-- 3. Preview Modal (Test Template) --}}
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-eye"></i> Test Template Configuration</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                {{-- The content of preview.blade.php --}}
+                @include('settings.rest-api.templates.partials.preview', ['template' => $template])
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function templateEditor() {
     return {
-        activeTab: 'connection',
+        // We no longer need activeTab here, as the tabs are replaced by modals
         openEndpoint: null,
-        // New reactive property for connections data from the template
         templateData: @json($template->template_data),
-        // Counter for generating unique indexes for new endpoints
-        newEndpointCount: 0,
 
         init() {
-            // Initialize
-            console.log('Template editor initialized');
+            // Optional: Re-run endpoint parsing logic if needed for external JS/Alpine components
         },
+
+        // This is now used by the Endpoints Modal to manage existing endpoint forms
+        toggleEndpoint(endpointId) {
+            if (this.openEndpoint === endpointId) {
+                this.openEndpoint = null;
+            } else {
+                this.openEndpoint = endpointId;
+            }
+        },
+    }
+}
+
+// NEW Alpine Data for Endpoint Management within the Modal
+function endpointManager() {
+    return {
+        openEndpoint: null,
+        newEndpointCount: 0,
 
         toggleEndpoint(endpointId) {
             if (this.openEndpoint === endpointId) {
@@ -289,7 +391,6 @@ function templateEditor() {
             }
         },
 
-        // NEW METHOD: Clone the template form and insert it
         addNewEndpoint() {
             const template = document.getElementById('new-endpoint-template');
             const container = document.getElementById('new-endpoints-container');
@@ -302,15 +403,16 @@ function templateEditor() {
             // Find all inputs and update their names with the unique index
             clone.querySelectorAll('*').forEach(el => {
                 if (el.name) {
+                    // Update index placeholder for both existing and new endpoints
                     el.name = el.name.replace('__NEW_ENDPOINT_INDEX__', newIndex);
                 }
                 if (el.id) {
                     el.id = el.id.replace('__NEW_ENDPOINT_INDEX__', newIndex);
                 }
                 // Update the hidden metric map name for the controller logic to find it
-                if (el.tagName === 'TEXTAREA' && el.name === 'metric_map_json') {
-                    el.name = `template_data[connections][0][endpoints][${newIndex}][metric_map]`;
+                if (el.tagName === 'TEXTAREA' && el.id === 'metric_map_json') {
                     // The metric_map needs to be initialized as an empty object for the form.
+                    el.name = `template_data[connections][0][endpoints][${newIndex}][metric_map]`;
                     el.value = JSON.stringify({}, null, 4);
                 }
             });
