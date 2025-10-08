@@ -464,12 +464,52 @@ function endpointManager() {
         },
 
         saveEndpointChanges() {
-            const form = document.querySelector('#endpoint-detail-form');
-            if (form) {
-                this.isFormDirty = false;
-                alert('Endpoint saved (hook AJAX or form submit here)');
-            }
-        }
+				    if (!this.activeEndpointIndex) return alert('No endpoint selected.');
+
+				    const cIndex = 0;
+				    const index = this.activeEndpointIndex;
+
+				    // Grab values from right-hand inputs
+				    const name = document.getElementById(`endpoint_name_${cIndex}_${index}`)?.value || '';
+				    const path = document.getElementById(`endpoint_path_${cIndex}_${index}`)?.value || '';
+				    const method = document.getElementById(`endpoint_method_${cIndex}_${index}`)?.value || 'GET';
+				    const metricMapField = document.getElementById(`metric_map_json_${cIndex}_${index}`);
+				    let metric_map = {};
+				    try {
+				        metric_map = JSON.parse(metricMapField?.value || '{}');
+				    } catch (e) {
+				        alert('Metric Map JSON is invalid. Please fix before saving.');
+				        return;
+				    }
+
+				    const enabledCheckbox = document.getElementById(`endpoint_enabled_${cIndex}_${index}`);
+				    const enabled = enabledCheckbox?.checked ? true : false;
+
+				    // Find or create hidden inputs in the main form
+				    const form = document.getElementById('endpoint-management-form');
+
+				    const fields = {name, path, method, metric_map: JSON.stringify(metric_map), enabled: enabled ? 1 : 0};
+				    for (const [key, value] of Object.entries(fields)) {
+				        const inputName = `template_data[connections][${cIndex}][endpoints][${index}][${key}]`;
+				        let input = form.querySelector(`input[name="${inputName}"], textarea[name="${inputName}"]`);
+				        if (!input) {
+				            // create hidden input for new fields
+				            if (key === 'metric_map') {
+				                input = document.createElement('textarea');
+				            } else {
+				                input = document.createElement('input');
+				                input.type = 'hidden';
+				            }
+				            input.name = inputName;
+				            form.appendChild(input);
+				        }
+				        input.value = value;
+				    }
+
+				    this.isFormDirty = false;
+				    alert(`Endpoint "${name}" saved. Changes will be finalized when you click "Save All Endpoints".`);
+				}
+
     }
 }
 </script>
