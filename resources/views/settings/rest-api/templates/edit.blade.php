@@ -287,13 +287,8 @@
                     <input type="hidden" name="action_type" value="update_endpoints_only">
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="submit"
-                            class="btn btn-primary"
-                            :disabled="!isFormDirty">
-                        <i class="fas fa-save"></i> Save All Endpoints
-                    </button>
-                </div>
+							    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+							</div>
 
                 {{-- Endpoint Form Template --}}
                 <template id="full-endpoint-template">
@@ -325,9 +320,9 @@
 
                             <div class="form-group">
                                 <label for="metric_map_json_{{ $cIndex }}_{{ $eIndex }}">Metric Map JSON</label>
-                                <textarea id="metric_map_json_{{ $cIndex }}_{{ $eIndex }}"
-                                          name="template_data[connections][{{ $cIndex }}][endpoints][{{ $eIndex }}][metric_map]"
-                                          class="form-control" rows="6"></textarea>
+                                <textarea id="metric_map_json_0_{{ $endpointIndex }}"
+														          class="form-control endpoint-form-scroll"
+														          rows="8">{{ $endpoint['metric_map'] ?? '{}' }}</textarea>
                                 <div id="jsonError_{{ $cIndex }}_{{ $eIndex }}" class="text-danger mt-1" style="display:none;"></div>
                             </div>
                         </form>
@@ -463,7 +458,7 @@ function endpointManager() {
             }
         },
 
-        saveEndpointChanges() {
+       saveEndpointChanges() {
 				    if (!this.activeEndpointIndex) return alert('No endpoint selected.');
 
 				    const cIndex = 0;
@@ -476,6 +471,7 @@ function endpointManager() {
 				    const metricMapField = document.getElementById(`metric_map_json_${cIndex}_${index}`);
 				    let metric_map = {};
 				    try {
+				        // Parse JSON, but we will store the original string for formatting
 				        metric_map = JSON.parse(metricMapField?.value || '{}');
 				    } catch (e) {
 				        alert('Metric Map JSON is invalid. Please fix before saving.');
@@ -485,32 +481,38 @@ function endpointManager() {
 				    const enabledCheckbox = document.getElementById(`endpoint_enabled_${cIndex}_${index}`);
 				    const enabled = enabledCheckbox?.checked ? true : false;
 
-				    // Find or create hidden inputs in the main form
-				    const form = document.getElementById('endpoint-management-form');
+				    // Prepare payload
+				    const payload = new FormData();
+				    payload.append('template_id', '{{ $template->id }}');
+				    payload.append('connection_index', cIndex);
+				    payload.append('endpoint_index', index);
+				    payload.append('name', name);
+				    payload.append('path', path);
+				    payload.append('method', method);
+				    payload.append('enabled', enabled ? 1 : 0);
 
-				    const fields = {name, path, method, metric_map: JSON.stringify(metric_map), enabled: enabled ? 1 : 0};
-				    for (const [key, value] of Object.entries(fields)) {
-				        const inputName = `template_data[connections][${cIndex}][endpoints][${index}][${key}]`;
-				        let input = form.querySelector(`input[name="${inputName}"], textarea[name="${inputName}"]`);
-				        if (!input) {
-				            // create hidden input for new fields
-				            if (key === 'metric_map') {
-				                input = document.createElement('textarea');
-				            } else {
-				                input = document.createElement('input');
-				                input.type = 'hidden';
-				            }
-				            input.name = inputName;
-				            form.appendChild(input);
+				    // Preserve JSON formatting exactly as entered by user
+				    payload.append('metric_map', metricMapField.value);
+
+				    // AJAX call to save this endpoint
+				    fetch('/device/api-endpoints/update', {
+				        method: 'POST',
+				        body: payload,
+				        headers: {
+				            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
 				        }
-				        input.value = value;
-				    }
-
-				    this.isFormDirty = false;
-				    alert(`Endpoint "${name}" saved. Changes will be finalized when you click "Save All Endpoints".`);
+				    })
+				    .then(r => r.json())
+				    .then(data => {
+				        if (data.success) {
+				            this.isFormDirty = false;
+				            alert(`Endpoint "${name}" saved successfully.`);
+				        } else {
+				            alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+				        }
+				    })
+				    .catch(err => console.error('Save failed', err));
 				}
 
-    }
-}
 </script>
 @endsection
