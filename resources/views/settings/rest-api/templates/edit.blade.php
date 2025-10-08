@@ -211,7 +211,7 @@
                 <div class="modal-body">
                     <div class="row">
                         {{-- LEFT PANE: Endpoint List (Smaller width) --}}
-                        <div class="col-md-2 border-right"> {{-- List reduced to 2/12 --}}
+                        <div class="col-md-4 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
                             @php
