@@ -353,14 +353,14 @@ function endpointManager() {
         selectedEndpointIndex: null,
         selectedEndpoint: {},
         init() {
-            // Initialize metric_map_json for each endpoint
-            this.endpoints.forEach((ep, idx) => {
-                this.endpoints[idx].metric_map_json =
-                    typeof ep.metric_map === 'string'
-                        ? ep.metric_map
-                        : JSON.stringify(ep.metric_map ?? {}, null, 4);
-            });
-        },
+				    this.endpoints.forEach((ep, idx) => {
+				        // Only stringify for display in textarea if needed
+				        this.endpoints[idx].metric_map_json =
+				            typeof ep.metric_map === 'string'
+				                ? ep.metric_map
+				                : JSON.stringify(ep.metric_map ?? {}, null, 4);
+				    });
+				},
         selectEndpoint(index) {
             this.selectedEndpointIndex = index;
             this.selectedEndpoint = {...this.endpoints[index]};
