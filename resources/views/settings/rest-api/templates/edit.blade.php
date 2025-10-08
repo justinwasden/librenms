@@ -322,7 +322,8 @@
                                 <label for="metric_map_json_{{ $cIndex }}_{{ $eIndex }}">Metric Map JSON</label>
                                 <textarea id="metric_map_json_0_{{ $endpointIndex }}"
 														          class="form-control endpoint-form-scroll"
-														          rows="8">{{ $endpoint['metric_map'] ?? '{}' }}</textarea>
+														          rows="8">{{ is_array($endpoint['metric_map'] ?? null) ? json_encode($endpoint['metric_map'], JSON_PRETTY_PRINT) : ($endpoint['metric_map'] ?? '{}') }}
+														    </textarea>
                                 <div id="jsonError_{{ $cIndex }}_{{ $eIndex }}" class="text-danger mt-1" style="display:none;"></div>
                             </div>
                         </form>
