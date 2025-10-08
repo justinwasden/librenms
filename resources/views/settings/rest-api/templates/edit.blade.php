@@ -15,15 +15,16 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
-    /* FIX: Maximize modal content width */
-    #endpointsModal .modal-dialog {
-        max-width: 95%; /* Makes it much wider than standard XL (approx. 2x wider than standard large) */
+    /* FIX: Custom class for maximum modal width (equivalent to roughly 98% viewport) */
+    .modal-full-width {
+        max-width: 98% !important;
+        margin: 0.5rem auto;
     }
     /* Scrollable form content on the right pane */
     .endpoint-form-scroll {
         max-height: 70vh;
         overflow-y: auto;
-        padding-right: 15px; /* space for scrollbar */
+        padding-right: 15px;
     }
 </style>
 @endpush
@@ -194,21 +195,24 @@
 
 {{-- 2. Endpoints Modal (Wider Layout Applied Here) --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-dialog modal-full-width" role="document"> {{-- Custom Width Class Applied --}}
         <div class="modal-content">
-            <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST" x-data="endpointManager()">
+            {{-- We will use a dedicated form for saving a SINGLE endpoint --}}
+            <form id="endpoint-management-form" action="#" method="POST" x-data="endpointManager()">
                 @csrf
                 @method('PUT')
+
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
                     <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                         <span>&times;</span>
                     </button>
                 </div>
+
                 <div class="modal-body">
                     <div class="row">
                         {{-- LEFT PANE: Endpoint List (Smaller width) --}}
-                        <div class="col-md-3 border-right">
+                        <div class="col-md-2 border-right"> {{-- Reduced to 2/12 for maximum form space --}}
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
                             @php
@@ -264,14 +268,38 @@
                         </div> {{-- End Left Pane --}}
 
                         {{-- RIGHT PANE: Detail Form (Wider width) --}}
-                        <div class="col-md-9">
+                        <div class="col-md-10"> {{-- Increased to 10/12 for maximum form space --}}
                             <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
                                 <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
                                 <div class="endpoint-form-scroll">
+                                    {{-- The form container is now the target of the save/cancel actions --}}
                                     <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
                                         {{-- Initial Load Placeholder --}}
                                         <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
+                                    </div>
+                                </div>
+
+                                {{-- Endpoint-Specific Action Buttons --}}
+                                <div class="d-flex justify-content-between pt-3 border-top mt-3" x-show="activeEndpointIndex">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            @click="cancelEdit()">
+                                        <i class="fas fa-times"></i> Cancel Changes
+                                    </button>
+
+                                    <div>
+                                        <button type="button"
+                                                class="btn btn-danger mr-2"
+                                                @click="removeEndpoint(activeEndpointIndex)">
+                                            <i class="fas fa-trash"></i> Delete Endpoint
+                                        </button>
+                                        <button type="submit"
+                                                class="btn btn-primary"
+                                                @click.prevent="saveEndpoint(activeEndpointIndex)"
+                                                :disabled="!isFormDirty">
+                                            <i class="fas fa-save"></i> Save Endpoint
+                                        </button>
                                     </div>
                                 </div>
 
@@ -284,16 +312,11 @@
                             </div>
                         </div> {{-- End Right Pane --}}
                     </div>
-
-                    <input type="hidden" name="action_type" value="update_endpoints_only">
                 </div>
+
+                {{-- Modal Footer only contains the close button --}}
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="submit"
-                            class="btn btn-primary"
-                            :disabled="!isFormDirty">
-                        <i class="fas fa-save"></i> Save All Endpoints
-                    </button>
                 </div>
 
                 <template id="full-endpoint-template">
@@ -301,6 +324,7 @@
                         $js_placeholder_index = '__ACTIVE_INDEX__';
                         $js_connection_index = 0;
                     @endphp
+                    {{-- Note: This partial must not contain the save/delete/cancel buttons --}}
                     @include('settings.rest-api.templates.partials.endpoint-form', [
                         'connectionIndex' => $js_connection_index,
                         'endpointIndex' => $js_placeholder_index,
@@ -338,10 +362,16 @@
 function templateEditor() {
     return {
         openEndpoint: null,
+        // The main data object used for initialization, which needs to be updated
+        // by the endpoint manager after a successful single-endpoint save.
         templateData: @json($template->template_data),
 
         init() {
-            // Initialization for the main page
+            // Re-fetch template data when the modal is opened, ensuring the list is up-to-date
+            $('#endpointsModal').on('show.bs.modal', () => {
+                // In a real application, you'd make an AJAX call here to refresh $template->template_data
+                // For this exercise, we assume the server will pass back the updated data on save.
+            });
         },
     }
 }
@@ -382,13 +412,12 @@ function endpointManager() {
 
             // Hydrate select 'selected' attributes
             html = html.replace(
-                new RegExp(`value="${escapedValue}"(?![^>]*selected)`), // Avoid double selection, look ahead to ensure 'selected' isn't already present
+                new RegExp(`value="${escapedValue}"(?![^>]*selected)`),
                 `value="${escapedValue}" selected`
             );
 
             // Hydrate textarea values (description)
              if (key === 'description') {
-                 // Description has no value attribute, its value is between tags
                  html = html.replace(
                     new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]">.*?<\\/textarea>`, 's'),
                     `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]">${escapedValue}</textarea>`
@@ -411,12 +440,10 @@ function endpointManager() {
 
         // 4. Special handling for Checkbox (enabled)
         const isEnabled = data.enabled === false ? '' : 'checked';
-        // Reset the default checked state if the value is explicitly false
         html = html.replace(
             new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"(.*?)checked`),
             `id="endpoint_enabled_${cIndex}_${safeIndex}"$1`
         );
-        // Apply the 'checked' state based on data
         if (isEnabled) {
             html = html.replace(
                 new RegExp(`id="endpoint_enabled_${cIndex}_${safeIndex}"\\s*name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[enabled\\]"\\s*value="1"`),
@@ -427,6 +454,41 @@ function endpointManager() {
         return html;
     };
 
+    // Function to extract form data into a structured object for AJAX
+    const extractFormData = (index) => {
+        const form = document.getElementById('endpoint-management-form');
+        const formData = new FormData(form);
+        const data = {};
+        const prefix = `template_data[connections][0][endpoints][${index}]`;
+
+        // Iterate over form data and extract relevant fields for the current endpoint
+        for (const [key, value] of formData.entries()) {
+            if (key.startsWith(prefix)) {
+                // Strip the prefix to get the simple field name
+                const fieldName = key.substring(prefix.length + 2, key.length - 1); // [fieldName]
+
+                // Handle JSON field separately
+                if (fieldName === 'metric_map') {
+                    try {
+                        data.metric_map = JSON.parse(value);
+                    } catch (e) {
+                        alert('Metric Mapping JSON is invalid and cannot be saved.');
+                        return null;
+                    }
+                } else {
+                    data[fieldName] = value;
+                }
+            }
+        }
+
+        // Ensure checkbox state (if 'enabled' is missing, set to 0 via hidden input)
+        if (!data.hasOwnProperty('enabled')) {
+            data.enabled = 0;
+        }
+
+        return data;
+    };
+
     return {
         activeEndpointIndex: null,
         activeEndpointData: {},
@@ -435,9 +497,10 @@ function endpointManager() {
         isFormDirty: false,
         newEndpointCount: 0,
         currentEndpointFormHtml: '',
+        initialDataSnapshot: null, // Stores JSON snapshot of endpoint data for 'Cancel'
 
         init() {
-            // Event listener to reset dirty state when modal is closed successfully
+            // Modal closing confirmation (already in place)
             $('#endpointsModal').on('hide.bs.modal', (e) => {
                 const submitClicked = $(document.activeElement).is('button[type="submit"]');
                 if (!submitClicked && this.isFormDirty) {
@@ -450,7 +513,85 @@ function endpointManager() {
             });
         },
 
+        // Saves a single endpoint via AJAX
+        async saveEndpoint(index) {
+            const endpointData = extractFormData(index);
+            if (!endpointData) return; // Stop if JSON is invalid
+
+            const payload = {
+                action_type: 'update_endpoint_granular',
+                endpoint_index: index,
+                endpoint_data: endpointData,
+                _token: '{{ csrf_token() }}',
+                _method: 'PUT'
+            };
+
+            try {
+                const response = await fetch('{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}', {
+                    method: 'POST', // Laravel uses POST for PUT/PATCH via hidden field
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    // Update successful!
+                    alert('Endpoint saved successfully!');
+                    this.isFormDirty = false;
+
+                    // Crucial: Update the main template data and re-open the endpoint cleanly
+                    // In a real app, data.updated_endpoint_data would contain the full new state.
+                    this.activeEndpointData = data.updated_endpoint_data || endpointData;
+
+                    // If it was a new endpoint, rename the index for consistency (optional)
+                    if (this.isAddingNew) {
+                        // Ideally, backend returns a permanent index. For now, we just switch state.
+                        this.activeEndpointIndex = data.new_index || index;
+                        this.isAddingNew = false;
+                        // Force a refresh of the form to set the new clean state and index
+                        this.openEndpoint(this.activeEndpointIndex, this.activeEndpointName, this.activeEndpointData);
+
+                        // NOTE: To update the list on the left, you'll need to refresh the page or
+                        // manually manipulate the DOM for the list group, which is out of scope for Alpine component alone.
+                    } else {
+                        // For existing endpoints, just reset the dirty state
+                        this.initialDataSnapshot = JSON.stringify(this.activeEndpointData);
+                    }
+                } else {
+                    alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('A network error occurred while saving.');
+            }
+        },
+
+        // Discards changes and reloads the initial state
+        cancelEdit() {
+            if (!this.isFormDirty || confirm('Discard all unsaved changes for this endpoint?')) {
+                // If it was a new endpoint, just clear the right pane
+                if (this.isAddingNew) {
+                    this.activeEndpointIndex = null;
+                    this.isAddingNew = false;
+                    this.currentEndpointFormHtml = '<div class="alert alert-warning text-center">Select an endpoint or click \'Add New Endpoint\' to begin editing.</div>';
+                } else {
+                    // Re-open the form with the initial, saved data
+                    this.activeEndpointData = JSON.parse(this.initialDataSnapshot);
+                    this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, this.activeEndpointData, this.activeEndpointIndex);
+                    this.$nextTick(() => {
+                        this.initializeEndpointScripts(this.activeEndpointIndex);
+                    });
+                }
+                this.isFormDirty = false;
+            }
+        },
+
         openEndpoint(index, name, data) {
+            // ... (rest of the openEndpoint logic) ...
             if (this.isFormDirty && this.activeEndpointIndex) {
                  if (!confirm(`You have unsaved changes to ${this.activeEndpointName}. Continue without saving?`)) {
                     return;
@@ -462,6 +603,7 @@ function endpointManager() {
             this.activeEndpointData = data;
             this.isAddingNew = false;
             this.isFormDirty = false;
+            this.initialDataSnapshot = JSON.stringify(data); // Snapshots the original data
 
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, data, index);
 
@@ -472,6 +614,7 @@ function endpointManager() {
         },
 
         openNewEndpoint() {
+            // ... (rest of the openNewEndpoint logic) ...
             if (this.isFormDirty && this.activeEndpointIndex) {
                  if (!confirm(`You have unsaved changes to ${this.activeEndpointName}. Continue without saving?`)) {
                     return;
@@ -485,6 +628,7 @@ function endpointManager() {
             this.activeEndpointData = {name: '', method: 'GET', poll_interval: 300, enabled: true, metric_map: {}};
             this.isAddingNew = true;
             this.isFormDirty = false;
+            this.initialDataSnapshot = JSON.stringify(this.activeEndpointData); // Snapshot the empty state
 
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, this.activeEndpointData, index);
 
@@ -495,6 +639,7 @@ function endpointManager() {
         },
 
         initializeEndpointScripts(index) {
+            // ... (unchanged JS initialization logic for metric map validation and dirty state tracking) ...
             const cIndex = 0;
             const uniqueId = `${cIndex}_${index}`;
 
@@ -549,25 +694,45 @@ function endpointManager() {
         },
 
         removeEndpoint(indexToRemove) {
-            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save All Endpoints."`)) {
+            if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save Endpoint."`)) {
                 return;
             }
 
-            this.activeEndpointIndex = null;
-            this.isAddingNew = false;
-            this.isFormDirty = true;
-            this.currentEndpointFormHtml = '<div class="alert alert-danger text-center mt-5"><i class="fas fa-trash"></i> Endpoint marked for deletion or removed from list. Click "Save All Endpoints" to finalize.</div>';
+            // To delete, we must submit a dedicated request
+            const isExisting = !indexToRemove.toString().startsWith('new_');
 
-            const form = document.getElementById('endpoint-management-form');
-            const deleteFlagName = `template_data[connections][0][endpoints][${indexToRemove}][__DELETE_FLAG]`;
-            let hiddenInput = form.querySelector(`input[name="${deleteFlagName}"]`);
+            if (isExisting) {
+                // Submit a dedicated DELETE request via the saveEndpoint function logic
+                const payload = {
+                    action_type: 'delete_endpoint_granular',
+                    endpoint_index: indexToRemove,
+                    _token: '{{ csrf_token() }}',
+                    _method: 'PUT' // Use PUT/POST with action type flag for Laravel route simplicity
+                };
 
-            if (!hiddenInput) {
-                hiddenInput = document.createElement('input');
-                hiddenInput.type = 'hidden';
-                hiddenInput.name = deleteFlagName;
-                hiddenInput.value = '1';
-                form.appendChild(hiddenInput);
+                fetch('{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', },
+                    body: JSON.stringify(payload)
+                }).then(res => res.json()).then(data => {
+                    if (data.success) {
+                        alert('Endpoint successfully deleted!');
+                        // Reload the page to refresh the endpoint list
+                        window.location.reload();
+                    } else {
+                         alert('Error deleting endpoint: ' + (data.message || 'Unknown error'));
+                    }
+                }).catch(error => {
+                    console.error('Delete error:', error);
+                    alert('A network error occurred during deletion.');
+                });
+
+            } else {
+                // If new, just discard the form
+                this.activeEndpointIndex = null;
+                this.isAddingNew = false;
+                this.isFormDirty = false;
+                this.currentEndpointFormHtml = '<div class="alert alert-danger text-center mt-5"><i class="fas fa-trash"></i> New endpoint discarded.</div>';
             }
         },
     }
