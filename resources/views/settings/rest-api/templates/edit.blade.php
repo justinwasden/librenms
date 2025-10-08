@@ -17,7 +17,7 @@
     }
 /* Fix Manage Endpoints modal width */
 #endpointsModal .modal-dialog {
-    max-width: 98vw !important;   /* nearly full viewport width */
+    max-width: 75vw !important;   /* nearly full viewport width */
     width: 98vw !important;
     margin: 1vh auto;             /* small margin top/bottom */
 }
