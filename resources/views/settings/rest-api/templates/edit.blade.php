@@ -225,8 +225,8 @@
                                 <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
                                     @foreach ($connection['endpoints'] ?? [] as $eIndex => $endpoint)
                                         <a href="#" class="list-group-item list-group-item-action"
-                                           :class="{ 'active': selectedEndpointIndex === {{ $eIndex }} }"
-                                           @click.prevent="selectEndpoint({{ $eIndex }})">
+                                           :class="{ 'active': selectedEndpointIndex === {{ $idx }} }"
+   																						@click.prevent="selectEndpoint({{ $idx }})">
                                             <div class="d-flex w-100 justify-content-between">
                                                 <h6 class="mb-1">
                                                     <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
