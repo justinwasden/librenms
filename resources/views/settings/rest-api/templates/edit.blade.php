@@ -195,7 +195,8 @@
 {{-- Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
-        <div x-data="endpointManager({ endpoints: @json($endpoints) })" x-init="init()">
+        <div x-data="endpointManager({
+					    endpoints: @json($connection['endpoints'] ?? []) })">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
