@@ -206,27 +206,28 @@
                         {{-- Left Pane --}}
                         <div class="col-md-3 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
-																@php
-																    $template_data_array = is_array($template->template_data)
-																        ? $template->template_data
-																        : (json_decode($template->template_data, true) ?? []);
-																    $connections = $template_data_array['connections'] ?? [];
-																    $cIndex = 0;
-																    $connection = $connections[$cIndex] ?? [];
-																    $connection['endpoints'] = is_array($connection['endpoints'] ?? null)
-																        ? $connection['endpoints']
-																        : []; // ensure always array
-																@endphp
+
+                            @php
+                                $template_data_array = is_array($template->template_data)
+                                    ? $template->template_data
+                                    : (json_decode($template->template_data, true) ?? []);
+                                $connections = $template_data_array['connections'] ?? [];
+                                $cIndex = 0;
+                                $connection = $connections[$cIndex] ?? [];
+                                $connection['endpoints'] = is_array($connection['endpoints'] ?? null)
+                                    ? $connection['endpoints']
+                                    : []; // ensure always array
+                            @endphp
 
                             @if(!empty($connection))
                                 <div class="alert alert-info py-2">
                                     Connection: **{{ $connection['name'] ?? 'Unnamed Connection' }}**
                                 </div>
                                 <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
-                                    @foreach ($connection['endpoints'] ?? [] as $eIndex => $endpoint)
+                                    @foreach ($connection['endpoints'] ?? [] as $idx => $endpoint)
                                         <a href="#" class="list-group-item list-group-item-action"
                                            :class="{ 'active': selectedEndpointIndex === {{ $idx }} }"
-   																						@click.prevent="selectEndpoint({{ $idx }})">
+                                           @click.prevent="selectEndpoint({{ $idx }})">
                                             <div class="d-flex w-100 justify-content-between">
                                                 <h6 class="mb-1">
                                                     <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
@@ -322,44 +323,21 @@ function templateEditor() {
     }
 }
 
-function endpointManager() {
-    // Keep existing helpers exactly as-is
+function endpointManager({ endpoints }) {
     const escapeHtml = str => str ? str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;') : '';
-    const hydrateForm = (html, data, index) => {
-        const cIndex = 0;
-        const safeIndex = index.toString().replace(/'/g, '\\\'');
-        html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
-        const formKeys = ['name','path','method','resource_type','poll_interval','description','response_path'];
-        formKeys.forEach(key=>{
-            let value = data[key]!==undefined?String(data[key]):(key==='poll_interval'?'300':'');
-            let escapedValue = escapeHtml(value);
-            html = html.replace(
-                new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]"\\s*value=".*?"`),
-                `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]" value="${escapedValue}"`
-            );
-            if(key==='description'){
-                html = html.replace(
-                    new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]">.*?<\\/textarea>`, 's'),
-                    `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]">${escapedValue}</textarea>`
-                );
-            }
-        });
-        return html;
-    }
 
     return {
-        endpoints: @json($connection['endpoints'] ?? []),
+        endpoints: endpoints || [],
         selectedEndpointIndex: null,
         selectedEndpoint: {},
         init() {
-				    this.endpoints.forEach((ep, idx) => {
-				        // Only stringify for display in textarea if needed
-				        this.endpoints[idx].metric_map_json =
-				            typeof ep.metric_map === 'string'
-				                ? ep.metric_map
-				                : JSON.stringify(ep.metric_map ?? {}, null, 4);
-				    });
-				},
+            this.endpoints.forEach((ep, idx) => {
+                this.endpoints[idx].metric_map_json =
+                    typeof ep.metric_map === 'string'
+                        ? ep.metric_map
+                        : JSON.stringify(ep.metric_map ?? {}, null, 4);
+            });
+        },
         selectEndpoint(index) {
             this.selectedEndpointIndex = index;
             this.selectedEndpoint = {...this.endpoints[index]};
@@ -373,7 +351,6 @@ function endpointManager() {
         async saveEndpointChanges() {
             if (this.selectedEndpointIndex === null) return;
 
-            // Validate JSON
             try {
                 this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
             } catch(e){
@@ -381,26 +358,24 @@ function endpointManager() {
                 return;
             }
 
-            // Update local Alpine array
             this.endpoints[this.selectedEndpointIndex] = {...this.selectedEndpoint};
 
             console.log('Endpoint saved locally:', this.selectedEndpoint);
 
-            // AJAX save
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const response = await fetch("{{ route('device.rest-api.connections.update', ['device' => $template->device_id ?? 0, 'connection' => $connection['id'] ?? 0]) }}", {
-								    method: "PUT",
-								    headers: {
-								        "Content-Type": "application/json",
-								        "X-CSRF-TOKEN": token
-								    },
-								    body: JSON.stringify({
-								        action_type: 'edit_endpoint',
-								        index: this.selectedEndpointIndex,
-								        endpoint: this.selectedEndpoint
-								    })
-								});
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": token
+                    },
+                    body: JSON.stringify({
+                        action_type: 'edit_endpoint',
+                        index: this.selectedEndpointIndex,
+                        endpoint: this.selectedEndpoint
+                    })
+                });
 
                 const data = await response.json();
                 if(data.success){
