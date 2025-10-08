@@ -289,8 +289,8 @@
                             <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
                                 <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
-                                <div class="endpoint-form-scroll">
-                                    <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
+                                <<div id="endpoint-detail-container" @input="isFormDirty = true">
+																		    <form id="endpoint-detail-form" x-html="currentEndpointFormHtml"></form>
                                         {{-- Initial Load Placeholder --}}
                                         <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
                                     </div>
@@ -584,16 +584,23 @@ function endpointManager() {
 				},
 
 				saveEndpointChanges() {
-				    // You can handle the save inline or rely on the form submission
-				    // Here we serialize the current form back to your data structure
-				    const form = document.querySelector('#endpoint-detail-container form');
+				    const form = document.querySelector('#endpoint-detail-form');
 				    if (form) {
 				        const formData = new FormData(form);
 				        console.log('Saving endpoint changes...', Object.fromEntries(formData));
-				        // Example: update local state
-				        this.isFormDirty = false;
-				        // Optionally, trigger form submission
-				        // form.closest('form#endpoint-management-form').submit();
+
+				        // Example: send the update via AJAX
+				        fetch('/device/api-endpoints/update', {
+				            method: 'POST',
+				            body: formData,
+				            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+				        })
+				        .then(r => r.json())
+				        .then(data => {
+				            console.log('Save successful:', data);
+				            this.isFormDirty = false;
+				        })
+				        .catch(err => console.error('Save failed', err));
 				    } else {
 				        alert('No form data found to save.');
 				    }
