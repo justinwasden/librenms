@@ -1,5 +1,4 @@
 <div class="border rounded p-3 bg-light">
-               class="form-control"
 
     {{-- Row 1: Endpoint Name and Path (Consolidated) --}}
     <div class="row">
@@ -160,11 +159,11 @@
         </div>
     </div>
 
-    {{-- Legacy Response Mapping (kept for compatibility but hidden) --}}
+    {{-- Legacy Response Mapping (FIXED: Simplified to avoid nested array/string conversion error) --}}
     <div class="form-group" style="display: none;">
         <label>Response Mapping (Deprecated - Use Metric Map)</label>
         <textarea class="form-control font-monospace"
                   rows="2"
-                  name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_mapping]">{{ is_array($endpoint['response_mapping'] ?? null) ? json_encode($endpoint['response_mapping'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : ($endpoint['response_mapping'] ?? '') }}</textarea>
+                  name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][response_mapping]">{{ $endpoint['response_mapping'] ?? '' }}</textarea>
     </div>
 </div>
