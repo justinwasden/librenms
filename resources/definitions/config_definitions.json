@@ -6135,7 +6135,7 @@
             "default": true,
             "type": "boolean"
         },
-        "poller_modules.rest-api": {
+        "poller_modules.restapi": {
             "order": 460,
             "group": "poller",
             "section": "poller_modules",
