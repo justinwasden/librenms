@@ -616,27 +616,37 @@ function endpointManager() {
 				},
 
 				saveEndpointChanges() {
-				    const form = document.querySelector('#endpoint-detail-form');
-				    if (form) {
-				        const formData = new FormData(form);
-				        console.log('Saving endpoint changes...', Object.fromEntries(formData));
+    const form = document.querySelector('#endpoint-detail-form');
+    if (!form) {
+        alert('No form data found to save.');
+        return;
+    }
 
-				        // Example: send the update via AJAX
-				        fetch('/device/api-endpoints/update', {
-				            method: 'POST',
-				            body: formData,
-				            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
-				        })
-				        .then(r => r.json())
-				        .then(data => {
-				            console.log('Save successful:', data);
-				            this.isFormDirty = false;
-				        })
-				        .catch(err => console.error('Save failed', err));
-				    } else {
-				        alert('No form data found to save.');
-				    }
-				},
+    const formData = new FormData(form);
+
+    // Ensure endpoint index is included in formData
+    formData.append('endpoint_index', this.activeEndpointIndex);
+
+    fetch('/device/api-endpoints/update', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Endpoint saved successfully:', data);
+        this.isFormDirty = false;
+        // Optionally refresh list or re-hydrate endpoint data
+        if (data.updatedEndpoint) {
+            this.activeEndpointData = data.updatedEndpoint;
+            this.openEndpoint(this.activeEndpointIndex, this.activeEndpointName, data.updatedEndpoint);
+        }
+    })
+    .catch(err => {
+        console.error('Error saving endpoint:', err);
+        alert('Failed to save endpoint.');
+    });
+}
 
         removeEndpoint(indexToRemove) {
             if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save All Endpoints."`)) {
