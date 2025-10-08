@@ -384,17 +384,18 @@ function endpointManager() {
             // AJAX save
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const response = await fetch(`{{ route('settings.rest-api.templates.endpoints.save', ['template' => $template->id]) }}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": token
-                    },
-                    body: JSON.stringify({
-                        index: this.selectedEndpointIndex,
-                        endpoint: this.selectedEndpoint
-                    })
-                });
+                const response = await fetch("{{ route('device.rest-api.connections.update', ['device' => $template->device_id ?? 0, 'connection' => $connection['id'] ?? 0]) }}", {
+								    method: "PUT",
+								    headers: {
+								        "Content-Type": "application/json",
+								        "X-CSRF-TOKEN": token
+								    },
+								    body: JSON.stringify({
+								        action_type: 'edit_endpoint',
+								        index: this.selectedEndpointIndex,
+								        endpoint: this.selectedEndpoint
+								    })
+								});
 
                 const data = await response.json();
                 if(data.success){
