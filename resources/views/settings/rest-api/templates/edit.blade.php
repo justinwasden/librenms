@@ -37,6 +37,11 @@
     flex: 0 0 25%;
     max-width: 25%;
 }
+.endpoint-dirty {
+    border-left: 4px solid #28a745;
+    padding-left: 10px;
+    transition: border 0.3s;
+}
 #endpointsModal .col-md-9 {
     flex: 0 0 75%;
     max-width: 75%;
@@ -280,7 +285,7 @@
                         </div> {{-- End Left Pane --}}
 
                         {{-- RIGHT PANE: Detail Form (Wider width) --}}
-                        <div class="col-md-9">
+                        <div class="col-md-9" :class="{ 'endpoint-dirty': isFormDirty }">
                             <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
                                 <h6 class="mb-3" x-html="isAddingNew ? '<i class=\"fas fa-plus-square text-success\"></i> New Endpoint Details' : '<i class=\"fas fa-edit text-primary\"></i> Edit Endpoint: ' + activeEndpointName"></h6>
 
@@ -290,7 +295,15 @@
                                         <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
                                     </div>
                                 </div>
-
+															 <!-- Inline Save / Cancel Buttons -->
+																<div x-show="isFormDirty" x-transition class="mt-3 text-right" x-cloak>
+																    <button type="button" class="btn btn-secondary mr-2" @click="cancelEndpointChanges">
+																        <i class="fas fa-undo"></i> Cancel Changes
+																    </button>
+																    <button type="button" class="btn btn-success" @click="saveEndpointChanges">
+																        <i class="fas fa-save"></i> Save Endpoint
+																    </button>
+																</div>
                             </div>
                             <div x-show="!activeEndpointIndex && !isAddingNew">
                                 <div class="alert alert-warning text-center mt-5">
@@ -563,6 +576,28 @@ function endpointManager() {
                 };
             }
         },
+
+				cancelEndpointChanges() {
+				    if (!confirm('Discard changes to this endpoint?')) return;
+				    this.isFormDirty = false;
+				    this.openEndpoint(this.activeEndpointIndex, this.activeEndpointName, this.activeEndpointData);
+				},
+
+				saveEndpointChanges() {
+				    // You can handle the save inline or rely on the form submission
+				    // Here we serialize the current form back to your data structure
+				    const form = document.querySelector('#endpoint-detail-container form');
+				    if (form) {
+				        const formData = new FormData(form);
+				        console.log('Saving endpoint changes...', Object.fromEntries(formData));
+				        // Example: update local state
+				        this.isFormDirty = false;
+				        // Optionally, trigger form submission
+				        // form.closest('form#endpoint-management-form').submit();
+				    } else {
+				        alert('No form data found to save.');
+				    }
+				},
 
         removeEndpoint(indexToRemove) {
             if (!confirm(`Are you sure you want to delete the endpoint with index ${indexToRemove}? This action will be finalized when you click "Save All Endpoints."`)) {
