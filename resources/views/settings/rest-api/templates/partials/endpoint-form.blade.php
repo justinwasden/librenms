@@ -20,7 +20,7 @@
     </div>
 
     <div class="row">
-        <div class="col-md-7">
+        <div class="col-md-4">
             <div class="form-group">
                 <label>HTTP Method</label>
                 <select class="form-control"
@@ -34,7 +34,7 @@
             </div>
         </div>
 
-        <div class="col-md-7">
+        <div class="col-md-4">
             <div class="form-group">
                 <label>Resource Type <span class="text-danger">*</span></label>
                 <select class="form-control"
@@ -57,7 +57,7 @@
             </div>
         </div>
 
-        <div class="col-md-7">
+        <div class="col-md-4">
             <div class="form-group">
                 <label>Poll Interval (seconds)</label>
                 <input type="number"
@@ -99,7 +99,7 @@
     </div>
 
     {{-- Metric Mapping Section --}}
-    <div class="card mb-7">
+    <div class="card mb-3">
         <div class="card-header bg-primary text-white">
             <h6 class="mb-0">
                 <i class="fas fa-chart-line"></i> Metric Mapping
