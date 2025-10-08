@@ -1,5 +1,5 @@
 <?php
-namespace App\Discovery;
+namespace LibreNMS\Interfaces\Discovery;
 
 use App\Models\Device;
 use App\Pollers\ApiMetricsCollector;
