@@ -5,3 +5,8 @@ modules:
     hardware_regex: '/Pure Storage (?<hardware>\w+)/'
     version_regex: '/Purity\/\/FA (?<version>[\d\.]+)/'
 
+
+poller_modules:
+  - rest-api        # Your custom poller module
+discovery_modules:
+  - rest-api        # Your custom discovery module
