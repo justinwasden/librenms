@@ -1,25 +1,25 @@
 <?php
-namespace App\Discovery;
+namespace App\Pollers;
 
 use App\Models\Device;
-use App\Pollers\ApiMetricsCollector;
-use App\RestApi\Utils\JsonFlattener;
+use App\RestApi\Metrics\MetricsStager;
 use App\RestApi\Credentials\CredentialHelper;
+use App\RestApi\Utils\JsonFlattener;
 use GuzzleHttp\Client;
 use Log;
 
-class RestApiDiscovery
+class RestApiPoller
 {
     protected Device $device;
-    protected ApiMetricsCollector $collector;
+    protected MetricsStager $stager;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-        $this->collector = new ApiMetricsCollector($device);
+        $this->stager = new MetricsStager($device);
     }
 
-    public function discover()
+    public function poll()
     {
         $connections = $this->device->restApiConnections()->where('enabled', 1)->get();
 
@@ -28,9 +28,9 @@ class RestApiDiscovery
                 try {
                     $response = $this->requestEndpoint($conn, $endpoint);
                     $metrics = JsonFlattener::flatten($response, $endpoint->resource_type . '_');
-                    $this->collector->storeMetric($endpoint->resource_type, $endpoint->name, $metrics);
+                    $this->stager->stageMetrics($metrics, true); // true = poller (RRD)
                 } catch (\Exception $e) {
-                    Log::error("Discovery failed for {$endpoint->name} on {$this->device->hostname}: {$e->getMessage()}");
+                    Log::error("Polling failed for {$endpoint->name}: {$e->getMessage()}");
                 }
             }
         }
