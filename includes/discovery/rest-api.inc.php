@@ -1,13 +1,14 @@
 <?php
-use App\Discovery\RestApiDiscovery;
 
-if (!isset($device) || empty($device['device_id'])) {
-    return;
+use App\Discovery\DiscoveryRunner;
+
+if (!defined('LibreNMS')) {
+    exit;
 }
 
 try {
-    $discovery = new RestApiDiscovery(Device::find($device['device_id']));
-    $discovery->discover();
-} catch (Throwable $e) {
-    echo "[REST API Discovery] Error: " . $e->getMessage() . PHP_EOL;
+    $runner = new DiscoveryRunner($device);
+    $runner->handle();
+} catch (Exception $e) {
+    \Log::error("REST API Discovery failed for device {$device['hostname']}: {$e->getMessage()}");
 }
