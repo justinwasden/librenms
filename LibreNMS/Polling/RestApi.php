@@ -1,14 +1,18 @@
 <?php
-// /opt/librenms/LibreNMS/Polling/RestApi.php
+// File: LibreNMS/Polling/RestApi.php
 
+use LibreNMS\Interfaces\Polling\PollerModule;
 use App\Pollers\RestApiPoller;
 
-class RestApi extends \LibreNMS\Poller\PollerModule
+class RestApi extends PollerModule
 {
     public function run($device)
     {
-        // Instantiate your Laravel poller and run it
+        // Call your Laravel poller class
         $poller = new RestApiPoller($device);
-        $poller->poll(); // make sure your RestApiPoller has a public poll() method
+        $poller->poll();
+
+        // Optional logging
+        \Log::info("RestApi Poller executed for device {$device->hostname}");
     }
 }

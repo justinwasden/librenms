@@ -1,14 +1,16 @@
 <?php
-// /opt/librenms/LibreNMS/Discovery/RestApi.php
+// File: LibreNMS/Discovery/RestApi.php
 
+use LibreNMS\Interfaces\Discovery\DiscoveryModule;
 use App\Discovery\RestApiDiscovery;
 
-class RestApi extends \LibreNMS\Discovery\DiscoveryModule
+class RestApi extends DiscoveryModule
 {
     public function run($device)
     {
-        // Instantiate your Laravel discovery class
         $disco = new RestApiDiscovery($device);
-        $disco->discover(); // make sure your RestApiDiscovery has a public discover() method
+        $disco->discover();
+
+        \Log::info("RestApi Discovery executed for device {$device->hostname}");
     }
 }
