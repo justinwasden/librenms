@@ -197,7 +197,7 @@
 
 {{-- 2. Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-xl" role="document" x-data="endpointManager()">
+    <div class="modal-dialog modal-xl" role="document" x-data="endpointManager()" x-init="init()">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
@@ -319,11 +319,17 @@ function endpointManager() {
         isAddingNew: false,
         isFormDirty: false,
 
+        init() {
+            // Automatically select first endpoint if any exist
+            if (this.endpoints.length > 0) {
+                this.selectEndpoint(0);
+            }
+        },
+
         selectEndpoint(index) {
             this.activeEndpointIndex = index;
             this.isAddingNew = false;
             this.isFormDirty = false;
-            // Deep clone to avoid modifying the list until saved
             this.activeEndpointData = JSON.parse(JSON.stringify(this.endpoints[index]));
         },
 
@@ -366,5 +372,6 @@ function endpointManager() {
         }
     };
 }
+
 </script>
 @endsection
