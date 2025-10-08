@@ -419,7 +419,7 @@ function endpointManager() {
 				        // Initialize JSON validation
 				        this.initializeEndpointScripts(index);
 				    });
-				}
+				},
 
         openNewEndpoint() {
             const index = 'new_' + Date.now();
