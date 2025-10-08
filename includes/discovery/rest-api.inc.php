@@ -1,4 +1,5 @@
 <?php
+namespace LibreNMS\Interfaces\Discovery;
 
 use LibreNMS\Interfaces\Discovery;
 
