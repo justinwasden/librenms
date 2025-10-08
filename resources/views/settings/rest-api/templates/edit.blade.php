@@ -197,7 +197,7 @@
 {{-- Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
-        <div class="modal-content" x-data="endpointManager()" x-init="init()">
+        <div x-data="endpointManager()" x-init="init()">
             <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
                 @csrf
                 @method('PUT')
@@ -225,9 +225,10 @@
                                     @php $connection = $connections[$cIndex]; @endphp
                                     @if (!empty($connection['endpoints']))
                                         @foreach ($connection['endpoints'] as $eIndex => $endpoint)
-                                            <a href="#" class="list-group-item list-group-item-action"
-                                               :class="{ 'active': activeEndpointIndex === '{{ $cIndex }}-{{ $eIndex }}' }"
-                                               @click.prevent="openEndpoint('{{ $cIndex }}-{{ $eIndex }}', '{{ addslashes($endpoint['name'] ?? 'Unnamed Endpoint') }}', {{ json_encode($endpoint, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) }})">
+                                            <a href="#"
+																						   class="list-group-item list-group-item-action"
+																						   :class="{ 'active': activeEndpointIndex === '{{ $cIndex }}-{{ $eIndex }}' }"
+																						   @click.prevent="openEndpoint('{{ $cIndex }}-{{ $eIndex }}', '{{ addslashes($endpoint['name'] ?? 'Unnamed Endpoint') }}', {{ json_encode($endpoint, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) }})">
                                                 <div class="d-flex w-100 justify-content-between">
                                                     <h6 class="mb-1">
                                                         <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
@@ -253,45 +254,54 @@
                             </button>
                         </div>
 
-                        {{-- RIGHT PANE --}}
-                        <div class="col-md-9">
-                            <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
-                                <h6 class="mb-3" x-html="isAddingNew ? '<i class=\'fas fa-plus-square text-success\'></i> New Endpoint Details' : '<i class=\'fas fa-edit text-primary\'></i> Edit Endpoint: ' + activeEndpointName"></h6>
-                                <div class="endpoint-form-scroll">
-                                    <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
-                                        <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
-                                    </div>
+                    {{-- Right pane: endpoint details --}}
+                    <div class="col-md-9">
+                        <template x-if="selectedEndpointIndex !== null">
+                            <div>
+                                <div class="form-group">
+                                    <label for="endpoint_name">Endpoint Name</label>
+                                    <input type="text" class="form-control" x-model="selectedEndpoint.name">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="endpoint_path">Path</label>
+                                    <input type="text" class="form-control" x-model="selectedEndpoint.path">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="endpoint_method">HTTP Method</label>
+                                    <select class="form-control" x-model="selectedEndpoint.method">
+                                        <option value="GET">GET</option>
+                                        <option value="POST">POST</option>
+                                        <option value="PUT">PUT</option>
+                                        <option value="DELETE">DELETE</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="metric_map">Metric Mapping (JSON)</label>
+                                    <textarea class="form-control" rows="10" x-model="selectedEndpoint.metric_map_json"></textarea>
+                                </div>
+
+                                <div class="form-group text-right">
+                                    <button type="button" class="btn btn-primary" x-on:click="saveEndpointChanges()">
+                                        <i class="fas fa-save"></i> Save Endpoint
+                                    </button>
                                 </div>
                             </div>
-                            <div x-show="!activeEndpointIndex && !isAddingNew">
-                                <div class="alert alert-warning text-center mt-5">
-                                    <i class="fas fa-hand-point-left fa-2x"></i><br>
-                                    Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
-                                </div>
-                            </div>
-                        </div>
+                        </template>
+
+                        <template x-if="selectedEndpointIndex === null">
+                            <p class="text-muted">Select an endpoint from the left to edit its details.</p>
+                        </template>
                     </div>
-
-                    <input type="hidden" name="action_type" value="update_endpoints_only">
                 </div>
+            </div>
 
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary" :disabled="!isFormDirty">
-                        <i class="fas fa-save"></i> Save All Endpoints
-                    </button>
-                </div>
-
-                {{-- Endpoint template for JS hydration --}}
-                <template id="full-endpoint-template">
-                    @php $js_placeholder_index = '__ACTIVE_INDEX__'; $js_connection_index = 0; @endphp
-                    @include('settings.rest-api.templates.partials.endpoint-form', [
-                        'connectionIndex' => $js_connection_index,
-                        'endpointIndex' => $js_placeholder_index,
-                        'endpoint' => [],
-                    ])
-                </template>
-            </form>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                {{-- Save All button removed --}}
+            </div>
         </div>
     </div>
 </div>
@@ -374,9 +384,10 @@ function endpointManager() {
             this.activeEndpointIndex = null;
             this.activeEndpointName = '';
             this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, {}, 'new_' + Date.now());
+            this.isAddingNew = true;
             this.isFormDirty = true;
         },
-        saveEndpointChanges() {
+       saveEndpointChanges() {
             if (this.selectedEndpointIndex === null) return;
 
             // parse metric_map_json into JSON
@@ -393,7 +404,7 @@ function endpointManager() {
             // OPTIONAL: send AJAX to server here
             console.log('Endpoint saved:', this.selectedEndpoint);
         }
-    }
+    };
 }
 </script>
 @endsection
