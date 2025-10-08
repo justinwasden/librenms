@@ -1,26 +1,34 @@
 <?php
-// includes/discovery/rest-api.inc.php
+// /opt/librenms/includes/discovery/restapi.inc.php
 
 if (!defined('LibreNMS')) {
     exit;
 }
 
-// Include the main Laravel-style discovery class
+// Test 1: Can we log anything?
+\Log::info("DEBUG: restapi.inc.php started.");
+
+// Test 2: Can we load the required classes?
 use App\Discovery\RestApiDiscovery;
 use App\Models\Device;
 
-// $device is the legacy array passed by the discovery script
-
 try {
-    // Look up the Laravel Device model
+    // Test 3: Can we find a device?
     $deviceModel = Device::where('device_id', $device['device_id'])->first();
 
-    // Check a flag (like a new column in the devices table) to decide if this module should run
-    if ($deviceModel && $deviceModel->rest_api_enabled) {
+    if ($deviceModel) {
+        \Log::info("DEBUG: Device found: {$deviceModel->hostname}");
+        // Now try to instantiate your main class
         $disco = new RestApiDiscovery($deviceModel);
-        $disco->discover();
-        \Log::info("RestApi Discovery executed for device {$deviceModel->hostname}");
+        \Log::info("DEBUG: RestApiDiscovery instantiated successfully.");
+        // $disco->discover(); // Keep the actual logic commented out for now
     }
-} catch (Exception $e) {
-    \Log::error("REST API Discovery failed for device {$device['hostname']}: {$e->getMessage()}");
+} catch (\Throwable $e) {
+    // Catch ALL exceptions/errors to print something
+    \Log::error("DEBUG: Fatal Error in restapi.inc.php: {$e->getMessage()}");
 }
+
+// The poller will execute this if it gets here.
+\Log::info("DEBUG: restapi.inc.php completed.");
+
+?>
