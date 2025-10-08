@@ -1,9 +1,15 @@
 <?php
+/**
+ * File: app/Pollers/Api.php
+ *
+ * Poller entry point used by lnms device:poll.
+ */
 
 namespace App\Pollers;
 
 use App\Models\Device;
 use App\Models\RestApiEndpoint;
+use App\Services\ApiResourceService;
 use App\Services\DataMatcher;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
@@ -13,7 +19,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Database\Eloquent\Collection;
 
 class Api
 {
@@ -22,13 +27,15 @@ class Api
     protected Client $client;
     protected array $sessionTokens = [];
     protected DataMatcher $matcher;
+    protected ApiResourceService $service;
 
     public function __construct(Device $device, array $poller_options = [], Client $client = null)
     {
         $this->device = $device;
         $this->poller_options = $poller_options;
         $this->client = $client ?? new Client(['timeout' => 30, 'connect_timeout' => 10]);
-				$this->matcher = new DataMatcher();
+        $this->matcher = new DataMatcher();
+        $this->service = new ApiResourceService();
     }
 
     public function poll()
@@ -55,39 +62,12 @@ class Api
             $sessionToken = $this->getSessionToken($connection);
 
             foreach ($connection->endpoints as $endpoint) {
+                if (!$endpoint->enabled) continue;
+
                 try {
-                    $options = [];
+                    $options = $this->buildRequestOptions($connection, $endpoint, $sessionToken);
 
-                    if ($connection->disable_ssl_verify) {
-                        $options['verify'] = false;
-                    }
-
-                    if ($credential = $connection->credential) {
-                        $authType = strtolower($credential->authenticationType->name);
-                        $params = $credential->params->pluck('value', 'key');
-
-                        if ($authType === 'basic auth' && isset($params['username'], $params['password'])) {
-                            $options['auth'] = [$params['username'], $params['password']];
-                        } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
-                            $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
-                            $options['headers'][$params['header']] = $scheme . $params['token'];
-                        } elseif ($authType === 'session token' && $sessionToken) {
-                            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
-                            $options['headers'][$tokenHeader] = $sessionToken;
-                        }
-                    }
-
-                    if ($endpoint->headers) {
-                        $options['headers'] = array_merge($options['headers'] ?? [], $endpoint->headers);
-                    }
-                    if ($endpoint->query_params) {
-                        $options['query'] = $endpoint->query_params;
-                    }
-                    if ($endpoint->body) {
-                        $options['json'] = $endpoint->body;
-                    }
-
-                    $url = $this->replacePlaceholders($connection->base_url . $endpoint->path, $this->device);
+                    $url = $this->replacePlaceholders(rtrim($connection->base_url, '/') . '/' . ltrim($endpoint->path, '/'));
                     Log::debug("Polling URL: {$url}");
 
                     $response = $this->client->request($endpoint->method, $url, $options);
@@ -106,17 +86,70 @@ class Api
                         continue;
                     }
 
-                    Log::debug("API Response for endpoint {$endpoint->name}", [
-                        'response_sample' => Str::limit(json_encode($body, JSON_PRETTY_PRINT), 1000),
-                    ]);
+                    // convert to items[]
+                    $items = [];
+                    if (isset($body['items']) && is_array($body['items'])) {
+                        $items = $body['items'];
+                    } elseif (is_array($body) && Arr::isList($body)) {
+                        $items = $body;
+                    } else {
+                        $items = [$body];
+                    }
 
-                    if ($body && $endpoint->metric_map) {
-                        $this->processApiResponse($endpoint, $body, $connection->id);
+                    foreach ($items as $item) {
+                        $resourceType = strtolower($endpoint->resource_type ?? $endpoint->name ?? 'generic');
+                        $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id') ?? data_get($item, 'id') ?? data_get($item, 'name') ?? md5(json_encode($item));
+                        $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name') ?? $resourceId;
+
+                        // Normalize & stage based on endpoint path / resource type
+                        if (str_contains($endpoint->path, '/ports') || str_contains($endpoint->path, '/network-interfaces')) {
+                            $normalized = $this->service->normalizeInterfaceItem($item);
+                            $this->service->persistPorts($this->device, [$normalized]);
+                            $metrics = $this->extractMetrics($item, 'port');
+                            $this->service->stageMetrics($this->device, 'port', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/volumes')) {
+                            $normalized = $this->service->normalizeStorageItem($item, $resourceName);
+                            $this->service->persistStorage($this->device, [$normalized]);
+                            $metrics = $this->extractMetrics($item, 'volume');
+                            $this->service->stageMetrics($this->device, 'volume', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/arrays')) {
+                            $normalized = $this->service->normalizeStorageItem($item, $resourceName);
+                            $this->service->persistStorage($this->device, [$normalized]);
+                            $metrics = $this->extractMetrics($item, 'array');
+                            $this->service->stageMetrics($this->device, 'array', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/controllers')) {
+                            $component = $this->service->normalizeControllerItem($item);
+                            $this->service->persistComponents($this->device, [$component]);
+                            $metrics = $this->extractMetrics($item, 'controller');
+                            $this->service->stageMetrics($this->device, 'controller', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/hosts')) {
+                            $normalized = $this->service->normalizeHostItem($item);
+                            $this->service->persistStorage($this->device, [$normalized]);
+                            $metrics = $this->extractMetrics($item, 'host');
+                            $this->service->stageMetrics($this->device, 'host', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/alerts')) {
+                            $metrics = $this->extractMetrics($item, 'alert');
+                            $this->service->stageMetrics($this->device, 'alert', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } elseif (str_contains($endpoint->path, '/performance')) {
+                            // performance endpoints may be at array, volume, or iface level
+                            $metrics = $this->extractMetrics($item, 'perf');
+                            $this->service->stageMetrics($this->device, 'performance', $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+
+                        } else {
+                            // generic fallback
+                            $metrics = $this->extractMetrics($item, 'generic');
+                            $this->service->stageMetrics($this->device, $resourceType, $resourceId, $resourceName, $metrics, $endpoint->id, $connection->id);
+                        }
                     }
 
                     $endpoint->update(['last_polled' => Carbon::now()]);
                     $this->updateRateLimit($connection);
-
                 } catch (RequestException $e) {
                     $message = $e->getMessage();
                     if ($e->hasResponse()) {
@@ -130,7 +163,7 @@ class Api
             }
         }
 
-        // Process all new metrics with DataMatcher
+        // After staging all metrics, let DataMatcher handle mapping
         try {
             $this->matcher->processDeviceMetrics($this->device);
         } catch (\Exception $e) {
@@ -138,466 +171,78 @@ class Api
         }
     }
 
-    private function determineEntPhysicalClass(string $type): string
-		{
-		    $type = strtolower($type);
-		    switch ($type) {
-		        case 'controller':
-		        case 'ct':              return 'cpu';
-		        case 'power_supply':
-		        case 'pwr':             return 'powerSupply';
-		        case 'fan':
-		        case 'cooling':         return 'fan';
-		        case 'chassis':         return 'chassis';
-		        case 'drive_bay':
-		        case 'nvram_bay':
-		        case 'ssd':             return 'disk';
-		        case 'eth_port':        return 'port';
-		        case 'temp_sensor':     return 'sensor';
-		        default:                return 'other';
-		    }
-		}
-
-		private function generateUniqueEntPhysicalIndex(int $device_id, string $resource_id, array $item_data = []): int
-		{
-		    $unique_id_part = $item_data['serial'] ?? $item_data['uuid'] ?? $resource_id;
-		    $component_type = $item_data['type'] ?? 'unknown_type';
-
-		    $stable_seed = $unique_id_part . '_' . $component_type . '_' . crc32(json_encode($item_data));
-		    $hash_value = crc32($stable_seed);
-
-		    // Limit index to MySQL's signed INT range (1 to 2147483647).
-		    $generated_index = abs($hash_value);
-		    $current_index = ($generated_index % 2147483646) + 1;
-
-		    // Safety check against collisions
-		    $attempt = 0;
-		    while (DB::table('entPhysical')
-		        ->where('device_id', $device_id)
-		        ->where('entPhysicalIndex', $current_index)
-		        ->exists()) {
-
-		        $attempt++;
-		        $current_index++;
-
-		        if ($attempt > 100 || $current_index > 2147483647) {
-		            // Log an error and stop execution if unable to find a unique index
-		            Log::critical("Failed to generate unique entPhysicalIndex for device {$device_id}");
-		            throw new \Exception("Entity index generation failed.");
-		        }
-		    }
-
-		    return $current_index;
-		}
-
-    protected function processApiResponse(RestApiEndpoint $endpoint, array $data, int $connectionId)
+    protected function extractMetrics(array $item, string $prefix = ''): array
     {
-        $resourceType = $this->normalizeResourceType($endpoint->resource_type ?? 'unknown');
-
-        // Handle different response formats
-        $items = [];
-        if (isset($data['items']) && is_array($data['items'])) {
-            $items = $data['items'];
-        } elseif (Arr::isList($data)) {
-            $items = $data;
-        } else {
-            $items = [$data];
-        }
-
-        Log::debug("Processing " . count($items) . " items for endpoint {$endpoint->name}");
-
-        $currentResourceIds = [];
-
-        foreach ($items as $item) {
-            // NOTE: The previous logic contained in DataMatcher::storeResourceMetrics is moved here
-            // to ensure entity creation happens before metric processing.
-            $this->storeResourceMetrics($endpoint, $item, $resourceType, $connectionId);
-
-            $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
-            $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
-            $resourceId = $resourceId ?? $resourceName;
-
-            if ($resourceId) {
-                $currentResourceIds[] = $resourceId;
-            }
-        }
-
-        $this->cleanupStaleResources($endpoint, $currentResourceIds);
+        $out = [];
+        $this->recursiveExtract($item, $prefix ?: null, $out);
+        return $out;
     }
 
-	protected function normalizeResourceType(?string $resourceType): string
-{
-    if (!$resourceType) return 'unknown';
-
-    $type = strtolower(trim($resourceType));
-
-    if (str_contains($type, 'network') || str_contains($type, 'interface') || $type === 'port') {
-        return 'port';
-    }
-
-    if (str_contains($type, 'drive') || str_contains($type, 'storage') || $type === 'volume') {
-        return 'storage';
-    }
-
-    // Default mappings for other components for entity creation
-    if (str_contains($type, 'controller')) {
-        return 'device'; // This maps to the 'device' case in storeResourceMetrics
-    }
-
-
-		    // Valid enum mappings
-		    $validMappings = [
-		        'controller'     => 'device',
-		        'host'           => 'device',
-		        'fan'            => 'fanspeed',
-		        'temperature'    => 'temperature',
-		        'power-supply'   => 'power',
-		        'latency'        => 'delay',
-		        'iops'           => 'count',
-		        'throughput'     => 'count',
-		        'bandwidth'      => 'count',
-		    ];
-
-		    return $validMappings[$type] ?? 'state'; // fallback to 'state'
-		}
-
-    protected function storeResourceMetrics(RestApiEndpoint $endpoint, array $item, string $resourceType, int $connectionId)
+    protected function recursiveExtract($node, $prefix = null, array &$out)
     {
-        $resourceId = data_get($item, $endpoint->resource_id_path ?? 'id');
-        $resourceName = data_get($item, $endpoint->resource_name_path ?? 'name');
-
-        if (!$resourceId && !$resourceName) {
-            Log::warning("No resource ID or name found for item in endpoint {$endpoint->name}");
-            return;
-        }
-
-        $resourceId = $resourceId ?? $resourceName;
-        $resourceName = $resourceName ?? $resourceId;
-
-        // --- 1. ENTITY CREATION/UPDATE ---
-
-		    $itemDataForEntity = Arr::isList($item) ? ['name' => $resourceName, 'id' => $resourceId] : $item;
-		    $itemDataForEntity['type'] = data_get($item, 'type') ?? $endpoint->resource_type;
-		    $itemDataForEntity['serial'] = data_get($item, 'serial') ?? null;
-		    $itemDataForEntity['model'] = data_get($item, 'model') ?? null;
-
-		    if ($resourceType === 'port') {
-				    // Need to extract deeply nested port/eth data for creation
-				    $ethData = data_get($item, 'eth') ?? [];
-				    $portDataForEntity = array_merge($itemDataForEntity, $item);
-				    $portDataForEntity['eth'] = $ethData;
-				    // NOTE: We don't need to check for 'interface' anymore if normalizeResourceType handles the alias
-				    $this->storePortData($this->device, $portDataForEntity);
-
-		    } elseif ($resourceType === 'storage' || $itemDataForEntity['type'] === 'drive_bay' || $itemDataForEntity['type'] === 'ssd') {
-		        // Drives/Volumes should be created in the storage table
-		        $this->storeDriveStorageData($this->device, $itemDataForEntity);
-		    } elseif (in_array($resourceType, ['device', 'sensor', 'processor']) || $itemDataForEntity['type'] === 'controller' || $itemDataForEntity['type'] === 'chassis') {
-		        // Controllers, Fans, Temp Sensors, etc., go to 'component'
-		        $this->storeHardwareComponentData($this->device, $itemDataForEntity);
-		    }
-
-        // --- 2. METRIC STAGING (device_api_metrics) ---
-
-        $collectedAt = Carbon::now();
-
-        $existingMetrics = DB::table('device_api_metrics')
-            ->where('device_id', $this->device->device_id)
-            ->where('api_endpoint_id', $endpoint->id)
-            ->where('resource_id', $resourceId)
-            ->get()
-            ->keyBy('metric_name');
-
-        $metricsToInsert = [];
-        $metricsToUpdate = [];
-        $processedMetricNames = [];
-
-        foreach ($endpoint->metric_map as $metricName => $apiPath) {
-            try {
-                $value = data_get($item, $apiPath);
-                $processedMetricNames[] = $metricName;
-
-                if ($value === null) {
-                    continue;
-                }
-
-                $isNumeric = is_numeric($value);
-                $numericValue = $isNumeric ? (float)$value : null;
-                $stringValue = null;
-
-                if (!$isNumeric) {
-                    if (is_array($value) || is_object($value)) {
-                        $stringValue = json_encode($value);
-                    } else {
-                        $stringValue = (string)$value;
-                    }
-                }
-
-                if (isset($existingMetrics[$metricName])) {
-                    $existing = $existingMetrics[$metricName];
-                    $valueChanged = false;
-
-                    if ($isNumeric) {
-                        $valueChanged = abs($existing->value - $numericValue) > 0.0001;
-                    } else {
-                        $valueChanged = $existing->string_value !== $stringValue;
-                    }
-
-                    if ($valueChanged) {
-                        $metricsToUpdate[] = [
-                            'id' => $existing->id,
-                            'value' => $numericValue,
-                            'string_value' => $stringValue,
-                            'collected_at' => $collectedAt,
-                            'updated_at' => $collectedAt,
-                        ];
-
-                        Log::debug("Metric {$metricName} changed from " . ($existing->value ?? $existing->string_value) . " to " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
-                    } else {
-                        DB::table('device_api_metrics')
-                            ->where('id', $existing->id)
-                            ->update([
-                                'collected_at' => $collectedAt,
-                                'updated_at' => $collectedAt,
-                            ]);
-                    }
+        if (is_array($node)) {
+            foreach ($node as $k => $v) {
+                $name = $prefix ? ($prefix . '_' . $k) : $k;
+                if (is_array($v)) {
+                    $this->recursiveExtract($v, $name, $out);
                 } else {
-                    $metricsToInsert[] = [
-                        'device_id' => $this->device->device_id,
-                        'api_endpoint_id' => $endpoint->id,
-                        'api_connection_id' => $connectionId,
-                        'resource_type' => $resourceType,
-                        'resource_id' => $resourceId,
-                        'resource_name' => $resourceName,
-                        'metric_name' => $metricName,
-                        'metric_type' => 'gauge',
-                        'value' => $numericValue,
-                        'string_value' => $stringValue,
-                        'raw_response' => null,
-                        'collected_at' => $collectedAt,
-                        'created_at' => $collectedAt,
-                        'updated_at' => $collectedAt,
-                    ];
-                    Log::debug("New metric {$metricName} = " . ($numericValue ?? $stringValue) . " for resource {$resourceName}");
+                    $name = strtolower(str_replace([' ', '-', '.'], '_', $name));
+                    $out[$name] = $v;
                 }
+            }
+        } else {
+            $out[$prefix ?: 'value'] = $node;
+        }
+    }
 
-            } catch (\Exception $e) {
-                Log::error("Error processing metric {$metricName}: " . $e->getMessage());
+    protected function buildRequestOptions($connection, $endpoint, $sessionToken = null): array
+    {
+        $options = [];
+
+        if ($connection->disable_ssl_verify) {
+            $options['verify'] = false;
+        }
+
+        $options['headers'] = $endpoint->headers ?? [];
+
+        if ($credential = $connection->credential) {
+            $authType = strtolower($credential->authenticationType->name);
+            $params = $credential->params->pluck('value', 'key')->toArray();
+
+            if ($authType === 'basic auth' && isset($params['username'], $params['password'])) {
+                $options['auth'] = [$params['username'], $params['password']];
+            } elseif ($authType === 'token' && isset($params['token'], $params['header'])) {
+                $scheme = !empty($params['scheme']) ? $params['scheme'] . ' ' : '';
+                $options['headers'][$params['header']] = $scheme . $params['token'];
+            } elseif ($authType === 'session token' && $sessionToken) {
+                $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                $options['headers'][$tokenHeader] = $sessionToken;
             }
         }
 
-        // Delete obsolete metrics
-        $metricsToDelete = $existingMetrics->keys()->diff($processedMetricNames);
-        if ($metricsToDelete->isNotEmpty()) {
-            DB::table('device_api_metrics')
-                ->where('device_id', $this->device->device_id)
-                ->where('api_endpoint_id', $endpoint->id)
-                ->where('resource_id', $resourceId)
-                ->whereIn('metric_name', $metricsToDelete->toArray())
-                ->delete();
-            Log::info("Deleted " . $metricsToDelete->count() . " obsolete metrics for {$resourceType} '{$resourceName}'");
+        if ($endpoint->query_params) {
+            $options['query'] = $endpoint->query_params;
+        }
+        if ($endpoint->body) {
+            $options['json'] = $endpoint->body;
         }
 
-        // Batch insert new metrics
-        if (!empty($metricsToInsert)) {
-            try {
-                DB::table('device_api_metrics')->insert($metricsToInsert);
-                Log::info("Inserted " . count($metricsToInsert) . " new metrics for {$resourceType} '{$resourceName}'");
-            } catch (\Exception $e) {
-                Log::error("Failed to insert metrics for resource {$resourceName}: " . $e->getMessage());
-            }
-        }
-
-        // Batch update changed metrics
-        if (!empty($metricsToUpdate)) {
-            try {
-                foreach ($metricsToUpdate as $metric) {
-                    DB::table('device_api_metrics')
-                        ->where('id', $metric['id'])
-                        ->update([
-                            'value' => $metric['value'],
-                            'string_value' => $metric['string_value'],
-                            'collected_at' => $metric['collected_at'],
-                            'updated_at' => $metric['updated_at'],
-                        ]);
-                }
-                Log::info("Updated " . count($metricsToUpdate) . " changed metrics for {$resourceType} '{$resourceName}'");
-            } catch (\Exception $e) {
-                Log::error("Failed to update metrics for resource {$resourceName}: " . $e->getMessage());
-            }
-        }
+        return $options;
     }
 
-		protected function storeHardwareComponentData($device, $componentData)
-		{
-		    $name = $componentData['name'] ?? 'unknown';
-		    $status_str = strtolower($componentData['status'] ?? 'ok');
-
-		    // Convert string status to tinyint status (1 = ok, 0 = down/critical/unknown)
-		    $status_int = ($status_str === 'ok' || $status_str === 'up') ? 1 : 0;
-
-		    // The table name is 'component' (singular)
-		    DB::table('component')->updateOrInsert(
-		        ['device_id' => $device->device_id, 'label' => $name],
-		        [
-		            'type' => $componentData['type'] ?? 'controller',
-		            'status' => $status_int,
-		        ]
-		    );
-
-		    Log::info("Updated component {$name} for device {$device->hostname}");
-		}
-
-		protected function storePortData($device, $portData)
-		{
-		    if (!isset($portData['name'])) {
-		        Log::warning("Missing port name for device {$device->hostname}");
-		        return;
-		    }
-
-		    $ifName = $portData['name'];
-		    $ifDescr = $portData['description'] ?? $ifName;
-		    $ifIndex = $portData['index'] ?? crc32($ifName); // fallback unique index
-
-		    // Find or create port entry
-		    $port = DB::table('ports')
-		        ->where('device_id', $device->device_id)
-		        ->where(function ($query) use ($ifIndex, $ifName) {
-		            $query->where('ifIndex', $ifIndex)->orWhere('ifName', $ifName);
-		        })
-		        ->first();
-
-		    if (!$port) {
-		        $portId = DB::table('ports')->insertGetId([
-		            'device_id' => $device->device_id,
-		            'ifIndex' => $ifIndex,
-		            'ifName' => $ifName,
-		            'ifDescr' => $ifDescr,
-		            'ifType' => $portData['type'] ?? 'ethernetCsmacd',
-		            'ifSpeed' => $portData['speed'] ?? 0,
-		            'ifOperStatus' => $portData['status'] ?? 'up',
-		            'ifAdminStatus' => 'up',
-		            'ifAlias' => $portData['alias'] ?? null,
-		            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
-		        ]);
-		    } else {
-		        $portId = $port->port_id;
-		        DB::table('ports')->where('port_id', $portId)->update([
-		            'ifSpeed' => $portData['speed'] ?? $port->ifSpeed,
-		            'ifOperStatus' => $portData['status'] ?? $port->ifOperStatus,
-		            'ifLastChange' => now()->timestamp, // LibreNMS stores ifLastChange as a Unix timestamp
-		        ]);
-		    }
-
-		    // Update performance counters directly in the 'ports' table based on your schema.
-		    // The original logic was incorrectly targeting 'ports_statistics'.
-		    DB::table('ports')->where('port_id', $portId)->update([
-		        'ifInOctets' => $portData['rx_bytes'] ?? 0,
-		        'ifOutOctets' => $portData['tx_bytes'] ?? 0,
-		        'ifInUcastPkts' => $portData['rx_packets'] ?? 0,
-		        'ifOutUcastPkts' => $portData['tx_packets'] ?? 0,
-		        'poll_time' => time(),
-		    ]);
-
-	        // NOTE: If you still need to populate ports_statistics, you must get the raw values from $portData
-	        // and insert them into ports_statistics, excluding the fields already handled above.
-
-		    Log::info("Updated port {$ifName} metrics for device {$device->hostname}");
-		}
-
-		protected function storeDriveStorageData($device, $storageData)
-		{
-		    if (!isset($storageData['name'])) {
-		        Log::warning("Missing storage name for device {$device->hostname}");
-		        return;
-		    }
-
-		    $descr = $storageData['name'];
-		    $size = $storageData['size'] ?? 0;
-		    $used = $storageData['used'] ?? 0;
-
-		    DB::table('storage')->updateOrInsert(
-		        ['device_id' => $device->device_id, 'storage_descr' => $descr],
-		        [
-		            'storage_type' => $storageData['type'] ?? 'purestorage',
-		            'storage_size' => $size,
-		            'storage_used' => $used,
-		            'storage_free' => max(0, $size - $used),
-		            'storage_perc' => $size > 0 ? round(($used / $size) * 100, 0) : 0, // Round to integer for storage_perc
-		            // 'updated_at' is not a native column in the storage table schema, so we omit it
-		        ]
-		    );
-
-		    Log::info("Updated storage {$descr} metrics for device {$device->hostname}");
-		}
-
-    protected function cleanupStaleResources(RestApiEndpoint $endpoint, array $currentResourceIds): void
+    protected function replacePlaceholders(string $string): string
     {
-        if (empty($currentResourceIds)) {
-            return;
-        }
-
-        $existingResourceIds = DB::table('device_api_metrics')
-            ->where('device_id', $this->device->device_id)
-            ->where('api_endpoint_id', $endpoint->id)
-            ->distinct()
-            ->pluck('resource_id')
-            ->toArray();
-
-        $staleResourceIds = array_diff($existingResourceIds, $currentResourceIds);
-
-        if (!empty($staleResourceIds)) {
-            $deletedCount = DB::table('device_api_metrics')
-                ->where('device_id', $this->device->device_id)
-                ->where('api_endpoint_id', $endpoint->id)
-                ->whereIn('resource_id', $staleResourceIds)
-                ->delete();
-
-            Log::info("Removed {$deletedCount} metrics for " . count($staleResourceIds) . " stale resources from endpoint {$endpoint->name}");
-        }
-    }
-
-    protected function checkRateLimit($connection): bool
-    {
-        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
-            return true;
-        }
-
-        $cacheKey = "rest_api_rate_limit:{$connection->id}";
-        $requests = Cache::get($cacheKey, []);
-
-        $windowStart = Carbon::now()->subMinute();
-        $requests = array_filter($requests, function ($timestamp) use ($windowStart) {
-            return Carbon::parse($timestamp)->isAfter($windowStart);
-        });
-
-        return count($requests) < $connection->rate_limit;
-    }
-
-    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
-    {
-        $cacheKey = "rest_api_failures:{$endpoint->id}";
-        $failures = Cache::get($cacheKey, 0);
-        $failures++;
-
-        Cache::put($cacheKey, $failures, 3600);
-    }
-
-    private function replacePlaceholders(string $string, Device $device): string
-    {
-        $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
-        $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
+        $string = Str::replace('{{ $device->hostname }}', $this->device->hostname, $string);
+        $string = Str::replace('{{ $device->ip }}', $this->device->ip, $string);
 
         preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
-
         if (!empty($matches[2])) {
             foreach ($matches[2] as $index => $attribName) {
-                $attribValue = $device->getAttrib($attribName);
+                $attribValue = $this->device->getAttrib($attribName);
                 $fullPlaceholder = $matches[0][$index];
                 $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
             }
         }
-
         return $string;
     }
 
@@ -614,7 +259,7 @@ class Api
         }
 
         try {
-            $params = $connection->credential->params->pluck('value', 'key');
+            $params = $connection->credential->params->pluck('value', 'key')->toArray();
 
             $apiToken = $params['api_token'] ?? $params['token'] ?? null;
             $loginPath = $params['login_path'] ?? null;
@@ -626,7 +271,7 @@ class Api
             }
 
             $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
-            $loginUrl = $this->replacePlaceholders($loginUrl, $this->device);
+            $loginUrl = $this->replacePlaceholders($loginUrl);
 
             $loginOptions = [
                 'headers' => [
@@ -662,51 +307,22 @@ class Api
         }
     }
 
-    protected function matchDevicePort(string $resourceName)
-		{
-		    if (empty($resourceName) || !$this->device) {
-		        return null;
-		    }
+    protected function checkRateLimit($connection): bool
+    {
+        if (!$connection->rate_limit || $connection->rate_limit <= 0) {
+            return true;
+        }
 
-		    // Try multiple match types (exact, partial, normalized)
-		    return \App\Models\Port::where('device_id', $this->device->device_id)
-		        ->where(function ($query) use ($resourceName) {
-		            $query->where('ifName', $resourceName)
-		                  ->orWhere('ifDescr', $resourceName)
-		                  ->orWhere('ifAlias', 'like', "%{$resourceName}%");
-		        })
-		        ->first();
-		}
+        $cacheKey = "rest_api_rate_limit:{$connection->id}";
+        $requests = Cache::get($cacheKey, []);
 
-    protected function matchDeviceSensor(string $resourceName)
-		{
-		    if (empty($resourceName) || !$this->device) {
-		        return null;
-		    }
+        $windowStart = Carbon::now()->subMinute();
+        $requests = array_filter($requests, function ($timestamp) use ($windowStart) {
+            return Carbon::parse($timestamp)->isAfter($windowStart);
+        });
 
-		    return \App\Models\Sensor::where('device_id', $this->device->device_id)
-		        ->where(function ($query) use ($resourceName) {
-		            $query->where('sensor_descr', $resourceName)
-		                  ->orWhere('sensor_oid', $resourceName)
-		                  ->orWhere('sensor_index', $resourceName)
-		                  ->orWhere('sensor_descr', 'like', "%{$resourceName}%");
-		        })
-		        ->first();
-		}
-
-    protected function matchDeviceStorage(string $resourceName)
-		{
-		    if (empty($resourceName) || !$this->device) {
-		        return null;
-		    }
-
-		    return \App\Models\Storage::where('device_id', $this->device->device_id)
-		        ->where(function ($query) use ($resourceName) {
-		            $query->where('storage_descr', $resourceName)
-		                  ->orWhere('storage_descr', 'like', "%{$resourceName}%");
-		        })
-		        ->first();
-		}
+        return count($requests) < $connection->rate_limit;
+    }
 
     protected function updateRateLimit($connection): void
     {
@@ -721,5 +337,11 @@ class Api
         Cache::put($cacheKey, $requests, 120);
     }
 
-
+    protected function handleFailedEndpoint(RestApiEndpoint $endpoint): void
+    {
+        $cacheKey = "rest_api_failures:{$endpoint->id}";
+        $failures = Cache::get($cacheKey, 0);
+        $failures++;
+        Cache::put($cacheKey, $failures, 3600);
+    }
 }
