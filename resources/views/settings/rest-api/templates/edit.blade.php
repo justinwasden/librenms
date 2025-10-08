@@ -379,15 +379,45 @@ function templateEditor() {
 
 // Alpine Data for Endpoint Management (Updated)
 function endpointManager() {
-    // Helper to escape HTML entities for injection
-    const escapeHtml = (str) => {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;')
-                  .replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;')
-                  .replace(/"/g, '&quot;')
-                  .replace(/'/g, '&#039;');
-    };
+    return {
+        activeEndpointIndex: null,
+        activeEndpointName: '',
+        currentEndpointFormHtml: '',
+        isAddingNew: false,
+        isFormDirty: false,
+
+        openEndpoint(index, name, endpointData) {
+            this.activeEndpointIndex = index;
+            this.activeEndpointName = name;
+            this.isAddingNew = false;
+            this.isFormDirty = false;
+
+            // load pre-rendered endpoint form (from Blade partial template)
+            const template = document.querySelector('#full-endpoint-template').innerHTML;
+            this.currentEndpointFormHtml = template
+                .replace(/__ACTIVE_INDEX__/g, index)
+                .replace('__ENDPOINT_JSON__', JSON.stringify(endpointData));
+        },
+
+        openNewEndpoint() {
+            this.activeEndpointIndex = null;
+            this.isAddingNew = true;
+            this.isFormDirty = false;
+            this.activeEndpointName = 'New Endpoint';
+            this.currentEndpointFormHtml = document.querySelector('#full-endpoint-template').innerHTML
+                .replace(/__ACTIVE_INDEX__/g, 'new');
+        },
+
+        cancelEndpointChanges() {
+            this.isFormDirty = false;
+            // optionally re-render current endpoint form to revert changes
+        },
+
+        saveEndpointChanges() {
+            document.getElementById('endpoint-management-form').submit();
+        },
+    }
+}
 
     // Hydrates the form template with endpoint data
     const hydrateForm = (html, data, index) => {
