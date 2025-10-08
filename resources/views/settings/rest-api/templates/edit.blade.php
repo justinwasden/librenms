@@ -5,41 +5,10 @@
 @push('styles')
 <style>
     [x-cloak] { display: none !important; }
-
-    .action-card {
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .action-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,.1);
-    }
-
-    #endpointsModal .modal-dialog {
-        max-width: 75vw !important;
-        width: 98vw !important;
-        margin: 1vh auto;
-    }
-    #endpointsModal .modal-content {
-        height: 90vh;
-        overflow: hidden;
-    }
-    #endpointsModal .modal-body {
-        height: calc(90vh - 130px);
-        overflow-y: auto;
-    }
-    #endpointsModal .col-md-3 {
-        flex: 0 0 25%;
-        max-width: 25%;
-    }
-    #endpointsModal .col-md-9 {
-        flex: 0 0 75%;
-        max-width: 75%;
-    }
-    .endpoint-dirty {
-        border-left: 4px solid #28a745;
-        padding-left: 10px;
-        transition: border 0.3s;
-    }
+    .action-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .action-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,.1); }
+    #endpointsModal .modal-dialog { max-width: 95%; }
+    .endpoint-form-scroll { max-height: 70vh; overflow-y: auto; padding-right: 15px; }
 </style>
 @endpush
 
@@ -67,7 +36,6 @@
                         @method('PUT')
                         <div class="card-body">
                             <h5 class="mb-3 text-info"><i class="fas fa-info-circle"></i> Basic Template Information</h5>
-
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <div class="form-group">
@@ -100,6 +68,7 @@
                                             <option value="alert" {{ old('resource_type', $template->resource_type) === 'alert' ? 'selected' : '' }}>Alert/Event</option>
                                             <option value="custom" {{ old('resource_type', $template->resource_type) === 'custom' ? 'selected' : '' }}>Custom/Other</option>
                                         </select>
+                                        <small class="form-text text-muted">Primary focus of this template</small>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
@@ -111,7 +80,6 @@
                             </div>
 
                             <hr class="mb-4" style="border-top: 2px solid #dee2e6;">
-
                             <h5 class="mb-3"><i class="fas fa-tools"></i> Configuration Modules</h5>
 
                             <div class="row">
@@ -127,7 +95,6 @@
                                         </div>
                                     </div>
                                 </div>
-
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
                                         <div class="card-body text-center">
@@ -140,7 +107,6 @@
                                         </div>
                                     </div>
                                 </div>
-
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
                                         <div class="card-body text-center">
@@ -171,11 +137,9 @@
     </div>
 </div>
 
-{{-- ---------------------------------------------------------------- --}}
-{{-- MODALS SECTION --}}
-{{-- ---------------------------------------------------------------- --}}
+{{-- ----------------------------- MODALS ----------------------------- --}}
 
-{{-- 1. Connection Modal --}}
+{{-- Connection Modal --}}
 <div class="modal fade" id="connectionModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
@@ -184,9 +148,7 @@
                 @method('PUT')
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title"><i class="fas fa-plug"></i> Configure API Connection</h5>
-                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                        <span>&times;</span>
-                    </button>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
                 </div>
                 <div class="modal-body">
                     @include('settings.rest-api.templates.partials.connection', ['template' => $template])
@@ -201,158 +163,189 @@
     </div>
 </div>
 
-{{-- 2. Endpoints Modal --}}
+{{-- Endpoints Modal --}}
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content" x-data="endpointManager()" x-init="init()">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span>&times;</span>
-                </button>
-            </div>
+            <form id="endpoint-management-form" action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        {{-- LEFT PANE --}}
+                        <div class="col-md-3 border-right">
+                            <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
-            <div class="modal-body">
-                <div class="row">
-                    {{-- Left pane: endpoint list --}}
-                    <div class="col-md-3 border-right">
-                        <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
+                            @php
+                                $template_data_array = is_array($template->template_data) ? $template->template_data : (json_decode($template->template_data, true) ?? []);
+                                $connections = $template_data_array['connections'] ?? [];
+                                $cIndex = 0;
+                            @endphp
 
-                        @php
-                            $template_data_array = is_array($template->template_data)
-                                ? $template->template_data
-                                : (json_decode($template->template_data, true) ?? []);
-                            $connections = $template_data_array['connections'] ?? [];
-                            $cIndex = 0;
-                        @endphp
+                            @if (isset($connections[$cIndex]))
+                                <div class="alert alert-info py-2">
+                                    Connection: **{{ $connections[$cIndex]['name'] ?? 'Unnamed Connection' }}**
+                                </div>
+                                <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
+                                    @php $connection = $connections[$cIndex]; @endphp
+                                    @if (!empty($connection['endpoints']))
+                                        @foreach ($connection['endpoints'] as $eIndex => $endpoint)
+                                            <a href="#" class="list-group-item list-group-item-action"
+                                               :class="{ 'active': activeEndpointIndex === '{{ $cIndex }}-{{ $eIndex }}' }"
+                                               @click.prevent="openEndpoint('{{ $cIndex }}-{{ $eIndex }}', '{{ addslashes($endpoint['name'] ?? 'Unnamed Endpoint') }}', {{ json_encode($endpoint, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) }})">
+                                                <div class="d-flex w-100 justify-content-between">
+                                                    <h6 class="mb-1">
+                                                        <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
+                                                        {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
+                                                    </h6>
+                                                    <small class="text-{{ ($endpoint['enabled'] ?? true) ? 'success' : 'danger' }}">
+                                                        {{ ($endpoint['enabled'] ?? true) ? 'Enabled' : 'Disabled' }}
+                                                    </small>
+                                                </div>
+                                                <small>{{ $endpoint['path'] ?? 'No Path' }}</small>
+                                            </a>
+                                        @endforeach
+                                    @else
+                                        <div class="text-muted text-center py-3">No endpoints defined.</div>
+                                    @endif
+                                </div>
+                            @else
+                                <div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> No connection configured.</div>
+                            @endif
 
-                        @if (isset($connections[$cIndex]))
-                            <div class="list-group" id="endpointList">
-                                @foreach ($connections[$cIndex]['endpoints'] ?? [] as $eIndex => $endpoint)
-                                    <button type="button"
-                                            class="list-group-item list-group-item-action"
-                                            x-on:click="selectEndpoint({{ $cIndex }}, {{ $eIndex }})"
-                                            :class="{'active': selectedEndpointIndex === {{ $eIndex }}}">
-                                        {{ $endpoint['name'] ?? 'Endpoint '.$eIndex }}
-                                    </button>
-                                @endforeach
-                            </div>
-                        @else
-                            <p class="text-muted">No endpoints configured yet.</p>
-                        @endif
-
-                        <div class="mt-3">
-                            <button type="button" class="btn btn-success btn-block" x-on:click="addNewEndpoint()">
-                                <i class="fas fa-plus"></i> Add New Endpoint
+                            <button type="button" class="btn btn-success btn-block mt-3" @click="openNewEndpoint()">
+                                <i class="fas fa-plus-circle"></i> Add New Endpoint
                             </button>
+                        </div>
+
+                        {{-- RIGHT PANE --}}
+                        <div class="col-md-9">
+                            <div x-show="activeEndpointIndex || isAddingNew" x-cloak>
+                                <h6 class="mb-3" x-html="isAddingNew ? '<i class=\'fas fa-plus-square text-success\'></i> New Endpoint Details' : '<i class=\'fas fa-edit text-primary\'></i> Edit Endpoint: ' + activeEndpointName"></h6>
+                                <div class="endpoint-form-scroll">
+                                    <div id="endpoint-detail-container" x-html="currentEndpointFormHtml" @input="isFormDirty = true">
+                                        <div class="alert alert-warning text-center">Select an endpoint or click 'Add New Endpoint' to begin editing.</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div x-show="!activeEndpointIndex && !isAddingNew">
+                                <div class="alert alert-warning text-center mt-5">
+                                    <i class="fas fa-hand-point-left fa-2x"></i><br>
+                                    Select an endpoint from the list to view its configuration, or click "Add New Endpoint."
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {{-- Right pane: endpoint details --}}
-                    <div class="col-md-9">
-                        <template x-if="selectedEndpointIndex !== null">
-                            <div>
-                                <div class="form-group">
-                                    <label for="endpoint_name">Endpoint Name</label>
-                                    <input type="text" class="form-control" x-model="selectedEndpoint.name">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="endpoint_path">Path</label>
-                                    <input type="text" class="form-control" x-model="selectedEndpoint.path">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="endpoint_method">HTTP Method</label>
-                                    <select class="form-control" x-model="selectedEndpoint.method">
-                                        <option value="GET">GET</option>
-                                        <option value="POST">POST</option>
-                                        <option value="PUT">PUT</option>
-                                        <option value="DELETE">DELETE</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="metric_map">Metric Mapping (JSON)</label>
-                                    <textarea class="form-control" rows="10" x-model="selectedEndpoint.metric_map_json"></textarea>
-                                </div>
-
-                                <div class="form-group text-right">
-                                    <button type="button" class="btn btn-primary" x-on:click="saveEndpointChanges()">
-                                        <i class="fas fa-save"></i> Save Endpoint
-                                    </button>
-                                </div>
-                            </div>
-                        </template>
-
-                        <template x-if="selectedEndpointIndex === null">
-                            <p class="text-muted">Select an endpoint from the left to edit its details.</p>
-                        </template>
-                    </div>
+                    <input type="hidden" name="action_type" value="update_endpoints_only">
                 </div>
-            </div>
 
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary" :disabled="!isFormDirty">
+                        <i class="fas fa-save"></i> Save All Endpoints
+                    </button>
+                </div>
+
+                {{-- Endpoint template for JS hydration --}}
+                <template id="full-endpoint-template">
+                    @php $js_placeholder_index = '__ACTIVE_INDEX__'; $js_connection_index = 0; @endphp
+                    @include('settings.rest-api.templates.partials.endpoint-form', [
+                        'connectionIndex' => $js_connection_index,
+                        'endpointIndex' => $js_placeholder_index,
+                        'endpoint' => [],
+                    ])
+                </template>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- Preview Modal --}}
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-eye"></i> Test Template Configuration</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                @include('settings.rest-api.templates.partials.preview', ['template' => $template])
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                {{-- Save All button removed --}}
             </div>
         </div>
     </div>
 </div>
 
 <script>
-function endpointManager() {
+function templateEditor() {
     return {
-        endpoints: @json($connections[$cIndex]['endpoints'] ?? []),
-        selectedEndpointIndex: null,
-        selectedEndpoint: {},
+        templateData: @json($template->template_data),
+        init() {}
+    }
+}
+
+function endpointManager() {
+    const escapeHtml = str => str ? str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;') : '';
+    const hydrateForm = (html, data, index) => {
+        const cIndex = 0;
+        const safeIndex = index.toString().replace(/'/g, '\\\'');
+        html = html.replace(/__ACTIVE_INDEX__/g, safeIndex);
+        const formKeys = ['name','path','method','resource_type','poll_interval','description','response_path'];
+        formKeys.forEach(key=>{
+            let value = data[key]!==undefined?String(data[key]):(key==='poll_interval'?'300':'');
+            let escapedValue = escapeHtml(value);
+            html = html.replace(
+                new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]"\\s*value=".*?"`),
+                `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]" value="${escapedValue}"`
+            );
+            if(key==='description'){
+                html = html.replace(
+                    new RegExp(`name="template_data\\[connections\\]\\[${cIndex}\\]\\[endpoints\\]\\[${safeIndex}\\]\\[${key}\\]">.*?<\\/textarea>`, 's'),
+                    `name="template_data[connections][${cIndex}][endpoints][${safeIndex}][${key}]">${escapedValue}</textarea>`
+                );
+            }
+        });
+        return html;
+    }
+
+    return {
+        activeEndpointIndex: null,
+        activeEndpointName: '',
+        currentEndpointFormHtml: '',
+        isFormDirty: false,
+        isAddingNew: false,
 
         init() {
-            // prepare endpoints
-            this.endpoints.forEach((ep, idx) => {
-                this.endpoints[idx].metric_map_json =
-                    typeof ep.metric_map === 'string'
-                        ? ep.metric_map
-                        : JSON.stringify(ep.metric_map ?? {}, null, 4);
-            });
-        },
-
-        selectEndpoint(cIndex, eIndex) {
-            this.selectedEndpointIndex = eIndex;
-            this.selectedEndpoint = {...this.endpoints[eIndex]}; // clone to allow editing
-        },
-
-        addNewEndpoint() {
-            const newEp = {
-                name: 'New Endpoint',
-                path: '',
-                method: 'GET',
-                metric_map: {},
-                metric_map_json: '{}'
-            };
-            this.endpoints.push(newEp);
-            this.selectedEndpointIndex = this.endpoints.length - 1;
-            this.selectedEndpoint = {...newEp};
-        },
-
-        saveEndpointChanges() {
-            if (this.selectedEndpointIndex === null) return;
-
-            // parse metric_map_json into JSON
-            try {
-                this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
-            } catch(e) {
-                alert('Metric Mapping JSON is invalid. Please fix before saving.');
-                return;
+            // Listen to form input to detect changes
+            const container = document.getElementById('endpoint-detail-container');
+            if(container){
+                container.addEventListener('input', () => this.isFormDirty = true);
             }
+        },
 
-            // update original array
-            this.endpoints[this.selectedEndpointIndex] = {...this.selectedEndpoint};
+        openEndpoint(index, name, endpointData) {
+            this.activeEndpointIndex = index;
+            this.activeEndpointName = name;
+            this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, endpointData, index);
+            this.isFormDirty = false;
+            this.isAddingNew = false;
+        },
 
-            // OPTIONAL: send AJAX to server here
-            console.log('Endpoint saved:', this.selectedEndpoint);
+        openNewEndpoint() {
+            this.isAddingNew = true;
+            this.activeEndpointIndex = null;
+            this.activeEndpointName = '';
+            this.currentEndpointFormHtml = hydrateForm(document.getElementById('full-endpoint-template').innerHTML, {}, 'new_' + Date.now());
+            this.isFormDirty = true;
         }
-    };
+    }
 }
 </script>
 @endsection
