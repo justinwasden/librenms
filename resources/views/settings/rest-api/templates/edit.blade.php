@@ -204,52 +204,57 @@
                 <div class="modal-body">
                     <div class="row">
                         {{-- Left Pane --}}
-                        <div class="col-md-3 border-right">
-                            <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
+                        {{-- ... Inside the Endpoints Modal: Left Pane ... --}}
+<div class="col-md-3 border-right">
+    <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
 
-                            @php
-                                $template_data_array = is_array($template->template_data)
-                                    ? $template->template_data
-                                    : (json_decode($template->template_data, true) ?? []);
-                                $connections = $template_data_array['connections'] ?? [];
-                                $cIndex = 0;
-                                $connection = $connections[$cIndex] ?? [];
-                                $connection['endpoints'] = is_array($connection['endpoints'] ?? null)
-                                    ? $connection['endpoints']
-                                    : []; // ensure always array
-                            @endphp
+    {{-- The Blade logic below is now *ONLY* for a fallback/initial state message --}}
+    @php
+        $template_data_array = is_array($template->template_data)
+            ? $template->template_data
+            : (json_decode($template->template_data, true) ?? []);
+        $connections = $template_data_array['connections'] ?? [];
+        $cIndex = 0;
+        $connection = $connections[$cIndex] ?? [];
+    @endphp
 
-                            @if(!empty($connection))
-                                <div class="alert alert-info py-2">
-                                    Connection: **{{ $connection['name'] ?? 'Unnamed Connection' }}**
-                                </div>
-                                <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
-                                    @foreach ($connection['endpoints'] ?? [] as $idx => $endpoint)
-                                        <a href="#"
-																					   class="list-group-item list-group-item-action"
-																					   :class="{ 'active': selectedEndpointIndex === {{ $idx }} }"
-																					   @click.prevent="selectEndpoint({{ $idx }})">
+    @if(!empty($connection))
+        <div class="alert alert-info py-2">
+            Connection: **{{ $connection['name'] ?? 'Unnamed Connection' }}**
+        </div>
+        {{--
+          THIS IS THE CRITICAL CHANGE:
+          Replace @foreach with x-for to let Alpine manage the list.
+          Use $index from x-for for the key and for selectEndpoint call.
+        --}}
+        <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
+            <template x-for="(endpoint, index) in endpoints" :key="index">
+                <a href="#"
+                   class="list-group-item list-group-item-action"
+                   :class="{ 'active': selectedEndpointIndex === index }"
+                   @click.prevent="selectEndpoint(index)">
 
-                                            <div class="d-flex w-100 justify-content-between">
-                                                <h6 class="mb-1">
-                                                    <span class="badge badge-secondary mr-1">{{ strtoupper($endpoint['method'] ?? 'GET') }}</span>
-                                                    {{ $endpoint['name'] ?? 'Unnamed Endpoint' }}
-                                                </h6>
-                                                <small class="text-{{ ($endpoint['enabled'] ?? true) ? 'success' : 'danger' }}">
-                                                    {{ ($endpoint['enabled'] ?? true) ? 'Enabled' : 'Disabled' }}
-                                                </small>
-                                            </div>
-                                            <small>{{ $endpoint['path'] ?? 'No Path' }}</small>
-                                        </a>
-                                    @endforeach
-                                </div>
-                            @else
-                                <div class="text-muted text-center py-3">No endpoints defined.</div>
-                            @endif
-                            <button type="button" class="btn btn-success btn-block mt-3" @click="addNewEndpoint()">
-                                <i class="fas fa-plus-circle"></i> Add New Endpoint
-                            </button>
-                        </div>
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">
+                            <span class="badge badge-secondary mr-1" x-text="endpoint.method.toUpperCase() || 'GET'"></span>
+                            <span x-text="endpoint.name || 'Unnamed Endpoint'"></span>
+                        </h6>
+                        <small :class="endpoint.enabled ? 'text-success' : 'text-danger'">
+                            <span x-text="endpoint.enabled ? 'Enabled' : 'Disabled'"></span>
+                        </small>
+                    </div>
+                    <small x-text="endpoint.path || 'No Path'"></small>
+                </a>
+            </template>
+        </div>
+    @else
+        <div class="text-muted text-center py-3">No endpoints defined.</div>
+    @endif
+
+    <button type="button" class="btn btn-success btn-block mt-3" @click="addNewEndpoint()">
+        <i class="fas fa-plus-circle"></i> Add New Endpoint
+    </button>
+</div>
 
                         {{-- Right Pane --}}
                         <div class="col-md-9" id="endpoint-detail-container">
