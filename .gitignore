@@ -48,3 +48,18 @@ pyvenv.cfg
 
 /.phpunit.cache/storage/pail
 /.nova
+tmp/jsondata/api info.txt
+tmp/jsondata/array and performance.json
+tmp/jsondata/arrays.json
+tmp/jsondata/arrays_mapping.json
+tmp/jsondata/controllers.json
+tmp/jsondata/core tables.txt
+tmp/jsondata/drives.json
+tmp/jsondata/hardware.json
+tmp/jsondata/hosts.json
+tmp/jsondata/interfaces.json.txt
+tmp/jsondata/network-interfaces.json
+tmp/jsondata/network-performance.json
+tmp/jsondata/port details.json
+tmp/jsondata/volume performance.json
+tmp/jsondata/volumes.json
