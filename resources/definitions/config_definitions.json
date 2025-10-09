@@ -6135,13 +6135,6 @@
             "default": true,
             "type": "boolean"
         },
-        "poller_modules.restapi": {
-            "order": 460,
-            "group": "poller",
-            "section": "poller_modules",
-            "default": true,
-            "type": "boolean"
-        },
         "poller_modules.loadbalancers": {
             "order": 230,
             "group": "poller",
