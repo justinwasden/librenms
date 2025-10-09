@@ -240,18 +240,23 @@ class CredentialHelper
             $data['password'] = $params['password'];
         }
         
-        $postFields = json_encode($data);
-        
-        if ($loginMethod === 'POST' || $loginMethod === 'PUT') {
+        // Only set POST body if we have data OR if method requires it
+        $postFields = null;
+        if (!empty($data) && ($loginMethod === 'POST' || $loginMethod === 'PUT')) {
+            $postFields = json_encode($data);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+            \Log::debug("Login request body: {$postFields}");
         }
         
         // Add API Token header if credential has a token field
-        if (!empty($apiTokenHeader) && !empty($params['token'])) {
-            $headers[] = "{$apiTokenHeader}: {$params['token']}";
-            \Log::info("Adding API token header: {$apiTokenHeader} with value: " . substr($params['token'], 0, 10) . '...');
+        // Check multiple possible param names for the token
+        $tokenValue = $params['token'] ?? $params['api_token'] ?? $params['apitoken'] ?? null;
+        
+        if (!empty($apiTokenHeader) && !empty($tokenValue)) {
+            $headers[] = "{$apiTokenHeader}: {$tokenValue}";
+            \Log::info("Adding API token header: {$apiTokenHeader} with value: " . substr($tokenValue, 0, 10) . '...');
         } else {
-            \Log::error("Cannot add API token header. apiTokenHeader: '{$apiTokenHeader}', token exists: " . (isset($params['token']) ? 'yes' : 'no'));
+            \Log::error("Cannot add API token header. apiTokenHeader: '{$apiTokenHeader}', token exists: " . ($tokenValue ? 'yes' : 'no'));
             \Log::debug("Available params: " . implode(', ', array_keys($params)));
         }
         
