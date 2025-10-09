@@ -1,3 +1,4 @@
+{{-- resources/views/settings/rest-api/templates/edit.blade.php --}}
 @extends('layouts.librenmsv1')
 
 @section('title', 'Edit REST API Template')
@@ -53,98 +54,91 @@
         <div class="col-md-10 col-lg-9 col-xl-8">
             <div x-data="templateEditor()" x-init="init()">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h3 class="card-title">Edit Template: {{ $template->name }}</h3>
-                        <div class="card-tools">
-                            <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default btn-sm">
-                                <i class="fas fa-arrow-left"></i> Back to Templates
-                            </a>
-                        </div>
+                        <a href="{{ route('settings.rest-api.templates.index') }}" class="btn btn-default btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back to Templates
+                        </a>
                     </div>
 
-                    <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
+                    <form action="{{ route('settings.rest-api.templates.update', $template->id) }}" method="POST">
                         @csrf
                         @method('PUT')
                         <div class="card-body">
+                            {{-- BASIC INFO --}}
                             <h5 class="mb-3 text-info"><i class="fas fa-info-circle"></i> Basic Template Information</h5>
                             <div class="row mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="name">Template Name <span class="text-danger">*</span></label>
-                                        <input type="text" name="name" id="name" class="form-control"
-                                               value="{{ old('name', $template->name) }}" required>
-                                    </div>
+                                    <label for="name">Template Name <span class="text-danger">*</span></label>
+                                    <input type="text" name="name" id="name" class="form-control" required
+                                           value="{{ old('name', $template->name) }}">
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="vendor">Vendor</label>
-                                        <input type="text" name="vendor" id="vendor" class="form-control"
-                                               value="{{ old('vendor', $template->vendor) }}">
-                                    </div>
+                                    <label for="vendor">Vendor</label>
+                                    <input type="text" name="vendor" id="vendor" class="form-control"
+                                           value="{{ old('vendor', $template->vendor) }}">
                                 </div>
                             </div>
 
                             <div class="row mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="resource_type">Primary Resource Type</label>
-                                        <select name="resource_type" id="resource_type" class="form-control">
-                                            <option value="">-- None (Generic) --</option>
-                                            <option value="device" {{ old('resource_type', $template->resource_type) === 'device' ? 'selected' : '' }}>Device</option>
-                                            <option value="port" {{ old('resource_type', $template->resource_type) === 'port' ? 'selected' : '' }}>Port/Interface</option>
-                                            <option value="storage" {{ old('resource_type', $template->resource_type) === 'storage' ? 'selected' : '' }}>Storage/Volume</option>
-                                            <option value="sensor" {{ old('resource_type', $template->resource_type) === 'sensor' ? 'selected' : '' }}>Sensor/Health</option>
-                                            <option value="processor" {{ old('resource_type', $template->resource_type) === 'processor' ? 'selected' : '' }}>Processor</option>
-                                            <option value="mempool" {{ old('resource_type', $template->resource_type) === 'mempool' ? 'selected' : '' }}>Memory Pool</option>
-                                            <option value="alert" {{ old('resource_type', $template->resource_type) === 'alert' ? 'selected' : '' }}>Alert/Event</option>
-                                            <option value="custom" {{ old('resource_type', $template->resource_type) === 'custom' ? 'selected' : '' }}>Custom/Other</option>
-                                        </select>
-                                        <small class="form-text text-muted">Primary focus of this template</small>
-                                    </div>
+                                    <label for="resource_type">Primary Resource Type</label>
+                                    <select name="resource_type" id="resource_type" class="form-control">
+                                        <option value="">-- None (Generic) --</option>
+                                        @foreach(['device','port','storage','sensor','processor','mempool','alert','custom'] as $type)
+                                            <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
+                                                {{ ucfirst($type) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <small class="form-text text-muted">Defines the main data category this template handles</small>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="description">Description</label>
-                                        <textarea name="description" id="description" class="form-control" rows="3">{{ old('description', $template->description) }}</textarea>
-                                    </div>
+                                    <label for="description">Description</label>
+                                    <textarea name="description" id="description" class="form-control" rows="3">{{ old('description', $template->description) }}</textarea>
                                 </div>
                             </div>
 
-                            <hr class="mb-4" style="border-top: 2px solid #dee2e6;">
+                            <hr class="mb-4">
                             <h5 class="mb-3"><i class="fas fa-tools"></i> Configuration Modules</h5>
 
                             <div class="row">
+                                {{-- CONNECTION --}}
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
                                         <div class="card-body text-center">
                                             <i class="fas fa-plug fa-3x text-info mb-3"></i>
                                             <h5 class="card-title">Connection Settings</h5>
-                                            <p class="card-text text-muted"><small>Base URL, Credentials, Login Path, and SSL.</small></p>
-                                            <button type="button" class="btn btn-info btn-block mt-3" data-toggle="modal" data-target="#connectionModal">
+                                            <p class="text-muted"><small>Base URL, credentials, and authentication paths.</small></p>
+                                            <button type="button" class="btn btn-info btn-block" data-toggle="modal" data-target="#connectionModal">
                                                 <i class="fas fa-edit"></i> Configure Connection
                                             </button>
                                         </div>
                                     </div>
                                 </div>
+
+                                {{-- ENDPOINTS --}}
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
                                         <div class="card-body text-center">
                                             <i class="fas fa-list fa-3x text-primary mb-3"></i>
                                             <h5 class="card-title">Endpoint Management</h5>
-                                            <p class="card-text text-muted"><small>Paths, Methods, Metric Mapping, and Intervals.</small></p>
-                                            <button type="button" class="btn btn-primary btn-block mt-3" data-toggle="modal" data-target="#endpointsModal">
+                                            <p class="text-muted"><small>Paths, methods, and metric mappings.</small></p>
+                                            <button type="button" class="btn btn-primary btn-block" data-toggle="modal" data-target="#endpointsModal">
                                                 <i class="fas fa-tasks"></i> Manage Endpoints
                                             </button>
                                         </div>
                                     </div>
                                 </div>
+
+                                {{-- PREVIEW --}}
                                 <div class="col-md-4 mb-3">
                                     <div class="card bg-light action-card h-100">
                                         <div class="card-body text-center">
                                             <i class="fas fa-eye fa-3x text-success mb-3"></i>
                                             <h5 class="card-title">Test & Preview</h5>
-                                            <p class="card-text text-muted"><small>Verify API calls against a device before saving.</small></p>
-                                            <button type="button" class="btn btn-success btn-block mt-3" data-toggle="modal" data-target="#previewModal">
+                                            <p class="text-muted"><small>Run test calls before finalizing the template.</small></p>
+                                            <button type="button" class="btn btn-success btn-block" data-toggle="modal" data-target="#previewModal">
                                                 <i class="fas fa-play"></i> Run Test
                                             </button>
                                         </div>
@@ -168,16 +162,15 @@
     </div>
 </div>
 
-{{-- Connection Modal --}}
-<div class="modal fade" id="connectionModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-lg" role="document">
+{{-- CONNECTION MODAL --}}
+<div class="modal fade" id="connectionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form action="{{ route('settings.rest-api.templates.update', ['template' => $template->id]) }}" method="POST">
-                @csrf
-                @method('PUT')
+            <form action="{{ route('settings.rest-api.templates.update', $template->id) }}" method="POST">
+                @csrf @method('PUT')
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title"><i class="fas fa-plug"></i> Configure API Connection</h5>
-                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+                    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
                 </div>
                 <div class="modal-body">
                     @include('settings.rest-api.templates.partials.connection', ['template' => $template])
@@ -192,74 +185,50 @@
     </div>
 </div>
 
-{{-- Endpoints Modal --}}
-<div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog" aria-hidden="true">
+{{-- ENDPOINTS MODAL --}}
+<div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
-        <div x-data="endpointManager({ endpoints: @json($connection['endpoints'] ?? []) })" x-init="init()">
+        @php
+            $templateData = is_array($template->template_data)
+                ? $template->template_data
+                : json_decode($template->template_data ?? '{}', true);
+            $connections = $templateData['connections'] ?? [];
+            $connection = $connections[0] ?? [];
+            $endpoints = $connection['endpoints'] ?? [];
+        @endphp
+        <div x-data="endpointManager({ endpoints: @json($endpoints) })" x-init="init()">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
-                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+                    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
                 </div>
+
                 <div class="modal-body">
                     <div class="row">
-                        {{-- Left Pane --}}
-                        {{-- ... Inside the Endpoints Modal: Left Pane ... --}}
-<div class="col-md-3 border-right">
-    <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
+                        {{-- LEFT PANEL --}}
+                        <div class="col-md-3 border-right">
+                            <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
+                            <div class="list-group" style="max-height:600px; overflow-y:auto;">
+                                <template x-for="(endpoint, index) in endpoints" :key="index">
+                                    <a href="#" class="list-group-item list-group-item-action"
+                                       :class="{ 'active': selectedEndpointIndex === index }"
+                                       @click.prevent="selectEndpoint(index)">
+                                        <span class="badge badge-secondary mr-2" x-text="endpoint.method || 'GET'"></span>
+                                        <span x-text="endpoint.name || endpoint.path || 'Unnamed'"></span>
+                                    </a>
+                                </template>
+                            </div>
 
-    {{-- The Blade logic below is now *ONLY* for a fallback/initial state message --}}
-    @php
-        $template_data_array = is_array($template->template_data)
-            ? $template->template_data
-            : (json_decode($template->template_data, true) ?? []);
-        $connections = $template_data_array['connections'] ?? [];
-        $cIndex = 0;
-        $connection = $connections[$cIndex] ?? [];
-    @endphp
+                            <button type="button" class="btn btn-success btn-block mt-3"
+                                    @click="addNewEndpoint()">
+                                <i class="fas fa-plus-circle"></i> Add New Endpoint
+                            </button>
+                        </div>
 
-    @if(!empty($connection))
-        <div class="alert alert-info py-2">
-            Connection: **{{ $connection['name'] ?? 'Unnamed Connection' }}**
-        </div>
-        {{--
-          THIS IS THE CRITICAL CHANGE:
-          Replace @foreach with x-for to let Alpine manage the list.
-          Use $index from x-for for the key and for selectEndpoint call.
-        --}}
-        <div class="list-group mb-4" style="max-height:600px; overflow-y:auto;">
-            <template x-for="(endpoint, index) in endpoints" :key="index">
-                <a href="#"
-                   class="list-group-item list-group-item-action"
-                   :class="{ 'active': selectedEndpointIndex === index }"
-                   @click.prevent="selectEndpoint(index)">
-
-                    <div class="d-flex w-100 justify-content-between">
-                        <h6 class="mb-1">
-                            <span class="badge badge-secondary mr-1" x-text="endpoint.method.toUpperCase() || 'GET'"></span>
-                            <span x-text="endpoint.name || 'Unnamed Endpoint'"></span>
-                        </h6>
-                        <small :class="endpoint.enabled ? 'text-success' : 'text-danger'">
-                            <span x-text="endpoint.enabled ? 'Enabled' : 'Disabled'"></span>
-                        </small>
-                    </div>
-                    <small x-text="endpoint.path || 'No Path'"></small>
-                </a>
-            </template>
-        </div>
-    @else
-        <div class="text-muted text-center py-3">No endpoints defined.</div>
-    @endif
-
-    <button type="button" class="btn btn-success btn-block mt-3" @click="addNewEndpoint()">
-        <i class="fas fa-plus-circle"></i> Add New Endpoint
-    </button>
-</div>
-
-                        {{-- Right Pane --}}
-                        <div class="col-md-9" id="endpoint-detail-container">
+                        {{-- RIGHT PANEL --}}
+                        <div class="col-md-9">
                             <template x-if="selectedEndpointIndex !== null">
-                                <div>
+                                <div class="endpoint-dirty">
                                     <div class="form-group">
                                         <label>Endpoint Name</label>
                                         <input type="text" class="form-control" x-model="selectedEndpoint.name">
@@ -271,50 +240,54 @@
                                     <div class="form-group">
                                         <label>HTTP Method</label>
                                         <select class="form-control" x-model="selectedEndpoint.method">
-                                            <option value="GET">GET</option>
-                                            <option value="POST">POST</option>
-                                            <option value="PUT">PUT</option>
-                                            <option value="DELETE">DELETE</option>
+                                            <option>GET</option>
+                                            <option>POST</option>
+                                            <option>PUT</option>
+                                            <option>DELETE</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
                                         <label>Metric Mapping (JSON)</label>
                                         <textarea class="form-control" rows="10" x-model="selectedEndpoint.metric_map_json"></textarea>
                                     </div>
-                                    <div class="form-group text-right">
-                                        <button type="button" class="btn btn-primary" @click="saveEndpointChanges()">
+
+                                    <div class="text-right">
+                                        <button type="button" class="btn btn-primary" :disabled="!isDirty"
+                                                @click="saveEndpointChanges()">
                                             <i class="fas fa-save"></i> Save Endpoint
                                         </button>
                                     </div>
                                 </div>
                             </template>
+
                             <template x-if="selectedEndpointIndex === null">
-                                <p class="text-muted">Select an endpoint from the left to edit its details.</p>
+                                <p class="text-muted text-center">Select an endpoint to edit or create a new one.</p>
                             </template>
                         </div>
                     </div>
                 </div>
+
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button class="btn btn-secondary" data-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-{{-- Preview Modal --}}
-<div class="modal fade" id="previewModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-xl" role="document">
+{{-- PREVIEW MODAL --}}
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title"><i class="fas fa-eye"></i> Test Template Configuration</h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
                 @include('settings.rest-api.templates.partials.preview', ['template' => $template])
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button class="btn btn-secondary" data-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -322,21 +295,17 @@
 
 <script>
 function templateEditor() {
-    return {
-        templateData: @json($template->template_data),
-        init() {
-            // any initialization logic for templateEditor
-        }
-    }
+    return { init() { console.log('Template Editor Loaded'); } }
 }
 
 function endpointManager({ endpoints }) {
-    const escapeHtml = str => str ? str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;') : '';
-
     return {
         endpoints: endpoints || [],
         selectedEndpointIndex: null,
         selectedEndpoint: {},
+        originalEndpoint: {},
+        isDirty: false,
+
         init() {
             this.endpoints.forEach((ep, idx) => {
                 this.endpoints[idx].metric_map_json =
@@ -345,38 +314,39 @@ function endpointManager({ endpoints }) {
                         : JSON.stringify(ep.metric_map ?? {}, null, 4);
             });
         },
+
         selectEndpoint(index) {
             this.selectedEndpointIndex = index;
-            this.selectedEndpoint = {...this.endpoints[index]};
+            this.selectedEndpoint = JSON.parse(JSON.stringify(this.endpoints[index]));
+            this.originalEndpoint = JSON.parse(JSON.stringify(this.endpoints[index]));
+            this.isDirty = false;
         },
+
         addNewEndpoint() {
-            const newEp = { name:'New Endpoint', path:'', method:'GET', metric_map:{}, metric_map_json:'{}' };
+            const newEp = { name: 'New Endpoint', path: '', method: 'GET', metric_map: {}, metric_map_json: '{}' };
             this.endpoints.push(newEp);
-            this.selectedEndpointIndex = this.endpoints.length-1;
-            this.selectedEndpoint = {...newEp};
+            this.selectEndpoint(this.endpoints.length - 1);
+            this.isDirty = true;
         },
+
         async saveEndpointChanges() {
             if (this.selectedEndpointIndex === null) return;
 
             try {
                 this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
-            } catch(e){
-                alert('Metric Mapping JSON is invalid. Fix before saving.');
+            } catch {
+                alert('Invalid JSON in Metric Mapping');
                 return;
             }
 
-            this.endpoints[this.selectedEndpointIndex] = {...this.selectedEndpoint};
-
-            console.log('Endpoint saved locally:', this.selectedEndpoint);
+            this.endpoints[this.selectedEndpointIndex] = { ...this.selectedEndpoint };
+            this.isDirty = false;
 
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const response = await fetch("{{ route('device.rest-api.connections.update', ['device' => $template->device_id ?? 0, 'connection' => $connection['id'] ?? 0]) }}", {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": token
-                    },
+                const res = await fetch("{{ route('device.rest-api.connections.update', ['device' => $template->device_id ?? 0, 'connection' => $connection['id'] ?? 0]) }}", {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
                     body: JSON.stringify({
                         action_type: 'edit_endpoint',
                         index: this.selectedEndpointIndex,
@@ -384,18 +354,18 @@ function endpointManager({ endpoints }) {
                     })
                 });
 
-                const data = await response.json();
-                if(data.success){
+                const data = await res.json();
+                if (data.success) {
                     alert('Endpoint saved successfully.');
                 } else {
-                    alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+                    alert('Error saving endpoint: ' + (data.message || 'Unknown error.'));
                 }
             } catch (err) {
                 console.error(err);
-                alert('AJAX request failed. Check console.');
+                alert('AJAX request failed.');
             }
-        }
-    };
+        },
+    }
 }
 </script>
 @endsection
