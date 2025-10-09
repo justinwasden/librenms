@@ -131,6 +131,133 @@ class RestApiTemplateSeeder extends Seeder
             "host_total_reduction" => "space.total_reduction",
         ];
 
+        // Define mapping arrays for TrueNAS SCALE
+        $trueNasSystemInfoMapping = [
+            "hostname" => "hostname",
+            "version" => "version",
+            "uptime_seconds" => "uptime_seconds",
+            "system_product" => "system_product",
+        ];
+
+        $trueNasPoolStatusMapping = [
+            // Assuming this endpoint returns an array of pools.
+            "pool_name" => "name",
+            "state" => "status", // Maps pool status to generic sensor state field (e.g., ONLINE, DEGRADED)
+            "pool_health" => "healthy", // Maps health boolean to a custom metric (e.g., True/False)
+        ];
+
+        $trueNasDatasetUsageMapping = [
+            // TrueNAS dataset properties are usually nested under 'available' and 'used' fields with a 'value' key.
+            "storage_descr" => "id", // Dataset path/name (e.g., pool/dataset)
+            "storage_used" => "used.value", // Used bytes
+            "available_capacity" => "available.value", // Available bytes
+            "compression_ratio" => "compressionratio.value",
+        ];
+
+        // Define mapping arrays for Cisco Meraki
+        $merakiOrganizationDeviceStatusMapping = [
+            // Meraki is typically polled per device. This is a list.
+            "device_name" => "name",
+            "serial" => "serial",
+            "model" => "model",
+            "mac_address" => "mac",
+            "device_status" => "status", // Mapped to a state field
+            "last_seen" => "lastSeen",
+        ];
+
+        $merakiNetworkUplinkPerformanceMapping = [
+            // This endpoint is for a network, yielding overall performance stats.
+            "wan1_loss_avg" => "timeseries.0.uplinks.0.loss.average",
+            "wan1_latency_avg" => "timeseries.0.uplinks.0.latency.average",
+            "wan2_loss_avg" => "timeseries.0.uplinks.1.loss.average",
+            "wan2_latency_avg" => "timeseries.0.uplinks.1.latency.average",
+        ];
+
+        // Define mapping arrays for Cisco ISE
+        $ciscoIseSystemInfoMapping = [
+            "ise_version" => "InternalVersion",
+            "ise_name" => "Name",
+            "ise_uptime" => "Uptime",
+            "ise_system_status" => "SystemStatus",
+        ];
+
+        $ciscoIseSessionCountMapping = [
+            "session_count" => "sessionCount",
+            "active_sessions" => "activeSessionCount",
+            "session_updates" => "sessionUpdateCount",
+        ];
+
+        // Define mapping arrays for VeloCloud
+        $veloCloudEdgeStatusMapping = [
+            "edge_name" => "name",
+            "edge_serial" => "serialNumber",
+            "edge_state" => "state", // E.g., 'CONNECTED', 'DISCONNECTED'
+            "edge_model" => "modelNumber",
+        ];
+
+        $veloCloudLinkPerformanceMapping = [
+            "link_name" => "displayName",
+            "link_health_score" => "healthScore",
+            "link_loss" => "linkQuality.loss",
+            "link_latency" => "linkQuality.latency",
+            "link_jitter" => "linkQuality.jitter",
+        ];
+
+        // Define mapping arrays for Juniper MIST
+        $juniperMistDeviceStatusMapping = [
+            "device_mac" => "mac",
+            "device_model" => "model",
+            "device_type" => "type", // e.g., 'ap', 'gateway', 'switch'
+            "state" => "status", // e.g., 'connected', 'disconnected'
+            "last_seen" => "last_seen",
+        ];
+
+        $juniperMistSiteDeviceCountMapping = [
+            // Returns statistics for a specific site (requires site_id)
+            "device_count" => "count",
+            "ap_connected" => "status_connected_aps",
+            "switch_connected" => "status_connected_sws",
+            "gateway_connected" => "status_connected_sris",
+        ];
+
+        // Define mapping arrays for Generic Cloud Gateway/Load Balancer
+        $cloudGatewayHealthMapping = [
+            "gateway_name" => "resourceName",
+            "state" => "healthStatus", // Mapped to generic state (e.g., 'Healthy', 'Degraded')
+            "active_connections" => "metrics.currentConnections",
+            "throughput_in_bytes" => "metrics.bytesInPerSecond",
+            "throughput_out_bytes" => "metrics.bytesOutPerSecond",
+        ];
+
+        // Define mapping arrays for VMware vCenter/ESXi
+        $vmwareSystemHealthMapping = [
+            "health_overall" => "overall.status",
+            "cpu_usage_mhz" => "cpu.usageMhz",
+            "mem_usage_mb" => "memory.usageMB",
+            "total_mem_mb" => "memory.totalMB",
+        ];
+
+        $vmwareDatastoreMapping = [
+            "storage_descr" => "name",
+            "storage_size" => "capacity",
+            "available_capacity" => "freeSpace",
+        ];
+
+        // Define mapping arrays for F5 BIG-IP
+        $f5GlobalStatsMapping = [
+            "cpu_usage_avg" => "system.cpuInfo.oneMinAvg",
+            "mem_used" => "system.memoryInfo.memoryUsed",
+            "mem_total" => "system.memoryInfo.memoryTotal",
+            "http_requests_per_sec" => "global.clientSideTraffic.currentConnections",
+        ];
+
+        $f5VirtualServerStatusMapping = [
+            "vs_name" => "virtualServerName",
+            "vs_status" => "status.availabilityState", // Mapped to sensor state
+            "vs_connections" => "stats.currentConnections",
+        ];
+
+
         // Define mapping arrays for the networking templates (1-5)
         // to be encoded below.
 
@@ -525,7 +652,6 @@ class RestApiTemplateSeeder extends Seeder
                                     // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageArrayPerformanceMapping,
                                 ],
-                                // Added missing Volume Performance endpoint
                                 [
                                     "name" => "Volume Performance",
                                     "path" => "/volumes/performance",
@@ -692,6 +818,332 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     "metric_map" => $pureStorageDrivesMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 9. TRUENAS SCALE REST API
+            // ---------------------------------------------------------------------
+            [
+                "name" => "TrueNAS SCALE REST API",
+                "vendor" => "TrueNAS",
+                "description" => "Standard REST API endpoints for TrueNAS SCALE (JSON based). Requires API Key Auth.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/api/v2.0",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "System Information",
+                                    "path" => "/system/info",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $trueNasSystemInfoMapping,
+                                ],
+                                [
+                                    "name" => "ZFS Pool Status",
+                                    "path" => "/pool",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor", // Pooling status is a health sensor
+                                    "resource_id_field" => "name",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $trueNasPoolStatusMapping,
+                                ],
+                                [
+                                    "name" => "ZFS Dataset Usage",
+                                    "path" => "/pool/dataset",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "storage",
+                                    "resource_id_field" => "id", // Dataset path (e.g., pool/dataset)
+                                    "resource_name_field" => "id",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $trueNasDatasetUsageMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 10. CISCO MERAKI DASHBOARD (API Key Auth)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Cisco Meraki Dashboard",
+                "vendor" => "Cisco",
+                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the 'X-Cisco-Meraki-API-Key' header.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://api.meraki.com/api/v1", // Meraki API uses a fixed base URL
+                            "rate_limit" => 100,
+                            "endpoints" => [
+                                [
+                                    "name" => "Organization Device Status",
+                                    "path" => "/organizations/{organizationId}/deviceStatuses", // Requires Organization ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "serial",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $merakiOrganizationDeviceStatusMapping,
+                                ],
+                                [
+                                    "name" => "Network Uplink Performance",
+                                    "path" => "/networks/{networkId}/appliancePerformance?timespan=3600", // Requires Network ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor",
+                                    "resource_id_field" => "networkId",
+                                    "resource_name_field" => "networkName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $merakiNetworkUplinkPerformanceMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 11. CISCO ISE (Identity Services Engine)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Cisco ISE (Identity Services Engine)",
+                "vendor" => "Cisco",
+                "description" => "Common ERS/Monitoring API endpoints for Cisco ISE (JSON based). Requires Basic Auth (ID 2).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "System Info",
+                                    "path" => "/ers/config/node/version",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $ciscoIseSystemInfoMapping,
+                                ],
+                                [
+                                    "name" => "Live Session Count",
+                                    "path" => "/admin/api/mnt/Session/Count",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $ciscoIseSessionCountMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 12. VELOCLOUD SD-WAN (Broadcom)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "VeloCloud SD-WAN Orchestrator",
+                "vendor" => "Broadcom",
+                "description" => "VeloCloud Orchestrator REST API endpoints (JSON based). Requires API Key/Token Auth.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/portal/rest",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Edge Inventory and Status",
+                                    "path" => "/enterprise/getEnterpriseEdges",
+                                    "method" => "POST",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "serialNumber",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $veloCloudEdgeStatusMapping,
+                                ],
+                                [
+                                    "name" => "Link Performance",
+                                    "path" => "/metrics/getEdgeLinkQuality?edgeId={resourceId}", // Requires Edge ID/Serial as parameter
+                                    "method" => "POST",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor",
+                                    "resource_id_field" => "displayName",
+                                    "resource_name_field" => "displayName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $veloCloudLinkPerformanceMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 13. JUNIPER MIST (API Token Auth)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Juniper MIST",
+                "vendor" => "Juniper Networks",
+                "description" => "Juniper MIST Cloud API endpoints (JSON based). Requires API Token Auth (Bearer token in header).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://api.mist.com/api/v1", // Fixed base URL for MIST API
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Site Device Count",
+                                    "path" => "/sites/{siteId}/stats/devices", // Requires Site ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device", // Can be mapped to the site
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $juniperMistSiteDeviceCountMapping,
+                                ],
+                                [
+                                    "name" => "Inventory Status",
+                                    "path" => "/orgs/{orgId}/inventory", // Requires Organization ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "mac",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $juniperMistDeviceStatusMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 14. CLOUD LOAD BALANCER / GATEWAY (Generic)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Cloud Load Balancer (Generic)",
+                "vendor" => "Cloud Provider",
+                "description" => "A generic template for polling Cloud Load Balancer or Network Gateway metrics (JSON based). Requires OAuth 2.0 or dedicated Access Key Auth.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/api/v1",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Resource Health and Performance",
+                                    "path" => "/loadbalancers/{resourceId}/metrics/latest",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "resourceName",
+                                    "resource_name_field" => "resourceName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $cloudGatewayHealthMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 15. VMWARE vCENTER / ESXi
+            // ---------------------------------------------------------------------
+            [
+                "name" => "VMware vCenter/ESXi (vSphere API)",
+                "vendor" => "VMware",
+                "description" => "Standard vSphere Automation API endpoints (JSON based). Requires Basic Auth (ID 2) or Session Token Auth.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/rest/vcenter",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Host System Health",
+                                    "path" => "/host/{hostId}/hardware/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "hostId",
+                                    "resource_name_field" => "hostName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $vmwareSystemHealthMapping,
+                                ],
+                                [
+                                    "name" => "Datastore Storage Usage",
+                                    "path" => "/datastore",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "storage",
+                                    "resource_id_field" => "datastore",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $vmwareDatastoreMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 16. F5 BIG-IP (iControl REST)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "F5 BIG-IP (iControl REST)",
+                "vendor" => "F5 Networks",
+                "description" => "Common iControl REST API endpoints for F5 BIG-IP (JSON based). Requires Basic Auth (ID 2).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/mgmt/tm/ltm",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Global System Performance",
+                                    "path" => "/global/stats",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $f5GlobalStatsMapping,
+                                ],
+                                [
+                                    "name" => "Virtual Server Status",
+                                    "path" => "/virtual",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom",
+                                    "resource_id_field" => "virtualServerName",
+                                    "resource_name_field" => "virtualServerName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $f5VirtualServerStatusMapping,
                                 ],
                             ],
                         ],

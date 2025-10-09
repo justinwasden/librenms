@@ -124,6 +124,25 @@ class RestApiPoller
 
         $body = (string)$res->getBody();
         
+        // Check if we got HTML instead of JSON (session expired)
+        if (stripos($body, '<!DOCTYPE html>') !== false || stripos($body, '<html') !== false) {
+            Log::warning("[{$endpoint->name}] Received HTML instead of JSON - session token likely expired");
+            
+            // Clear cached token and retry once
+            if ($connection->credential && Str::lower($connection->credential->authenticationType->name) === 'session token') {
+                $cacheKey = "connection_{$connection->id}";
+                unset($this->sessionTokens[$cacheKey]);
+                Log::info("[{$endpoint->name}] Clearing cached token and retrying...");
+                
+                // Get new token and retry
+                $headers = $this->getAuthHeaders($connection, $client);
+                if (!empty($headers)) {
+                    $res = $client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
+                    $body = (string)$res->getBody();
+                }
+            }
+        }
+        
         // Log the raw response for debugging
         Log::debug("[{$endpoint->name}] Raw API response (first 500 chars): " . substr($body, 0, 500));
         
