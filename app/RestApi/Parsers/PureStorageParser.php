@@ -1,112 +1,149 @@
 <?php
-
-namespace App\RestApi\Parsers;
-
-use Log;
-
 /**
- * Parser for PureStorage FlashArray API responses
- * 
- * Handles the standard PureStorage API structure:
- * {
- *   "items": [ {...}, {...} ],
- *   "continuation_token": null,
- *   "more_items_remaining": false,
- *   "total_item_count": null,
- *   "total": [ {...} ]  // Optional aggregated data
- * }
+ * File: app/Parsers/PureStorageParser.php
+ * Purpose: Parse and flatten Pure Storage API responses for LibreNMS.
  */
+
+namespace App\Parsers;
+
+use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
+
 class PureStorageParser
 {
     /**
-     * Parse a PureStorage API response
-     * 
-     * Returns a structured array that indicates how to process the data:
-     * - 'type': 'multi-item', 'single-item', or 'aggregated'
-     * - 'items': Array of items to process individually
-     * - 'aggregated': Aggregated/total data to process as device-level metrics
-     * - 'metadata': Response metadata
-     * 
-     * @param array $response The decoded JSON response
-     * @param string $endpointName Name of the endpoint for logging
-     * @return array Structured response indicating how to process
+     * Parse a raw JSON API response into a normalized, flattened metric array.
+     *
+     * @param array $response The decoded JSON from Pure Storage API.
+     * @param string|null $resource Optional resource hint (e.g. "arrays", "volumes", "network-interfaces").
+     * @return array Flattened associative array of metrics.
      */
-    public static function parse(array $response, string $endpointName = 'unknown'): array
+    public function parseResponse(array $response, ?string $resource = null): array
     {
-        // Check if this looks like a PureStorage response
-        if (!isset($response['items']) || !is_array($response['items'])) {
-            Log::debug("[{$endpointName}] Response doesn't match PureStorage structure, returning as-is");
-            return [
-                'type' => 'legacy',
-                'data' => $response,
+        $parsed = [];
+
+        // Determine resource if not provided
+        $resource = $resource ?? $this->detectResourceType($response);
+
+        // Many Pure APIs wrap data under 'items'
+        if (isset($response['items']) && is_array($response['items'])) {
+            foreach ($response['items'] as $index => $item) {
+                $flattened = $this->flattenArray($item);
+                $parsed[] = [
+                    'resource_type' => $resource,
+                    'index'         => $index,
+                    'metrics'       => $flattened,
+                ];
+            }
+        } else {
+            // Direct structure (some endpoints return top-level data)
+            $flattened = $this->flattenArray($response);
+            $parsed[] = [
+                'resource_type' => $resource,
+                'index'         => 0,
+                'metrics'       => $flattened,
             ];
         }
-        
-        $itemCount = count($response['items']);
-        Log::debug("[{$endpointName}] Detected PureStorage API format with {$itemCount} items");
-        
-        // Prepare result structure
-        $result = [
-            'type' => null,
-            'items' => [],
-            'aggregated' => [],
-            'metadata' => [
-                'item_count' => $itemCount,
-                'endpoint' => $endpointName,
-            ]
-        ];
-        
-        // Extract aggregated/total data if present
-        if (isset($response['total']) && is_array($response['total']) && !empty($response['total'])) {
-            Log::debug("[{$endpointName}] Found aggregated 'total' data");
-            $result['aggregated'] = $response['total'][0] ?? $response['total'];
+
+        return $parsed;
+    }
+
+    /**
+     * Flatten nested arrays/objects into a single-level associative array.
+     * Example: ['space' => ['total_used' => 5]]  ['space_total_used' => 5]
+     */
+    protected function flattenArray(array $data, string $prefix = ''): array
+    {
+        $result = [];
+
+        foreach ($data as $key => $value) {
+            $fullKey = $prefix ? "{$prefix}_{$key}" : $key;
+
+            if (is_array($value)) {
+                // Recursively flatten nested structures
+                $result += $this->flattenArray($value, $fullKey);
+            } else {
+                $result[$fullKey] = $value;
+            }
         }
-        
-        // Handle empty response
-        if ($itemCount === 0) {
-            Log::debug("[{$endpointName}] Empty items array");
-            $result['type'] = 'empty';
-            return $result;
-        }
-        
-        // Handle single-item response (like /arrays endpoint)
-        if ($itemCount === 1) {
-            Log::debug("[{$endpointName}] Single item response - treating as device-level data");
-            $result['type'] = 'single-item';
-            $result['items'] = [$response['items'][0]];
-            return $result;
-        }
-        
-        // Handle multi-item response (like /network-interfaces, /volumes, /hardware)
-        Log::debug("[{$endpointName}] Multi-item response - will process each item separately");
-        $result['type'] = 'multi-item';
-        $result['items'] = $response['items'];
-        
-        // Log sample of first item to help with debugging
-        if (!empty($response['items'][0])) {
-            $firstItem = $response['items'][0];
-            $sampleKeys = array_keys($firstItem);
-            Log::debug("[{$endpointName}] Sample item keys: " . implode(', ', array_slice($sampleKeys, 0, 10)));
-            
-            // Check if items have identifying fields
-            $hasName = isset($firstItem['name']);
-            $hasId = isset($firstItem['id']);
-            Log::debug("[{$endpointName}] Items have identifiers - name: " . ($hasName ? 'yes' : 'no') . ", id: " . ($hasId ? 'yes' : 'no'));
-        }
-        
+
         return $result;
     }
-    
+
     /**
-     * Check if a response looks like it's from PureStorage API
-     * 
-     * @param array $response The decoded JSON response
-     * @return bool True if it matches PureStorage format
+     * Try to detect the resource type based on keys in the response.
      */
-    public static function isPureStorageResponse(array $response): bool
+    protected function detectResourceType(array $response): string
     {
-        return isset($response['items']) 
-            && is_array($response['items'])
-            && (isset($response['continuation_token']) || isset($response['more_items_remaining']));
+        // Handle "items" wrapper
+        if (isset($response['items']) && is_array($response['items'])) {
+            $first = $response['items'][0] ?? [];
+            return $this->detectResourceType($first);
+        }
+
+        $keys = array_keys($response);
+
+        if (Arr::has($response, 'space.total_physical')) {
+            return 'arrays';
+        }
+        if (Arr::has($response, 'network_interface') || in_array('rx_bytes_per_sec', $keys)) {
+            return 'network-interfaces';
+        }
+        if (Arr::has($response, 'volume_id') || Arr::has($response, 'writes_per_sec')) {
+            return 'volumes';
+        }
+        if (Arr::has($response, 'controller') || Arr::has($response, 'cpu')) {
+            return 'controllers';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Predict mapping keys (metric name  JSON key) for newly discovered Pure resources.
+     * This avoids manually writing long paths like "items.space.total_physical".
+     */
+    public function predictMapping(array $sampleMetrics, string $resource): array
+    {
+        $mapping = [];
+
+        foreach ($sampleMetrics as $key => $value) {
+            $lowerKey = strtolower($key);
+
+            // Match common Pure metric patterns
+            if (Str::contains($lowerKey, 'total_physical')) {
+                $mapping["{$resource}_total_physical_space"] = $key;
+            } elseif (Str::contains($lowerKey, 'total_provisioned')) {
+                $mapping["{$resource}_total_provisioned"] = $key;
+            } elseif (Str::contains($lowerKey, 'total_used')) {
+                $mapping["{$resource}_total_used"] = $key;
+            } elseif (Str::contains($lowerKey, 'data_reduction')) {
+                $mapping["{$resource}_data_reduction"] = $key;
+            } elseif (Str::contains($lowerKey, 'unique_effective')) {
+                $mapping["{$resource}_unique_effective"] = $key;
+            } elseif (Str::contains($lowerKey, 'shared_effective')) {
+                $mapping["{$resource}_shared_effective"] = $key;
+            } elseif (Str::contains($lowerKey, 'snapshots_effective')) {
+                $mapping["{$resource}_snapshots_effective"] = $key;
+            } elseif (Str::contains($lowerKey, 'replication')) {
+                $mapping["{$resource}_replication_bytes"] = $key;
+            } elseif (Str::contains($lowerKey, 'latency')) {
+                $mapping["{$resource}_latency_ms"] = $key;
+            } elseif (Str::contains($lowerKey, 'iops')) {
+                $mapping["{$resource}_iops"] = $key;
+            } elseif (Str::contains($lowerKey, 'bandwidth')) {
+                $mapping["{$resource}_bandwidth_bytes_per_sec"] = $key;
+            } elseif (Str::contains($lowerKey, 'capacity')) {
+                $mapping["{$resource}_capacity_bytes"] = $key;
+            } elseif (Str::contains($lowerKey, 'used_provisioned')) {
+                $mapping["{$resource}_used_provisioned"] = $key;
+            } elseif (Str::contains($lowerKey, 'virtual')) {
+                $mapping["{$resource}_virtual_space"] = $key;
+            } elseif (Str::contains($lowerKey, 'parity')) {
+                $mapping["{$resource}_parity_ratio"] = $key;
+            }
+        }
+
+        return $mapping;
     }
 }
