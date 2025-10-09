@@ -282,7 +282,7 @@
             
             $debugInfo[] = 'Total endpoints loaded: ' . count($endpoints);
         @endphp
-        <div x-data="endpointManager({ endpoints: @json($endpoints) })" x-init="init()">
+        <div x-data="endpointManager()" x-init="loadEndpoints(@js($endpoints))">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="fas fa-tasks"></i> Manage Endpoints</h5>
@@ -447,17 +447,21 @@ function templateEditor() {
     return { init() { console.log('Template Editor Loaded'); } }
 }
 
-function endpointManager({ endpoints }) {
+function endpointManager() {
     return {
-        endpoints: endpoints || [],
+        endpoints: [],
         selectedEndpointIndex: null,
         selectedEndpoint: {},
         originalEndpoint: {},
         isDirty: false,
 
-        init() {
+        loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
-            console.log('Raw endpoints:', this.endpoints);
+            console.log('Raw endpoints data:', endpointsData);
+            
+            // Set endpoints from passed data
+            this.endpoints = Array.isArray(endpointsData) ? endpointsData : [];
+            
             console.log('Endpoints length:', this.endpoints.length);
             console.log('Endpoints is array?', Array.isArray(this.endpoints));
             
