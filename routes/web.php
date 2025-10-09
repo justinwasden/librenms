@@ -189,13 +189,19 @@ Route::middleware(['auth'])->group(function () {
 
 				    // Test template endpoint
 				    Route::post('templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
-				         ->name('templates.test');
+				    ->name('templates.test');
 
-				    // Global Endpoint Management Routes
-				    Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])
-				         ->name('endpoints.update');
-				    Route::delete('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'destroy'])
-				         ->name('endpoints.destroy');
+				    // Template endpoint management (updates template JSON)
+				    Route::post('templates/{template}/update-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'updateEndpoint'])
+				    ->name('templates.update-endpoint');
+				    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
+				    ->name('templates.delete-endpoint');
+
+                    // Global Endpoint Management Routes (updates database endpoints)
+                    Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])
+                         ->name('endpoints.update');
+                    Route::delete('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'destroy'])
+                         ->name('endpoints.destroy');
 				});
 
 

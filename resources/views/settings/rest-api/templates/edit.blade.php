@@ -198,89 +198,40 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         @php
-            // Debug: Let's see what we have in the template
+            // IMPORTANT: We always parse from template_data JSON, NOT from device endpoints
+            // This is the template blueprint, not the device-specific instances
             $endpoints = [];
             $debugInfo = [];
             
             $debugInfo[] = 'Template ID: ' . ($template->id ?? 'none');
             $debugInfo[] = 'Template Name: ' . ($template->name ?? 'none');
-            $debugInfo[] = 'Has device_id: ' . (isset($template->device_id) ? 'yes (' . $template->device_id . ')' : 'no');
+            $debugInfo[] = 'Editing template blueprint (not device instances)';
             
-            // Strategy 1: If template is associated with a device, get endpoints from that device
-            if (isset($template->device_id) && $template->device_id) {
-                $debugInfo[] = 'Using Strategy 1: device_id = ' . $template->device_id;
-                $connections = \App\Models\RestApiConnection::with('endpoints')
-                    ->where('device_id', $template->device_id)
-                    ->get();
-                $debugInfo[] = 'Found ' . $connections->count() . ' connections';
-                
-                foreach ($connections as $conn) {
-                    $debugInfo[] = 'Connection ' . $conn->id . ' has ' . $conn->endpoints->count() . ' endpoints';
+            // Parse endpoints from template_data JSON
+            $templateData = is_array($template->template_data)
+                ? $template->template_data
+                : json_decode($template->template_data ?? '{}', true);
+            
+            $connections = $templateData['connections'] ?? [];
+            $debugInfo[] = 'Found ' . count($connections) . ' connection(s) in template';
+            
+            $connectionIndex = 0;
+            foreach ($connections as $conn) {
+                if (isset($conn['endpoints']) && is_array($conn['endpoints'])) {
+                    $debugInfo[] = 'Connection ' . ($connectionIndex + 1) . ' (' . ($conn['name'] ?? 'unnamed') . ') has ' . count($conn['endpoints']) . ' endpoints';
                     
-                    foreach ($conn->endpoints as $ep) {
-                        $endpoints[] = [
-                            'id' => $ep->id,
-                            'name' => $ep->name,
-                            'path' => $ep->path,
-                            'method' => $ep->method ?? 'GET',
-                            'resource_type' => $ep->resource_type ?? '',
-                            'metric_map' => $ep->metric_map,
-                            'connection_id' => $ep->connection_id
-                        ];
+                    foreach ($conn['endpoints'] as $idx => $ep) {
+                        // Add metadata to track which connection this belongs to
+                        $ep['_connection_index'] = $connectionIndex;
+                        $ep['_endpoint_index'] = $idx;
+                        $ep['_is_template'] = true; // Flag to indicate this is a template endpoint
+                        $endpoints[] = $ep;
                     }
                 }
+                $connectionIndex++;
             }
             
-            // Strategy 2: Try to find connections for PureStorage devices
-            if (empty($endpoints)) {
-                $debugInfo[] = 'Using Strategy 2: Looking for PureStorage devices';
-                $pureDevices = \App\Models\Device::where('os', 'purestorage')->pluck('device_id');
-                $debugInfo[] = 'Found ' . $pureDevices->count() . ' PureStorage devices: ' . $pureDevices->implode(', ');
-                
-                if ($pureDevices->count() > 0) {
-                    $connections = \App\Models\RestApiConnection::with('endpoints')
-                        ->whereIn('device_id', $pureDevices)
-                        ->get();
-                    $debugInfo[] = 'Found ' . $connections->count() . ' connections for PureStorage devices';
-                    
-                    foreach ($connections as $conn) {
-                        $debugInfo[] = 'Connection ' . $conn->id . ' (device ' . $conn->device_id . ') has ' . $conn->endpoints->count() . ' endpoints';
-                        
-                        foreach ($conn->endpoints as $ep) {
-                            $endpoints[] = [
-                                'id' => $ep->id,
-                                'name' => $ep->name,
-                                'path' => $ep->path,
-                                'method' => $ep->method ?? 'GET',
-                                'resource_type' => $ep->resource_type ?? '',
-                                'metric_map' => $ep->metric_map,
-                                'connection_id' => $ep->connection_id
-                            ];
-                        }
-                    }
-                }
-            }
-            
-            // Strategy 3: Parse from template_data as fallback
-            if (empty($endpoints)) {
-                $debugInfo[] = 'Using Strategy 3: Parsing template_data';
-                $templateData = is_array($template->template_data)
-                    ? $template->template_data
-                    : json_decode($template->template_data ?? '{}', true);
-                $connections = $templateData['connections'] ?? [];
-                $debugInfo[] = 'Found ' . count($connections) . ' connections in template_data';
-                
-                foreach ($connections as $conn) {
-                    if (isset($conn['endpoints'])) {
-                        $debugInfo[] = 'Connection has ' . count($conn['endpoints']) . ' endpoints in template_data';
-                        foreach ($conn['endpoints'] as $ep) {
-                            $endpoints[] = $ep;
-                        }
-                    }
-                }
-            }
-            
-            $debugInfo[] = 'Total endpoints loaded: ' . count($endpoints);
+            $debugInfo[] = 'Total endpoints in template: ' . count($endpoints);
         @endphp
         <div x-data="endpointManager()" x-init="loadEndpoints(@js($endpoints))">
             <div class="modal-content">
@@ -538,69 +489,79 @@ function endpointManager() {
                 this.selectedEndpoint.metric_map = null;
             }
 
+            // Update the endpoint in the array
             this.endpoints[this.selectedEndpointIndex] = { ...this.selectedEndpoint };
             this.isDirty = false;
 
-            // If endpoint has an ID, update via API
-            if (this.selectedEndpoint.id) {
-                try {
-                    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                    const res = await fetch(`/settings/rest-api/endpoints/${this.selectedEndpoint.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-                        body: JSON.stringify({
+            // Save to template_data JSON via API
+            try {
+                const templateId = {{ $template->id }};
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                
+                const res = await fetch(`/settings/rest-api/templates/${templateId}/update-endpoint`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                    body: JSON.stringify({
+                        connection_index: this.selectedEndpoint._connection_index,
+                        endpoint_index: this.selectedEndpoint._endpoint_index,
+                        endpoint_data: {
                             name: this.selectedEndpoint.name,
                             path: this.selectedEndpoint.path,
                             method: this.selectedEndpoint.method,
                             resource_type: this.selectedEndpoint.resource_type,
                             metric_map: this.selectedEndpoint.metric_map
-                        })
-                    });
+                        }
+                    })
+                });
 
-                    const data = await res.json();
-                    if (data.success || res.ok) {
-                        alert('Endpoint saved successfully!');
-                        location.reload(); // Reload to show updated data
-                    } else {
-                        alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+                const data = await res.json();
+                if (data.success) {
+                    alert('Endpoint saved to template successfully!');
+                    // Update the metadata in case indices changed
+                    if (data.endpoint) {
+                        this.endpoints[this.selectedEndpointIndex] = {
+                            ...this.selectedEndpoint,
+                            _connection_index: data.endpoint._connection_index,
+                            _endpoint_index: data.endpoint._endpoint_index
+                        };
                     }
-                } catch (err) {
-                    console.error(err);
-                    alert('Failed to save endpoint. Check console for details.');
+                } else {
+                    alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
                 }
-            } else {
-                alert('New endpoint created in memory. Save the template to persist.');
+            } catch (err) {
+                console.error(err);
+                alert('Failed to save endpoint. Check console for details.');
             }
         },
 
         async deleteEndpoint() {
-            if (!confirm('Are you sure you want to delete this endpoint?')) return;
+            if (!confirm('Are you sure you want to delete this endpoint from the template?')) return;
             
-            if (this.selectedEndpoint.id) {
-                try {
-                    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                    const res = await fetch(`/settings/rest-api/endpoints/${this.selectedEndpoint.id}`, {
-                        method: 'DELETE',
-                        headers: { 'X-CSRF-TOKEN': token }
-                    });
+            try {
+                const templateId = {{ $template->id }};
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                
+                const res = await fetch(`/settings/rest-api/templates/${templateId}/delete-endpoint`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                    body: JSON.stringify({
+                        connection_index: this.selectedEndpoint._connection_index,
+                        endpoint_index: this.selectedEndpoint._endpoint_index
+                    })
+                });
 
-                    if (res.ok) {
-                        this.endpoints.splice(this.selectedEndpointIndex, 1);
-                        this.selectedEndpointIndex = null;
-                        this.selectedEndpoint = {};
-                        alert('Endpoint deleted successfully!');
-                    } else {
-                        alert('Failed to delete endpoint');
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert('Failed to delete endpoint');
+                const data = await res.json();
+                if (data.success) {
+                    this.endpoints.splice(this.selectedEndpointIndex, 1);
+                    this.selectedEndpointIndex = null;
+                    this.selectedEndpoint = {};
+                    alert('Endpoint deleted from template successfully!');
+                } else {
+                    alert('Failed to delete endpoint: ' + (data.message || 'Unknown error'));
                 }
-            } else {
-                // Just remove from array if not saved yet
-                this.endpoints.splice(this.selectedEndpointIndex, 1);
-                this.selectedEndpointIndex = null;
-                this.selectedEndpoint = {};
+            } catch (err) {
+                console.error(err);
+                alert('Failed to delete endpoint. Check console for details.');
             }
         },
     }
