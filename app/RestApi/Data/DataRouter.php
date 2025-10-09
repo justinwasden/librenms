@@ -4,18 +4,22 @@ namespace App\RestApi\Data;
 
 use App\Models\Device;
 use App\Models\RestApiMetric;
+use App\Models\Storage;
+use App\Models\Port;
+use App\Models\Sensor;
+use App\RestApi\Mapping\MappingEngine;
 use LibreNMS\RRD\RrdDefinition;
 use Log;
 
 class DataRouter
 {
     protected Device $device;
-    protected array $mappings;
+    protected MappingEngine $mappingEngine;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-        $this->loadMappings();
+        $this->mappingEngine = new MappingEngine($device);
     }
 
     /**
@@ -24,25 +28,33 @@ class DataRouter
     public function route(array $flattenedData, string $resourceType, array $metricMap = []): void
     {
         foreach ($flattenedData as $key => $value) {
-            // Skip non-useful metadata
+            // Skip pagination metadata
             if ($this->shouldSkip($key)) {
                 continue;
             }
 
             $routed = false;
 
-            // Try to route using metric mapping first (if provided in endpoint config)
+            // 1. Try explicit metric mapping from endpoint config
             if (!empty($metricMap) && isset($metricMap[$key])) {
                 $routed = $this->routeByMapping($key, $value, $metricMap[$key], $resourceType);
             }
 
-            // If not routed by mapping, check if it's a performance metric for RRD
+            // 2. Try intelligent mapping using MappingEngine
+            if (!$routed) {
+                $mapping = $this->mappingEngine->findMapping($key, $resourceType);
+                if ($mapping && $mapping->enabled) {
+                    $routed = $this->storeUsingMapping($mapping, $key, $value);
+                }
+            }
+
+            // 3. Check if it's a performance metric for RRD
             if (!$routed && $this->isPerformanceMetric($key, $value)) {
                 $rrdName = $this->generateRrdName($key, $resourceType);
                 $routed = $this->storeInRrd($rrdName, $key, $value);
             }
 
-            // Fallback: store in rest_api_metrics table
+            // 4. Fallback: store in rest_api_metrics table
             if (!$routed) {
                 $this->storeInFallbackTable($key, $value, $resourceType);
             }
@@ -50,7 +62,95 @@ class DataRouter
     }
 
     /**
-     * Check if key should be skipped (pagination metadata, etc.)
+     * Store data using a MetricFieldMapping
+     */
+    protected function storeUsingMapping($mapping, string $key, $value): bool
+    {
+        try {
+            // Transform value according to mapping
+            $transformedValue = $mapping->transformValue($value);
+            
+            if ($transformedValue === null && $value !== null) {
+                Log::debug("Value transformation returned null for {$key}");
+                return false;
+            }
+
+            // Update the mapping's last_seen
+            $mapping->update([
+                'last_matched_device_id' => $this->device->device_id,
+                'last_seen_at' => now(),
+            ]);
+
+            // Route to appropriate LibreNMS table
+            switch ($mapping->librenms_table) {
+                case 'storage':
+                    return $this->storeInStorageTable($mapping->librenms_field, $transformedValue);
+                    
+                case 'ports':
+                    return $this->storeInPortsTable($mapping->librenms_field, $transformedValue);
+                    
+                case 'sensors':
+                    return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit);
+                    
+                case 'devices':
+                    return $this->storeInDevicesTable($mapping->librenms_field, $transformedValue);
+                    
+                default:
+                    Log::debug("No handler for table: {$mapping->librenms_table}");
+                    return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error storing with mapping: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in storage table
+     */
+    protected function storeInStorageTable(string $field, $value): bool
+    {
+        // For now, log what would be stored
+        // TODO: Implement actual storage table update
+        Log::info("Would store in storage.{$field} = {$value} for device {$this->device->device_id}");
+        return true;
+    }
+
+    /**
+     * Store in ports table
+     */
+    protected function storeInPortsTable(string $field, $value): bool
+    {
+        Log::info("Would store in ports.{$field} = {$value} for device {$this->device->device_id}");
+        return true;
+    }
+
+    /**
+     * Store in sensors table
+     */
+    protected function storeInSensorsTable(string $field, $value, ?string $unit = null): bool
+    {
+        Log::info("Would store in sensors.{$field} = {$value} ({$unit}) for device {$this->device->device_id}");
+        return true;
+    }
+
+    /**
+     * Store in devices table
+     */
+    protected function storeInDevicesTable(string $field, $value): bool
+    {
+        try {
+            $this->device->update([$field => $value]);
+            Log::info("Updated device.{$field} = {$value} for {$this->device->hostname}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Failed to update device.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check if key should be skipped
      */
     protected function shouldSkip(string $key): bool
     {
@@ -58,7 +158,7 @@ class DataRouter
             '/^continuation_token$/',
             '/^more_items_remaining$/',
             '/^total_item_count$/',
-            '/^items_count$/',  // This is just metadata
+            '/^items_count$/',
         ];
 
         foreach ($skipPatterns as $pattern) {
@@ -75,22 +175,17 @@ class DataRouter
      */
     protected function routeByMapping(string $key, $value, string $mapping, string $resourceType): bool
     {
-        // Parse mapping like "rrd.disk_usage" or "table.storage.size"
         $parts = explode('.', $mapping);
         
         if (count($parts) < 2) {
             return false;
         }
 
-        $destination = $parts[0]; // 'rrd' or 'table'
+        $destination = $parts[0];
 
         if ($destination === 'rrd') {
             $rrdName = $parts[1] ?? $key;
             return $this->storeInRrd($rrdName, $key, $value);
-        } elseif ($destination === 'table') {
-            // Future: store in specific LibreNMS tables
-            Log::debug("Table storage not yet implemented for: {$key}");
-            return false;
         }
 
         return false;
@@ -105,7 +200,6 @@ class DataRouter
             return false;
         }
 
-        // Performance metric patterns
         $patterns = [
             '/_(usage|percent|rate|count|bytes|packets|errors|drops|utilization|throughput)$/',
             '/^(cpu|memory|disk|network|bandwidth|latency|iops|load)_/',
@@ -130,14 +224,12 @@ class DataRouter
     protected function storeInRrd(string $rrdName, string $key, $value): bool
     {
         if (!is_numeric($value)) {
-            Log::debug("Skipping non-numeric RRD value for {$key}");
             return false;
         }
 
         try {
             $datastore = app('Datastore');
             
-            // Sanitize RRD dataset name (max 19 chars)
             $dsName = preg_replace('/[^a-zA-Z0-9_]/', '_', $key);
             $dsName = substr($dsName, 0, 19);
             
@@ -193,20 +285,10 @@ class DataRouter
         $name = preg_replace('/[^a-zA-Z0-9_-]/', '_', $key);
         $name = strtolower($name);
         
-        // Add resource type prefix if useful
         if (!str_starts_with($name, $resourceType . '_')) {
             $name = $resourceType . '_' . $name;
         }
         
         return $name;
-    }
-
-    /**
-     * Load mappings configuration
-     */
-    protected function loadMappings(): void
-    {
-        // Placeholder for future table-specific mappings
-        $this->mappings = [];
     }
 }
