@@ -1,222 +1,386 @@
-# REST API Vendor Overviews - Quick Start Guide
+# REST API Module - Quick Start Guide
 
-## 🚀 5-Minute Quick Start
+## 🚀 Get Running in 15 Minutes
 
-### What You Have
-**8 vendor-specific REST API overview pages** ready to use immediately:
-- PureStorage, Palo Alto, Cisco, Fortinet, Juniper, TrueNAS, Arista + Generic
+### Prerequisites
+- LibreNMS installed and running
+- A device with a REST API (or a test API endpoint)
+- API credentials (token, API key, or username/password)
 
-### Deployment (3 commands)
+---
+
+## Step 1: Enable the Module (30 seconds)
+
+Add to your `config.php`:
+```php
+$config['discovery_modules']['rest-api'] = true;
+$config['poller_modules']['rest-api'] = true;
+```
+
+Or run:
+```bash
+echo "\$config['discovery_modules']['rest-api'] = true;" >> config.php
+echo "\$config['poller_modules']['rest-api'] = true;" >> config.php
+```
+
+---
+
+## Step 2: Verify Module Works (1 minute)
 
 ```bash
-# 1. Navigate to LibreNMS directory
-cd /Users/justinwasden/Documents/GitHub/librenms
-
-# 2. Clear caches
-php artisan optimize:clear
-
-# 3. Done! Visit your device overview page
+php artisan tinker
 ```
 
-That's it! The overview pages will automatically appear for devices with REST API enabled.
+Then run:
+```php
+LibreNMS\Util\Module::exists('rest-api');
+// Should return: true
+
+$module = LibreNMS\Util\Module::fromName('rest-api');
+get_class($module);
+// Should return: "LibreNMS\Modules\RestApi"
+
+exit
+```
+
+✅ If both commands work, you're good to proceed!
 
 ---
 
-## 📋 Vendor-Specific Cheat Sheet
+## Step 3: Create a Credential (2 minutes)
 
-### PureStorage FlashArray
-**Shows:** Array capacity, volumes, hosts, network interfaces  
-**OS Match:** `purestorage`  
-**Key Panel:** Capacity bar with data reduction ratio
+### Via Web UI:
+1. Go to: **Settings** → **REST API** → **Credentials**
+2. Click **"Add Credential"**
+3. Fill in:
+   - **Name:** "My API Token"
+   - **Authentication Type:** "Bearer Token"
+   - **Token:** (paste your API token)
+4. Click **Save**
 
-### Palo Alto Networks
-**Shows:** Session utilization, security policies, threats  
-**OS Match:** `panos`  
-**Key Panel:** Top security policies by hit count
+### Via Command Line (Alternative):
+```bash
+php artisan tinker
+```
 
-### Cisco IOS/IOS-XE/NX-OS
-**Shows:** CPU/Memory, interfaces, routing, sensors  
-**OS Match:** `ios`, `iosxe`, `nxos`  
-**Key Panel:** Top 20 interfaces with status
+```php
+$type = App\Models\RestApiAuthenticationType::where('name', 'Bearer Token')->first();
 
-### Fortinet FortiGate
-**Shows:** System health, VPN tunnels, policies, IPS  
-**OS Match:** `fortios`, `fortigate`  
-**Key Panel:** VPN tunnel status and traffic
+$cred = App\Models\RestApiCredential::create([
+    'name' => 'My API Token',
+    'authentication_type_id' => $type->id
+]);
 
-### Juniper Networks
-**Shows:** RE health, BGP peers, FPCs, interfaces  
-**OS Match:** `junos`  
-**Key Panel:** BGP peer status and routes
+$cred->params()->create([
+    'key' => 'token',
+    'value' => 'your-api-token-here'
+]);
 
-### TrueNAS
-**Shows:** Pools, datasets, shares, replication  
-**OS Match:** `truenas`  
-**Key Panel:** Storage pools with health
-
-### Arista EOS
-**Shows:** MLAG, port channels, VLANs, interfaces  
-**OS Match:** `eos`, `arista`  
-**Key Panel:** MLAG status
-
-### Generic (Fallback)
-**Shows:** Auto-discovered metrics for any device  
-**OS Match:** *any other OS*  
-**Key Panel:** Dynamic tables
+exit
+```
 
 ---
 
-## ✅ Verification (1 minute)
+## Step 4: Create a Template (3 minutes)
+
+### Simple Example Template:
+
+1. Go to: **Settings** → **REST API** → **Templates**
+2. Click **"Add Template"**
+3. Fill in:
+   - **Name:** "Generic REST API"
+   - **Vendor:** "Generic"
+   - **Template Data:**
+
+```json
+{
+  "connections": [
+    {
+      "name": "API Connection",
+      "base_url": "https://{{ $device->ip }}",
+      "disable_ssl_verify": true,
+      "rate_limit": 60,
+      "endpoints": [
+        {
+          "name": "System Status",
+          "path": "/api/v1/status",
+          "method": "GET",
+          "resource_type": "device",
+          "enabled": true,
+          "metric_map": {
+            "cpu": "system.cpu",
+            "memory": "system.memory",
+            "uptime": "system.uptime"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+4. Click **Save**
+
+---
+
+## Step 5: Apply Template to Device (2 minutes)
+
+### Via Web UI:
+1. Go to your device page
+2. Click **Settings** tab
+3. Find **REST API** section
+4. Click **"Apply Template"**
+5. Select:
+   - **Template:** "Generic REST API"
+   - **Credential:** "My API Token"
+6. Click **Apply**
+
+### Via Command Line (Alternative):
+```bash
+php artisan tinker
+```
+
+```php
+$device = App\Models\Device::where('hostname', 'your-device-hostname')->first();
+$template = App\Models\RestApiTemplate::where('name', 'Generic REST API')->first();
+$credential = App\Models\RestApiCredential::where('name', 'My API Token')->first();
+
+// Get template data
+$data = $template->template_data;
+
+// Create connection
+$connection = $device->restApiConnections()->create([
+    'credential_id' => $credential->id,
+    'name' => $data['connections'][0]['name'],
+    'base_url' => str_replace('{{ $device->ip }}', $device->ip, $data['connections'][0]['base_url']),
+    'rate_limit' => 60,
+    'enabled' => true,
+    'disable_ssl_verify' => true,
+]);
+
+// Create endpoints
+foreach ($data['connections'][0]['endpoints'] as $ep) {
+    $connection->endpoints()->create([
+        'name' => $ep['name'],
+        'path' => $ep['path'],
+        'method' => $ep['method'] ?? 'GET',
+        'resource_type' => $ep['resource_type'] ?? 'custom',
+        'metric_map' => $ep['metric_map'] ?? null,
+    ]);
+}
+
+exit
+```
+
+---
+
+## Step 6: Test Discovery (3 minutes)
 
 ```bash
-# Check if metrics exist
-php artisan tinker --execute="
-DB::table('device_api_metrics')
-  ->where('device_id', 1)
-  ->count()
-"
+# Replace HOSTNAME with your device hostname
+./discover.php -h HOSTNAME -m rest-api -d
 
-# If 0, run REST API polling
-php lnms device:poll 1 -m rest-api -vv
+# Or use device ID
+php lnms device:discover DEVICE_ID -m rest-api -vvv
+```
+
+**What to look for:**
+```
+REST API Discovery started for device: HOSTNAME
+Endpoint: System Status
+API Response received
+Metrics stored: cpu, memory, uptime
+REST API Discovery completed
 ```
 
 ---
 
-## 🔧 Common Tasks
-
-### Change Device to Use Specific Vendor
-
-```sql
-# Update device OS
-UPDATE devices 
-SET os = 'panos' 
-WHERE device_id = 1;
-```
-
-### Add New Vendor (5 minutes)
+## Step 7: Test Polling (3 minutes)
 
 ```bash
-# 1. Copy generic template
-cp generic.inc.php netapp.inc.php
+# Replace HOSTNAME with your device hostname
+./poller.php -h HOSTNAME -m rest-api -d
 
-# 2. Edit queries for your vendor
-nano netapp.inc.php
-
-# 3. Set device OS to match
-UPDATE devices SET os = 'netapp' WHERE device_id = 1;
+# Or use device ID
+php lnms device:poll DEVICE_ID -m rest-api -vvv
 ```
 
-### Troubleshoot Missing Panels
+**What to look for:**
+```
+REST API Polling started for device: HOSTNAME
+Endpoint: System Status
+Metrics updated: cpu=45, memory=62, uptime=86400
+RRD files updated
+REST API Polling completed
+```
+
+---
+
+## Step 8: Verify Everything Works (2 minutes)
 
 ```bash
-# Check REST API enabled
-mysql librenms -e "
-SELECT device_id, enabled, base_url 
-FROM rest_api_connections 
-WHERE device_id = 1
-"
+php artisan tinker
+```
 
-# Check device OS
-mysql librenms -e "
-SELECT device_id, hostname, os 
-FROM devices 
-WHERE device_id = 1
-"
+```php
+// Check connections exist
+$device = App\Models\Device::where('hostname', 'HOSTNAME')->first();
+$device->restApiConnections()->count();
+// Should return: 1 or more
 
-# Verify vendor file exists
-ls -la includes/html/pages/device/overview/rest-api/[os].inc.php
+// Check endpoints
+$device->restApiConnections()->with('endpoints')->get();
+// Should show your endpoints
+
+// Check metrics in database
+App\Models\RestApiMetric::where('device_id', $device->device_id)->get();
+// Should show collected metrics
+
+exit
+```
+
+Check RRD files:
+```bash
+ls -la /opt/librenms/rrd/HOSTNAME/rest_api*
+# Should show .rrd files
 ```
 
 ---
 
-## 📖 Documentation Quick Links
+## ✅ Success Criteria
 
-| Need | Read This |
-|------|-----------|
-| **Vendor Details** | `REST_API_VENDOR_OVERVIEWS_GUIDE.md` |
-| **Code Snippets** | `REST_API_OVERVIEW_QUICK_REFERENCE.md` |
-| **Full Architecture** | `REST_API_OVERVIEW_IMPLEMENTATION.md` |
-| **Testing Steps** | `REST_API_OVERVIEW_CHECKLIST.md` |
-| **Complete Summary** | `REST_API_VENDOR_IMPLEMENTATION_SUMMARY.md` |
+You've successfully set up the REST API module if:
+
+- ✅ Module is recognized by LibreNMS
+- ✅ Credential is saved
+- ✅ Template is created  
+- ✅ Template applied to device
+- ✅ Discovery runs without errors
+- ✅ Polling runs without errors
+- ✅ Metrics appear in database
+- ✅ RRD files are created
 
 ---
 
-## 🎯 File Locations
+## 🔧 Common Issues & Quick Fixes
 
+### Issue: "Module not found"
+```bash
+# Clear cache
+php artisan cache:clear
+php artisan config:clear
+
+# Verify file exists
+ls -la LibreNMS/Modules/RestApi.php
 ```
-/includes/html/pages/device/overview/rest-api/
-├── purestorage.inc.php    # PureStorage
-├── panos.inc.php          # Palo Alto
-├── ios.inc.php            # Cisco
-├── fortios.inc.php        # Fortinet
-├── junos.inc.php          # Juniper
-├── truenas.inc.php        # TrueNAS
-├── eos.inc.php            # Arista
-└── generic.inc.php        # Generic fallback
+
+### Issue: "No data collected"
+**Check:**
+1. Is the API endpoint correct?
+2. Is the credential valid?
+3. Is SSL verification causing issues? (try `disable_ssl_verify: true`)
+4. Are metric mappings correct?
+
+**Debug:**
+```bash
+# Test API manually
+curl -H "Authorization: Bearer YOUR_TOKEN" https://DEVICE_IP/api/v1/status
+
+# Check logs
+tail -f /opt/librenms/logs/librenms.log | grep -i "rest api"
 ```
+
+### Issue: "Authentication failed"
+```bash
+php artisan tinker
+```
+
+```php
+$cred = App\Models\RestApiCredential::first();
+$headers = App\RestApi\Credentials\CredentialHelper::getAuthHeaderFromModel($cred);
+print_r($headers);
+// Verify headers look correct
+```
+
+---
+
+## 📊 Example Templates
+
+### For Cisco Devices:
+```json
+{
+  "connections": [{
+    "name": "Cisco API",
+    "base_url": "https://{{ $device->ip }}",
+    "disable_ssl_verify": true,
+    "endpoints": [{
+      "name": "Interface Stats",
+      "path": "/restconf/data/interfaces",
+      "method": "GET",
+      "resource_type": "port",
+      "metric_map": {
+        "status": "interfaces.interface.[].oper-status",
+        "speed": "interfaces.interface.[].speed"
+      }
+    }]
+  }]
+}
+```
+
+### For Generic Linux API:
+```json
+{
+  "connections": [{
+    "name": "System API",
+    "base_url": "http://{{ $device->ip }}:8080",
+    "endpoints": [{
+      "name": "System Metrics",
+      "path": "/api/metrics",
+      "method": "GET",
+      "resource_type": "device",
+      "metric_map": {
+        "cpu_usage": "cpu.percent",
+        "mem_usage": "memory.percent",
+        "disk_usage": "disk.percent",
+        "load_1min": "load.1min"
+      }
+    }]
+  }]
+}
+```
+
+---
+
+## 🎯 Next Steps
+
+After getting the basic setup working:
+
+1. **Create more templates** for your specific devices
+2. **Test different authentication types** (API Key, Basic Auth, etc.)
+3. **Set up graphs** for your metrics
+4. **Configure alerting** based on REST API metrics
+5. **Share templates** with the community
+
+---
+
+## 📚 Additional Resources
+
+- **Full Documentation:** See `REST_API_IMPLEMENTATION_GUIDE.md`
+- **Architecture Details:** See `REST_API_FINAL_SUMMARY.md`
+- **Troubleshooting:** See "🔧 Troubleshooting Guide" in Final Summary
 
 ---
 
 ## 💡 Pro Tips
 
-1. **OS Name Must Match Filename** (lowercase)
-   - Device OS: `panos` → Loads: `panos.inc.php`
-   - Device OS: `cisco` → Loads: `generic.inc.php` (no cisco.inc.php exists)
-
-2. **Multiple OS Names? Use Symlink**
-   ```bash
-   ln -s fortios.inc.php fortigate.inc.php
-   ```
-
-3. **Generic Fallback Always Works**
-   - If no vendor-specific file exists, `generic.inc.php` loads
-   - Auto-discovers and displays all metrics
-
-4. **Clear Caches After Changes**
-   ```bash
-   php artisan optimize:clear
-   ```
+1. **Start Simple** - Use a test API first (like httpbin.org)
+2. **Test Manually** - Use curl to verify API before creating template
+3. **Check Logs** - Always check LibreNMS logs when debugging
+4. **Use SSL Carefully** - Only disable SSL verification for testing
+5. **Document Templates** - Add good descriptions to your templates
 
 ---
 
-## 🚨 Quick Troubleshooting
+**🎉 You're done! Your REST API module should now be collecting data from your devices.**
 
-### Problem: No panels appear
-**Fix:** Enable REST API connection for device
-
-### Problem: Empty tables
-**Fix:** Run REST API polling to collect metrics
-```bash
-php lnms device:poll 1 -m rest-api -vv
-```
-
-### Problem: Wrong vendor page loads
-**Fix:** Check device OS matches vendor filename
-```bash
-mysql librenms -e "SELECT os FROM devices WHERE device_id=1"
-```
-
-### Problem: PHP errors
-**Fix:** Check logs
-```bash
-tail -f /opt/librenms/storage/logs/laravel.log
-```
-
----
-
-## ✨ That's It!
-
-You now have complete REST API overview pages for all major vendors. Just ensure:
-- ✅ REST API is enabled for devices
-- ✅ Metrics are being collected
-- ✅ Device OS matches vendor file (or uses generic)
-
-**Everything else is automatic!**
-
----
-
-**Status:** ✅ Ready to Use  
-**Total Files:** 15 (10 PHP + 5 docs)  
-**Vendors Supported:** 8  
-**Setup Time:** 5 minutes  
-**Works With:** Any LibreNMS installation
+If you run into issues, check the troubleshooting sections in the full documentation files.

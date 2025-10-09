@@ -1,93 +1,82 @@
 <?php
+
 namespace App\Pollers;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\Device;
+use App\Models\RestApiMetric;
+use Carbon\Carbon;
 use Log;
 
 class ApiMetricsCollector
 {
-    use \App\RestApi\Traits\NormalizeResourceTrait;
-
-    protected $device;
-
-    public function __construct($device)
+    protected Device $device;
+    
+    public function __construct(Device $device)
     {
         $this->device = $device;
     }
-
+    
     /**
-     * Insert a metric into the LibreNMS DB + RRD
+     * Store discovered metrics in the database
+     * 
+     * @param string $resourceType Type of resource (device, port, sensor, etc.)
+     * @param string $endpointName Name of the endpoint
+     * @param array $metrics Flattened metrics array
      */
-    public function storeMetric(string $resourceType, string $metricName, $value, array $labels = [])
+    public function storeMetric(string $resourceType, string $endpointName, array $metrics)
     {
-        $normalizedMetric = $this->normalizeByResourceType($resourceType, $metricName, $value, $labels);
-
-        // Insert into LibreNMS table based on type
-        switch ($normalizedMetric['type']) {
-            case 'mempool':
-            case 'processor':
-            case 'storage':
-            case 'port':
-            case 'sensor':
-                $this->insertOrUpdateMetric($normalizedMetric);
-                break;
-            default:
-                // fallback to device_api_metrics
-                DB::table('device_api_metrics')->updateOrInsert(
+        foreach ($metrics as $key => $value) {
+            try {
+                RestApiMetric::updateOrCreate(
                     [
-                        'device_id' => $this->device->id,
-                        'resource_type' => $resourceType,
-                        'metric_name' => $metricName
+                        'device_id' => $this->device->device_id,
+                        'endpoint_name' => $endpointName,
+                        'metric_key' => $key,
                     ],
-                    ['value' => $value, 'labels' => json_encode($labels)]
+                    [
+                        'metric_value' => is_array($value) ? json_encode($value) : (string) $value,
+                        'resource_type' => $resourceType,
+                        'last_updated' => Carbon::now(),
+                    ]
                 );
+                
+                Log::debug("Stored metric for {$this->device->hostname}: {$endpointName}.{$key} = " . 
+                    (is_array($value) ? json_encode($value) : $value));
+            } catch (\Exception $e) {
+                Log::error("Failed to store metric for {$this->device->hostname}: {$e->getMessage()}");
+            }
         }
     }
-
-    protected function insertOrUpdateMetric(array $metric)
+    
+    /**
+     * Retrieve all metrics for this device
+     * 
+     * @param string|null $resourceType Filter by resource type
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getMetrics(?string $resourceType = null)
     {
-        $table = $this->getTableForType($metric['type']);
-
-        DB::table($table)->updateOrInsert(
-            [
-                'device_id' => $this->device->id,
-                'metric_descr' => $metric['descr'] ?? $metric['metric_name'],
-            ],
-            [
-                'metric_value' => $metric['value'],
-                'metric_time' => now()
-            ]
-        );
-
-        // Update RRD
-        $this->updateRrd($metric);
-    }
-
-    protected function getTableForType(string $type)
-    {
-        return match($type) {
-            'processor' => 'processors',
-            'mempool'   => 'mempools',
-            'port'      => 'ports',
-            'storage'   => 'storage',
-            'sensor'    => 'sensors',
-            default     => 'device_api_metrics'
-        };
-    }
-
-    protected function updateRrd(array $metric)
-    {
-        $rrdPath = "/opt/librenms/rrd/{$this->device->hostname}/{$metric['metric_name']}.rrd";
-        if (!file_exists($rrdPath)) {
-            // create RRD
-            rrd_create($rrdPath, [
-                "DS:value:GAUGE:600:U:U",
-                "RRA:AVERAGE:0.5:1:288",
-                "RRA:AVERAGE:0.5:6:336",
-                "RRA:AVERAGE:0.5:24:365"
-            ]);
+        $query = RestApiMetric::where('device_id', $this->device->device_id);
+        
+        if ($resourceType) {
+            $query->where('resource_type', $resourceType);
         }
-
-        rrd_update($rrdPath, "N:{$metric['value']}");
+        
+        return $query->get();
+    }
+    
+    /**
+     * Clean up old metrics (optional maintenance)
+     * 
+     * @param int $daysOld Delete metrics older than this many days
+     * @return int Number of deleted metrics
+     */
+    public function cleanupOldMetrics(int $daysOld = 30): int
+    {
+        $cutoff = Carbon::now()->subDays($daysOld);
+        
+        return RestApiMetric::where('device_id', $this->device->device_id)
+            ->where('last_updated', '<', $cutoff)
+            ->delete();
     }
 }
