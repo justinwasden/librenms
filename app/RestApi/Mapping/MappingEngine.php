@@ -391,12 +391,15 @@ class MappingEngine
      */
     protected function loadMappingsForDevice(): void
     {
-        $mappings = MetricFieldMapping::where('enabled', true)
-            ->forDevice($this->device)
+        $mappings = RestApiMetricFieldMapping::where('enabled', true)
+            ->where(function($q) {
+                $q->whereNull('device_id')
+                  ->orWhere('device_id', $this->device->device_id);
+            })
             ->get();
         
         foreach ($mappings as $mapping) {
-            $key = "{$mapping->resource_type}:{$mapping->metric_name}";
+            $key = "{$mapping->api_field_name}";
             $this->cache[$key] = $mapping;
         }
         
