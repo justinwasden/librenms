@@ -88,13 +88,13 @@ class DataRouter
             // Route to appropriate LibreNMS table
             switch ($mapping->librenms_table) {
                 case 'storage':
-                    return $this->storeInStorageTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key);
+                    return $this->storeInStorageTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
                     
                 case 'ports':
-                    return $this->storeInPortsTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key);
+                    return $this->storeInPortsTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
                     
                 case 'sensors':
-                    return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit, $endpointName, $displayKey ?? $key);
+                    return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit, $endpointName, $displayKey ?? $key, $mapping);
                     
                 case 'devices':
                     return $this->storeInDevicesTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key);
@@ -112,30 +112,240 @@ class DataRouter
     /**
      * Store in storage table
      */
-    protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = ''): bool
+    protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
-        // For now, log what would be stored
-        // TODO: Implement actual storage table update
-        Log::info("[{$endpointName}] {$displayKey} -> storage.{$field} = {$value}");
-        return true;
+        try {
+            // Extract storage identifier from displayKey if possible
+            $storageDescr = $this->extractStorageDescr($displayKey, $mapping);
+            
+            $storage = Storage::firstOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'storage_descr' => $storageDescr,
+                ],
+                [
+                    'storage_index' => crc32($storageDescr), // Generate unique index
+                    'storage_type' => 'rest-api',
+                    'storage_mib' => 'REST-API',
+                ]
+            );
+            
+            // Update the field
+            $storage->update([$field => $value]);
+            
+            Log::info("[{$endpointName}] {$displayKey} -> storage.{$field} (descr: {$storageDescr}) = {$value}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in storage.{$field}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
      * Store in ports table
      */
-    protected function storeInPortsTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = ''): bool
+    protected function storeInPortsTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
-        Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} = {$value}");
-        return true;
+        try {
+            // Extract port name from displayKey
+            $portName = $this->extractPortName($displayKey, $mapping);
+            
+            $port = Port::firstOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'ifName' => $portName,
+                ],
+                [
+                    'port_descr_type' => 'rest-api',
+                    'ifDescr' => "REST API Port: {$portName}",
+                    'ifIndex' => crc32($portName), // Generate unique index
+                ]
+            );
+            
+            $port->update([$field => $value]);
+            
+            Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in ports.{$field}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
      * Store in sensors table
      */
-    protected function storeInSensorsTable(string $field, $value, ?string $unit = null, string $endpointName = 'unknown', string $displayKey = ''): bool
+    protected function storeInSensorsTable(string $field, $value, ?string $unit = null, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
-        Log::info("[{$endpointName}] {$displayKey} -> sensors.{$field} = {$value}" . ($unit ? " ({$unit})" : ''));
-        return true;
+        try {
+            // Determine sensor type and class
+            $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
+            
+            // Create sensor description from displayKey
+            $sensorDescr = str_replace('_', ' ', ucwords($displayKey, '_'));
+            $sensorDescr = preg_replace('/\s+/', ' ', $sensorDescr);
+            
+            // Create a unique sensor index
+            $sensorIndex = crc32($this->device->device_id . '_' . $displayKey . '_' . $endpointName);
+            
+            // Create or find the sensor
+            $sensor = Sensor::firstOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'sensor_class' => $sensorInfo['class'],
+                    'sensor_type' => 'rest-api',
+                    'sensor_index' => $sensorIndex,
+                ],
+                [
+                    'sensor_descr' => $sensorDescr,
+                    'sensor_oid' => 'rest-api.' . $displayKey,
+                    'poller_type' => 'rest-api',
+                ]
+            );
+            
+            // Update sensor current value
+            $updateData = ['sensor_current' => $value];
+            
+            // Set limits if we can infer them and they're not already set
+            if ($sensorInfo['class'] === 'temperature' && !$sensor->sensor_limit) {
+                $updateData['sensor_limit'] = 70; // Default high limit for temperature
+                $updateData['sensor_limit_low'] = 10; // Default low limit
+            } elseif ($sensorInfo['class'] === 'percentage' && !$sensor->sensor_limit) {
+                $updateData['sensor_limit'] = 90;
+                $updateData['sensor_limit_warn'] = 80;
+                $updateData['sensor_limit_low'] = 0;
+            }
+            
+            $sensor->update($updateData);
+            
+            Log::info("[{$endpointName}] {$displayKey} -> sensors.sensor_current (class: {$sensorInfo['class']}, descr: {$sensorDescr}) = {$value}" . ($unit ? " ({$unit})" : ''));
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store sensor {$field}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+    
+    /**
+     * Determine sensor type and class from field name and unit
+     */
+    protected function determineSensorType(string $field, ?string $unit, string $displayKey): array
+    {
+        $field = strtolower($field);
+        $displayKey = strtolower($displayKey);
+        
+        // Temperature sensors
+        if (strpos($field, 'temp') !== false || strpos($displayKey, 'tmp') !== false || 
+            strpos($displayKey, 'temperature') !== false || $unit === '°C' || $unit === 'celsius') {
+            return [
+                'class' => 'temperature',
+                'description' => 'Temperature',
+            ];
+        }
+        
+        // Voltage sensors
+        if (strpos($field, 'voltage') !== false || $unit === 'V' || $unit === 'volts') {
+            return [
+                'class' => 'voltage',
+                'description' => 'Voltage',
+            ];
+        }
+        
+        // Fan speed
+        if (strpos($field, 'fan') !== false || strpos($displayKey, 'fan') !== false || $unit === 'RPM') {
+            return [
+                'class' => 'fanspeed',
+                'description' => 'Fan Speed',
+            ];
+        }
+        
+        // Power
+        if (strpos($field, 'power') !== false || $unit === 'W' || $unit === 'watts') {
+            return [
+                'class' => 'power',
+                'description' => 'Power',
+            ];
+        }
+        
+        // Current
+        if (strpos($field, 'ampere') !== false || $unit === 'A' || $unit === 'amps') {
+            return [
+                'class' => 'current',
+                'description' => 'Current',
+            ];
+        }
+        
+        // Percentage/ratio
+        if (strpos($field, 'percent') !== false || strpos($field, 'perc') !== false || 
+            strpos($field, 'usage') !== false || strpos($field, 'util') !== false ||
+            $unit === '%' || $unit === 'ratio') {
+            return [
+                'class' => 'percentage',
+                'description' => 'Percentage',
+            ];
+        }
+        
+        // Count/state
+        if (strpos($field, 'count') !== false || strpos($field, 'state') !== false || 
+            strpos($field, 'status') !== false) {
+            return [
+                'class' => 'count',
+                'description' => 'Count',
+            ];
+        }
+        
+        // Default to state
+        return [
+            'class' => 'state',
+            'description' => 'State',
+        ];
+    }
+
+    /**
+     * Extract storage description from display key
+     */
+    protected function extractStorageDescr(string $displayKey, $mapping = null): string
+    {
+        // Try to extract a meaningful name from the key
+        // Example: "volume_sw_sql_rsa_swsql_01_space_total_used" -> "sw-sql-rsa-swsql-01"
+        
+        // Remove common suffixes
+        $name = preg_replace('/(space|total|used|free|size|percent|perc|_)+$/', '', $displayKey);
+        $name = trim($name, '_');
+        
+        // If name is still too generic or empty, use endpoint info from mapping
+        if (strlen($name) < 3 || in_array($name, ['volume', 'storage', 'disk'])) {
+            $name = 'rest-api-storage';
+        }
+        
+        // Clean up the name
+        $name = str_replace('_', '-', $name);
+        $name = substr($name, 0, 64); // Limit length
+        
+        return $name;
+    }
+
+    /**
+     * Extract port name from display key
+     */
+    protected function extractPortName(string $displayKey, $mapping = null): string
+    {
+        // Try to extract port identifier
+        // Examples: 
+        // "ct0_eth10_speed" -> "ct0.eth10"
+        // "network_ct1_eth11_mtu" -> "ct1.eth11"
+        
+        if (preg_match('/(ct[0-9]+[_\.]eth[0-9]+)/i', $displayKey, $matches)) {
+            return str_replace('_', '.', $matches[1]);
+        }
+        
+        if (preg_match('/(eth[0-9]+)/i', $displayKey, $matches)) {
+            return $matches[1];
+        }
+        
+        // Fallback: use the whole displayKey
+        return substr(str_replace('_', '.', $displayKey), 0, 32);
     }
 
     /**
