@@ -25,10 +25,17 @@
  */
 
 use App\Pollers\RestApiPoller;
+use App\Models\Device;
 
 try {
-    $poller = new RestApiPoller($device);
-    $poller->poll();
+    // Convert device array to Device model
+    $deviceModel = Device::find($device['device_id']);
+    
+    if ($deviceModel) {
+        $poller = new RestApiPoller($deviceModel);
+        $poller->poll();
+    }
 } catch (\Exception $e) {
     echo 'REST API Polling FAILED: ' . $e->getMessage() . PHP_EOL;
+    d_echo($e->getTraceAsString());
 }

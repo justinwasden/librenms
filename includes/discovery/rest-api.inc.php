@@ -25,15 +25,24 @@
  */
 
 use App\Discovery\RestApiDiscovery;
+use App\Models\Device;
 
 echo 'REST API: ';
 
 try {
-    $discovery = new RestApiDiscovery($device);
-    $discovery->discover();
-    echo 'OK';
+    // Convert device array to Device model
+    $deviceModel = Device::find($device['device_id']);
+    
+    if (!$deviceModel) {
+        echo 'Device not found';
+    } else {
+        $discovery = new RestApiDiscovery($deviceModel);
+        $discovery->discover();
+        echo 'OK';
+    }
 } catch (\Exception $e) {
     echo 'FAILED: ' . $e->getMessage();
+    d_echo($e->getTraceAsString());
 }
 
 echo PHP_EOL;
