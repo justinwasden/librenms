@@ -209,20 +209,21 @@
             // Strategy 1: If template is associated with a device, get endpoints from that device
             if (isset($template->device_id) && $template->device_id) {
                 $debugInfo[] = 'Using Strategy 1: device_id = ' . $template->device_id;
-                $connections = \App\Models\RestApiConnection::where('device_id', $template->device_id)->get();
+                $connections = \App\Models\RestApiConnection::with('endpoints')
+                    ->where('device_id', $template->device_id)
+                    ->get();
                 $debugInfo[] = 'Found ' . $connections->count() . ' connections';
                 
                 foreach ($connections as $conn) {
-                    $connEndpoints = \App\Models\RestApiEndpoint::where('connection_id', $conn->id)->get();
-                    $debugInfo[] = 'Connection ' . $conn->id . ' has ' . $connEndpoints->count() . ' endpoints';
+                    $debugInfo[] = 'Connection ' . $conn->id . ' has ' . $conn->endpoints->count() . ' endpoints';
                     
-                    foreach ($connEndpoints as $ep) {
+                    foreach ($conn->endpoints as $ep) {
                         $endpoints[] = [
                             'id' => $ep->id,
                             'name' => $ep->name,
                             'path' => $ep->path,
                             'method' => $ep->method ?? 'GET',
-                            'resource_type' => $ep->resource_type,
+                            'resource_type' => $ep->resource_type ?? '',
                             'metric_map' => $ep->metric_map,
                             'connection_id' => $ep->connection_id
                         ];
@@ -237,20 +238,21 @@
                 $debugInfo[] = 'Found ' . $pureDevices->count() . ' PureStorage devices: ' . $pureDevices->implode(', ');
                 
                 if ($pureDevices->count() > 0) {
-                    $connections = \App\Models\RestApiConnection::whereIn('device_id', $pureDevices)->get();
+                    $connections = \App\Models\RestApiConnection::with('endpoints')
+                        ->whereIn('device_id', $pureDevices)
+                        ->get();
                     $debugInfo[] = 'Found ' . $connections->count() . ' connections for PureStorage devices';
                     
                     foreach ($connections as $conn) {
-                        $connEndpoints = \App\Models\RestApiEndpoint::where('connection_id', $conn->id)->get();
-                        $debugInfo[] = 'Connection ' . $conn->id . ' (device ' . $conn->device_id . ') has ' . $connEndpoints->count() . ' endpoints';
+                        $debugInfo[] = 'Connection ' . $conn->id . ' (device ' . $conn->device_id . ') has ' . $conn->endpoints->count() . ' endpoints';
                         
-                        foreach ($connEndpoints as $ep) {
+                        foreach ($conn->endpoints as $ep) {
                             $endpoints[] = [
                                 'id' => $ep->id,
                                 'name' => $ep->name,
                                 'path' => $ep->path,
                                 'method' => $ep->method ?? 'GET',
-                                'resource_type' => $ep->resource_type,
+                                'resource_type' => $ep->resource_type ?? '',
                                 'metric_map' => $ep->metric_map,
                                 'connection_id' => $ep->connection_id
                             ];
@@ -539,7 +541,7 @@ function endpointManager({ endpoints }) {
             if (this.selectedEndpoint.id) {
                 try {
                     const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                    const res = await fetch(`/rest-api/endpoints/${this.selectedEndpoint.id}`, {
+                    const res = await fetch(`/settings/rest-api/endpoints/${this.selectedEndpoint.id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
                         body: JSON.stringify({
@@ -573,7 +575,7 @@ function endpointManager({ endpoints }) {
             if (this.selectedEndpoint.id) {
                 try {
                     const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                    const res = await fetch(`/rest-api/endpoints/${this.selectedEndpoint.id}`, {
+                    const res = await fetch(`/settings/rest-api/endpoints/${this.selectedEndpoint.id}`, {
                         method: 'DELETE',
                         headers: { 'X-CSRF-TOKEN': token }
                     });

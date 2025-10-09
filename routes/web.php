@@ -190,6 +190,12 @@ Route::middleware(['auth'])->group(function () {
 				    // Test template endpoint
 				    Route::post('templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
 				         ->name('templates.test');
+
+				    // Global Endpoint Management Routes
+				    Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])
+				         ->name('endpoints.update');
+				    Route::delete('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'destroy'])
+				         ->name('endpoints.destroy');
 				});
 
 
