@@ -7,32 +7,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RestApiMetric extends Model
 {
-    // Ensure this matches your actual table name if different
     protected $table = 'rest_api_metrics';
 
-    /**
-     * The attributes that are mass assignable.
-     * These must be explicitly allowed for the batch insert in Api.php to succeed.
-     */
     protected $fillable = [
-        'endpoint_id',
-        'metric_name',
+        'device_id',
+        'endpoint_name',
+        'resource_type',
+        'metric_key',
         'metric_value',
-        'collected_at',
+        'last_updated',
     ];
 
-    /**
-     * Ensure JSON column storage is correctly cast.
-     */
     protected $casts = [
-        'collected_at' => 'datetime',
+        'last_updated' => 'datetime',
     ];
 
-    /**
-     * Define relationship to the endpoint that collected this metric.
-     */
-    public function endpoint(): BelongsTo
+    public function device(): BelongsTo
     {
-        return $this->belongsTo(RestApiEndpoint::class, 'endpoint_id');
+        return $this->belongsTo(Device::class, 'device_id', 'device_id');
     }
 }
