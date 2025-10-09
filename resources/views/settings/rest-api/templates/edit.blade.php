@@ -85,11 +85,20 @@
                                     <label for="resource_type">Primary Resource Type</label>
                                     <select name="resource_type" id="resource_type" class="form-control">
                                         <option value="">-- None (Generic) --</option>
-                                        @foreach(['device','port','storage','sensor','processor','mempool','alert','custom'] as $type)
-                                            <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
-                                                {{ ucfirst($type) }}
-                                            </option>
-                                        @endforeach
+                                        <optgroup label="Standard Types">
+                                            @foreach(['device','port','sensor','processor','mempool','alert','custom'] as $type)
+                                                <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
+                                                    {{ ucfirst($type) }}
+                                                </option>
+                                            @endforeach
+                                        </optgroup>
+                                        <optgroup label="Storage Array Types">
+                                            @foreach(['array','controller','host','volume','storage'] as $type)
+                                                <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
+                                                    {{ ucfirst($type) }}
+                                                </option>
+                                            @endforeach
+                                        </optgroup>
                                     </select>
                                     <small class="form-text text-muted">Defines the main data category this template handles</small>
                                 </div>
