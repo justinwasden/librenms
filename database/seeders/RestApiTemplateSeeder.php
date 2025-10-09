@@ -13,42 +13,45 @@ class RestApiTemplateSeeder extends Seeder
     public function run(): void
     {
         // Define common metric mapping arrays.
-        // NOTE: Metric names changed to match LibreNMS database fields (e.g., 'storage_size', 'ifDescr', 'state').
+        // NOTE: Metric names changed to match LibreNMS database fields (e.g., "storage_size", "ifDescr", "state").
 
         $pureStorageArrayInfoMapping = [
-            "storage_size" => "items.0.space.total_physical",
-            "storage_used" => "items.0.space.total_used",
-            "available_capacity" => "items.0.space.total_provisioned",
-            "array_data_reduction" => "items.0.space.data_reduction",
-            "array_total_reduction" => "items.0.space.total_reduction",
-            "array_capacity" => "items.0.capacity",
-            "storage_descr" => "items.0.name", // Mapped to storage description
-            "array_id" => "items.0.id",
-            "array_version" => "items.0.version",
+						    "total_capacity"       => "capacity",
+						    "data_reduction"=>"data_reduction",
+						    "snapshots" => "snapshots",
+								"thin_provisioning"=>"thin_provisioning",
+                "total_physical" => "total_physical",
+						    "total_used"           => "total_used",
+						    "total_provisioned"    => "total_provisioned",
+						    "total_reduction"=>"total_reduction",
+						    "used_provisioned"    => "used_provisioned",
+						    "name"=>"name",
         ];
 
         $pureStorageVolumesInfoMapping = [
-            "storage_descr" => "name", // Mapped to storage description
-            "storage_size" => "provisioned", // Mapped to storage size
-            "total_physical" => "space.total_physical",
-            "storage_used" => "space.total_used",
-            "volume_snapshots" => "space.snapshots",
-            "volume_data_reduction" => "space.data_reduction",
-            "volume_total_reduction" => "space.total_reduction",
-            "volume_connections" => "connection_count",
+            "created_at" => "created",
+						"host_count" => "connection_count",
+            "serial" => "serial",
+            "pod.name" => "pod.name",
+            "data_reduction" => "data_reduction",
+            "snapshots" => "snapshots",
+            "total_physical" => "total_physical",
+            "total_provisioned" => "total_provisioned",
+            "used_provisioned" => "used_provisioned",
+            "total_used" => "total_used",
+            "name" => "name",
+            "total_reduction" => "total_reduction",
+            "total_reduction" => "total_reduction",
             "volume_group" => "volume_group.name",
-            "volume_pod" => "pod.name",
-            "volume_created" => "created",
-            "volume_serial" => "serial",
         ];
 
         $pureStorageControllersStatusMapping = [
             // Controllers are components; status maps better to sensor field "state" or "status"
-            "device_hardware" => "items.0.name", // Stored as component name/label
-            "hardware" => "items.0.model",
-            "state" => "items.0.status", // Using generic state field for status indicator
-            "controller_mode" => "items.0.mode",
-            "version" => "items.0.version",
+            "model" => "model", // Stored as component name/label
+            "status" => "status",
+            "mode" => "mode", // Using generic state field for status indicator
+            "name" => "name",
+            "version" => "version",
         ];
 
         $pureStorageArrayPerformanceMapping = [
@@ -100,9 +103,9 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $pureStorageDrivesMapping = [
-            "storage_descr" => "name", // Drive name maps well to storage description
+            "storage_descr" => "name", 
             "state" => "status", // Drive status mapped to sensor "state"
-            "sensor_class" => "type", // Drive type mapped to sensor class
+            "type" => "type", //map to storage.type
             "storage_size" => "capacity", // Drive capacity mapped to storage size
             "drive_protocol" => "protocol",
             "drive_details" => "details",
@@ -147,7 +150,7 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $trueNasDatasetUsageMapping = [
-            // TrueNAS dataset properties are usually nested under 'available' and 'used' fields with a 'value' key.
+            // TrueNAS dataset properties are usually nested under "available" and "used" fields with a "value" key.
             "storage_descr" => "id", // Dataset path/name (e.g., pool/dataset)
             "storage_used" => "used.value", // Used bytes
             "available_capacity" => "available.value", // Available bytes
@@ -191,7 +194,7 @@ class RestApiTemplateSeeder extends Seeder
         $veloCloudEdgeStatusMapping = [
             "edge_name" => "name",
             "edge_serial" => "serialNumber",
-            "edge_state" => "state", // E.g., 'CONNECTED', 'DISCONNECTED'
+            "edge_state" => "state", // E.g., "CONNECTED", "DISCONNECTED"
             "edge_model" => "modelNumber",
         ];
 
@@ -207,8 +210,8 @@ class RestApiTemplateSeeder extends Seeder
         $juniperMistDeviceStatusMapping = [
             "device_mac" => "mac",
             "device_model" => "model",
-            "device_type" => "type", // e.g., 'ap', 'gateway', 'switch'
-            "state" => "status", // e.g., 'connected', 'disconnected'
+            "device_type" => "type", // e.g., "ap", "gateway", "switch"
+            "state" => "status", // e.g., "connected", "disconnected"
             "last_seen" => "last_seen",
         ];
 
@@ -223,7 +226,7 @@ class RestApiTemplateSeeder extends Seeder
         // Define mapping arrays for Generic Cloud Gateway/Load Balancer
         $cloudGatewayHealthMapping = [
             "gateway_name" => "resourceName",
-            "state" => "healthStatus", // Mapped to generic state (e.g., 'Healthy', 'Degraded')
+            "state" => "healthStatus", // Mapped to generic state (e.g., "Healthy", "Degraded")
             "active_connections" => "metrics.currentConnections",
             "throughput_in_bytes" => "metrics.bytesInPerSecond",
             "throughput_out_bytes" => "metrics.bytesOutPerSecond",
@@ -882,7 +885,7 @@ class RestApiTemplateSeeder extends Seeder
             [
                 "name" => "Cisco Meraki Dashboard",
                 "vendor" => "Cisco",
-                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the 'X-Cisco-Meraki-API-Key' header.",
+                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the "X-Cisco-Meraki-API-Key" header.",
                 "template_data" => [
                     "connections" => [
                         [
