@@ -198,16 +198,52 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         @php
-            // Get actual endpoints from the database, not from template_data
+            // Debug: Let's see what we have in the template
             $endpoints = [];
+            $debugInfo = [];
             
-            // Try to get endpoints from template's connections
-            if ($template->id) {
-                // If this is a device template, get endpoints from device connections
-                if (isset($template->device_id) && $template->device_id) {
-                    $connections = \App\Models\RestApiConnection::where('device_id', $template->device_id)->get();
+            $debugInfo[] = 'Template ID: ' . ($template->id ?? 'none');
+            $debugInfo[] = 'Template Name: ' . ($template->name ?? 'none');
+            $debugInfo[] = 'Has device_id: ' . (isset($template->device_id) ? 'yes (' . $template->device_id . ')' : 'no');
+            
+            // Strategy 1: If template is associated with a device, get endpoints from that device
+            if (isset($template->device_id) && $template->device_id) {
+                $debugInfo[] = 'Using Strategy 1: device_id = ' . $template->device_id;
+                $connections = \App\Models\RestApiConnection::where('device_id', $template->device_id)->get();
+                $debugInfo[] = 'Found ' . $connections->count() . ' connections';
+                
+                foreach ($connections as $conn) {
+                    $connEndpoints = \App\Models\RestApiEndpoint::where('connection_id', $conn->id)->get();
+                    $debugInfo[] = 'Connection ' . $conn->id . ' has ' . $connEndpoints->count() . ' endpoints';
+                    
+                    foreach ($connEndpoints as $ep) {
+                        $endpoints[] = [
+                            'id' => $ep->id,
+                            'name' => $ep->name,
+                            'path' => $ep->path,
+                            'method' => $ep->method ?? 'GET',
+                            'resource_type' => $ep->resource_type,
+                            'metric_map' => $ep->metric_map,
+                            'connection_id' => $ep->connection_id
+                        ];
+                    }
+                }
+            }
+            
+            // Strategy 2: Try to find connections for PureStorage devices
+            if (empty($endpoints)) {
+                $debugInfo[] = 'Using Strategy 2: Looking for PureStorage devices';
+                $pureDevices = \App\Models\Device::where('os', 'purestorage')->pluck('device_id');
+                $debugInfo[] = 'Found ' . $pureDevices->count() . ' PureStorage devices: ' . $pureDevices->implode(', ');
+                
+                if ($pureDevices->count() > 0) {
+                    $connections = \App\Models\RestApiConnection::whereIn('device_id', $pureDevices)->get();
+                    $debugInfo[] = 'Found ' . $connections->count() . ' connections for PureStorage devices';
+                    
                     foreach ($connections as $conn) {
                         $connEndpoints = \App\Models\RestApiEndpoint::where('connection_id', $conn->id)->get();
+                        $debugInfo[] = 'Connection ' . $conn->id . ' (device ' . $conn->device_id . ') has ' . $connEndpoints->count() . ' endpoints';
+                        
                         foreach ($connEndpoints as $ep) {
                             $endpoints[] = [
                                 'id' => $ep->id,
@@ -221,21 +257,28 @@
                         }
                     }
                 }
-                // Otherwise try to parse from template_data
-                else {
-                    $templateData = is_array($template->template_data)
-                        ? $template->template_data
-                        : json_decode($template->template_data ?? '{}', true);
-                    $connections = $templateData['connections'] ?? [];
-                    foreach ($connections as $conn) {
-                        if (isset($conn['endpoints'])) {
-                            foreach ($conn['endpoints'] as $ep) {
-                                $endpoints[] = $ep;
-                            }
+            }
+            
+            // Strategy 3: Parse from template_data as fallback
+            if (empty($endpoints)) {
+                $debugInfo[] = 'Using Strategy 3: Parsing template_data';
+                $templateData = is_array($template->template_data)
+                    ? $template->template_data
+                    : json_decode($template->template_data ?? '{}', true);
+                $connections = $templateData['connections'] ?? [];
+                $debugInfo[] = 'Found ' . count($connections) . ' connections in template_data';
+                
+                foreach ($connections as $conn) {
+                    if (isset($conn['endpoints'])) {
+                        $debugInfo[] = 'Connection has ' . count($conn['endpoints']) . ' endpoints in template_data';
+                        foreach ($conn['endpoints'] as $ep) {
+                            $endpoints[] = $ep;
                         }
                     }
                 }
             }
+            
+            $debugInfo[] = 'Total endpoints loaded: ' . count($endpoints);
         @endphp
         <div x-data="endpointManager({ endpoints: @json($endpoints) })" x-init="init()">
             <div class="modal-content">
@@ -245,6 +288,16 @@
                 </div>
 
                 <div class="modal-body">
+                    {{-- Debug Info --}}
+                    <div class="alert alert-info mb-3">
+                        <strong>Debug Information:</strong>
+                        <ul class="mb-0 small">
+                            @foreach($debugInfo as $info)
+                                <li>{{ $info }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                    
                     <div class="row">
                         {{-- LEFT PANEL --}}
                         <div class="col-md-3 border-right">
