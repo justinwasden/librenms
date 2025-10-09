@@ -63,3 +63,4 @@ tmp/jsondata/network-performance.json
 tmp/jsondata/port details.json
 tmp/jsondata/volume performance.json
 tmp/jsondata/volumes.json
+tmp/librenms_tables.txt

@@ -124,9 +124,15 @@ class DataRouter
                     'storage_descr' => $storageDescr,
                 ],
                 [
-                    'storage_index' => crc32($storageDescr), // Generate unique index
+                    'storage_index' => (string)crc32($storageDescr), // varchar field
                     'storage_type' => 'rest-api',
+                    'type' => 'rest-api', // Required field
                     'storage_mib' => 'REST-API',
+                    'storage_size' => 0,
+                    'storage_units' => 1,
+                    'storage_used' => 0,
+                    'storage_free' => 0,
+                    'storage_perc' => 0,
                 ]
             );
             
@@ -158,7 +164,7 @@ class DataRouter
                 [
                     'port_descr_type' => 'rest-api',
                     'ifDescr' => "REST API Port: {$portName}",
-                    'ifIndex' => crc32($portName), // Generate unique index
+                    'ifIndex' => abs(crc32($portName)), // Generate unique index (positive)
                 ]
             );
             
