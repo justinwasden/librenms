@@ -118,23 +118,25 @@ class DataRouter
             // Extract storage identifier from displayKey if possible
             $storageDescr = $this->extractStorageDescr($displayKey, $mapping);
             
-            $storage = Storage::firstOrCreate(
-                [
-                    'device_id' => $this->device->device_id,
-                    'storage_descr' => $storageDescr,
-                ],
-                [
-                    'storage_index' => (string)crc32($storageDescr), // varchar field
-                    'storage_type' => 'rest-api',
-                    'type' => 'rest-api', // Required field
-                    'storage_mib' => 'REST-API',
-                    'storage_size' => 0,
-                    'storage_units' => 1,
-                    'storage_used' => 0,
-                    'storage_free' => 0,
-                    'storage_perc' => 0,
-                ]
-            );
+            // Find existing or create new storage entry
+            $storage = Storage::where('device_id', $this->device->device_id)
+                ->where('storage_descr', $storageDescr)
+                ->first();
+            
+            if (!$storage) {
+                $storage = new Storage();
+                $storage->device_id = $this->device->device_id;
+                $storage->storage_descr = $storageDescr;
+                $storage->storage_index = (string)abs(crc32($storageDescr));
+                $storage->storage_type = 'rest-api';
+                $storage->type = 'rest-api';
+                $storage->storage_size = 0;
+                $storage->storage_units = 1;
+                $storage->storage_used = 0;
+                $storage->storage_free = 0;
+                $storage->storage_perc = 0;
+                $storage->save();
+            }
             
             // Update the field
             $storage->update([$field => $value]);
@@ -156,18 +158,22 @@ class DataRouter
             // Extract port name from displayKey
             $portName = $this->extractPortName($displayKey, $mapping);
             
-            $port = Port::firstOrCreate(
-                [
-                    'device_id' => $this->device->device_id,
-                    'ifName' => $portName,
-                ],
-                [
-                    'port_descr_type' => 'rest-api',
-                    'ifDescr' => "REST API Port: {$portName}",
-                    'ifIndex' => abs(crc32($portName)), // Generate unique index (positive)
-                ]
-            );
+            // Find existing or create new port entry
+            $port = Port::where('device_id', $this->device->device_id)
+                ->where('ifName', $portName)
+                ->first();
             
+            if (!$port) {
+                $port = new Port();
+                $port->device_id = $this->device->device_id;
+                $port->ifName = $portName;
+                $port->ifDescr = "REST API Port: {$portName}";
+                $port->port_descr_type = 'rest-api';
+                $port->ifIndex = abs(crc32($portName));
+                $port->save();
+            }
+            
+            // Update the field
             $port->update([$field => $value]);
             
             Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
@@ -184,6 +190,12 @@ class DataRouter
     protected function storeInSensorsTable(string $field, $value, ?string $unit = null, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
+            // Sensors can only store numeric values in sensor_current
+            if ($field === 'sensor_current' && !is_numeric($value)) {
+                Log::debug("[{$endpointName}] Skipping non-numeric sensor value for {$displayKey}: {$value}");
+                return false;
+            }
+            
             // Determine sensor type and class
             $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
             
@@ -192,36 +204,40 @@ class DataRouter
             $sensorDescr = preg_replace('/\s+/', ' ', $sensorDescr);
             
             // Create a unique sensor index
-            $sensorIndex = crc32($this->device->device_id . '_' . $displayKey . '_' . $endpointName);
+            $sensorIndex = abs(crc32($this->device->device_id . '_' . $displayKey . '_' . $endpointName));
             
-            // Create or find the sensor
-            $sensor = Sensor::firstOrCreate(
-                [
-                    'device_id' => $this->device->device_id,
-                    'sensor_class' => $sensorInfo['class'],
-                    'sensor_type' => 'rest-api',
-                    'sensor_index' => $sensorIndex,
-                ],
-                [
-                    'sensor_descr' => $sensorDescr,
-                    'sensor_oid' => 'rest-api.' . $displayKey,
-                    'poller_type' => 'rest-api',
-                ]
-            );
+            // Find existing or create new sensor
+            $sensor = Sensor::where('device_id', $this->device->device_id)
+                ->where('sensor_class', $sensorInfo['class'])
+                ->where('sensor_type', 'rest-api')
+                ->where('sensor_index', $sensorIndex)
+                ->first();
+            
+            if (!$sensor) {
+                $sensor = new Sensor();
+                $sensor->device_id = $this->device->device_id;
+                $sensor->sensor_class = $sensorInfo['class'];
+                $sensor->sensor_type = 'rest-api';
+                $sensor->sensor_index = (string)$sensorIndex;
+                $sensor->sensor_descr = $sensorDescr;
+                $sensor->sensor_oid = 'rest-api.' . $displayKey;
+                $sensor->poller_type = 'rest-api';
+                
+                // Set default limits
+                if ($sensorInfo['class'] === 'temperature') {
+                    $sensor->sensor_limit = 70;
+                    $sensor->sensor_limit_low = 10;
+                } elseif ($sensorInfo['class'] === 'percentage') {
+                    $sensor->sensor_limit = 90;
+                    $sensor->sensor_limit_warn = 80;
+                    $sensor->sensor_limit_low = 0;
+                }
+                
+                $sensor->save();
+            }
             
             // Update sensor current value
             $updateData = ['sensor_current' => $value];
-            
-            // Set limits if we can infer them and they're not already set
-            if ($sensorInfo['class'] === 'temperature' && !$sensor->sensor_limit) {
-                $updateData['sensor_limit'] = 70; // Default high limit for temperature
-                $updateData['sensor_limit_low'] = 10; // Default low limit
-            } elseif ($sensorInfo['class'] === 'percentage' && !$sensor->sensor_limit) {
-                $updateData['sensor_limit'] = 90;
-                $updateData['sensor_limit_warn'] = 80;
-                $updateData['sensor_limit_low'] = 0;
-            }
-            
             $sensor->update($updateData);
             
             Log::info("[{$endpointName}] {$displayKey} -> sensors.sensor_current (class: {$sensorInfo['class']}, descr: {$sensorDescr}) = {$value}" . ($unit ? " ({$unit})" : ''));
