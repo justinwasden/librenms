@@ -7,6 +7,10 @@ use App\Models\RestApiMetric;
 use App\Models\Storage;
 use App\Models\Port;
 use App\Models\Sensor;
+use App\Models\StorageArray;
+use App\Models\StorageController;
+use App\Models\StorageArrayHost;
+use App\Models\StorageArrayVolume;
 use App\RestApi\Mapping\MappingEngine;
 use LibreNMS\RRD\RrdDefinition;
 use Log;
@@ -15,6 +19,7 @@ class DataRouter
 {
     protected Device $device;
     protected MappingEngine $mappingEngine;
+    protected array $itemContext = [];
 
     public function __construct(Device $device)
     {
@@ -25,17 +30,18 @@ class DataRouter
     /**
      * Route data to appropriate storage location
      */
-    public function route(array $flattenedData, string $resourceType, array $metricMap = [], string $endpointName = 'unknown'): void
+    public function route(array $flattenedData, string $resourceType, array $metricMap = [], string $endpointName = 'unknown', array $itemContext = []): void
     {
+        // Store item context for use in extraction methods
+        $this->itemContext = $itemContext;
+        
         foreach ($flattenedData as $key => $value) {
             // Skip pagination metadata
             if ($this->shouldSkip($key)) {
                 continue;
             }
 
-            // Clean the key for display (remove resource type prefix)
-            $displayKey = preg_replace('/^(device|storage|port|sensor|custom|mempool|processor)__/', '', $key);
-
+            $displayKey = $key;
             $routed = false;
 
             // 1. Try explicit metric mapping from endpoint config
@@ -87,6 +93,18 @@ class DataRouter
 
             // Route to appropriate LibreNMS table
             switch ($mapping->librenms_table) {
+                case 'storage_arrays':
+                    return $this->storeInStorageArrayTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
+                    
+                case 'storage_controllers':
+                    return $this->storeInStorageControllerTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
+                    
+                case 'storage_array_hosts':
+                    return $this->storeInStorageArrayHostTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
+                    
+                case 'storage_array_volumes':
+                    return $this->storeInStorageArrayVolumeTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
+                    
                 case 'storage':
                     return $this->storeInStorageTable($mapping->librenms_field, $transformedValue, $endpointName, $displayKey ?? $key, $mapping);
                     
@@ -110,15 +128,138 @@ class DataRouter
     }
 
     /**
-     * Store in storage table
+     * Store in storage_arrays table
+     */
+    protected function storeInStorageArrayTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
+    {
+        try {
+            $arrayName = $this->itemContext['name'] ?? $this->device->hostname;
+            
+            $array = StorageArray::updateOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'name' => $arrayName,
+                ],
+                [
+                    $field => $value,
+                    'last_polled' => now(),
+                ]
+            );
+            
+            Log::info("[{$endpointName}] {$displayKey} -> storage_arrays.{$field} (array: {$arrayName}) = {$value}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in storage_arrays.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in storage_controllers table
+     */
+    protected function storeInStorageControllerTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
+    {
+        try {
+            $controllerName = $this->itemContext['name'] ?? 'Controller-' . ($this->itemContext['index'] ?? 0);
+            
+            $controller = StorageController::updateOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'name' => $controllerName,
+                ],
+                [
+                    $field => $value,
+                    'last_polled' => now(),
+                ]
+            );
+            
+            Log::info("[{$endpointName}] {$displayKey} -> storage_controllers.{$field} (controller: {$controllerName}) = {$value}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in storage_controllers.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in storage_array_hosts table
+     */
+    protected function storeInStorageArrayHostTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
+    {
+        try {
+            $hostName = $this->itemContext['name'] ?? 'Host-' . ($this->itemContext['index'] ?? 0);
+            
+            // Handle JSON fields
+            if (in_array($field, ['iqns', 'wwns', 'nqns', 'port_connectivity_details', 'connected_ports', 'mapped_volumes'])) {
+                // If value is already an array, keep it; if string, wrap in array
+                if (!is_array($value)) {
+                    $value = [$value];
+                }
+            }
+            
+            $host = StorageArrayHost::updateOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'name' => $hostName,
+                ],
+                [
+                    $field => $value,
+                    'last_polled' => now(),
+                ]
+            );
+            
+            $displayValue = is_array($value) ? json_encode($value) : $value;
+            Log::info("[{$endpointName}] {$displayKey} -> storage_array_hosts.{$field} (host: {$hostName}) = {$displayValue}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in storage_array_hosts.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in storage_array_volumes table
+     */
+    protected function storeInStorageArrayVolumeTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
+    {
+        try {
+            $volumeName = $this->itemContext['name'] ?? 'Volume-' . ($this->itemContext['index'] ?? 0);
+            
+            // Handle JSON fields
+            if (in_array($field, ['mapped_hosts'])) {
+                if (!is_array($value)) {
+                    $value = [$value];
+                }
+            }
+            
+            $volume = StorageArrayVolume::updateOrCreate(
+                [
+                    'device_id' => $this->device->device_id,
+                    'name' => $volumeName,
+                ],
+                [
+                    $field => $value,
+                    'last_polled' => now(),
+                ]
+            );
+            
+            $displayValue = is_array($value) ? json_encode($value) : $value;
+            Log::info("[{$endpointName}] {$displayKey} -> storage_array_volumes.{$field} (volume: {$volumeName}) = {$displayValue}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in storage_array_volumes.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in storage table (legacy LibreNMS table)
      */
     protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            // Extract storage identifier from displayKey if possible
             $storageDescr = $this->extractStorageDescr($displayKey, $mapping);
             
-            // Find existing or create new storage entry
             $storage = Storage::where('device_id', $this->device->device_id)
                 ->where('storage_descr', $storageDescr)
                 ->first();
@@ -138,7 +279,6 @@ class DataRouter
                 $storage->save();
             }
             
-            // Update the field
             $storage->update([$field => $value]);
             
             Log::info("[{$endpointName}] {$displayKey} -> storage.{$field} (descr: {$storageDescr}) = {$value}");
@@ -155,10 +295,8 @@ class DataRouter
     protected function storeInPortsTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            // Extract port name from displayKey
             $portName = $this->extractPortName($displayKey, $mapping);
             
-            // Find existing or create new port entry
             $port = Port::where('device_id', $this->device->device_id)
                 ->where('ifName', $portName)
                 ->first();
@@ -173,7 +311,6 @@ class DataRouter
                 $port->save();
             }
             
-            // Update the field
             $port->update([$field => $value]);
             
             Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
@@ -190,23 +327,25 @@ class DataRouter
     protected function storeInSensorsTable(string $field, $value, ?string $unit = null, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            // Sensors can only store numeric values in sensor_current
             if ($field === 'sensor_current' && !is_numeric($value)) {
                 Log::debug("[{$endpointName}] Skipping non-numeric sensor value for {$displayKey}: {$value}");
                 return false;
             }
             
-            // Determine sensor type and class
             $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
             
-            // Create sensor description from displayKey
-            $sensorDescr = str_replace('_', ' ', ucwords($displayKey, '_'));
+            if (!empty($this->itemContext['name'])) {
+                $sensorDescr = $this->itemContext['name'] . ' - ' . str_replace('_', ' ', ucwords($displayKey, '_'));
+            } else {
+                $sensorDescr = str_replace('_', ' ', ucwords($displayKey, '_'));
+            }
             $sensorDescr = preg_replace('/\s+/', ' ', $sensorDescr);
             
-            // Create a unique sensor index
-            $sensorIndex = abs(crc32($this->device->device_id . '_' . $displayKey . '_' . $endpointName));
+            $indexBase = !empty($this->itemContext['name']) 
+                ? $this->itemContext['name'] . '_' . $displayKey
+                : $displayKey . '_' . $endpointName;
+            $sensorIndex = abs(crc32($this->device->device_id . '_' . $indexBase));
             
-            // Find existing or create new sensor
             $sensor = Sensor::where('device_id', $this->device->device_id)
                 ->where('sensor_class', $sensorInfo['class'])
                 ->where('sensor_type', 'rest-api')
@@ -223,7 +362,6 @@ class DataRouter
                 $sensor->sensor_oid = 'rest-api.' . $displayKey;
                 $sensor->poller_type = 'rest-api';
                 
-                // Set default limits
                 if ($sensorInfo['class'] === 'temperature') {
                     $sensor->sensor_limit = 70;
                     $sensor->sensor_limit_low = 10;
@@ -236,15 +374,12 @@ class DataRouter
                 $sensor->save();
             }
             
-            // Update sensor current value
-            $updateData = ['sensor_current' => $value];
-            $sensor->update($updateData);
+            $sensor->update(['sensor_current' => $value]);
             
             Log::info("[{$endpointName}] {$displayKey} -> sensors.sensor_current (class: {$sensorInfo['class']}, descr: {$sensorDescr}) = {$value}" . ($unit ? " ({$unit})" : ''));
             return true;
         } catch (\Exception $e) {
             Log::error("[{$endpointName}] Failed to store sensor {$field}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }
@@ -257,122 +392,69 @@ class DataRouter
         $field = strtolower($field);
         $displayKey = strtolower($displayKey);
         
-        // Temperature sensors
-        if (strpos($field, 'temp') !== false || strpos($displayKey, 'tmp') !== false || 
-            strpos($displayKey, 'temperature') !== false || $unit === '°C' || $unit === 'celsius') {
-            return [
-                'class' => 'temperature',
-                'description' => 'Temperature',
-            ];
+        if (strpos($field, 'temp') !== false || strpos($displayKey, 'temperature') !== false || $unit === '°C' || $unit === 'celsius') {
+            return ['class' => 'temperature', 'description' => 'Temperature'];
         }
-        
-        // Voltage sensors
         if (strpos($field, 'voltage') !== false || $unit === 'V' || $unit === 'volts') {
-            return [
-                'class' => 'voltage',
-                'description' => 'Voltage',
-            ];
+            return ['class' => 'voltage', 'description' => 'Voltage'];
         }
-        
-        // Fan speed
         if (strpos($field, 'fan') !== false || strpos($displayKey, 'fan') !== false || $unit === 'RPM') {
-            return [
-                'class' => 'fanspeed',
-                'description' => 'Fan Speed',
-            ];
+            return ['class' => 'fanspeed', 'description' => 'Fan Speed'];
         }
-        
-        // Power
         if (strpos($field, 'power') !== false || $unit === 'W' || $unit === 'watts') {
-            return [
-                'class' => 'power',
-                'description' => 'Power',
-            ];
+            return ['class' => 'power', 'description' => 'Power'];
         }
-        
-        // Current
         if (strpos($field, 'ampere') !== false || $unit === 'A' || $unit === 'amps') {
-            return [
-                'class' => 'current',
-                'description' => 'Current',
-            ];
+            return ['class' => 'current', 'description' => 'Current'];
+        }
+        if (strpos($field, 'percent') !== false || strpos($field, 'usage') !== false || $unit === '%') {
+            return ['class' => 'percentage', 'description' => 'Percentage'];
+        }
+        if (strpos($field, 'count') !== false || strpos($field, 'status') !== false) {
+            return ['class' => 'count', 'description' => 'Count'];
         }
         
-        // Percentage/ratio
-        if (strpos($field, 'percent') !== false || strpos($field, 'perc') !== false || 
-            strpos($field, 'usage') !== false || strpos($field, 'util') !== false ||
-            $unit === '%' || $unit === 'ratio') {
-            return [
-                'class' => 'percentage',
-                'description' => 'Percentage',
-            ];
-        }
-        
-        // Count/state
-        if (strpos($field, 'count') !== false || strpos($field, 'state') !== false || 
-            strpos($field, 'status') !== false) {
-            return [
-                'class' => 'count',
-                'description' => 'Count',
-            ];
-        }
-        
-        // Default to state
-        return [
-            'class' => 'state',
-            'description' => 'State',
-        ];
+        return ['class' => 'state', 'description' => 'State'];
     }
 
-    /**
-     * Extract storage description from display key
-     */
     protected function extractStorageDescr(string $displayKey, $mapping = null): string
     {
-        // Try to extract a meaningful name from the key
-        // Example: "volume_sw_sql_rsa_swsql_01_space_total_used" -> "sw-sql-rsa-swsql-01"
-        
-        // Remove common suffixes
-        $name = preg_replace('/(space|total|used|free|size|percent|perc|_)+$/', '', $displayKey);
-        $name = trim($name, '_');
-        
-        // If name is still too generic or empty, use endpoint info from mapping
-        if (strlen($name) < 3 || in_array($name, ['volume', 'storage', 'disk'])) {
-            $name = 'rest-api-storage';
+        if (!empty($this->itemContext['name'])) {
+            return substr($this->itemContext['name'], 0, 64);
+        }
+        if (isset($this->itemContext['type']) && $this->itemContext['type'] === 'aggregated') {
+            return 'total-provisioned';
         }
         
-        // Clean up the name
-        $name = str_replace('_', '-', $name);
-        $name = substr($name, 0, 64); // Limit length
+        $name = preg_replace('/(space|total|used|free|size|percent|_)+$/', '', $displayKey);
+        $name = trim($name, '_');
         
-        return $name;
+        if (strlen($name) < 3 || in_array($name, ['volume', 'storage', 'disk'])) {
+            $name = 'rest-api-storage-' . ($this->itemContext['index'] ?? 'unknown');
+        }
+        
+        return substr(str_replace('_', '-', $name), 0, 64);
     }
 
-    /**
-     * Extract port name from display key
-     */
     protected function extractPortName(string $displayKey, $mapping = null): string
     {
-        // Try to extract port identifier
-        // Examples: 
-        // "ct0_eth10_speed" -> "ct0.eth10"
-        // "network_ct1_eth11_mtu" -> "ct1.eth11"
+        if (!empty($this->itemContext['name'])) {
+            return substr($this->itemContext['name'], 0, 32);
+        }
         
         if (preg_match('/(ct[0-9]+[_\.]eth[0-9]+)/i', $displayKey, $matches)) {
             return str_replace('_', '.', $matches[1]);
         }
-        
         if (preg_match('/(eth[0-9]+)/i', $displayKey, $matches)) {
             return $matches[1];
         }
+        if (!empty($this->itemContext['id'])) {
+            return substr($this->itemContext['id'], 0, 32);
+        }
         
-        // Fallback: use the whole displayKey
         return substr(str_replace('_', '.', $displayKey), 0, 32);
     }
 
-    /**
-     * Store in devices table
-     */
     protected function storeInDevicesTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = ''): bool
     {
         try {
@@ -385,14 +467,9 @@ class DataRouter
         }
     }
 
-    /**
-     * Check if key should be skipped
-     */
     protected function shouldSkip(string $key): bool
     {
-        // Remove any resource prefix first
-        $cleanKey = preg_replace('/^(device|storage|port|sensor|custom|mempool|processor)__/', '', strtolower($key));
-        
+        $cleanKey = strtolower($key);
         $skipPatterns = [
             '/^continuation_token$/',
             '/^more_items_remaining$/',
@@ -406,34 +483,23 @@ class DataRouter
                 return true;
             }
         }
-
         return false;
     }
 
-    /**
-     * Route data based on explicit metric mapping
-     */
     protected function routeByMapping(string $key, $value, string $mapping, string $resourceType, string $endpointName = 'unknown', string $displayKey = null): bool
     {
         $parts = explode('.', $mapping);
-        
         if (count($parts) < 2) {
             return false;
         }
 
-        $destination = $parts[0];
-
-        if ($destination === 'rrd') {
+        if ($parts[0] === 'rrd') {
             $rrdName = $parts[1] ?? $key;
             return $this->storeInRrd($rrdName, $key, $value, $endpointName, $displayKey ?? $key);
         }
-
         return false;
     }
 
-    /**
-     * Check if this is a performance metric
-     */
     protected function isPerformanceMetric(string $key, $value): bool
     {
         if (!is_numeric($value)) {
@@ -454,13 +520,9 @@ class DataRouter
                 return true;
             }
         }
-
         return false;
     }
 
-    /**
-     * Store data in RRD file
-     */
     protected function storeInRrd(string $rrdName, string $key, $value, string $endpointName = 'unknown', string $displayKey = null): bool
     {
         if (!is_numeric($value)) {
@@ -469,24 +531,17 @@ class DataRouter
 
         try {
             $datastore = app('Datastore');
-            
-            $dsName = preg_replace('/[^a-zA-Z0-9_]/', '_', $key);
-            $dsName = substr($dsName, 0, 19);
-            
+            $dsName = substr(preg_replace('/[^a-zA-Z0-9_]/', '_', $key), 0, 19);
             $rrd_def = RrdDefinition::make()->addDataset($dsName, 'GAUGE', 0, 125000000000);
             
             $datastore->put(
                 ['device_id' => $this->device->device_id],
                 "rest_api_{$rrdName}",
-                [
-                    'rrd_def' => $rrd_def,
-                    'rrd_name' => ['rest_api', $rrdName],
-                ],
+                ['rrd_def' => $rrd_def, 'rrd_name' => ['rest_api', $rrdName]],
                 $value
             );
             
-            $display = $displayKey ?? $key;
-            Log::debug("[{$endpointName}] {$display} -> RRD: rest_api_{$rrdName} = {$value}");
+            Log::debug("[{$endpointName}] " . ($displayKey ?? $key) . " -> RRD: rest_api_{$rrdName} = {$value}");
             return true;
         } catch (\Exception $e) {
             Log::error("Error storing RRD {$rrdName}: " . $e->getMessage());
@@ -494,9 +549,6 @@ class DataRouter
         }
     }
 
-    /**
-     * Store in fallback table
-     */
     protected function storeInFallbackTable(string $key, $value, string $resourceType, string $endpointName = 'unknown', string $displayKey = null): void
     {
         try {
@@ -512,20 +564,15 @@ class DataRouter
                 ]
             );
             
-            $display = $displayKey ?? $key;
-            Log::debug("[{$endpointName}] {$display} -> fallback table ({$resourceType})");
+            Log::debug("[{$endpointName}] " . ($displayKey ?? $key) . " -> fallback table ({$resourceType})");
         } catch (\Exception $e) {
             Log::error("Error storing in fallback table: " . $e->getMessage());
         }
     }
 
-    /**
-     * Generate RRD file name
-     */
     protected function generateRrdName(string $key, string $resourceType): string
     {
-        $name = preg_replace('/[^a-zA-Z0-9_-]/', '_', $key);
-        $name = strtolower($name);
+        $name = strtolower(preg_replace('/[^a-zA-Z0-9_-]/', '_', $key));
         
         if (!str_starts_with($name, $resourceType . '_')) {
             $name = $resourceType . '_' . $name;

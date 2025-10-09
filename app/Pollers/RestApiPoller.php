@@ -66,33 +66,168 @@ class RestApiPoller
                     // Check if this is a PureStorage API response and parse it
                     if (PureStorageParser::isPureStorageResponse($response)) {
                         Log::debug("[{$endpoint->name}] Detected PureStorage API format - parsing");
-                        $response = PureStorageParser::parse($response, $endpoint->name);
+                        $parsedResponse = PureStorageParser::parse($response, $endpoint->name);
+                        $this->processStructuredResponse($parsedResponse, $endpoint);
+                    } else {
+                        // Legacy/non-PureStorage response - flatten and process as before
+                        Log::debug("[{$endpoint->name}] Standard response format - flattening");
+                        $metrics = JsonFlattener::flatten($response);
+                        
+                        Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
+                        
+                        // Get metric map from endpoint if available
+                        $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
+                        
+                        $this->stager->stageMetrics(
+                            $metrics, 
+                            true, // isPoller
+                            $endpoint->resource_type ?? 'custom',
+                            $metricMap,
+                            $endpoint->name
+                        );
                     }
-                    
-                    Log::debug("[{$endpoint->name}] Flattening response with prefix: '{$endpoint->resource_type}_'");
-                    $metrics = JsonFlattener::flatten($response, $endpoint->resource_type . '_');
-                    
-                    Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
-                    
-                    // Get metric map from endpoint if available
-                    $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
-                    
-                    $this->stager->stageMetrics(
-                        $metrics, 
-                        true, // isPoller
-                        $endpoint->resource_type ?? 'custom',
-                        $metricMap,
-                        $endpoint->name
-                    );
                     
                     Log::info("REST API polling successful for {$endpoint->name} on {$this->device->hostname}");
                 } catch (\Exception $e) {
                     Log::error("Polling failed for {$endpoint->name}: {$e->getMessage()}");
+                    Log::error("Stack trace: " . $e->getTraceAsString());
                 }
             }
         }
 
         Log::info("REST API Polling completed for device {$this->device->hostname}");
+    }
+
+    /**
+     * Process a structured response from PureStorageParser
+     * 
+     * @param array $parsedResponse Structured response with 'type', 'items', 'aggregated'
+     * @param object $endpoint The endpoint configuration
+     */
+    protected function processStructuredResponse(array $parsedResponse, $endpoint): void
+    {
+        $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
+        $resourceType = $endpoint->resource_type ?? 'custom';
+        
+        Log::debug("[{$endpoint->name}] Processing structured response of type: {$parsedResponse['type']}");
+        
+        switch ($parsedResponse['type']) {
+            case 'empty':
+                Log::info("[{$endpoint->name}] Empty response - no items to process");
+                break;
+                
+            case 'single-item':
+                // Single item - treat as device-level data
+                Log::debug("[{$endpoint->name}] Processing single item as device-level data");
+                $item = $parsedResponse['items'][0];
+                $metrics = JsonFlattener::flatten($item);
+                
+                // Also include aggregated data if present
+                if (!empty($parsedResponse['aggregated'])) {
+                    $aggregatedMetrics = JsonFlattener::flatten($parsedResponse['aggregated']);
+                    foreach ($aggregatedMetrics as $key => $value) {
+                        if (!isset($metrics[$key])) { // Don't overwrite item data
+                            $metrics["total_{$key}"] = $value;
+                        }
+                    }
+                }
+                
+                Log::debug("[{$endpoint->name}] Flattened to " . count($metrics) . " metrics");
+                $this->stager->stageMetrics(
+                    $metrics,
+                    true,
+                    $resourceType,
+                    $metricMap,
+                    $endpoint->name
+                );
+                break;
+                
+            case 'multi-item':
+                // Multiple items - process each separately
+                $itemCount = count($parsedResponse['items']);
+                Log::info("[{$endpoint->name}] Processing {$itemCount} items individually");
+                
+                // First, process aggregated data if present
+                if (!empty($parsedResponse['aggregated'])) {
+                    Log::debug("[{$endpoint->name}] Processing aggregated/total data");
+                    $aggregatedMetrics = JsonFlattener::flatten($parsedResponse['aggregated']);
+                    
+                    // Prefix aggregated metrics to distinguish them
+                    $prefixedMetrics = [];
+                    foreach ($aggregatedMetrics as $key => $value) {
+                        $prefixedMetrics["total_{$key}"] = $value;
+                    }
+                    
+                    $this->stager->stageMetrics(
+                        $prefixedMetrics,
+                        true,
+                        $resourceType,
+                        $metricMap,
+                        $endpoint->name,
+                        ['type' => 'aggregated']
+                    );
+                }
+                
+                // Now process each individual item
+                foreach ($parsedResponse['items'] as $index => $item) {
+                    // Build item context for identification
+                    $itemContext = [
+                        'name' => $item['name'] ?? null,
+                        'id' => $item['id'] ?? null,
+                        'index' => $index,
+                    ];
+                    
+                    // Remove metadata fields before flattening
+                    $cleanItem = $this->removeMetadataFields($item);
+                    
+                    $metrics = JsonFlattener::flatten($cleanItem);
+                    
+                    $itemLabel = $itemContext['name'] ?? $itemContext['id'] ?? "item_{$index}";
+                    Log::debug("[{$endpoint->name}] Processing item: {$itemLabel} ({" . count($metrics) . "} metrics)");
+                    
+                    $this->stager->stageMetrics(
+                        $metrics,
+                        true,
+                        $resourceType,
+                        $metricMap,
+                        $endpoint->name,
+                        $itemContext
+                    );
+                }
+                
+                Log::info("[{$endpoint->name}] Completed processing {$itemCount} items");
+                break;
+                
+            case 'legacy':
+                // Fallback for non-structured responses
+                Log::debug("[{$endpoint->name}] Legacy response format");
+                $metrics = JsonFlattener::flatten($parsedResponse['data']);
+                $this->stager->stageMetrics(
+                    $metrics,
+                    true,
+                    $resourceType,
+                    $metricMap,
+                    $endpoint->name
+                );
+                break;
+                
+            default:
+                Log::warning("[{$endpoint->name}] Unknown response type: {$parsedResponse['type']}");
+        }
+    }
+
+    /**
+     * Remove metadata fields that shouldn't be stored as metrics
+     */
+    protected function removeMetadataFields(array $item): array
+    {
+        $metadataFields = ['id', 'resource_type', 'continuation_token', 'more_items_remaining'];
+        
+        foreach ($metadataFields as $field) {
+            unset($item[$field]);
+        }
+        
+        return $item;
     }
 
     protected function requestEndpoint($connection, $endpoint): array
