@@ -27,7 +27,7 @@ poller_modules:
     os: true
     ospf: false
     processors: false  # No CPU polling
-    restapi: true
+    rest-api: true
     route: false
     stp: false
     ucd-diskio: false
@@ -54,7 +54,7 @@ discovery_modules:
     nac: false
     ospf: false
     processors: false  # No CPU discovery
-    restapi: true
+    rest-api: true
     route: false
     sensors: false  # Use REST API for metrics instead
     slas: false
