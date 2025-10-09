@@ -65,3 +65,4 @@ tmp/jsondata/volume performance.json
 tmp/jsondata/volumes.json
 tmp/librenms_tables.txt
 database/migrations/2025_01_08_000000_create_rest_api_tables.php
+/tmp
