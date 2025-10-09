@@ -198,12 +198,44 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         @php
-            $templateData = is_array($template->template_data)
-                ? $template->template_data
-                : json_decode($template->template_data ?? '{}', true);
-            $connections = $templateData['connections'] ?? [];
-            $connection = $connections[0] ?? [];
-            $endpoints = $connection['endpoints'] ?? [];
+            // Get actual endpoints from the database, not from template_data
+            $endpoints = [];
+            
+            // Try to get endpoints from template's connections
+            if ($template->id) {
+                // If this is a device template, get endpoints from device connections
+                if (isset($template->device_id) && $template->device_id) {
+                    $connections = \App\Models\RestApiConnection::where('device_id', $template->device_id)->get();
+                    foreach ($connections as $conn) {
+                        $connEndpoints = \App\Models\RestApiEndpoint::where('connection_id', $conn->id)->get();
+                        foreach ($connEndpoints as $ep) {
+                            $endpoints[] = [
+                                'id' => $ep->id,
+                                'name' => $ep->name,
+                                'path' => $ep->path,
+                                'method' => $ep->method ?? 'GET',
+                                'resource_type' => $ep->resource_type,
+                                'metric_map' => $ep->metric_map,
+                                'connection_id' => $ep->connection_id
+                            ];
+                        }
+                    }
+                }
+                // Otherwise try to parse from template_data
+                else {
+                    $templateData = is_array($template->template_data)
+                        ? $template->template_data
+                        : json_decode($template->template_data ?? '{}', true);
+                    $connections = $templateData['connections'] ?? [];
+                    foreach ($connections as $conn) {
+                        if (isset($conn['endpoints'])) {
+                            foreach ($conn['endpoints'] as $ep) {
+                                $endpoints[] = $ep;
+                            }
+                        }
+                    }
+                }
+            }
         @endphp
         <div x-data="endpointManager({ endpoints: @json($endpoints) })" x-init="init()">
             <div class="modal-content">
@@ -239,29 +271,66 @@
                             <template x-if="selectedEndpointIndex !== null">
                                 <div class="endpoint-dirty">
                                     <div class="form-group">
-                                        <label>Endpoint Name</label>
-                                        <input type="text" class="form-control" x-model="selectedEndpoint.name">
+                                        <label>Endpoint Name <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" x-model="selectedEndpoint.name" required>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="form-group">
+                                                <label>Path <span class="text-danger">*</span></label>
+                                                <input type="text" class="form-control" x-model="selectedEndpoint.path" 
+                                                       placeholder="/api/2.30/arrays" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>HTTP Method</label>
+                                                <select class="form-control" x-model="selectedEndpoint.method">
+                                                    <option>GET</option>
+                                                    <option>POST</option>
+                                                    <option>PUT</option>
+                                                    <option>DELETE</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="form-group">
-                                        <label>Path</label>
-                                        <input type="text" class="form-control" x-model="selectedEndpoint.path">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>HTTP Method</label>
-                                        <select class="form-control" x-model="selectedEndpoint.method">
-                                            <option>GET</option>
-                                            <option>POST</option>
-                                            <option>PUT</option>
-                                            <option>DELETE</option>
+                                        <label>Resource Type</label>
+                                        <select class="form-control" x-model="selectedEndpoint.resource_type">
+                                            <option value="">-- Auto Detect --</option>
+                                            <optgroup label="Standard Types">
+                                                <option value="device">Device</option>
+                                                <option value="port">Port</option>
+                                                <option value="sensor">Sensor</option>
+                                                <option value="processor">Processor</option>
+                                                <option value="mempool">Memory Pool</option>
+                                                <option value="alert">Alert</option>
+                                                <option value="custom">Custom</option>
+                                            </optgroup>
+                                            <optgroup label="Storage Array Types">
+                                                <option value="array">Array</option>
+                                                <option value="controller">Controller</option>
+                                                <option value="host">Host</option>
+                                                <option value="volume">Volume</option>
+                                                <option value="storage">Storage (Legacy)</option>
+                                            </optgroup>
                                         </select>
+                                        <small class="form-text text-muted">Determines which database table to store data in</small>
                                     </div>
                                     <div class="form-group">
-                                        <label>Metric Mapping (JSON)</label>
-                                        <textarea class="form-control" rows="10" x-model="selectedEndpoint.metric_map_json"></textarea>
+                                        <label>Metric Mapping (JSON) <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
+                                        <textarea class="form-control font-monospace" rows="10" x-model="selectedEndpoint.metric_map_json"
+                                                  placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
+                                        <small class="form-text text-muted">Leave empty to let the system auto-learn field mappings</small>
                                     </div>
 
-                                    <div class="text-right">
-                                        <button type="button" class="btn btn-primary" :disabled="!isDirty"
+                                    <div class="text-right mt-4">
+                                        <button type="button" class="btn btn-danger mr-2" 
+                                                @click="deleteEndpoint()" 
+                                                x-show="selectedEndpoint.id">
+                                            <i class="fas fa-trash"></i> Delete Endpoint
+                                        </button>
+                                        <button type="button" class="btn btn-primary" 
                                                 @click="saveEndpointChanges()">
                                             <i class="fas fa-save"></i> Save Endpoint
                                         </button>
@@ -270,7 +339,10 @@
                             </template>
 
                             <template x-if="selectedEndpointIndex === null">
-                                <p class="text-muted text-center">Select an endpoint to edit or create a new one.</p>
+                                <div class="text-center text-muted py-5">
+                                    <i class="fas fa-arrow-left fa-3x mb-3"></i>
+                                    <p>Select an endpoint from the list or create a new one.</p>
+                                </div>
                             </template>
                         </div>
                     </div>
@@ -316,12 +388,17 @@ function endpointManager({ endpoints }) {
         isDirty: false,
 
         init() {
+            console.log('Loaded', this.endpoints.length, 'endpoints');
             this.endpoints.forEach((ep, idx) => {
                 this.endpoints[idx].metric_map_json =
                     typeof ep.metric_map === 'string'
                         ? ep.metric_map
                         : JSON.stringify(ep.metric_map ?? {}, null, 4);
             });
+            // Auto-select first endpoint if available
+            if (this.endpoints.length > 0) {
+                this.selectEndpoint(0);
+            }
         },
 
         selectEndpoint(index) {
@@ -332,7 +409,14 @@ function endpointManager({ endpoints }) {
         },
 
         addNewEndpoint() {
-            const newEp = { name: 'New Endpoint', path: '', method: 'GET', metric_map: {}, metric_map_json: '{}' };
+            const newEp = { 
+                name: 'New Endpoint', 
+                path: '/api/2.30/', 
+                method: 'GET', 
+                resource_type: '',
+                metric_map: null, 
+                metric_map_json: '' 
+            };
             this.endpoints.push(newEp);
             this.selectEndpoint(this.endpoints.length - 1);
             this.isDirty = true;
@@ -341,37 +425,87 @@ function endpointManager({ endpoints }) {
         async saveEndpointChanges() {
             if (this.selectedEndpointIndex === null) return;
 
-            try {
-                this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
-            } catch {
-                alert('Invalid JSON in Metric Mapping');
+            // Validate required fields
+            if (!this.selectedEndpoint.name || !this.selectedEndpoint.path) {
+                alert('Name and Path are required fields');
                 return;
+            }
+
+            // Parse metric_map JSON if provided
+            if (this.selectedEndpoint.metric_map_json && this.selectedEndpoint.metric_map_json.trim()) {
+                try {
+                    this.selectedEndpoint.metric_map = JSON.parse(this.selectedEndpoint.metric_map_json);
+                } catch (e) {
+                    alert('Invalid JSON in Metric Mapping: ' + e.message);
+                    return;
+                }
+            } else {
+                this.selectedEndpoint.metric_map = null;
             }
 
             this.endpoints[this.selectedEndpointIndex] = { ...this.selectedEndpoint };
             this.isDirty = false;
 
-            try {
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch("{{ route('device.rest-api.connections.update', ['device' => $template->device_id ?? 0, 'connection' => $connection['id'] ?? 0]) }}", {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-                    body: JSON.stringify({
-                        action_type: 'edit_endpoint',
-                        index: this.selectedEndpointIndex,
-                        endpoint: this.selectedEndpoint
-                    })
-                });
+            // If endpoint has an ID, update via API
+            if (this.selectedEndpoint.id) {
+                try {
+                    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                    const res = await fetch(`/rest-api/endpoints/${this.selectedEndpoint.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                        body: JSON.stringify({
+                            name: this.selectedEndpoint.name,
+                            path: this.selectedEndpoint.path,
+                            method: this.selectedEndpoint.method,
+                            resource_type: this.selectedEndpoint.resource_type,
+                            metric_map: this.selectedEndpoint.metric_map
+                        })
+                    });
 
-                const data = await res.json();
-                if (data.success) {
-                    alert('Endpoint saved successfully.');
-                } else {
-                    alert('Error saving endpoint: ' + (data.message || 'Unknown error.'));
+                    const data = await res.json();
+                    if (data.success || res.ok) {
+                        alert('Endpoint saved successfully!');
+                        location.reload(); // Reload to show updated data
+                    } else {
+                        alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to save endpoint. Check console for details.');
                 }
-            } catch (err) {
-                console.error(err);
-                alert('AJAX request failed.');
+            } else {
+                alert('New endpoint created in memory. Save the template to persist.');
+            }
+        },
+
+        async deleteEndpoint() {
+            if (!confirm('Are you sure you want to delete this endpoint?')) return;
+            
+            if (this.selectedEndpoint.id) {
+                try {
+                    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                    const res = await fetch(`/rest-api/endpoints/${this.selectedEndpoint.id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': token }
+                    });
+
+                    if (res.ok) {
+                        this.endpoints.splice(this.selectedEndpointIndex, 1);
+                        this.selectedEndpointIndex = null;
+                        this.selectedEndpoint = {};
+                        alert('Endpoint deleted successfully!');
+                    } else {
+                        alert('Failed to delete endpoint');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to delete endpoint');
+                }
+            } else {
+                // Just remove from array if not saved yet
+                this.endpoints.splice(this.selectedEndpointIndex, 1);
+                this.selectedEndpointIndex = null;
+                this.selectedEndpoint = {};
             }
         },
     }
