@@ -100,9 +100,8 @@ class PureStorageMappingsSeeder extends Seeder
                 'librenms_table' => 'ports',
                 'librenms_field' => 'ifSpeed',
                 'data_type' => 'numeric',
-                'unit' => 'bps',
-                'multiplier' => 1000000, // Convert Gbps to bps
-                'description' => 'Pure Storage network interface speed',
+                'unit' => 'gbps', // Store as Gbps, will convert in code
+                'description' => 'Pure Storage network interface speed in Gbps',
             ],
             [
                 'metric_name' => 'enabled',

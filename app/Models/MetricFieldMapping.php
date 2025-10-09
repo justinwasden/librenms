@@ -116,9 +116,14 @@ class MetricFieldMapping extends Model
             return null;
         }
 
-        // Apply multiplier for numeric values
+        // Handle unit conversions for numeric values
         if ($this->data_type === 'numeric' && is_numeric($value)) {
-            $value = $value * $this->multiplier;
+            $value = $this->convertUnits($value);
+            
+            // Apply multiplier if set and reasonable
+            if ($this->multiplier && $this->multiplier != 1.0) {
+                $value = $value * $this->multiplier;
+            }
         }
 
         // Type casting
@@ -134,5 +139,47 @@ class MetricFieldMapping extends Model
             default:
                 return $value;
         }
+    }
+    
+    /**
+     * Convert units if needed
+     */
+    protected function convertUnits($value)
+    {
+        if (!$this->unit) {
+            return $value;
+        }
+        
+        // Speed conversions to bps (bits per second)
+        if ($this->librenms_field === 'ifSpeed') {
+            switch (strtolower($this->unit)) {
+                case 'gbps':
+                    return $value * 1000000000; // Gbps to bps
+                case 'mbps':
+                    return $value * 1000000; // Mbps to bps
+                case 'kbps':
+                    return $value * 1000; // Kbps to bps
+            }
+        }
+        
+        // Storage conversions to bytes
+        if (in_array($this->librenms_field, ['storage_size', 'storage_used', 'storage_free', 'mempool_used', 'mempool_free'])) {
+            switch (strtolower($this->unit)) {
+                case 'tb':
+                case 'tib':
+                    return $value * 1099511627776; // TB to bytes
+                case 'gb':
+                case 'gib':
+                    return $value * 1073741824; // GB to bytes
+                case 'mb':
+                case 'mib':
+                    return $value * 1048576; // MB to bytes
+                case 'kb':
+                case 'kib':
+                    return $value * 1024; // KB to bytes
+            }
+        }
+        
+        return $value;
     }
 }
