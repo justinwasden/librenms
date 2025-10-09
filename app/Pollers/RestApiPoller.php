@@ -5,6 +5,7 @@ use App\Models\Device;
 use App\RestApi\Metrics\MetricsStager;
 use App\RestApi\Credentials\CredentialHelper;
 use App\RestApi\Utils\JsonFlattener;
+use App\RestApi\Parsers\PureStorageParser;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
 use Log;
@@ -58,8 +59,20 @@ class RestApiPoller
 
             foreach ($conn->endpoints as $endpoint) {
                 try {
+                    Log::debug("[{$endpoint->name}] Starting to process endpoint: {$endpoint->path}");
+                    
                     $response = $this->requestEndpoint($conn, $endpoint);
+                    
+                    // Check if this is a PureStorage API response and parse it
+                    if (PureStorageParser::isPureStorageResponse($response)) {
+                        Log::debug("[{$endpoint->name}] Detected PureStorage API format - parsing");
+                        $response = PureStorageParser::parse($response, $endpoint->name);
+                    }
+                    
+                    Log::debug("[{$endpoint->name}] Flattening response with prefix: '{$endpoint->resource_type}_'");
                     $metrics = JsonFlattener::flatten($response, $endpoint->resource_type . '_');
+                    
+                    Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
                     
                     // Get metric map from endpoint if available
                     $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
@@ -110,11 +123,21 @@ class RestApiPoller
         }
 
         $body = (string)$res->getBody();
+        
+        // Log the raw response for debugging
+        Log::debug("[{$endpoint->name}] Raw API response (first 500 chars): " . substr($body, 0, 500));
+        
         $decoded = json_decode($body, true);
         if (!$decoded) {
-            throw new \Exception("Invalid JSON response");
+            $jsonError = json_last_error_msg();
+            Log::error("[{$endpoint->name}] JSON decode failed: {$jsonError}");
+            Log::error("[{$endpoint->name}] Response body (first 1000 chars): " . substr($body, 0, 1000));
+            throw new \Exception("Invalid JSON response: {$jsonError}");
         }
-
+        
+        // Log the structure of decoded data
+        Log::debug("[{$endpoint->name}] Decoded response keys: " . implode(', ', array_keys($decoded)));
+        
         return $decoded;
     }
 

@@ -16,6 +16,14 @@ class JsonFlattener
     {
         $result = [];
         
+        // Log input data structure at the top level
+        if (empty($prefix)) {
+            \Log::debug("JsonFlattener input - Top level keys: " . implode(', ', array_keys($data)));
+            \Log::debug("JsonFlattener input - Data structure: " . json_encode(array_map(function($v) {
+                return is_array($v) ? '[array:' . count($v) . ']' : (is_string($v) ? '[string]' : gettype($v));
+            }, $data)));
+        }
+        
         foreach ($data as $key => $value) {
             // Build the new key
             $newKey = $prefix ? $prefix . $separator . $key : $key;
@@ -44,6 +52,14 @@ class JsonFlattener
             } else {
                 // Store the value directly
                 $result[$newKey] = $value;
+            }
+        }
+        
+        // Log output at the top level
+        if (empty($prefix)) {
+            \Log::debug("JsonFlattener output - Total flattened keys: " . count($result));
+            if (count($result) > 0) {
+                \Log::debug("JsonFlattener output - Sample keys (first 10): " . implode(', ', array_slice(array_keys($result), 0, 10)));
             }
         }
         

@@ -4,6 +4,7 @@ namespace App\Discovery;
 use App\Models\Device;
 use App\Pollers\ApiMetricsCollector;
 use App\RestApi\Utils\JsonFlattener;
+use App\RestApi\Parsers\PureStorageParser;
 use App\RestApi\Credentials\CredentialHelper;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
@@ -59,6 +60,13 @@ class RestApiDiscovery
             foreach ($conn->endpoints as $endpoint) {
                 try {
                     $response = $this->requestEndpoint($conn, $endpoint);
+                    
+                    // Check if this is a PureStorage API response and parse it
+                    if (PureStorageParser::isPureStorageResponse($response)) {
+                        Log::debug("[{$endpoint->name}] Detected PureStorage API format - parsing");
+                        $response = PureStorageParser::parse($response, $endpoint->name);
+                    }
+                    
                     $metrics = JsonFlattener::flatten($response, $endpoint->resource_type . '_');
                     $this->collector->storeMetric($endpoint->resource_type, $endpoint->name, $metrics);
                     
@@ -100,11 +108,21 @@ class RestApiDiscovery
         }
 
         $body = (string)$res->getBody();
+        
+        // Log the raw response for debugging
+        Log::debug("[{$endpoint->name}] Raw API response (first 500 chars): " . substr($body, 0, 500));
+        
         $decoded = json_decode($body, true);
         if (!$decoded) {
-            throw new \Exception("Invalid JSON response");
+            $jsonError = json_last_error_msg();
+            Log::error("[{$endpoint->name}] JSON decode failed: {$jsonError}");
+            Log::error("[{$endpoint->name}] Response body (first 1000 chars): " . substr($body, 0, 1000));
+            throw new \Exception("Invalid JSON response: {$jsonError}");
         }
-
+        
+        // Log the structure of decoded data
+        Log::debug("[{$endpoint->name}] Decoded response keys: " . implode(', ', array_keys($decoded)));
+        
         return $decoded;
     }
 
