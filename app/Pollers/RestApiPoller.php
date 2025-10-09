@@ -60,7 +60,16 @@ class RestApiPoller
                 try {
                     $response = $this->requestEndpoint($conn, $endpoint);
                     $metrics = JsonFlattener::flatten($response, $endpoint->resource_type . '_');
-                    $this->stager->stageMetrics($metrics, true); // true = poller (RRD)
+                    
+                    // Get metric map from endpoint if available
+                    $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
+                    
+                    $this->stager->stageMetrics(
+                        $metrics, 
+                        true, // isPoller
+                        $endpoint->resource_type ?? 'custom',
+                        $metricMap
+                    );
                     
                     Log::info("REST API polling successful for {$endpoint->name} on {$this->device->hostname}");
                 } catch (\Exception $e) {
