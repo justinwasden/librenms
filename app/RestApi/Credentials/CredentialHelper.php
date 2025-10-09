@@ -188,58 +188,123 @@ class CredentialHelper
     
     /**
      * Obtain a session token by performing a login request
+     * Based on your original working implementation
      * 
      * @param RestApiCredential $credential
      * @param string $baseUrl
-     * @param \GuzzleHttp\Client $client
+     * @param array $connectionConfig Additional connection config (login_method, api_token_header, etc.)
+     * @param bool $verifySsl
      * @return string|null Session token or null if failed
      */
-    public static function obtainSessionToken(RestApiCredential $credential, string $baseUrl, $client): ?string
-    {
+    public static function obtainSessionToken(
+        RestApiCredential $credential, 
+        string $baseUrl, 
+        array $connectionConfig = [],
+        bool $verifySsl = true
+    ): ?string {
         if (Str::lower($credential->authenticationType->name) !== 'session token') {
             return null;
         }
         
-        $params = $credential->params->pluck('value', 'key');
+        $params = $credential->params->pluck('value', 'key')->toArray();
         
-        $apiToken = $params['api_token'] ?? $params['token'] ?? null;
-        $loginPath = $params['login_path'] ?? '/api/login';
-        $loginMethod = Str::upper($params['login_method'] ?? 'POST');
-        $tokenHeader = $params['token_header'] ?? 'X-Auth-Token';
-        $apiTokenHeader = $params['api_token_header'] ?? 'X-API-Token';
+        // Get configuration from params or connection config
+        $loginPath = $params['login_path'] ?? $connectionConfig['login_path'] ?? '/api/login';
+        $loginMethod = Str::upper($params['login_method'] ?? $connectionConfig['login_method'] ?? 'POST');
+        $apiTokenHeader = $params['api_token_header'] ?? $connectionConfig['api_token_header'] ?? 'api-token';
+        $sessionTokenHeader = $params['session_token_header'] ?? $connectionConfig['session_token_header'] ?? 'x-auth-token';
+        $loginBody = $params['login_body'] ?? $connectionConfig['login_body'] ?? '';
         
-        if (!$apiToken || !$loginPath) {
+        // Build login URL
+        $url = rtrim($baseUrl, '/') . '/' . ltrim($loginPath, '/');
+        
+        \Log::info("Attempting session token login to: {$url} with method: {$loginMethod}");
+        
+        // Initialize cURL
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $loginMethod);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifySsl);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $verifySsl ? 2 : 0);
+        
+        $headers = ['Content-Type: application/json'];
+        
+        // Prepare the request body
+        $data = json_decode($loginBody, true) ?? [];
+        
+        // Add username/password from credential if not in login_body
+        if (empty($data['username']) && !empty($params['username'])) {
+            $data['username'] = $params['username'];
+        }
+        if (empty($data['password']) && !empty($params['password'])) {
+            $data['password'] = $params['password'];
+        }
+        
+        $postFields = json_encode($data);
+        
+        if ($loginMethod === 'POST' || $loginMethod === 'PUT') {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+        }
+        
+        // Add API Token header if credential has a token field
+        if (!empty($apiTokenHeader) && !empty($params['token'])) {
+            $headers[] = "{$apiTokenHeader}: {$params['token']}";
+            \Log::debug("Adding API token header: {$apiTokenHeader}");
+        }
+        
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_HEADER, true); // Get headers to extract token if not in body
+        
+        // Execute request
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        
+        if ($response === false) {
+            $error = curl_error($ch);
+            curl_close($ch);
+            \Log::error("cURL error during session token login: {$error}");
             return null;
         }
         
-        try {
-            $loginUrl = rtrim($baseUrl, '/') . '/' . ltrim($loginPath, '/');
-            
-            $loginOptions = [
-                'headers' => [
-                    $apiTokenHeader => $apiToken,
-                    'Content-Type' => 'application/json',
-                ],
-                'verify' => false, // SSL verification handled by connection
-            ];
-            
-            $response = $client->request($loginMethod, $loginUrl, $loginOptions);
-            
-            // Try to get token from header
-            if ($response->hasHeader($tokenHeader)) {
-                return $response->getHeader($tokenHeader)[0] ?? null;
-            }
-            
-            // Try to get token from response body
-            $body = json_decode($response->getBody(), true);
-            if (isset($body['token'])) {
-                return $body['token'];
-            }
-            
-            return null;
-        } catch (\Exception $e) {
-            \Log::error("Failed to obtain session token: " . $e->getMessage());
+        $header = substr($response, 0, $headerSize);
+        $body = substr($response, $headerSize);
+        
+        curl_close($ch);
+        
+        // Check HTTP status
+        if ($httpCode < 200 || $httpCode >= 300) {
+            \Log::error("Failed to fetch session token from {$url}. HTTP Code: {$httpCode}. Response: {$body}");
             return null;
         }
+        
+        \Log::debug("Login response HTTP code: {$httpCode}");
+        
+        // 1. Check response body for "token" (standard session response)
+        $responseData = json_decode($body, true);
+        $token = $responseData['token'] ?? null;
+        
+        if ($token) {
+            \Log::info("Session token found in response body");
+            return $token;
+        }
+        
+        // 2. Check headers if no token in body (e.g., PureStorage uses a header)
+        if (!empty($sessionTokenHeader)) {
+            $sessionHeaderLower = strtolower($sessionTokenHeader);
+            
+            // Parse headers (case-insensitive)
+            if (preg_match("/{$sessionHeaderLower}:\\s*([^\\r\\n]+)/i", $header, $matches)) {
+                $token = trim($matches[1]);
+                \Log::info("Session token found in response header: {$sessionTokenHeader}");
+                return $token;
+            }
+        }
+        
+        \Log::error("Session token not found in login response from {$url}");
+        \Log::debug("Response headers: {$header}");
+        \Log::debug("Response body: {$body}");
+        
+        return null;
     }
 }
