@@ -249,7 +249,10 @@ class CredentialHelper
         // Add API Token header if credential has a token field
         if (!empty($apiTokenHeader) && !empty($params['token'])) {
             $headers[] = "{$apiTokenHeader}: {$params['token']}";
-            \Log::debug("Adding API token header: {$apiTokenHeader}");
+            \Log::info("Adding API token header: {$apiTokenHeader} with value: " . substr($params['token'], 0, 10) . '...');
+        } else {
+            \Log::error("Cannot add API token header. apiTokenHeader: '{$apiTokenHeader}', token exists: " . (isset($params['token']) ? 'yes' : 'no'));
+            \Log::debug("Available params: " . implode(', ', array_keys($params)));
         }
         
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
