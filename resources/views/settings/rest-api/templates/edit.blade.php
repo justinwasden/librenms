@@ -302,6 +302,14 @@
                         {{-- LEFT PANEL --}}
                         <div class="col-md-3 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
+                            
+                            {{-- Alpine Debug --}}
+                            <div class="alert alert-warning small mb-2">
+                                <strong>Alpine Status:</strong><br>
+                                Endpoints count: <span x-text="endpoints.length">?</span><br>
+                                Selected: <span x-text="selectedEndpointIndex">?</span>
+                            </div>
+                            
                             <div class="list-group" style="max-height:600px; overflow-y:auto;">
                                 <template x-for="(endpoint, index) in endpoints" :key="index">
                                     <a href="#" class="list-group-item list-group-item-action"
@@ -311,6 +319,11 @@
                                         <span x-text="endpoint.name || endpoint.path || 'Unnamed'"></span>
                                     </a>
                                 </template>
+                                
+                                {{-- Fallback if template doesn't render --}}
+                                <div x-show="endpoints.length === 0" class="text-muted p-3">
+                                    No endpoints found
+                                </div>
                             </div>
 
                             <button type="button" class="btn btn-success btn-block mt-3"
@@ -441,17 +454,40 @@ function endpointManager({ endpoints }) {
         isDirty: false,
 
         init() {
-            console.log('Loaded', this.endpoints.length, 'endpoints');
+            console.log('=== Endpoint Manager Init ===');
+            console.log('Raw endpoints:', this.endpoints);
+            console.log('Endpoints length:', this.endpoints.length);
+            console.log('Endpoints is array?', Array.isArray(this.endpoints));
+            
+            // Ensure endpoints is an array
+            if (!Array.isArray(this.endpoints)) {
+                console.error('Endpoints is not an array!', typeof this.endpoints);
+                this.endpoints = [];
+                return;
+            }
+            
+            // Process metric_map for each endpoint
             this.endpoints.forEach((ep, idx) => {
-                this.endpoints[idx].metric_map_json =
-                    typeof ep.metric_map === 'string'
-                        ? ep.metric_map
-                        : JSON.stringify(ep.metric_map ?? {}, null, 4);
+                console.log(`Processing endpoint ${idx}:`, ep.name);
+                if (!this.endpoints[idx].metric_map_json) {
+                    this.endpoints[idx].metric_map_json =
+                        typeof ep.metric_map === 'string'
+                            ? ep.metric_map
+                            : JSON.stringify(ep.metric_map ?? null, null, 4) || '';
+                }
             });
+            
+            console.log('Processed endpoints:', this.endpoints.length);
+            
             // Auto-select first endpoint if available
             if (this.endpoints.length > 0) {
+                console.log('Auto-selecting first endpoint');
                 this.selectEndpoint(0);
+            } else {
+                console.log('No endpoints to select');
             }
+            
+            console.log('Init complete. selectedEndpointIndex:', this.selectedEndpointIndex);
         },
 
         selectEndpoint(index) {
