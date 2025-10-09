@@ -23,28 +23,46 @@ class MappingEngine
      */
     public function findMapping(string $metricKey, string $resourceType): ?MetricFieldMapping
     {
-        $cacheKey = "{$resourceType}:{$metricKey}";
+        // Remove resource_type prefix if present (e.g., "sensor__status" -> "status")
+        $cleanKey = $this->removeResourcePrefix($metricKey, $resourceType);
+        
+        $cacheKey = "{$resourceType}:{$cleanKey}";
         
         if (isset($this->cache[$cacheKey])) {
             return $this->cache[$cacheKey];
         }
         
         // Try exact match first
-        $mapping = $this->exactMatch($metricKey, $resourceType);
+        $mapping = $this->exactMatch($cleanKey, $resourceType);
         
         // Try fuzzy match if no exact match
         if (!$mapping) {
-            $mapping = $this->fuzzyMatch($metricKey, $resourceType);
+            $mapping = $this->fuzzyMatch($cleanKey, $resourceType);
         }
         
         // Try auto-learn if still no match
         if (!$mapping) {
-            $mapping = $this->autoLearn($metricKey, $resourceType);
+            $mapping = $this->autoLearn($cleanKey, $resourceType);
         }
         
         $this->cache[$cacheKey] = $mapping;
         
         return $mapping;
+    }
+    
+    /**
+     * Remove resource type prefix from metric key
+     */
+    protected function removeResourcePrefix(string $key, string $resourceType): string
+    {
+        // Remove patterns like "sensor__", "device__", "storage__", etc.
+        $prefix = strtolower($resourceType) . '__';
+        
+        if (str_starts_with(strtolower($key), $prefix)) {
+            return substr($key, strlen($prefix));
+        }
+        
+        return $key;
     }
     
     /**
@@ -97,6 +115,11 @@ class MappingEngine
      */
     protected function autoLearn(string $metricKey, string $resourceType): ?MetricFieldMapping
     {
+        // Never auto-learn pagination metadata
+        if ($this->isPaginationMetadata($metricKey)) {
+            return null;
+        }
+        
         // Detect likely target table/field from metric name patterns
         $prediction = $this->predictMapping($metricKey, $resourceType);
         
@@ -130,6 +153,28 @@ class MappingEngine
             Log::error("Failed to auto-learn mapping: " . $e->getMessage());
             return null;
         }
+    }
+    
+    /**
+     * Check if this is pagination metadata that should never be auto-learned
+     */
+    protected function isPaginationMetadata(string $key): bool
+    {
+        $patterns = [
+            '/continuation_token$/',
+            '/more_items_remaining$/',
+            '/total_item_count$/',
+            '/items_count$/',
+            '/^items_\d+_/',  // items_0_, items_1_, etc.
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $key)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**

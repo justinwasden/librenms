@@ -68,7 +68,8 @@ class RestApiPoller
                         $metrics, 
                         true, // isPoller
                         $endpoint->resource_type ?? 'custom',
-                        $metricMap
+                        $metricMap,
+                        $endpoint->name
                     );
                     
                     Log::info("REST API polling successful for {$endpoint->name} on {$this->device->hostname}");

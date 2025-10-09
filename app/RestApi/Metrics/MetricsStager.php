@@ -24,12 +24,13 @@ class MetricsStager
      * @param bool $isPoller Whether this is being called from poller
      * @param string $resourceType Resource type (device, port, storage, etc.)
      * @param array $metricMap Optional metric mapping from endpoint config
+     * @param string $endpointName Name of the endpoint being processed
      */
-    public function stageMetrics(array $metrics, bool $isPoller = false, string $resourceType = 'custom', array $metricMap = []): void
+    public function stageMetrics(array $metrics, bool $isPoller = false, string $resourceType = 'custom', array $metricMap = [], string $endpointName = 'unknown'): void
     {
-        Log::debug("Staging " . count($metrics) . " metrics for {$this->device->hostname} (resource: {$resourceType})");
+        Log::debug("[{$endpointName}] Staging " . count($metrics) . " metrics for {$this->device->hostname} (resource: {$resourceType})");
         
         // Use DataRouter to intelligently route each metric
-        $this->router->route($metrics, $resourceType, $metricMap);
+        $this->router->route($metrics, $resourceType, $metricMap, $endpointName);
     }
 }

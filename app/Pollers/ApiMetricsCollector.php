@@ -40,8 +40,14 @@ class ApiMetricsCollector
                     ]
                 );
                 
-                Log::debug("Stored metric for {$this->device->hostname}: {$endpointName}.{$key} = " . 
-                    (is_array($value) ? json_encode($value) : $value));
+                // Clean the key for display (remove resource type prefix)
+                $displayKey = preg_replace('/^(device|storage|port|sensor|custom|mempool|processor)__/', '', $key);
+                
+                // Skip logging pagination metadata
+                if (!preg_match('/(continuation_token|more_items_remaining|total_item_count|items_count)$/', $displayKey)) {
+                    Log::debug("[{$endpointName}] {$displayKey} -> rest_api_metrics table = " . 
+                        (is_array($value) ? json_encode($value) : $value));
+                }
             } catch (\Exception $e) {
                 Log::error("Failed to store metric for {$this->device->hostname}: {$e->getMessage()}");
             }
