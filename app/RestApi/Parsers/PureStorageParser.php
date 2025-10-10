@@ -18,44 +18,84 @@ class PureStorageParser
         // Many Pure APIs wrap data under 'items'
         if (isset($response['items']) && is_array($response['items'])) {
             foreach ($response['items'] as $index => $item) {
-                $flattened = $this->flattenArray($item);
+                // Pass the resource type for context during flattening
+                $flattened = $this->flattenArray($item, '', $resource);
                 $parsed[] = [
                     'resource_type' => $resource,
-                    'index'         => $index,
+                    // Note: We no longer need the numeric index, as the unique name/ID will be in 'metrics'
                     'metrics'       => $flattened,
                 ];
             }
         } else {
             // Direct structure (some endpoints return top-level data)
-            $flattened = $this->flattenArray($response);
+            $flattened = $this->flattenArray($response, '', $resource);
             $parsed[] = [
                 'resource_type' => $resource,
-                'index'         => 0,
+                // Note: Index is still 0 for top-level responses
                 'metrics'       => $flattened,
             ];
         }
 
         return $parsed;
     }
-
-    protected function flattenArray(array $data, string $prefix = ''): array
+    protected function flattenArray(array $data, string $prefix = '', ?string $resource = null): array
     {
         $result = [];
+        $resource_id_map = [];
+
+        // --- 1. Identify and Extract Primary Resource Keys (The fix) ---
+        // This is necessary to resolve the LibreNMS foreign keys later (e.g., port_id).
+
+        if (in_array($resource, ['network-interfaces', 'hardware'])) {
+            // For interface performance or hardware, we need the main 'name' or 'index' to resolve port/entity.
+            if (isset($data['name'])) {
+                $result['resource_name'] = $data['name'];
+            } elseif (isset($data['index'])) {
+                // Often used for hardware/entity index
+                $result['resource_index'] = $data['index'];
+            }
+        } elseif ($resource === 'volumes' && isset($data['name'])) {
+             $result['resource_name'] = $data['name'];
+        }
 
         foreach ($data as $key => $value) {
             $fullKey = $prefix ? "{$prefix}_{$key}" : $key;
 
-            if (is_array($value)) {
-                // Recursively flatten nested structures
-                $result += $this->flattenArray($value, $fullKey);
+            if (is_array($value) && !empty($value)) {
+
+                // Special handling for nested metric arrays (like 'eth' or 'fc' performance)
+                if (in_array($key, ['eth', 'fc', 'space'])) {
+                    $result += $this->flattenArray($value, $fullKey, $resource);
+                }
+                // Special handling for DDM/Threshold lists (like 'temperature', 'voltage') in port-details
+                elseif (is_numeric(key($value)) && in_array($key, ['temperature', 'voltage', 'tx_bias', 'tx_power', 'rx_power'])) {
+                    // Flatten these measured values by channel, e.g., temperature_measurement_ch1
+                    foreach ($value as $channel_data) {
+                        $channel = $channel_data['channel'] ?? 'main'; // Use channel or a generic name
+                        $measurement = $channel_data['measurement'] ?? null;
+
+                        if ($measurement !== null) {
+                             $result["{$key}_measurement_ch{$channel}"] = $measurement;
+                             $result["{$key}_status_ch{$channel}"] = $channel_data['status'] ?? 'unknown';
+                        }
+                    }
+                }
+                // Nested thresholds (like 'temperature_thresholds')
+                elseif (Str::contains($key, 'thresholds') || $key === 'static') {
+                    $result += $this->flattenArray($value, $fullKey, $resource);
+                }
+                // Recurse for general nested structures
+                else {
+                    $result += $this->flattenArray($value, $fullKey, $resource);
+                }
             } else {
+                // If the value is not an array, store it
                 $result[$fullKey] = $value;
             }
         }
 
         return $result;
     }
-
     protected function detectResourceType(array $response): string
     {
         // Handle "items" wrapper
@@ -69,11 +109,17 @@ class PureStorageParser
         if (Arr::has($response, 'space.total_physical')) {
             return 'arrays';
         }
-        if (Arr::has($response, 'network_interface') || in_array('rx_bytes_per_sec', $keys)) {
-            return 'network-interfaces';
+        if (Arr::has($response, 'eth_received_bytes_per_sec') || Arr::has($response, 'fc_received_bytes_per_sec')) {
+             return 'network-interfaces-performance';
         }
-        if (Arr::has($response, 'volume_id') || Arr::has($response, 'writes_per_sec')) {
+        if (Arr::has($response, 'temperature') && Arr::has($response, 'voltage') && Arr::has($response, 'tx_bias')) {
+             return 'network-interfaces-port-details';
+        }
+        if (Arr::has($response, 'connection_count') || Arr::has($response, 'reads_per_sec')) {
             return 'volumes';
+        }
+        if (Arr::has($response, 'model') || Arr::has($response, 'serial')) {
+            return 'hardware';
         }
         if (Arr::has($response, 'controller') || Arr::has($response, 'cpu')) {
             return 'controllers';
@@ -81,8 +127,7 @@ class PureStorageParser
 
         return 'unknown';
     }
-
-		public function predictMapping(array $sampleMetrics, string $resource): array
+	  public function predictMapping(array $sampleMetrics, string $resource): array
 		{
 		    $mapping = [];
 
@@ -90,179 +135,205 @@ class PureStorageParser
 		        $lowerKey = strtolower($key);
 
 		        // --- STORAGE / SPACE METRICS ---
-		        if (Str::contains($lowerKey, 'total_provisioned')) {
-		            $mapping["storage_size_gib"] = [
+		        if (Str::contains($lowerKey, 'total_provisioned') || Str::contains($lowerKey, 'capacity')) {
+		            $mapping["storage_size"] = [
 		                'source_field' => $key,
 		                'target_field' => 'storage_size',
-		                'conversion' => ['divide' => 1073741824] // bytes  GiB
+		                'conversion' => ['divide' => 1073741824] // bytes to GiB
 		            ];
-		        } elseif (Str::contains($lowerKey, 'total_used')) {
-		            $mapping["storage_used_gib"] = [
+		        } elseif (Str::contains($lowerKey, 'total_used') || Str::contains($lowerKey, 'used_provisioned')) {
+		            $mapping["storage_used"] = [
 		                'source_field' => $key,
 		                'target_field' => 'storage_used',
-		                'conversion' => ['divide' => 1073741824]
-		            ];
-		        } elseif (Str::contains($lowerKey, 'used_provisioned')) {
-		            $mapping["storage_used_provisioned_gib"] = [
-		                'source_field' => $key,
-		                'target_field' => 'storage_used',
-		                'conversion' => ['divide' => 1073741824]
-		            ];
-		        } elseif (Str::contains($lowerKey, 'capacity')) {
-		            $mapping["storage_capacity_gib"] = [
-		                'source_field' => $key,
-		                'target_field' => 'storage_size',
-		                'conversion' => ['divide' => 1073741824]
+		                'conversion' => ['divide' => 1073741824] // bytes to GiB
 		            ];
 		        } elseif (Str::contains($lowerKey, 'data_reduction')) {
-		            $mapping["storage_data_reduction_ratio"] = [
+		            $mapping["storage_data_reduction_perc"] = [
 		                'source_field' => $key,
 		                'target_field' => 'storage_perc',
 		                'conversion' => ['none' => true]
 		            ];
 		        }
 
-		        // --- PERFORMANCE / SENSOR METRICS ---
+		        // --- IOPS / LATENCY / QUEUE (VOLUME/ARRAY PERFORMANCE) ---
 		        elseif (Str::contains($lowerKey, 'reads_per_sec')) {
 		            $mapping["sensor_read_iops"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'io_ops'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'writes_per_sec')) {
 		            $mapping["sensor_write_iops"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'io_ops'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'read_bytes_per_sec')) {
 		            $mapping["sensor_read_bandwidth_mbps"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['multiply' => 8, 'divide' => 1000000] // Mbps
+		                'conversion' => ['multiply' => 8, 'divide' => 1000000],
+		                'sensor_class' => 'bandwidth'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'write_bytes_per_sec')) {
 		            $mapping["sensor_write_bandwidth_mbps"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['multiply' => 8, 'divide' => 1000000]
+		                'conversion' => ['multiply' => 8, 'divide' => 1000000],
+		                'sensor_class' => 'bandwidth'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'usec_per_read_op')) {
 		            $mapping["sensor_read_latency_ms"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['divide' => 1000] // µs  ms
+		                'conversion' => ['divide' => 1000],
+		                'sensor_class' => 'latency'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'usec_per_write_op')) {
 		            $mapping["sensor_write_latency_ms"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['divide' => 1000]
+		                'conversion' => ['divide' => 1000],
+		                'sensor_class' => 'latency'
 		            ];
 		        } elseif (Str::contains($lowerKey, 'queue_depth')) {
 		            $mapping["sensor_queue_depth"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'other'
 		            ];
 		        }
 
-		        // --- NETWORK INTERFACE PERFORMANCE ---
+		        // --- NETWORK INTERFACE PERFORMANCE (Ports Statistics) ---
 		        elseif (Str::contains($lowerKey, 'received_bytes_per_sec')) {
-		            $mapping["ifInOctets_rate"] = [
+		            $mapping["ports_stat_ifInOctets_rate"] = [
 		                'source_field' => $key,
 		                'target_field' => 'ifInOctets_rate',
-		                'conversion' => ['multiply' => 8] // bytes  bits/sec
+		                'conversion' => ['multiply' => 8]
 		            ];
 		        } elseif (Str::contains($lowerKey, 'transmitted_bytes_per_sec')) {
-		            $mapping["ifOutOctets_rate"] = [
+		            $mapping["ports_stat_ifOutOctets_rate"] = [
 		                'source_field' => $key,
 		                'target_field' => 'ifOutOctets_rate',
 		                'conversion' => ['multiply' => 8]
 		            ];
 		        } elseif (Str::contains($lowerKey, 'received_packets_per_sec')) {
-		            $mapping["ifInUcastPkts_rate"] = [
+		            $mapping["ports_stat_ifInUcastPkts_rate"] = [
 		                'source_field' => $key,
 		                'target_field' => 'ifInUcastPkts_rate',
 		                'conversion' => ['none' => true]
 		            ];
 		        } elseif (Str::contains($lowerKey, 'transmitted_packets_per_sec')) {
-		            $mapping["ifOutUcastPkts_rate"] = [
+		            $mapping["ports_stat_ifOutUcastPkts_rate"] = [
 		                'source_field' => $key,
 		                'target_field' => 'ifOutUcastPkts_rate',
 		                'conversion' => ['none' => true]
 		            ];
-		        } elseif (Str::contains($lowerKey, 'total_errors_per_sec')) {
-		            $mapping["ifErrors_rate_total"] = [
+		        } elseif (Str::contains($lowerKey, 'total_errors_per_sec') || Str::contains($lowerKey, 'crc_errors_per_sec')) {
+		            $mapping["ports_stat_ifInErrors_rate"] = [
 		                'source_field' => $key,
 		                'target_field' => 'ifInErrors_rate',
 		                'conversion' => ['none' => true]
 		            ];
+		        } elseif (Str::contains($lowerKey, 'dropped_errors_per_sec')) {
+		            $mapping["ports_stat_ifOutDiscards_rate"] = [
+		                'source_field' => $key,
+		                'target_field' => 'ifOutDiscards_rate',
+		                'conversion' => ['none' => true]
+		            ];
 		        }
 
-		        // --- HARDWARE / ENVIRONMENTAL SENSORS ---
-		        elseif (Str::contains($lowerKey, 'temperature')) {
+		        // --- HARDWARE / ENVIRONMENTAL SENSORS (Dynamic) ---
+		        elseif (Str::contains($lowerKey, '_temperature_measurement_')) {
 		            $mapping["sensor_temperature_celsius"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'temperature'
 		            ];
-		        } elseif (Str::contains($lowerKey, 'voltage')) {
+		        } elseif (Str::contains($lowerKey, '_voltage_measurement_')) {
 		            $mapping["sensor_voltage_volts"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'voltage'
 		            ];
-		        } elseif (Str::contains($lowerKey, 'power')) {
+		        } elseif (Str::contains($lowerKey, '_power_measurement_') || Str::contains($lowerKey, 'tx_bias_measurement')) {
 		            $mapping["sensor_optical_power_dbm"] = [
 		                'source_field' => $key,
 		                'target_field' => 'sensor_current',
+		                'conversion' => ['none' => true],
+		                'sensor_class' => 'power'
+		            ];
+		        } elseif (Str::contains($lowerKey, '_status_')) {
+		            // Status goes to a generic component table or is handled by LibreNMS status translation
+		            $mapping["pure_metrics_status"] = [
+		                'source_field' => $key,
+		                'target_field' => 'status',
 		                'conversion' => ['none' => true]
 		            ];
-		        } elseif (Str::contains($lowerKey, 'status')) {
-		            $mapping["entStateOper_status"] = [
+		        }
+
+		        // --- HARDWARE / ENTITY / TRANSCEIVER (Static) ---
+		        elseif (Str::contains($lowerKey, 'static_vendor_name')) {
+		            $mapping["transceiver_vendor"] = [
 		                'source_field' => $key,
-		                'target_field' => 'entStateOper',
+		                'target_field' => 'vendor',
+		                'conversion' => ['none' => true]
+		            ];
+		        } elseif (Str::contains($lowerKey, 'static_serial')) {
+		            $mapping["transceiver_serial"] = [
+		                'source_field' => $key,
+		                'target_field' => 'serial',
+		                'conversion' => ['none' => true]
+		            ];
+		        } elseif (Str::contains($lowerKey, 'static_wavelength')) {
+		            $mapping["transceiver_wavelength"] = [
+		                'source_field' => $key,
+		                'target_field' => 'wavelength',
+		                'conversion' => ['none' => true]
+		            ];
+		        } elseif (Str::contains($lowerKey, 'static_link_length')) {
+		            $mapping["transceiver_distance"] = [
+		                'source_field' => $key,
+		                'target_field' => 'distance',
+		                'conversion' => ['none' => true]
+		            ];
+		        } elseif (Str::contains($lowerKey, 'static_identifier')) {
+		            $mapping["transceiver_type"] = [
+		                'source_field' => $key,
+		                'target_field' => 'type',
 		                'conversion' => ['none' => true]
 		            ];
 		        } elseif (Str::contains($lowerKey, 'serial')) {
-		            $mapping["entPhysicalSerialNum"] = [
+		            $mapping["hw_serial"] = [ // Non-transceiver serials
 		                'source_field' => $key,
 		                'target_field' => 'entPhysicalSerialNum',
 		                'conversion' => ['none' => true]
 		            ];
-		        } elseif (Str::contains($lowerKey, 'model')) {
-		            $mapping["entPhysicalModelName"] = [
+		        }
+
+		        // --- QoS and Fallback Metrics (Custom) ---
+		        elseif (Str::contains($lowerKey, 'iops_limit')) {
+		            $mapping["qos_limit_iops"] = [
 		                'source_field' => $key,
-		                'target_field' => 'entPhysicalModelName',
+		                'target_field' => 'qos_iops_limit',
 		                'conversion' => ['none' => true]
 		            ];
-		        } elseif (Str::contains($lowerKey, 'name')) {
-		            $mapping["entPhysicalName"] = [
+		        } elseif (Str::contains($lowerKey, 'bandwidth_limit')) {
+		            $mapping["qos_limit_bandwidth_mb"] = [
 		                'source_field' => $key,
-		                'target_field' => 'entPhysicalName',
-		                'conversion' => ['none' => true]
+		                'target_field' => 'qos_bandwidth_limit',
+		                'conversion' => ['divide' => 1048576]
 		            ];
 		        }
 
-		        // --- VOLUME METRICS ---
-		        elseif (Str::contains($lowerKey, 'volume') && Str::contains($lowerKey, 'read')) {
-		            $mapping["volume_read_iops"] = [
-		                'source_field' => $key,
-		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
-		            ];
-		        } elseif (Str::contains($lowerKey, 'volume') && Str::contains($lowerKey, 'write')) {
-		            $mapping["volume_write_iops"] = [
-		                'source_field' => $key,
-		                'target_field' => 'sensor_current',
-		                'conversion' => ['none' => true]
-		            ];
-		        }
-
-		        // --- FALLBACK ---
+		        // --- FALLBACK: Custom Metric ---
 		        else {
-		            $mapping["{$resource}_{$lowerKey}"] = [
+		            $mapping["pure_metrics_{$resource}_{$lowerKey}"] = [
 		                'source_field' => $key,
 		                'target_field' => 'custom_metric',
 		                'conversion' => ['none' => true]
