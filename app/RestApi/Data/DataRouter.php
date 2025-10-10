@@ -8,7 +8,7 @@ use App\Models\Storage;
 use App\Models\Port;
 use App\Models\Sensor;
 use App\Models\StorageArrayMetric;
-use App\Models\EntPhysical; // ADDED: EntPhysical model for hardware/controllers
+use App\Models\EntPhysical;
 use App\RestApi\Mapping\MappingEngine;
 use Log;
 
@@ -87,12 +87,13 @@ class DataRouter
                     return $this->storeInPortsTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
 
                 case 'sensors':
+                    // Pass unit from mapping to storeInSensorsTable
                     return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit, $endpointName, $key, $mapping);
 
                 case 'devices':
                     return $this->storeInDevicesTable($mapping->librenms_field, $transformedValue, $endpointName, $key);
 
-                case 'entPhysical': // ADDED: Handler for hardware/entity discovery
+                case 'entPhysical':
                     return $this->storeInEntPhysicalTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
 
                 default:
@@ -231,6 +232,13 @@ class DataRouter
             }
 
             $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
+
+            // --- NEW: Skip storing sensors with a value of 0 for specific classes ---
+            if ($value === 0 && in_array($sensorInfo['class'], ['temperature', 'voltage'])) {
+                Log::info("[{$endpointName}] Skipping zero value for non-zero sensor type: {$sensorInfo['class']} ({$displayKey})");
+                return true; // Return true as if handled, but don't store it
+            }
+            // --- END NEW ---
 
             // Create descriptive sensor name
             if (!empty($this->itemContext['name'])) {
