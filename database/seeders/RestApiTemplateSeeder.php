@@ -885,7 +885,7 @@ class RestApiTemplateSeeder extends Seeder
             [
                 "name" => "Cisco Meraki Dashboard",
                 "vendor" => "Cisco",
-                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the "X-Cisco-Meraki-API-Key" header.",
+                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the X-Cisco-Meraki-API-Key header.",
                 "template_data" => [
                     "connections" => [
                         [
