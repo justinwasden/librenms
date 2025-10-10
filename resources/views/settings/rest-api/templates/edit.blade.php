@@ -198,8 +198,9 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         @php
+            // IMPORTANT: We always parse from template_data JSON, NOT from device endpoints
+            // This is the template blueprint, not the device-specific instances
             $endpoints = [];
-
 
             // Parse endpoints from template_data JSON
             $templateData = is_array($template->template_data)
@@ -232,9 +233,6 @@
                 </div>
 
                 <div class="modal-body">
-                        </ul>
-                    </div>
-
                     <div class="row">
                         {{-- LEFT PANEL --}}
                         <div class="col-md-3 border-right">
