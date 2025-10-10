@@ -10,7 +10,7 @@
 
 @php
 use App\Models\Storage; // Corresponds to the native 'storage' table
-use App\Models\Entity;  // Corresponds to the native 'entPhysical' table
+use LibreNMS\Entities\Entity;  // CORRECTED: Corresponds to the native 'entPhysical' table
 use LibreNMS\Util\Number;
 
 $device_id = $device['device_id'];
