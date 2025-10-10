@@ -21,11 +21,11 @@
         margin: 1vh auto;
     }
     #endpointsModal .modal-content {
-        height: 120vh;
+        height: 100vh;
         overflow: hidden;
     }
     #endpointsModal .modal-body {
-        height: calc(90vh - 160px);
+        height: calc(100vh - 80px);
         overflow-y: auto;
     }
     #endpointsModal .col-md-3 {
