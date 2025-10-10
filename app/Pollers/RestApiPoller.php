@@ -278,7 +278,14 @@ class RestApiPoller
         if (!$decoded) {
             $jsonError = json_last_error_msg();
             Log::error("[{$endpoint->name}] JSON decode failed: {$jsonError}");
-            Log::error("[{$endpoint->name}] Response body (first 1000 chars): " . substr($body, 0, 1000));
+            Log::error("[{$endpoint->name}] Response body (first 2000 chars): " . substr($body, 0, 2000));
+            
+            // Check if response is still HTML after retry
+            if (stripos($body, '<!DOCTYPE html>') !== false || stripos($body, '<html') !== false) {
+                Log::error("[{$endpoint->name}] Still receiving HTML after token refresh - endpoint may be invalid or require different auth");
+                throw new \Exception("Endpoint returned HTML instead of JSON even after token refresh");
+            }
+            
             throw new \Exception("Invalid JSON response: {$jsonError}");
         }
         
