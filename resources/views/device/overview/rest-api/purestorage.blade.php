@@ -21,7 +21,7 @@ $storageEntry = Storage::where('device_id', $device_id)
     ->first();
 
 // 2. Get Controllers (from native 'entPhysical' table)
-// Accessing the Entity model using the fully qualified namespace to prevent class loading errors.
+// Explicitly referencing the full namespace path to the Entity Model.
 $controllers = \LibreNMS\Entities\Entity::where('device_id', $device_id)
     ->whereIn('entPhysicalClass', ['chassis', 'module', 'processor', 'container'])
     ->get();
