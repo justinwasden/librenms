@@ -63,22 +63,29 @@ class RestApiPoller
                     
                     $response = $this->requestEndpoint($conn, $endpoint);
                     
-                    // Standard response format - flatten and process
-                    Log::debug("[{$endpoint->name}] Standard response format - flattening");
-                    $metrics = JsonFlattener::flatten($response);
-                    
-                    Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
-                    
                     // Get metric map from endpoint if available
                     $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
+                    $resourceType = $endpoint->resource_type ?? 'custom';
                     
-                    $this->stager->stageMetrics(
-                        $metrics, 
-                        true, // isPoller
-                        $endpoint->resource_type ?? 'custom',
-                        $metricMap,
-                        $endpoint->name
-                    );
+                    // Detect if this is a multi-item response (common pattern in REST APIs)
+                    if ($this->isMultiItemResponse($response)) {
+                        Log::info("[{$endpoint->name}] Detected multi-item response - processing items individually");
+                        $this->processMultiItemResponse($response, $endpoint, $metricMap, $resourceType);
+                    } else {
+                        // Single item or simple response - flatten and process normally
+                        Log::debug("[{$endpoint->name}] Single-item response - flattening");
+                        $metrics = JsonFlattener::flatten($response);
+                        
+                        Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
+                        
+                        $this->stager->stageMetrics(
+                            $metrics, 
+                            true, // isPoller
+                            $resourceType,
+                            $metricMap,
+                            $endpoint->name
+                        );
+                    }
                     
                     Log::info("REST API polling successful for {$endpoint->name} on {$this->device->hostname}");
                 } catch (\Exception $e) {
@@ -363,5 +370,76 @@ class RestApiPoller
         Log::debug("Generated " . count($headers) . " auth headers for type: {$authType}");
         
         return $headers;
+    }
+
+    /**
+     * Detect if response contains multiple items
+     */
+    protected function isMultiItemResponse(array $response): bool
+    {
+        // Check for common multi-item patterns
+        if (isset($response['items']) && is_array($response['items']) && count($response['items']) > 0) {
+            return true;
+        }
+        
+        if (isset($response['data']) && is_array($response['data']) && count($response['data']) > 0) {
+            // Check if data is an array of objects
+            $first = reset($response['data']);
+            return is_array($first);
+        }
+        
+        return false;
+    }
+
+    /**
+     * Process multi-item response by iterating each item
+     */
+    protected function processMultiItemResponse(array $response, $endpoint, array $metricMap, string $resourceType): void
+    {
+        // Find the items array
+        $items = $response['items'] ?? $response['data'] ?? [];
+        
+        if (empty($items)) {
+            Log::warning("[{$endpoint->name}] Multi-item response detected but no items found");
+            return;
+        }
+        
+        $itemCount = count($items);
+        Log::info("[{$endpoint->name}] Processing {$itemCount} items individually");
+        
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                Log::debug("[{$endpoint->name}] Skipping non-array item at index {$index}");
+                continue;
+            }
+            
+            // Build item context for identification
+            $itemContext = [
+                'name' => $item['name'] ?? null,
+                'id' => $item['id'] ?? null,
+                'index' => $index,
+            ];
+            
+            // Remove pagination metadata
+            unset($item['continuation_token'], $item['more_items_remaining'], $item['total_item_count']);
+            
+            // Flatten this individual item
+            $metrics = JsonFlattener::flatten($item);
+            
+            $itemLabel = $itemContext['name'] ?? $itemContext['id'] ?? "item_{$index}";
+            Log::debug("[{$endpoint->name}] Processing item: {$itemLabel} (" . count($metrics) . " metrics)");
+            
+            // Stage with item context so DataRouter can identify the item
+            $this->stager->stageMetrics(
+                $metrics,
+                true,
+                $resourceType,
+                $metricMap,
+                $endpoint->name,
+                $itemContext
+            );
+        }
+        
+        Log::info("[{$endpoint->name}] Completed processing {$itemCount} items");
     }
 }
