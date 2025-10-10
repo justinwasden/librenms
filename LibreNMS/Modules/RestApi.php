@@ -45,21 +45,18 @@ class RestApi implements Module
      */
     public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
-        // Check if device has REST API connections configured
+        // Check if device is up (without SNMP check)
         $device = $os->getDevice();
 
+        // This is the correct logic: only run if device is generally up
         $statusCheck = $status->isEnabledAndDeviceUp($device, check_snmp: false);
-        $connectionCheck = $device->restApiConnections()->where('enabled', 1)->exists();
 
-        // ADDED LOGGING: Log why the module is skipping if the check fails.
         if (!$statusCheck) {
             Log::debug("REST API Discovery: Skipping shouldDiscover because general device status check failed.");
         }
-        if (!$connectionCheck) {
-            Log::debug("REST API Discovery: Skipping shouldDiscover because no enabled restApiConnections found for device ID {$device->device_id}.");
-        }
 
-        return $statusCheck && $connectionCheck;
+        // We return true if the device is up. The inner discover() method will handle connection existence.
+        return $statusCheck;
     }
 
     /**
@@ -70,6 +67,12 @@ class RestApi implements Module
     public function discover(OS $os): void
     {
         $device = $os->getDevice();
+
+        // CRITICAL CHECK: Check for enabled connections inside discover()
+        if (!$device->restApiConnections()->where('enabled', 1)->exists()) {
+            Log::warning("REST API Discovery: Skipped discover() for {$device->hostname} because no enabled restApiConnections were found. Please configure API credentials.");
+            return;
+        }
 
         try {
             $discovery = new RestApiDiscovery($device);
