@@ -173,130 +173,57 @@ class MappingEngine
 				if (in_array($resourceType, ['performance', 'performance-by-array'])) {
 				    $resourceType = str_contains($resourceType, 'array') ? 'volume' : 'array';
 				}
-        // Storage Array patterns (device-level array metrics)
+
+        // --- DEVICE/ARRAY STRUCTURAL MAPPINGS ---
+        // Storage Array patterns (device-level array metrics) - Map to native 'storage' table
         if ($resourceType === 'array') {
             if (preg_match('/(^name$|^version$|^model$|^serial)/i', $lower)) {
-                $field = $lower;
-                if ($field === 'serial') $field = 'serial_number';
-                return ['table' => 'storage_arrays', 'field' => $field, 'confidence' => 0.95];
+                // Device name/version/model are typically handled by the core discovery process
+                // Capacity metrics map to the main storage entry
+                if (preg_match('/(capacity|space.*total|total_provisioned)/i', $lower)) {
+                    return ['table' => 'storage', 'field' => 'storage_size', 'unit' => 'bytes', 'confidence' => 0.9];
+                }
+                if (preg_match('/(^used$|space.*used)/i', $lower)) {
+                    return ['table' => 'storage', 'field' => 'storage_used', 'unit' => 'bytes', 'confidence' => 0.9];
+                }
             }
-            if (preg_match('/(capacity|space.*total)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'total_capacity', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(physical)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'total_physical', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(^used$|space.*used)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'total_used', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(provisioned)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'total_provisioned', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(snapshot)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'snapshots', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(data.*reduction|data_reduction)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'data_reduction', 'confidence' => 0.9];
-            }
-            if (preg_match('/(total.*reduction)/i', $lower)) {
-                return ['table' => 'storage_arrays', 'field' => 'total_reduction', 'confidence' => 0.9];
+            // Custom metrics like data_reduction still need a place, fall back to custom or general storage
+            if (preg_match('/(data.*reduction|total.*reduction)/i', $lower)) {
+                return ['table' => 'rest_api_metrics', 'field' => 'metric_value', 'confidence' => 0.8];
             }
         }
 
-        // Storage Controller patterns
-        if ($resourceType === 'controller') {
+        // Storage Controller patterns - Map to native 'entPhysical' table
+        // *** CRITICAL FOR DISCOVERY ***
+        if ($resourceType === 'controller' || $resourceType === 'hardware') {
             if (preg_match('/(^name$)/i', $lower)) {
-                return ['table' => 'storage_controllers', 'field' => 'name', 'confidence' => 0.95];
+                return ['table' => 'entPhysical', 'field' => 'entPhysicalDescr', 'confidence' => 0.95];
             }
             if (preg_match('/(^model$)/i', $lower)) {
-                return ['table' => 'storage_controllers', 'field' => 'model', 'confidence' => 0.95];
+                return ['table' => 'entPhysical', 'field' => 'entPhysicalModelName', 'confidence' => 0.95];
             }
             if (preg_match('/(^status$)/i', $lower)) {
-                return ['table' => 'storage_controllers', 'field' => 'status', 'confidence' => 0.95];
-            }
-            if (preg_match('/(^mode$)/i', $lower)) {
-                return ['table' => 'storage_controllers', 'field' => 'mode', 'confidence' => 0.95];
+                return ['table' => 'entPhysical', 'field' => 'entPhysicalOperStatus', 'confidence' => 0.95];
             }
             if (preg_match('/(^version$|firmware)/i', $lower)) {
-                return ['table' => 'storage_controllers', 'field' => 'version', 'confidence' => 0.95];
-            }
-        }
-
-        // Storage Array Host patterns
-        if ($resourceType === 'host') {
-            if (preg_match('/(^name$)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'name', 'confidence' => 0.95];
-            }
-            if (preg_match('/(iqn)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'iqns', 'confidence' => 0.95];
-            }
-            if (preg_match('/(wwn)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'wwns', 'confidence' => 0.95];
-            }
-            if (preg_match('/(connection.*count|path.*count)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'connection_count', 'confidence' => 0.9];
-            }
-            if (preg_match('/(connectivity|connected)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'port_connectivity_status', 'confidence' => 0.85];
-            }
-            if (preg_match('/(host.*group|hgroup)/i', $lower)) {
-                return ['table' => 'storage_array_hosts', 'field' => 'host_group', 'confidence' => 0.9];
-            }
-        }
-
-        // Storage Array Volume patterns
-        if ($resourceType === 'volume') {
-            if (preg_match('/(^name$)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'name', 'confidence' => 0.95];
+                return ['table' => 'entPhysical', 'field' => 'entPhysicalHardwareRev', 'confidence' => 0.95];
             }
             if (preg_match('/(^serial$)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'serial', 'confidence' => 0.95];
+                return ['table' => 'entPhysical', 'field' => 'entPhysicalSerialNum', 'confidence' => 0.95];
             }
-            if (preg_match('/(provisioned.*total|^size$)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'total_provisioned', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(provisioned.*used)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'used_provisioned', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(physical)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'total_physical', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(snapshot)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'snapshots', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(data.*reduction|data_reduction)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'data_reduction', 'confidence' => 0.9];
-            }
-            if (preg_match('/(pod)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'pod_name', 'confidence' => 0.9];
-            }
-            if (preg_match('/(volume.*group|vgroup)/i', $lower)) {
-                return ['table' => 'storage_array_volumes', 'field' => 'volume_group', 'confidence' => 0.9];
+            // 'mode' is not a standard entPhysical field, fall back to custom metrics
+            if (preg_match('/(^mode$)/i', $lower)) {
+                 return ['table' => 'rest_api_metrics', 'field' => 'metric_value', 'confidence' => 0.8];
             }
         }
 
-        // Storage patterns (legacy LibreNMS storage table)
-        if ($resourceType === 'storage' || str_contains($lower, 'volume') || str_contains($lower, 'disk')) {
-            if (preg_match('/(size|capacity|total|provisioned)/i', $lower)) {
-                return ['table' => 'storage', 'field' => 'storage_size', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(used|allocated)/i', $lower)) {
-                return ['table' => 'storage', 'field' => 'storage_used', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(free|available)/i', $lower)) {
-                return ['table' => 'storage', 'field' => 'storage_free', 'unit' => 'bytes', 'confidence' => 0.9];
-            }
-            if (preg_match('/(name|descr|label)/i', $lower)) {
-                return ['table' => 'storage', 'field' => 'storage_descr', 'confidence' => 0.8];
-            }
-        }
-
-        // Port/Interface patterns
+        // Port/Interface patterns - Map to native 'ports' table
+        // *** CRITICAL FOR DISCOVERY ***
         if ($resourceType === 'port' || str_contains($lower, 'interface') || str_contains($lower, 'port') || str_contains($lower, 'eth')) {
             if (preg_match('/(speed|bandwidth)/i', $lower)) {
                 return ['table' => 'ports', 'field' => 'ifSpeed', 'unit' => 'bps', 'confidence' => 0.95];
             }
-            if (preg_match('/(oper|status|state)/i', $lower)) {
+            if (preg_match('/(oper|status|state|enabled)/i', $lower)) {
                 return ['table' => 'ports', 'field' => 'ifOperStatus', 'confidence' => 0.85];
             }
             if (preg_match('/(name|descr)/i', $lower)) {
@@ -305,10 +232,33 @@ class MappingEngine
             if (preg_match('/(mtu)/i', $lower)) {
                 return ['table' => 'ports', 'field' => 'ifMtu', 'confidence' => 0.95];
             }
+            if (preg_match('/(mac_address|hardware_addr)/i', $lower)) {
+                return ['table' => 'ports', 'field' => 'ifPhysAddress', 'confidence' => 0.95];
+            }
+            // For other structural fields like IP, map to custom
+            if (preg_match('/(ip_address|address)/i', $lower)) {
+                return ['table' => 'rest_api_metrics', 'field' => 'metric_value', 'confidence' => 0.8];
+            }
         }
 
-        // Sensor patterns
-        if ($resourceType === 'sensor' || preg_match('/(temp|voltage|current|power|fan)/i', $lower)) {
+        // Storage patterns (Volumes/LUNs) - Map to native 'storage' table
+        // *** CRITICAL FOR DISCOVERY (Capacity) ***
+        if ($resourceType === 'volume' || $resourceType === 'storage' || str_contains($lower, 'volume') || str_contains($lower, 'disk')) {
+            if (preg_match('/(size|capacity|total|provisioned)/i', $lower)) {
+                return ['table' => 'storage', 'field' => 'storage_size', 'unit' => 'bytes', 'confidence' => 0.9];
+            }
+            if (preg_match('/(used|allocated)/i', $lower)) {
+                return ['table' => 'storage', 'field' => 'storage_used', 'unit' => 'bytes', 'confidence' => 0.9];
+            }
+            if (preg_match('/(name|descr|label)/i', $lower)) {
+                return ['table' => 'storage', 'field' => 'storage_descr', 'confidence' => 0.8];
+            }
+        }
+
+
+        // --- PERFORMANCE / SENSOR MAPPINGS (for Polling) ---
+        // Sensor patterns (temperature, voltage, etc.)
+        if ($resourceType === 'sensor' || preg_match('/(temp|voltage|current|power|fan|usage)/i', $lower)) {
             return ['table' => 'sensors', 'field' => 'sensor_current', 'confidence' => 0.85];
         }
 

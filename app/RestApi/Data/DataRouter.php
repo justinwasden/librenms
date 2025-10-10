@@ -8,6 +8,7 @@ use App\Models\Storage;
 use App\Models\Port;
 use App\Models\Sensor;
 use App\Models\StorageArrayMetric;
+use App\Models\EntPhysical; // ADDED: EntPhysical model for hardware/controllers
 use App\RestApi\Mapping\MappingEngine;
 use Log;
 
@@ -29,7 +30,7 @@ class DataRouter
     public function route(array $flattenedData, string $resourceType, array $metricMap = [], string $endpointName = 'unknown', array $itemContext = []): void
     {
         $this->itemContext = $itemContext;
-        
+
         foreach ($flattenedData as $key => $value) {
             // Skip pagination metadata
             if ($this->shouldSkip($key)) {
@@ -65,7 +66,7 @@ class DataRouter
         try {
             // Transform value according to mapping
             $transformedValue = $mapping->transformValue($value);
-            
+
             if ($transformedValue === null && $value !== null) {
                 Log::debug("Value transformation returned null for {$key}");
                 return false;
@@ -81,16 +82,19 @@ class DataRouter
             switch ($mapping->librenms_table) {
                 case 'storage':
                     return $this->storeInStorageTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
-                    
+
                 case 'ports':
                     return $this->storeInPortsTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
-                    
+
                 case 'sensors':
                     return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit, $endpointName, $key, $mapping);
-                    
+
                 case 'devices':
                     return $this->storeInDevicesTable($mapping->librenms_field, $transformedValue, $endpointName, $key);
-                    
+
+                case 'entPhysical': // ADDED: Handler for hardware/entity discovery
+                    return $this->storeInEntPhysicalTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
+
                 default:
                     Log::debug("No handler for table: {$mapping->librenms_table}");
                     return false;
@@ -107,12 +111,13 @@ class DataRouter
     protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
+            // Use item context (e.g., volume name) or device_id if array-level capacity
             $storageDescr = $this->itemContext['name'] ?? 'rest-api-storage-' . ($this->itemContext['index'] ?? 0);
-            
+
             $storage = Storage::where('device_id', $this->device->device_id)
                 ->where('storage_descr', $storageDescr)
                 ->first();
-            
+
             if (!$storage) {
                 $storage = new Storage();
                 $storage->device_id = $this->device->device_id;
@@ -127,16 +132,16 @@ class DataRouter
                 $storage->storage_perc = 0;
                 $storage->save();
             }
-            
+
             $storage->update([$field => $value]);
-            
+
             // Calculate percentage if we have size and used
             if ($storage->storage_size > 0 && $storage->storage_used > 0) {
                 $storage->storage_perc = round(($storage->storage_used / $storage->storage_size) * 100, 2);
                 $storage->storage_free = $storage->storage_size - $storage->storage_used;
                 $storage->save();
             }
-            
+
             Log::info("[{$endpointName}] {$displayKey} -> storage.{$field} (descr: {$storageDescr}) = {$value}");
             return true;
         } catch (\Exception $e) {
@@ -152,11 +157,11 @@ class DataRouter
     {
         try {
             $portName = $this->itemContext['name'] ?? 'rest-api-port-' . ($this->itemContext['index'] ?? 0);
-            
+
             $port = Port::where('device_id', $this->device->device_id)
                 ->where('ifName', $portName)
                 ->first();
-            
+
             if (!$port) {
                 $port = new Port();
                 $port->device_id = $this->device->device_id;
@@ -166,13 +171,50 @@ class DataRouter
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
                 $port->save();
             }
-            
+
             $port->update([$field => $value]);
-            
+
             Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
             return true;
         } catch (\Exception $e) {
             Log::error("[{$endpointName}] Failed to store in ports.{$field}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Store in entPhysical table (hardware/controllers)
+     */
+    protected function storeInEntPhysicalTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
+    {
+        try {
+            $entityName = $this->itemContext['name'] ?? 'rest-api-entity-' . ($this->itemContext['index'] ?? 0);
+
+            $entity = EntPhysical::where('device_id', $this->device->device_id)
+                ->where('entPhysicalDescr', $entityName)
+                ->first();
+
+            if (!$entity) {
+                $entity = new EntPhysical();
+                $entity->device_id = $this->device->device_id;
+                $entity->entPhysicalDescr = substr($entityName, 0, 64);
+                $entity->entPhysicalIndex = abs(crc32($this->device->device_id . '_' . $entityName));
+                $entity->entPhysicalClass = $this->itemContext['class'] ?? 'module'; // Use module as default class for controllers
+                $entity->entPhysicalName = $entityName;
+                $entity->entPhysicalVendorType = 'rest-api';
+                $entity->entPhysicalContainedIn = 0; // Assume top level unless context provides parent
+                $entity->save();
+            }
+
+            // Only update if value is non-null or non-empty for structural fields
+            if (!empty($value) || $field === 'entPhysicalOperStatus' || $field === 'entPhysicalAdminStatus') {
+                $entity->update([$field => $value]);
+            }
+
+            Log::info("[{$endpointName}] {$displayKey} -> entPhysical.{$field} (entity: {$entityName}) = {$value}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to store in entPhysical.{$field}: " . $e->getMessage());
             return false;
         }
     }
@@ -187,9 +229,9 @@ class DataRouter
                 Log::debug("[{$endpointName}] Skipping non-numeric sensor value for {$displayKey}: {$value}");
                 return false;
             }
-            
+
             $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
-            
+
             // Create descriptive sensor name
             if (!empty($this->itemContext['name'])) {
                 $sensorDescr = $this->itemContext['name'] . ' - ' . str_replace('_', ' ', ucwords($displayKey, '_'));
@@ -197,18 +239,18 @@ class DataRouter
                 $sensorDescr = str_replace('_', ' ', ucwords($displayKey, '_'));
             }
             $sensorDescr = substr(preg_replace('/\s+/', ' ', $sensorDescr), 0, 64);
-            
-            $indexBase = !empty($this->itemContext['name']) 
+
+            $indexBase = !empty($this->itemContext['name'])
                 ? $this->itemContext['name'] . '_' . $displayKey
                 : $displayKey . '_' . $endpointName;
             $sensorIndex = abs(crc32($this->device->device_id . '_' . $indexBase));
-            
+
             $sensor = Sensor::where('device_id', $this->device->device_id)
                 ->where('sensor_class', $sensorInfo['class'])
                 ->where('sensor_type', 'rest-api')
                 ->where('sensor_index', $sensorIndex)
                 ->first();
-            
+
             if (!$sensor) {
                 $sensor = new Sensor();
                 $sensor->device_id = $this->device->device_id;
@@ -218,7 +260,7 @@ class DataRouter
                 $sensor->sensor_descr = $sensorDescr;
                 $sensor->sensor_oid = 'rest-api.' . $displayKey;
                 $sensor->poller_type = 'rest-api';
-                
+
                 // Set limits based on sensor class
                 if ($sensorInfo['class'] === 'temperature') {
                     $sensor->sensor_limit = 70;
@@ -228,12 +270,12 @@ class DataRouter
                     $sensor->sensor_limit_warn = 80;
                     $sensor->sensor_limit_low = 0;
                 }
-                
+
                 $sensor->save();
             }
-            
+
             $sensor->update(['sensor_current' => $value]);
-            
+
             Log::info("[{$endpointName}] {$displayKey} -> sensors.sensor_current (class: {$sensorInfo['class']}, descr: {$sensorDescr}) = {$value}" . ($unit ? " ({$unit})" : ''));
             return true;
         } catch (\Exception $e) {
@@ -241,7 +283,7 @@ class DataRouter
             return false;
         }
     }
-    
+
     /**
      * Determine sensor type and class from field name and unit
      */
@@ -249,7 +291,7 @@ class DataRouter
     {
         $field = strtolower($field);
         $displayKey = strtolower($displayKey);
-        
+
         if (strpos($displayKey, 'temp') !== false || $unit === 'celsius' || $unit === '°C') {
             return ['class' => 'temperature', 'description' => 'Temperature'];
         }
@@ -274,7 +316,7 @@ class DataRouter
         if (strpos($displayKey, 'percent') !== false || $unit === '%' || $unit === 'ratio') {
             return ['class' => 'percentage', 'description' => 'Percentage'];
         }
-        
+
         return ['class' => 'count', 'description' => 'Count'];
     }
 
@@ -310,7 +352,7 @@ class DataRouter
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -330,6 +372,7 @@ class DataRouter
                 $metricType = 'replication';
             }
 
+            // Note: StorageArrayMetric is a custom model, used here as fallback for complex/custom metrics
             StorageArrayMetric::storeMetric(
                 $this->device->device_id,
                 $metricType,
@@ -363,7 +406,7 @@ class DataRouter
                     'last_updated' => now(),
                 ]
             );
-            
+
             Log::debug("[{$endpointName}] {$key} -> fallback table ({$resourceType})");
         } catch (\Exception $e) {
             Log::error("Error storing in fallback table: " . $e->getMessage());
