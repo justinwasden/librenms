@@ -6,7 +6,8 @@ mib_dir: purestorage
 
 vendor: purestorage
 processor_stacked: false  # PureStorage doesn't expose CPU via SNMP
-
+includes:
+            - includes/discovery/restapi.inc.php # <-- NEW: This forces the restapi discovery code to run
 over:
     - { graph: device_purestorage_bandwidth, text: 'Array Bandwidth' }
     - { graph: device_purestorage_iops, text: 'Array IOPS' }
