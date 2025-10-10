@@ -90,12 +90,12 @@ graphs:
                     name: Read
                     type: GAUGE
                     colour: 00cc00
-                    rpn: 1000000,*,8,*
+                    rpn: '1000000,*,8,*' # Quoted RPN
                 write:
                     name: Write
                     type: GAUGE
                     colour: 0000ff
-                    rpn: 1000000,*,8,*
+                    rpn: '1000000,*,8,*' # Quoted RPN
             rrd_options: '--base 1000'
             rrd_title: Bandwidth
             rrd_vertical_label: 'bits/s'
@@ -190,4 +190,12 @@ graphs:
                     name: Read
                     type: GAUGE
                     colour: 00cc00
-                    rpn: 1000,/\n                write:\n                    name: Write\n                    type: GAUGE\n                    colour: 0000ff\n                    rpn: 1000,/\n            rrd_options: '--base 1000'\n            rrd_title: Latency\n            rrd_vertical_label: 'ms'\n
+                    rpn: '1000,/' # <-- Quoted
+                write:
+                    name: Write
+                    type: GAUGE
+                    colour: 0000ff
+                    rpn: '1000,/' # <-- Quoted
+            rrd_options: '--base 1000'
+            rrd_title: Latency
+            rrd_vertical_label: 'ms'
