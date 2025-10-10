@@ -21,8 +21,8 @@ $storageEntry = Storage::where('device_id', $device_id)
     ->first();
 
 // 2. Get Controllers (from native 'entPhysical' table)
-// Explicitly referencing the full namespace path to the Entity Model.
-$controllers = \LibreNMS\Entities\Entity::where('device_id', $device_id)
+// Correctly referencing the class as \App\Models\EntPhysical based on LibreNMS/Modules/EntityPhysical.php
+$controllers = \App\Models\EntPhysical::where('device_id', $device_id)
     ->whereIn('entPhysicalClass', ['chassis', 'module', 'processor', 'container'])
     ->get();
 
