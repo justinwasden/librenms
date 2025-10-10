@@ -21,7 +21,6 @@
 
 namespace LibreNMS\Modules;
 
-// Note: We keep these 'use' statements for clarity, but use FQN in the methods for robustness.
 use App\Discovery\RestApiDiscovery;
 use App\Models\Device;
 use App\Pollers\RestApiPoller;
@@ -43,25 +42,28 @@ class RestApi implements Module
 
     /**
      * @inheritDoc
+     *
+     * IMPORTANT: The system must first load this module. Since standard registration is failing,
+     * we will simplify the return to ensure the discovery logic runs if the device is up.
      */
     public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
-        // === CRITICAL DEBUG CHECK ===
-        Log::info("<<< REST API MODULE: shouldDiscover() invoked for {$os->getDevice()->hostname} >>>");
-        // === END CRITICAL DEBUG CHECK ===
-
-        // Check if device is up (without SNMP check)
         $device = $os->getDevice();
 
-        // This is the correct logic: only run if device is generally up
-        $statusCheck = $status->isEnabledAndDeviceUp($device, check_snmp: false);
-
-        if (!$statusCheck) {
-            Log::debug("REST API Discovery: Skipping shouldDiscover because general device status check failed.");
+        // 1. Ensure the device is up and the module is generally enabled (snmp: false is key for REST-only)
+        if (!$status->isEnabledAndDeviceUp($device, check_snmp: false)) {
+             Log::debug("REST API Discovery: Skipping because device is down or module is disabled globally.");
+             return false;
         }
 
-        // We return true if the device is up. The inner discover() method will handle connection existence.
-        return $statusCheck;
+        // 2. We skip the database check here to ensure the module is run, even if the user hasn't created the connection yet.
+        // The discover() method will handle the exception if no connections exist.
+        return true;
+
+        /* Original logic (commented out due to unknown registration failure):
+        return $status->isEnabledAndDeviceUp($device, check_snmp: false)
+            && $device->restApiConnections()->where('enabled', 1)->exists();
+        */
     }
 
     /**
@@ -73,15 +75,11 @@ class RestApi implements Module
     {
         $device = $os->getDevice();
 
-        // CRITICAL CHECK: Check for enabled connections inside discover()
-        if (!$device->restApiConnections()->where('enabled', 1)->exists()) {
-            Log::warning("REST API Discovery: Skipped discover() for {$device->hostname} because no enabled restApiConnections were found. Please configure API credentials.");
-            return;
-        }
+        // This log line is the confirmation that the module finally ran.
+        Log::info("<<< REST API DISCOVERY STARTING >>> for device {$device->hostname}");
 
         try {
-            // Using FQN for absolute reliability
-            $discovery = new \App\Discovery\RestApiDiscovery($device);
+            $discovery = new RestApiDiscovery($device);
             $discovery->discover();
 
             Log::info("REST API Discovery completed for device {$device->hostname}");
@@ -113,8 +111,7 @@ class RestApi implements Module
         $device = $os->getDevice();
 
         try {
-            // Using FQN for absolute reliability
-            $poller = new \App\Pollers\RestApiPoller($device);
+            $poller = new RestApiPoller($device);
             $poller->poll();
 
             Log::info("REST API Polling completed for device {$device->hostname}");
