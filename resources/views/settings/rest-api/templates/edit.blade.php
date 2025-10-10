@@ -21,7 +21,7 @@
         margin: 1vh auto;
     }
     #endpointsModal .modal-content {
-        height: 90vh;
+        height: 120vh;
         overflow: hidden;
     }
     #endpointsModal .modal-body {
