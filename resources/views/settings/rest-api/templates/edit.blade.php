@@ -291,20 +291,22 @@
                                 <div class="endpoint-dirty">
                                     <div class="form-group">
                                         <label>Endpoint Name <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" x-model="selectedEndpoint.name" required>
+                                        <input type="text" class="form-control" x-model="selectedEndpoint.name" 
+                                               @input="checkForChanges()" required>
                                     </div>
                                     <div class="row">
                                         <div class="col-md-8">
                                             <div class="form-group">
                                                 <label>Path <span class="text-danger">*</span></label>
                                                 <input type="text" class="form-control" x-model="selectedEndpoint.path" 
-                                                       placeholder="/api/2.30/arrays" required>
+                                                       @input="checkForChanges()" placeholder="/api/2.30/arrays" required>
                                             </div>
                                         </div>
                                         <div class="col-md-4">
                                             <div class="form-group">
                                                 <label>HTTP Method</label>
-                                                <select class="form-control" x-model="selectedEndpoint.method">
+                                                <select class="form-control" x-model="selectedEndpoint.method" 
+                                                        @change="checkForChanges()">
                                                     <option>GET</option>
                                                     <option>POST</option>
                                                     <option>PUT</option>
@@ -315,7 +317,8 @@
                                     </div>
                                     <div class="form-group">
                                         <label>Resource Type</label>
-                                        <select class="form-control" x-model="selectedEndpoint.resource_type">
+                                        <select class="form-control" x-model="selectedEndpoint.resource_type" 
+                                                @change="checkForChanges()">
                                             <option value="">-- Auto Detect --</option>
                                             <optgroup label="Standard Types">
                                                 <option value="device">Device</option>
@@ -339,18 +342,20 @@
                                     <div class="form-group">
                                         <label>Metric Mapping (JSON) <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
                                         <textarea class="form-control font-monospace" rows="10" x-model="selectedEndpoint.metric_map_json"
-                                                  placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
+                                                  @input="checkForChanges()" placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
                                         <small class="form-text text-muted">Leave empty to let the system auto-learn field mappings</small>
                                     </div>
 
                                     <div class="text-right mt-4">
                                         <button type="button" class="btn btn-danger mr-2" 
                                                 @click="deleteEndpoint()" 
-                                                x-show="selectedEndpoint.id">
+                                                x-show="selectedEndpoint._endpoint_index !== undefined">
                                             <i class="fas fa-trash"></i> Delete Endpoint
                                         </button>
                                         <button type="button" class="btn btn-primary" 
-                                                @click="saveEndpointChanges()">
+                                                @click="saveEndpointChanges()"
+                                                :disabled="!isDirty"
+                                                data-save-endpoint>
                                             <i class="fas fa-save"></i> Save Endpoint
                                         </button>
                                     </div>
@@ -454,6 +459,39 @@ function endpointManager() {
             this.isDirty = false;
         },
 
+        // Check if current endpoint has changes
+        checkForChanges() {
+            if (this.selectedEndpointIndex === null) {
+                this.isDirty = false;
+                return;
+            }
+
+            // For new endpoints (no _endpoint_index), always mark as dirty
+            if (this.selectedEndpoint._endpoint_index === undefined) {
+                this.isDirty = true;
+                return;
+            }
+
+            // Compare current with original
+            const current = JSON.stringify({
+                name: this.selectedEndpoint.name,
+                path: this.selectedEndpoint.path,
+                method: this.selectedEndpoint.method,
+                resource_type: this.selectedEndpoint.resource_type,
+                metric_map_json: this.selectedEndpoint.metric_map_json
+            });
+
+            const original = JSON.stringify({
+                name: this.originalEndpoint.name,
+                path: this.originalEndpoint.path,
+                method: this.originalEndpoint.method,
+                resource_type: this.originalEndpoint.resource_type,
+                metric_map_json: this.originalEndpoint.metric_map_json
+            });
+
+            this.isDirty = current !== original;
+        },
+
         addNewEndpoint() {
             const newEp = { 
                 name: 'New Endpoint', 
@@ -461,15 +499,18 @@ function endpointManager() {
                 method: 'GET', 
                 resource_type: '',
                 metric_map: null, 
-                metric_map_json: '' 
+                metric_map_json: '',
+                _connection_index: 0, // Default to first connection
+                _is_template: true
+                // Note: no _endpoint_index means it's new
             };
             this.endpoints.push(newEp);
             this.selectEndpoint(this.endpoints.length - 1);
-            this.isDirty = true;
+            this.isDirty = true; // New endpoints are always dirty
         },
 
         async saveEndpointChanges() {
-            if (this.selectedEndpointIndex === null) return;
+            if (this.selectedEndpointIndex === null || !this.isDirty) return;
 
             // Validate required fields
             if (!this.selectedEndpoint.name || !this.selectedEndpoint.path) {
@@ -491,39 +532,75 @@ function endpointManager() {
 
             // Update the endpoint in the array
             this.endpoints[this.selectedEndpointIndex] = { ...this.selectedEndpoint };
-            this.isDirty = false;
+
+            // Determine if this is a new endpoint or an update
+            const isNewEndpoint = this.selectedEndpoint._endpoint_index === undefined;
 
             // Save to template_data JSON via API
             try {
                 const templateId = {{ $template->id }};
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 
-                const res = await fetch(`/settings/rest-api/templates/${templateId}/update-endpoint`, {
+                const url = isNewEndpoint 
+                    ? `/settings/rest-api/templates/${templateId}/add-endpoint`
+                    : `/settings/rest-api/templates/${templateId}/update-endpoint`;
+                
+                const payload = isNewEndpoint ? {
+                    connection_index: this.selectedEndpoint._connection_index || 0,
+                    endpoint_data: {
+                        name: this.selectedEndpoint.name,
+                        path: this.selectedEndpoint.path,
+                        method: this.selectedEndpoint.method,
+                        resource_type: this.selectedEndpoint.resource_type || '',
+                        metric_map: this.selectedEndpoint.metric_map
+                    }
+                } : {
+                    connection_index: this.selectedEndpoint._connection_index,
+                    endpoint_index: this.selectedEndpoint._endpoint_index,
+                    endpoint_data: {
+                        name: this.selectedEndpoint.name,
+                        path: this.selectedEndpoint.path,
+                        method: this.selectedEndpoint.method,
+                        resource_type: this.selectedEndpoint.resource_type || '',
+                        metric_map: this.selectedEndpoint.metric_map
+                    }
+                };
+
+                const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-                    body: JSON.stringify({
-                        connection_index: this.selectedEndpoint._connection_index,
-                        endpoint_index: this.selectedEndpoint._endpoint_index,
-                        endpoint_data: {
-                            name: this.selectedEndpoint.name,
-                            path: this.selectedEndpoint.path,
-                            method: this.selectedEndpoint.method,
-                            resource_type: this.selectedEndpoint.resource_type,
-                            metric_map: this.selectedEndpoint.metric_map
-                        }
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    alert('Endpoint saved to template successfully!');
-                    // Update the metadata in case indices changed
+                    // Update the endpoint with new metadata
                     if (data.endpoint) {
                         this.endpoints[this.selectedEndpointIndex] = {
                             ...this.selectedEndpoint,
                             _connection_index: data.endpoint._connection_index,
-                            _endpoint_index: data.endpoint._endpoint_index
+                            _endpoint_index: data.endpoint._endpoint_index,
+                            _is_template: true
                         };
+                        this.selectedEndpoint = JSON.parse(JSON.stringify(this.endpoints[this.selectedEndpointIndex]));
+                        this.originalEndpoint = JSON.parse(JSON.stringify(this.endpoints[this.selectedEndpointIndex]));
+                    }
+                    
+                    // Mark as clean and show success
+                    this.isDirty = false;
+                    
+                    // Show success message without alert
+                    const saveBtn = document.querySelector('[data-save-endpoint]');
+                    if (saveBtn) {
+                        const originalText = saveBtn.innerHTML;
+                        saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                        saveBtn.classList.remove('btn-primary');
+                        saveBtn.classList.add('btn-success');
+                        setTimeout(() => {
+                            saveBtn.innerHTML = originalText;
+                            saveBtn.classList.remove('btn-success');
+                            saveBtn.classList.add('btn-primary');
+                        }, 2000);
                     }
                 } else {
                     alert('Error saving endpoint: ' + (data.message || 'Unknown error'));

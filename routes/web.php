@@ -123,7 +123,8 @@ Route::middleware(['auth'])->group(function () {
 
 			    // Core REST API Actions
 			    Route::post('rest-api/apply-template', [\App\Http\Controllers\Device\RestApiController::class, 'applyTemplate'])->name('rest-api.apply-template');
-			    Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
+			    Route::post('rest-api/sync-from-template', [\App\Http\Controllers\Device\RestApiController::class, 'syncFromTemplate'])->name('rest-api.sync-from-template');
+            Route::delete('rest-api/connections/{connection}', [\App\Http\Controllers\Device\RestApiController::class, 'destroyConnection'])->name('rest-api.connections.destroy');
 
 			    // Connection/Endpoint Management Routes
 			    Route::post('rest-api/connections', [\App\Http\Controllers\Device\RestApiController::class, 'storeConnection'])->name('rest-api.connections.store');
@@ -192,10 +193,12 @@ Route::middleware(['auth'])->group(function () {
 				    ->name('templates.test');
 
 				    // Template endpoint management (updates template JSON)
+				    Route::post('templates/{template}/add-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'addEndpoint'])
+				         ->name('templates.add-endpoint');
 				    Route::post('templates/{template}/update-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'updateEndpoint'])
-				    ->name('templates.update-endpoint');
-				    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
-				    ->name('templates.delete-endpoint');
+				         ->name('templates.update-endpoint');
+                    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
+                         ->name('templates.delete-endpoint');
 
                     // Global Endpoint Management Routes (updates database endpoints)
                     Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])

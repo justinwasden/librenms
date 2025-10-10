@@ -162,6 +162,83 @@ class RestApiController extends Controller
         return redirect()->route('device.edit.rest-api', $device)->with('success', 'Credentials applied successfully.');
     }
 
+    public function syncFromTemplate(Request $request, Device $device)
+    {
+        Gate::authorize('update', $device);
+
+        $request->validate(['template_id' => 'required|exists:rest_api_templates,id']);
+
+        $template = RestApiTemplate::find($request->template_id);
+        $templateData = $this->replacePlaceholdersInArray($template->template_data, $device);
+
+        // Get existing connections for this device
+        $existingConnections = $device->restApiConnections()->with('endpoints')->get();
+
+        $syncedCount = 0;
+        $addedCount = 0;
+        $unchangedCount = 0;
+
+        foreach ($templateData['connections'] as $connData) {
+            // Find matching connection by name
+            $connection = $existingConnections->firstWhere('name', $connData['name']);
+
+            if (!$connection) {
+                // Connection doesn't exist, skip (user should apply template first)
+                continue;
+            }
+
+            // Get template endpoints for this connection
+            $templateEndpoints = $connData['endpoints'] ?? [];
+
+            foreach ($templateEndpoints as $templateEp) {
+                // Handle legacy field names
+                if (isset($templateEp['response_mapping'])) {
+                    $map = $templateEp['response_mapping'];
+                    if (is_string($map)) {
+                        $map = json_decode($map, true);
+                    }
+                    $templateEp['metric_map'] = $map;
+                    unset($templateEp['response_mapping']);
+                }
+
+                // Ensure resource_type is set
+                $templateEp['resource_type'] = $templateEp['resource_type'] ?? $template->resource_type ?? 'unknown';
+
+                // Find matching endpoint by path
+                $existingEndpoint = $connection->endpoints->firstWhere('path', $templateEp['path']);
+
+                if ($existingEndpoint) {
+                    // Update existing endpoint (but preserve device-specific base_url in connection)
+                    $updated = $existingEndpoint->update([
+                        'name' => $templateEp['name'],
+                        'method' => $templateEp['method'] ?? 'GET',
+                        'resource_type' => $templateEp['resource_type'],
+                        'metric_map' => $templateEp['metric_map'] ?? null,
+                    ]);
+
+                    if ($updated) {
+                        $syncedCount++;
+                    } else {
+                        $unchangedCount++;
+                    }
+                } else {
+                    // Add new endpoint from template
+                    $connection->endpoints()->create([
+                        'name' => $templateEp['name'],
+                        'path' => $templateEp['path'],
+                        'method' => $templateEp['method'] ?? 'GET',
+                        'resource_type' => $templateEp['resource_type'],
+                        'metric_map' => $templateEp['metric_map'] ?? null,
+                    ]);
+                    $addedCount++;
+                }
+            }
+        }
+
+        $message = "Template sync complete: {$syncedCount} updated, {$addedCount} added, {$unchangedCount} unchanged.";
+        return redirect()->route('device.edit.rest-api', $device)->with('success', $message);
+    }
+
     public function destroyConnection(Device $device, RestApiConnection $connection)
     {
         Gate::authorize('update', $device);

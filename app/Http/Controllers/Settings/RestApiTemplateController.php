@@ -195,6 +195,58 @@ class RestApiTemplateController extends Controller
     }
 
     /**
+     * Add a new endpoint to the template's JSON data
+     */
+    public function addEndpoint(Request $request, RestApiTemplate $template)
+    {
+        $validated = $request->validate([
+            'connection_index' => 'required|integer',
+            'endpoint_data' => 'required|array',
+            'endpoint_data.name' => 'required|string|max:255',
+            'endpoint_data.path' => 'required|string|max:2048',
+            'endpoint_data.method' => 'required|in:GET,POST,PUT,DELETE',
+            'endpoint_data.resource_type' => 'nullable|string|max:50',
+            'endpoint_data.metric_map' => 'nullable|array',
+        ]);
+
+        $templateData = is_array($template->template_data)
+            ? $template->template_data
+            : json_decode($template->template_data, true);
+
+        $connIndex = $validated['connection_index'];
+
+        if (!isset($templateData['connections'][$connIndex])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection not found in template'
+            ], 404);
+        }
+
+        // Add the new endpoint
+        if (!isset($templateData['connections'][$connIndex]['endpoints'])) {
+            $templateData['connections'][$connIndex]['endpoints'] = [];
+        }
+
+        $templateData['connections'][$connIndex]['endpoints'][] = $validated['endpoint_data'];
+        $newEndpointIndex = count($templateData['connections'][$connIndex]['endpoints']) - 1;
+
+        $template->update(['template_data' => $templateData]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Endpoint added successfully',
+            'endpoint' => array_merge(
+                $validated['endpoint_data'],
+                [
+                    '_connection_index' => $connIndex,
+                    '_endpoint_index' => $newEndpointIndex,
+                    '_is_template' => true
+                ]
+            )
+        ]);
+    }
+
+    /**
      * Update an endpoint in the template's JSON data
      */
     public function updateEndpoint(Request $request, RestApiTemplate $template)

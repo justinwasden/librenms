@@ -29,21 +29,43 @@
             <div class="col-md-12">
                 <div class="panel panel-default">
                     <div class="panel-heading">
-                        <h3 class="panel-title">Apply REST API Template</h3>
+                        <h3 class="panel-title">REST API Template Management</h3>
                     </div>
                     <div class="panel-body">
-                        <form action="{{ route('device.rest-api.apply-template', $device) }}" method="POST" class="form-inline">
-                            @csrf
-                            <div class="form-group">
-                                <select name="template_id" id="template_id" class="form-control" required style="width: 300px;">
-                                    <option value="">Select a Template</option>
-                                    @foreach($templates as $template)
-                                        <option value="{{ $template->id }}">{{ $template->name }} ({{ $template->vendor }})</option>
-                                    @endforeach
-                                </select>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5><i class="fas fa-plus-circle"></i> Apply New Template</h5>
+                                <p class="text-muted small">Create new connections and endpoints from a template</p>
+                                <form action="{{ route('device.rest-api.apply-template', $device) }}" method="POST" class="form-inline">
+                                    @csrf
+                                    <div class="form-group">
+                                        <select name="template_id" id="template_id" class="form-control" required style="width: 300px;">
+                                            <option value="">Select a Template</option>
+                                            @foreach($templates as $template)
+                                                <option value="{{ $template->id }}">{{ $template->name }} ({{ $template->vendor }})</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-download"></i> Apply Template</button>
+                                </form>
                             </div>
-                            <button type="submit" class="btn btn-primary">Apply Template</button>
-                        </form>
+                            <div class="col-md-6">
+                                <h5><i class="fas fa-sync-alt"></i> Sync from Template</h5>
+                                <p class="text-muted small">Update existing endpoints to match the latest template version</p>
+                                <form action="{{ route('device.rest-api.sync-from-template', $device) }}" method="POST" class="form-inline">
+                                    @csrf
+                                    <div class="form-group">
+                                        <select name="template_id" id="sync_template_id" class="form-control" required style="width: 300px;">
+                                            <option value="">Select a Template</option>
+                                            @foreach($templates as $template)
+                                                <option value="{{ $template->id }}">{{ $template->name }} ({{ $template->vendor }})</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="btn btn-warning" onclick="return confirm('This will update existing endpoints to match the template. Device-specific URLs will be preserved. Continue?')"><i class="fas fa-sync"></i> Sync Endpoints</button>
+                                </form>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
