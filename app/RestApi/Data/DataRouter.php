@@ -559,6 +559,7 @@ class DataRouter
                     'resource_type' => $resourceType,
                 ],
                 [
+                    'endpoint_name' => $endpointName,
                     'metric_value' => is_array($value) ? json_encode($value) : (string) $value,
                     'last_updated' => now(),
                 ]
