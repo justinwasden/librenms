@@ -10,7 +10,7 @@
 
 @php
 use App\Models\Storage; // Corresponds to the native 'storage' table
-use LibreNMS\Entities\Entity;  // CORRECTED: Corresponds to the native 'entPhysical' table
+// Removed: use LibreNMS\Entities\Entity;  // This caused the "Class not found" error
 use LibreNMS\Util\Number;
 
 $device_id = $device['device_id'];
@@ -22,8 +22,8 @@ $storageEntry = Storage::where('device_id', $device_id)
     ->first();
 
 // 2. Get Controllers (from native 'entPhysical' table)
-// Filter for hardware entities that typically represent a controller or module.
-$controllers = Entity::where('device_id', $device_id)
+// Accessing the Entity model using the global alias which should be available.
+$controllers = \Entity::where('device_id', $device_id)
     ->whereIn('entPhysicalClass', ['chassis', 'module', 'processor', 'container'])
     ->get();
 
