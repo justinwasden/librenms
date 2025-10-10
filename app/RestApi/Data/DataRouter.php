@@ -173,7 +173,11 @@ class DataRouter
                 $port->save();
             }
 
-            $port->update([$field => $value]);
+            // Manually set the field and save to avoid $fillable restrictions.
+						if (property_exists($port, $field)) {
+						    $port->{$field} = $transformedValue;
+						    $port->save();
+						}
 
             Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
             return true;
