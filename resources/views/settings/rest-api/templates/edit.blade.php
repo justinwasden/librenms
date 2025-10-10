@@ -25,7 +25,7 @@
         overflow: hidden;
     }
     #endpointsModal .modal-body {
-        height: calc(100vh - 120px);
+        height: calc(100vh - 150px);
         overflow-y: auto;
     }
     #endpointsModal .col-md-3 {
