@@ -21,6 +21,7 @@
 
 namespace LibreNMS\Modules;
 
+// Note: We keep these 'use' statements for clarity, but use FQN in the methods for robustness.
 use App\Discovery\RestApiDiscovery;
 use App\Models\Device;
 use App\Pollers\RestApiPoller;
@@ -45,6 +46,10 @@ class RestApi implements Module
      */
     public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
+        // === CRITICAL DEBUG CHECK ===
+        Log::info("<<< REST API MODULE: shouldDiscover() invoked for {$os->getDevice()->hostname} >>>");
+        // === END CRITICAL DEBUG CHECK ===
+
         // Check if device is up (without SNMP check)
         $device = $os->getDevice();
 
@@ -75,7 +80,8 @@ class RestApi implements Module
         }
 
         try {
-            $discovery = new RestApiDiscovery($device);
+            // Using FQN for absolute reliability
+            $discovery = new \App\Discovery\RestApiDiscovery($device);
             $discovery->discover();
 
             Log::info("REST API Discovery completed for device {$device->hostname}");
@@ -107,7 +113,8 @@ class RestApi implements Module
         $device = $os->getDevice();
 
         try {
-            $poller = new RestApiPoller($device);
+            // Using FQN for absolute reliability
+            $poller = new \App\Pollers\RestApiPoller($device);
             $poller->poll();
 
             Log::info("REST API Polling completed for device {$device->hostname}");
