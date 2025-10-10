@@ -148,19 +148,19 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('can:admin')->group(function () {
 
     // Metric Field Mappings
-    Route::prefix('settings')->name('settings.')->group(function () {
-        Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
+    Route::prefix('admin')->name('admin.')->group(function () {
+        Route::resource('metric-field-mappings', \App\Http\Controllers\Admin\MetricFieldMappingController::class)
             ->parameters(['metric-field-mappings' => 'mapping'])
             ->except(['show']);
-			Route::get('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'showImportForm'])->name('metric-field-mappings.import.show');
-        Route::post('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
-        Route::get('metric-field-mappings/export', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'exportToJson'])->name('metric-field-mappings.export');
+			Route::get('metric-field-mappings/import', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'showImportForm'])->name('metric-field-mappings.import.show');
+        Route::post('metric-field-mappings/import', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
+        Route::get('metric-field-mappings/export', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'exportToJson'])->name('metric-field-mappings.export');
 
     // Existing routes continue below:
-    Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
-             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
-    Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
-    Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
+    Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
+             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
+    Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
+    Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Admin\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
         });
 
     // REST API Settings Routes (Credentials, Templates, Endpoints)

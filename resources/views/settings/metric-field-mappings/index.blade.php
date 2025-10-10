@@ -30,7 +30,7 @@
 						<div class="row mb-3">
 						    <div class="col-md-12">
 						        {{-- Corrected 'Create New Mapping' link --}}
-						        <a href="{{ route('settings.metric-field-mappings.create') }}" class="btn btn-primary">
+						        <a href="{{ route('admin.metric-field-mappings.create') }}" class="btn btn-primary">
 						            <i class="fa fa-plus"></i> Create New Mapping
 						        </a>
 
@@ -43,12 +43,12 @@
 						        </button>
 
 						        {{-- Corrected 'Import from JSON' link to SHOW THE FORM --}}
-										<a href="{{ route('settings.metric-field-mappings.import.show') }}" class="btn btn-sm btn-primary" style="display: inline-block; vertical-align: middle;">
+										<a href="{{ route('admin.metric-field-mappings.import.show') }}" class="btn btn-sm btn-primary" style="display: inline-block; vertical-align: middle;">
 										    <i class="fa fa-upload"></i> Import from JSON
 										</a>
 
 						        {{-- Corrected 'Export to JSON' link --}}
-						        <a href="{{ route('settings.metric-field-mappings.export') }}" class="btn btn-info">
+						        <a href="{{ route('admin.metric-field-mappings.export') }}" class="btn btn-info">
 						            <i class="fa fa-download"></i> Export to JSON
 						        </a>
 						    </div>
@@ -60,7 +60,7 @@
                     <h3 class="panel-title">Filters</h3>
                 </div>
                 <div class="panel-body">
-                    <form method="GET" action="{{ route('settings.metric-field-mappings.index') }}" class="form-inline">
+                    <form method="GET" action="{{ route('admin.metric-field-mappings.index') }}" class="form-inline">
                         <div class="form-group mr-2">
                             <input type="text" name="search" class="form-control" placeholder="Search..." value="{{ request('search') }}">
                         </div>
@@ -104,7 +104,7 @@
                         </div>
 
                         <button type="submit" class="btn btn-primary">Filter</button>
-                        <a href="{{ route('settings.metric-field-mappings.index') }}" class="btn btn-default">Reset</a>
+                        <a href="{{ route('admin.metric-field-mappings.index') }}" class="btn btn-default">Reset</a>
                     </form>
                 </div>
             </div>
@@ -159,18 +159,18 @@
                                 <td><small>{{ $mapping->last_seen_at?->diffForHumans() ?? 'Never' }}</small></td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{{ route('settings.metric-field-mappings.edit', $mapping) }}" class="btn btn-primary" title="Edit">
+                                        <a href="{{ route('admin.metric-field-mappings.edit', $mapping) }}" class="btn btn-primary" title="Edit">
                                             <i class="fa fa-edit"></i>
                                         </a>
 
-                                        <form action="{{ route('settings.metric-field-mappings.toggle', $mapping) }}" method="POST" style="display: inline;">
+                                        <form action="{{ route('admin.metric-field-mappings.toggle', $mapping) }}" method="POST" style="display: inline;">
                                             @csrf
                                             <button type="submit" class="btn btn-{{ $mapping->enabled ? 'warning' : 'success' }}" title="{{ $mapping->enabled ? 'Disable' : 'Enable' }}">
                                                 <i class="fa fa-{{ $mapping->enabled ? 'pause' : 'play' }}"></i>
                                             </button>
                                         </form>
 
-                                        <form action="{{ route('settings.metric-field-mappings.destroy', $mapping) }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this mapping?');">
+                                        <form action="{{ route('admin.metric-field-mappings.destroy', $mapping) }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this mapping?');">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="btn btn-danger" title="Delete">
@@ -201,7 +201,7 @@
 <div class="modal fade" id="runMatchingModal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
-            <form action="{{ route('settings.metric-field-mappings.run-matching') }}" method="POST">
+            <form action="{{ route('admin.metric-field-mappings.run-matching') }}" method="POST">
                 @csrf
                 <div class="modal-header">
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
@@ -252,7 +252,7 @@ function confirmBulkDelete() {
     if (confirm('Are you sure you want to delete ALL unmatched mappings? This cannot be undone.')) {
         var form = document.createElement('form');
         form.method = 'POST';
-        form.action = '{{ route("settings.metric-field-mappings.bulk-delete-unmatched") }}';
+        form.action = '{{ route("admin.metric-field-mappings.bulk-delete-unmatched") }}';
 
         var csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
