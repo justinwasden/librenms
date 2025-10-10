@@ -5,7 +5,7 @@ use App\Models\Device;
 use App\RestApi\Metrics\MetricsStager;
 use App\RestApi\Credentials\CredentialHelper;
 use App\RestApi\Utils\JsonFlattener;
-use App\RestApi\Parsers\PureStorageParser;
+// use App\RestApi\Parsers\PureStorageParser; // Optional parser - not required
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
 use Log;
@@ -63,29 +63,22 @@ class RestApiPoller
                     
                     $response = $this->requestEndpoint($conn, $endpoint);
                     
-                    // Check if this is a PureStorage API response and parse it
-                    if (PureStorageParser::isPureStorageResponse($response)) {
-                        Log::debug("[{$endpoint->name}] Detected PureStorage API format - parsing");
-                        $parsedResponse = PureStorageParser::parse($response, $endpoint->name);
-                        $this->processStructuredResponse($parsedResponse, $endpoint);
-                    } else {
-                        // Legacy/non-PureStorage response - flatten and process as before
-                        Log::debug("[{$endpoint->name}] Standard response format - flattening");
-                        $metrics = JsonFlattener::flatten($response);
-                        
-                        Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
-                        
-                        // Get metric map from endpoint if available
-                        $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
-                        
-                        $this->stager->stageMetrics(
-                            $metrics, 
-                            true, // isPoller
-                            $endpoint->resource_type ?? 'custom',
-                            $metricMap,
-                            $endpoint->name
-                        );
-                    }
+                    // Standard response format - flatten and process
+                    Log::debug("[{$endpoint->name}] Standard response format - flattening");
+                    $metrics = JsonFlattener::flatten($response);
+                    
+                    Log::debug("[{$endpoint->name}] Flattener returned " . count($metrics) . " metrics");
+                    
+                    // Get metric map from endpoint if available
+                    $metricMap = is_array($endpoint->metric_map) ? $endpoint->metric_map : [];
+                    
+                    $this->stager->stageMetrics(
+                        $metrics, 
+                        true, // isPoller
+                        $endpoint->resource_type ?? 'custom',
+                        $metricMap,
+                        $endpoint->name
+                    );
                     
                     Log::info("REST API polling successful for {$endpoint->name} on {$this->device->hostname}");
                 } catch (\Exception $e) {

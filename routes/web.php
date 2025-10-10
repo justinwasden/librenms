@@ -147,65 +147,59 @@ Route::middleware(['auth'])->group(function () {
     // ---------------------------------------------------------------------
     Route::middleware('can:admin')->group(function () {
 
-        // REINSTATED: Global Credentials Management (Point 4)
-        Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
-        Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
-        Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+    // Metric Field Mappings
+    Route::prefix('settings')->name('settings.')->group(function () {
+        Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
+            ->parameters(['metric-field-mappings' => 'mapping'])
+            ->except(['show']);
+			Route::get('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'showImportForm'])->name('metric-field-mappings.import.show');
+        Route::post('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
+        Route::get('metric-field-mappings/export', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'exportToJson'])->name('metric-field-mappings.export');
+
+    // Existing routes continue below:
+    Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
+             Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
+    Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
+    Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
         });
 
-        // Metric Field Mappings
-        Route::prefix('settings')->name('settings.')->group(function () {
-            Route::resource('metric-field-mappings', \App\Http\Controllers\Settings\MetricFieldMappingController::class)
-                ->parameters(['metric-field-mappings' => 'mapping'])
-                ->except(['show']);
-						Route::get('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'showImportForm'])->name('metric-field-mappings.import.show');
-            Route::post('metric-field-mappings/import', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'importFromJson'])->name('metric-field-mappings.import');
-            Route::get('metric-field-mappings/export', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'exportToJson'])->name('metric-field-mappings.export');
+    // REST API Settings Routes (Credentials, Templates, Endpoints)
+    Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
+    // Credentials Routes
+    Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
+    Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
 
-            // Existing routes continue below:
-            Route::post('metric-field-mappings/{mapping}/toggle', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'toggle'])->name('metric-field-mappings.toggle');
-            Route::post('metric-field-mappings-run-matching', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'runMatching'])->name('metric-field-mappings.run-matching');
-            Route::delete('metric-field-mappings-bulk-unmatched', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'bulkDeleteUnmatched'])->name('metric-field-mappings.bulk-delete-unmatched');
-            Route::get('metric-field-mappings-table-fields', [\App\Http\Controllers\Settings\MetricFieldMappingController::class, 'getTableFields'])->name('metric-field-mappings.table-fields');
-        });
+    // TEMPLATES Routes
+		    Route::resource('templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
+        ->parameters(['templates' => 'template'])
+        ->names([
+            'index'   => 'templates.index',
+		            'create'  => 'templates.create',
+            'store'   => 'templates.store',
+            'show'    => 'templates.show',
+        'edit'    => 'templates.edit',
+        'update'  => 'templates.update',
+    'destroy' => 'templates.destroy',
+    ]);
 
-				    Route::prefix('settings/rest-api')->name('settings.rest-api.')->group(function () {
+    // Test template endpoint
+    Route::post('templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
+    ->name('templates.test');
 
-				    // Credentials Routes (Correctly placed under /settings/rest-api)
-				    Route::resource('credentials', \App\Http\Controllers\Settings\RestApiCredentialController::class);
-				    Route::get('credentials/types/{typeId}/params', [\App\Http\Controllers\Settings\RestApiCredentialController::class, 'getAuthTypeParams'])->name('credentials.params');
+    // Template endpoint management (updates template JSON)
+		    Route::post('templates/{template}/add-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'addEndpoint'])
+         ->name('templates.add-endpoint');
+    Route::post('templates/{template}/update-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'updateEndpoint'])
+         ->name('templates.update-endpoint');
+		    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
+         ->name('templates.delete-endpoint');
 
-				    // TEMPLATES Route (Correctly placed under /settings/rest-api)
-				    Route::resource('templates', \App\Http\Controllers\Settings\RestApiTemplateController::class)
-				        ->parameters(['templates' => 'template'])
-				        ->names([
-				            'index'   => 'templates.index',
-				            'create'  => 'templates.create',
-				            'store'   => 'templates.store',
-				            'show'    => 'templates.show',
-				            'edit'    => 'templates.edit',
-				            'update'  => 'templates.update',
-				            'destroy' => 'templates.destroy',
-				        ]);
-
-				    // Test template endpoint
-				    Route::post('templates/{template}/test', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'test'])
-				    ->name('templates.test');
-
-				    // Template endpoint management (updates template JSON)
-				    Route::post('templates/{template}/add-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'addEndpoint'])
-				         ->name('templates.add-endpoint');
-				    Route::post('templates/{template}/update-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'updateEndpoint'])
-				         ->name('templates.update-endpoint');
-                    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
-                         ->name('templates.delete-endpoint');
-
-                    // Global Endpoint Management Routes (updates database endpoints)
-                    Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])
-                         ->name('endpoints.update');
-                    Route::delete('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'destroy'])
-                         ->name('endpoints.destroy');
-				});
+    // Global Endpoint Management Routes (updates database endpoints)
+    Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])
+    ->name('endpoints.update');
+    Route::delete('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'destroy'])
+    ->name('endpoints.destroy');
+		});
 
 
         Route::prefix('devices')->name('devices.')->group(function () {
