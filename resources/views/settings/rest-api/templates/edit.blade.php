@@ -198,28 +198,20 @@
 <div class="modal fade" id="endpointsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         @php
-            // IMPORTANT: We always parse from template_data JSON, NOT from device endpoints
-            // This is the template blueprint, not the device-specific instances
             $endpoints = [];
-            $debugInfo = [];
-            
-            $debugInfo[] = 'Template ID: ' . ($template->id ?? 'none');
-            $debugInfo[] = 'Template Name: ' . ($template->name ?? 'none');
-            $debugInfo[] = 'Editing template blueprint (not device instances)';
-            
+
+
             // Parse endpoints from template_data JSON
             $templateData = is_array($template->template_data)
                 ? $template->template_data
                 : json_decode($template->template_data ?? '{}', true);
-            
+
             $connections = $templateData['connections'] ?? [];
-            $debugInfo[] = 'Found ' . count($connections) . ' connection(s) in template';
-            
+
             $connectionIndex = 0;
             foreach ($connections as $conn) {
                 if (isset($conn['endpoints']) && is_array($conn['endpoints'])) {
-                    $debugInfo[] = 'Connection ' . ($connectionIndex + 1) . ' (' . ($conn['name'] ?? 'unnamed') . ') has ' . count($conn['endpoints']) . ' endpoints';
-                    
+
                     foreach ($conn['endpoints'] as $idx => $ep) {
                         // Add metadata to track which connection this belongs to
                         $ep['_connection_index'] = $connectionIndex;
@@ -230,8 +222,7 @@
                 }
                 $connectionIndex++;
             }
-            
-            $debugInfo[] = 'Total endpoints in template: ' . count($endpoints);
+
         @endphp
         <div x-data="endpointManager()" x-init="loadEndpoints(@js($endpoints))">
             <div class="modal-content">
@@ -241,28 +232,14 @@
                 </div>
 
                 <div class="modal-body">
-                    {{-- Debug Info --}}
-                    <div class="alert alert-info mb-3">
-                        <strong>Debug Information:</strong>
-                        <ul class="mb-0 small">
-                            @foreach($debugInfo as $info)
-                                <li>{{ $info }}</li>
-                            @endforeach
                         </ul>
                     </div>
-                    
+
                     <div class="row">
                         {{-- LEFT PANEL --}}
                         <div class="col-md-3 border-right">
                             <h6 class="mb-3 text-primary"><i class="fas fa-list-ul"></i> Existing Endpoints</h6>
-                            
-                            {{-- Alpine Debug --}}
-                            <div class="alert alert-warning small mb-2">
-                                <strong>Alpine Status:</strong><br>
-                                Endpoints count: <span x-text="endpoints.length">?</span><br>
-                                Selected: <span x-text="selectedEndpointIndex">?</span>
-                            </div>
-                            
+
                             <div class="list-group" style="max-height:600px; overflow-y:auto;">
                                 <template x-for="(endpoint, index) in endpoints" :key="index">
                                     <a href="#" class="list-group-item list-group-item-action"
@@ -272,7 +249,7 @@
                                         <span x-text="endpoint.name || endpoint.path || 'Unnamed'"></span>
                                     </a>
                                 </template>
-                                
+
                                 {{-- Fallback if template doesn't render --}}
                                 <div x-show="endpoints.length === 0" class="text-muted p-3">
                                     No endpoints found
@@ -291,21 +268,21 @@
                                 <div class="endpoint-dirty">
                                     <div class="form-group">
                                         <label>Endpoint Name <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" x-model="selectedEndpoint.name" 
+                                        <input type="text" class="form-control" x-model="selectedEndpoint.name"
                                                @input="checkForChanges()" required>
                                     </div>
                                     <div class="row">
                                         <div class="col-md-8">
                                             <div class="form-group">
                                                 <label>Path <span class="text-danger">*</span></label>
-                                                <input type="text" class="form-control" x-model="selectedEndpoint.path" 
+                                                <input type="text" class="form-control" x-model="selectedEndpoint.path"
                                                        @input="checkForChanges()" placeholder="/api/2.30/arrays" required>
                                             </div>
                                         </div>
                                         <div class="col-md-4">
                                             <div class="form-group">
                                                 <label>HTTP Method</label>
-                                                <select class="form-control" x-model="selectedEndpoint.method" 
+                                                <select class="form-control" x-model="selectedEndpoint.method"
                                                         @change="checkForChanges()">
                                                     <option>GET</option>
                                                     <option>POST</option>
@@ -317,7 +294,7 @@
                                     </div>
                                     <div class="form-group">
                                         <label>Resource Type</label>
-                                        <select class="form-control" x-model="selectedEndpoint.resource_type" 
+                                        <select class="form-control" x-model="selectedEndpoint.resource_type"
                                                 @change="checkForChanges()">
                                             <option value="">-- Auto Detect --</option>
                                             <optgroup label="Standard Types">
@@ -347,12 +324,12 @@
                                     </div>
 
                                     <div class="text-right mt-4">
-                                        <button type="button" class="btn btn-danger mr-2" 
-                                                @click="deleteEndpoint()" 
+                                        <button type="button" class="btn btn-danger mr-2"
+                                                @click="deleteEndpoint()"
                                                 x-show="selectedEndpoint._endpoint_index !== undefined">
                                             <i class="fas fa-trash"></i> Delete Endpoint
                                         </button>
-                                        <button type="button" class="btn btn-primary" 
+                                        <button type="button" class="btn btn-primary"
                                                 @click="saveEndpointChanges()"
                                                 :disabled="!isDirty"
                                                 data-save-endpoint>
@@ -414,20 +391,20 @@ function endpointManager() {
         loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
             console.log('Raw endpoints data:', endpointsData);
-            
+
             // Set endpoints from passed data
             this.endpoints = Array.isArray(endpointsData) ? endpointsData : [];
-            
+
             console.log('Endpoints length:', this.endpoints.length);
             console.log('Endpoints is array?', Array.isArray(this.endpoints));
-            
+
             // Ensure endpoints is an array
             if (!Array.isArray(this.endpoints)) {
                 console.error('Endpoints is not an array!', typeof this.endpoints);
                 this.endpoints = [];
                 return;
             }
-            
+
             // Process metric_map for each endpoint
             this.endpoints.forEach((ep, idx) => {
                 console.log(`Processing endpoint ${idx}:`, ep.name);
@@ -438,9 +415,9 @@ function endpointManager() {
                             : JSON.stringify(ep.metric_map ?? null, null, 4) || '';
                 }
             });
-            
+
             console.log('Processed endpoints:', this.endpoints.length);
-            
+
             // Auto-select first endpoint if available
             if (this.endpoints.length > 0) {
                 console.log('Auto-selecting first endpoint');
@@ -448,7 +425,7 @@ function endpointManager() {
             } else {
                 console.log('No endpoints to select');
             }
-            
+
             console.log('Init complete. selectedEndpointIndex:', this.selectedEndpointIndex);
         },
 
@@ -493,12 +470,12 @@ function endpointManager() {
         },
 
         addNewEndpoint() {
-            const newEp = { 
-                name: 'New Endpoint', 
-                path: '/api/2.30/', 
-                method: 'GET', 
+            const newEp = {
+                name: 'New Endpoint',
+                path: '/api/2.30/',
+                method: 'GET',
                 resource_type: '',
-                metric_map: null, 
+                metric_map: null,
                 metric_map_json: '',
                 _connection_index: 0, // Default to first connection
                 _is_template: true
@@ -540,11 +517,11 @@ function endpointManager() {
             try {
                 const templateId = {{ $template->id }};
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                
-                const url = isNewEndpoint 
+
+                const url = isNewEndpoint
                     ? `/settings/rest-api/templates/${templateId}/add-endpoint`
                     : `/settings/rest-api/templates/${templateId}/update-endpoint`;
-                
+
                 const payload = isNewEndpoint ? {
                     connection_index: this.selectedEndpoint._connection_index || 0,
                     endpoint_data: {
@@ -585,10 +562,10 @@ function endpointManager() {
                         this.selectedEndpoint = JSON.parse(JSON.stringify(this.endpoints[this.selectedEndpointIndex]));
                         this.originalEndpoint = JSON.parse(JSON.stringify(this.endpoints[this.selectedEndpointIndex]));
                     }
-                    
+
                     // Mark as clean and show success
                     this.isDirty = false;
-                    
+
                     // Show success message without alert
                     const saveBtn = document.querySelector('[data-save-endpoint]');
                     if (saveBtn) {
@@ -613,11 +590,11 @@ function endpointManager() {
 
         async deleteEndpoint() {
             if (!confirm('Are you sure you want to delete this endpoint from the template?')) return;
-            
+
             try {
                 const templateId = {{ $template->id }};
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                
+
                 const res = await fetch(`/settings/rest-api/templates/${templateId}/delete-endpoint`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
