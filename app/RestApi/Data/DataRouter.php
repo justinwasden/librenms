@@ -133,11 +133,15 @@ class DataRouter
             '/^ITS-RSA-ESXI-/i',            // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-C1S7, etc.
             '/^ALM-C220-ESXI-/i',           // ALM-C220-ESXI-01, ALM-C220-ESXI-02, etc.
             '/^ALMH-C[0-9]S[0-9]+$/i',      // ALMH-C1S5, ALMH-C1S6, etc.
+            '/^ALMH::/i',                   // ALMH::ALMH01 (volume names)
             '/^RSA-SW-/i',                  // RSA-SW-SQL, etc.
             '/^SL-SW-/i',                   // SL-SW-SQL, etc.
+            '/^SW-SQL\//i',                 // SW-SQL/RSA-SWSQL-01, etc.
             '/^RSA-IAAS-/i',                // RSA-IAAS-HX5-01, etc.
             '/^RSA-MH-/i',                  // RSA-MH-X20, etc.
             '/^RSA-PS-/i',                  // RSA-PS-X50, etc.
+            '/^RSA-X[0-9]+-/i',             // RSA-X50-101, RSA-X50-102, etc.
+            '/^RSA-[A-Z][a-z]+[A-Z]/i',     // RSA-DruvaCC, etc. (mixed case = app name)
         ];
 
         foreach ($vmPatterns as $pattern) {
@@ -300,7 +304,16 @@ class DataRouter
                 $port->ifDescr = $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
+                $port->deleted = 0;  // Mark as active (not deleted)
                 $port->save();
+                Log::info("[{$endpointName}] Created new REST API port: {$portName}");
+            } else {
+                // Ensure port is marked as active if it was previously deleted
+                if ($port->deleted == 1) {
+                    $port->deleted = 0;
+                    $port->save();
+                    Log::info("[{$endpointName}] Reactivated previously deleted port: {$portName}");
+                }
             }
 
             // Update field

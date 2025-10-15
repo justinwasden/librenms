@@ -271,11 +271,15 @@ class RestApiDiscovery
             '/^ITS-RSA-ESXI-/i',
             '/^ALM-C220-ESXI-/i',
             '/^ALMH-C[0-9]S[0-9]+$/i',
+            '/^ALMH::/i',                   // ALMH::ALMH01 (volume names)
             '/^RSA-SW-/i',
             '/^SL-SW-/i',
+            '/^SW-SQL\//i',                 // SW-SQL/RSA-SWSQL-01, etc.
             '/^RSA-IAAS-/i',
             '/^RSA-MH-/i',
             '/^RSA-PS-/i',
+            '/^RSA-X[0-9]+-/i',             // RSA-X50-101, RSA-X50-102, etc.
+            '/^RSA-[A-Z][a-z]+[A-Z]/i',     // RSA-DruvaCC, etc. (mixed case = app name)
         ];
 
         foreach ($vmPatterns as $pattern) {
