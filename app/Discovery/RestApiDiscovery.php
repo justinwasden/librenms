@@ -224,6 +224,84 @@ class RestApiDiscovery
         return false;
     }
 
+    /**
+     * Check if item should be filtered out for Pure Storage devices
+     * Filters hardware components and VMs from network interface discovery
+     */
+    protected function shouldFilterPureStorageItem(array $itemContext, string $resourceType): bool
+    {
+        // Only filter for network interfaces on Pure Storage devices
+        if ($this->device->os !== 'purestorage') {
+            return false;
+        }
+
+        if (!in_array($resourceType, ['network-interface', 'port'])) {
+            return false;
+        }
+
+        if (empty($itemContext['name'])) {
+            return false;
+        }
+
+        $name = $itemContext['name'];
+
+        // Hardware components (should NOT be ports)
+        $hardwarePatterns = [
+            '/^CH[0-9]\.BAY[0-9]+$/i',      // Blade bays
+            '/^CH[0-9]\.NVB[0-9]+$/i',      // NVMe backplane
+            '/^CH[0-9]\.PWR[0-9]+$/i',      // Power supplies
+            '/^CH[0-9]\.TMP[0-9]+$/i',      // Temperature sensors
+            '/^CT[0-9]\.FAN[0-9]+$/i',      // Fans
+            '/^CH[0-9]$/i',                  // Chassis
+            '/^CT[0-9]$/i',                  // Controllers
+        ];
+
+        foreach ($hardwarePatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering hardware component from discovery: {$name}");
+                return true;
+            }
+        }
+
+        // VMs and hosts (should NOT be ports)
+        $vmPatterns = [
+            '/^ITS-RSA-ESXI-/i',
+            '/^ALM-C220-ESXI-/i',
+            '/^ALMH-C[0-9]S[0-9]+$/i',
+            '/^RSA-SW-/i',
+            '/^SL-SW-/i',
+            '/^RSA-IAAS-/i',
+            '/^RSA-MH-/i',
+            '/^RSA-PS-/i',
+        ];
+
+        foreach ($vmPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering VM/host from discovery: {$name}");
+                return true;
+            }
+        }
+
+        // Only allow actual network interfaces
+        $validPatterns = [
+            '/^ct[0-9]\.eth[0-9]+$/i',           // Physical: ct0.eth0
+            '/^ct[0-9]\.eth[0-9]+\.[0-9]+$/i',  // VLAN: ct0.eth18.313
+            '/^vir[0-9]+/i',                     // Virtual: vir0, vir4.8
+            '/^replbond$/i',                     // Replication bond
+        ];
+
+        foreach ($validPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                // Valid interface - don't filter
+                return false;
+            }
+        }
+
+        // Doesn't match any valid pattern - filter it out
+        Log::debug("Filtering unrecognized interface pattern from discovery: {$name}");
+        return true;
+    }
+
     protected function processMultiItemResponse(array $response, $endpoint, array $metricMap, string $resourceType): void
     {
         $items = $response['items'] ?? $response['data'] ?? [];
@@ -234,6 +312,9 @@ class RestApiDiscovery
         }
         
         $itemCount = count($items);
+        $filteredCount = 0;
+        $processedCount = 0;
+        
         Log::info("[{$endpoint->name}] Processing {$itemCount} items individually");
         
         foreach ($items as $index => $item) {
@@ -247,6 +328,12 @@ class RestApiDiscovery
                 'id' => $item['id'] ?? null,
                 'index' => $index,
             ];
+            
+            // Filter out hardware components and VMs for Pure Storage
+            if ($this->shouldFilterPureStorageItem($itemContext, $resourceType)) {
+                $filteredCount++;
+                continue;
+            }
             
             unset($item['continuation_token'], $item['more_items_remaining'], $item['total_item_count']);
             
@@ -263,8 +350,10 @@ class RestApiDiscovery
                 $endpoint->name,
                 $itemContext
             );
+            
+            $processedCount++;
         }
         
-        Log::info("[{$endpoint->name}] Completed processing {$itemCount} items");
+        Log::info("[{$endpoint->name}] Processed {$processedCount} items, filtered {$filteredCount} invalid entries");
     }
 }
