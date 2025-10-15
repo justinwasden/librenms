@@ -37,9 +37,51 @@ class MetricsStager
     ): void
     {
         $contextInfo = !empty($itemContext) ? " (item: " . ($itemContext['name'] ?? $itemContext['id'] ?? 'unnamed') . ")" : "";
-        Log::debug("[{$endpointName}] Staging " . count($metrics) . " metrics for {$this->device->hostname} (resource: {$resourceType}){$contextInfo}");
+        
+        Log::info("═══════════════════════════════════════════════════════════════");
+        Log::info("METRICS STAGER - START");
+        Log::info("═══════════════════════════════════════════════════════════════");
+        Log::info("[{$endpointName}] Device: {$this->device->hostname} (ID: {$this->device->device_id})");
+        Log::info("[{$endpointName}] Resource Type: {$resourceType}");
+        Log::info("[{$endpointName}] Endpoint: {$endpointName}");
+        Log::info("[{$endpointName}] Is Poller: " . ($isPoller ? 'YES' : 'NO'));
+        Log::info("[{$endpointName}] Metrics Count: " . count($metrics));
+        
+        if (!empty($itemContext)) {
+            Log::info("[{$endpointName}] Item Context:");
+            foreach ($itemContext as $key => $value) {
+                Log::info("[{$endpointName}]   {$key}: {$value}");
+            }
+        }
+        
+        if (!empty($metricMap)) {
+            Log::info("[{$endpointName}] Metric Map provided with " . count($metricMap) . " mappings");
+        }
+        
+        // Show sample of metrics
+        Log::info("[{$endpointName}] Sample Metrics (first 10):");
+        $count = 0;
+        foreach ($metrics as $key => $value) {
+            if ($count++ >= 10) break;
+            $displayValue = is_array($value) ? '[ARRAY]' : (is_string($value) && strlen($value) > 50 ? substr($value, 0, 50) . '...' : $value);
+            Log::info("[{$endpointName}]   {$key} = {$displayValue}");
+        }
+        
+        if (count($metrics) > 10) {
+            Log::info("[{$endpointName}]   ... and " . (count($metrics) - 10) . " more metrics");
+        }
+        
+        Log::info("[{$endpointName}] Calling DataRouter->route()...");
+        Log::info("───────────────────────────────────────────────────────────────");
         
         // Use DataRouter to intelligently route each metric
         $this->router->route($metrics, $resourceType, $metricMap, $endpointName, $itemContext);
+        
+        Log::info("───────────────────────────────────────────────────────────────");
+        Log::info("[{$endpointName}] DataRouter->route() completed");
+        Log::info("═══════════════════════════════════════════════════════════════");
+        Log::info("METRICS STAGER - END");
+        Log::info("═══════════════════════════════════════════════════════════════");
+        Log::info("");
     }
 }
