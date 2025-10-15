@@ -31,14 +31,15 @@ class DataRouter
     {
         $this->itemContext = $itemContext;
 
-        // Skip if this is a hardware sensor item (fan, temp) or non-network interface
+        // CRITICAL: Filter out hardware sensors and non-network interfaces BEFORE any routing
+        // This prevents invalid entries from being created in the ports table
         if ($this->isHardwareSensor($itemContext)) {
             Log::debug("[{$endpointName}] Skipping hardware sensor: {$itemContext['name']}");
             return;
         }
 
-        // For network interfaces, skip non-network items
-        if ($resourceType === 'network-interfaces' || $resourceType === 'network-interface') {
+        // For network interfaces and ports, skip non-network items
+        if (in_array($resourceType, ['network-interfaces', 'network-interface', 'port', 'ports'])) {
             if ($this->isNonNetworkInterface($itemContext)) {
                 Log::debug("[{$endpointName}] Skipping non-network interface: {$itemContext['name']}");
                 return;
@@ -279,6 +280,12 @@ class DataRouter
             
             if (!$portName) {
                 Log::warning("[{$endpointName}] Cannot create port entry without name");
+                return false;
+            }
+
+            // DOUBLE CHECK: Verify this is actually a network interface before creating port
+            if ($this->isNonNetworkInterface($this->itemContext)) {
+                Log::warning("[{$endpointName}] Attempted to create port for non-network interface: {$portName}");
                 return false;
             }
 

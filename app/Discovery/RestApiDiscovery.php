@@ -61,7 +61,7 @@ class RestApiDiscovery
                     $resourceType = $endpoint->resource_type ?? 'custom';
                     
                     // Normalize resource type for Pure Storage network interfaces
-                    if ($resourceType === 'port' || Str::contains($endpoint->path, 'network-interface')) {
+                    if (in_array($resourceType, ['port', 'ports']) || Str::contains($endpoint->path, 'network-interface')) {
                         $resourceType = 'network-interface';
                     }
                     
@@ -227,6 +227,9 @@ class RestApiDiscovery
     /**
      * Check if item should be filtered out for Pure Storage devices
      * Filters hardware components and VMs from network interface discovery
+     * 
+     * CRITICAL: This is the FIRST LINE OF DEFENSE - must catch all invalid items
+     * before they get routed to the ports table
      */
     protected function shouldFilterPureStorageItem(array $itemContext, string $resourceType): bool
     {
@@ -235,7 +238,7 @@ class RestApiDiscovery
             return false;
         }
 
-        if (!in_array($resourceType, ['network-interface', 'port'])) {
+        if (!in_array($resourceType, ['network-interface', 'network-interfaces', 'port', 'ports'])) {
             return false;
         }
 
