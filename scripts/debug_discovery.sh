@@ -12,7 +12,7 @@ if [ -z "$DEVICE" ]; then
     echo "Usage: $0 <device_hostname_or_ip>"
     echo ""
     echo "Available Pure Storage devices:"
-    mysql librenms -e "SELECT hostname FROM devices WHERE os = 'purestorage';"
+    mysql -u root librenms -e "SELECT hostname FROM devices WHERE os = 'purestorage';"
     exit 1
 fi
 
@@ -67,7 +67,7 @@ echo "Post-Discovery Database Check"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-DEV_ID=$(mysql -u librenms -p librenms -N -e "SELECT device_id FROM devices WHERE hostname = '$DEVICE';")
+DEV_ID=$(mysql -u root librenms -N -e "SELECT device_id FROM devices WHERE hostname = '$DEVICE';")
 
 if [ -z "$DEV_ID" ]; then
     echo "Device not found!"
