@@ -169,17 +169,26 @@ foreach ($port_stats as $ifIndex => $snmp_data) {
             dbUpdate($snmp_data, 'ports', '`port_id` = ?', [$port_id]);
             echo '.';
         }
-    } else {
-        // Port vanished (mark as deleted)
-        if (isset($ports_db[$port_id]) && is_array($ports_db[$port_id])) {
-            if ($ports_db[$port_id]['deleted'] != 1) {
-                dbUpdate(['deleted' => 1], 'ports', '`port_id` = ?', [$port_id]);
-                $ports_db[$port_id]['deleted'] = 1;
-                echo '-';
-            }
-        }
-    }//end if
-}//end foreach
+				} else {
+				            // Port vanished (mark as deleted)
+				            if (isset($ports_db[$port_id]) && is_array($ports_db[$port_id])) {
+				                // CRITICAL FIX: Do NOT mark REST API ports as deleted
+				                // REST API ports are not managed via SNMP discovery
+				                if (isset($ports_db[$port_id]['port_descr_type']) &&
+				                    $ports_db[$port_id]['port_descr_type'] === 'rest-api') {
+				                    // Skip REST API ports - they're managed by REST API discovery
+				                    d_echo('Preserving REST API port: ' . $ports_db[$port_id]['ifName'] . "\n");
+				                    continue;
+				                }
+
+				                if ($ports_db[$port_id]['deleted'] != 1) {
+				                    dbUpdate(['deleted' => 1], 'ports', '`port_id` = ?', [$port_id]);
+				                    $ports_db[$port_id]['deleted'] = 1;
+				                    echo '-';
+				                }
+				            }
+				        }//end if
+				}//end foreach
 
 unset(
     $ports_mapped,
