@@ -31,6 +31,12 @@ class DataRouter
     {
         $this->itemContext = $itemContext;
 
+        // Skip if this is a hardware sensor item (fan, temp)
+        if ($this->isHardwareSensor($itemContext)) {
+            Log::debug("[{$endpointName}] Skipping hardware sensor: {$itemContext['name']}");
+            return;
+        }
+
         foreach ($flattenedData as $key => $value) {
             // Skip pagination metadata
             if ($this->shouldSkip($key)) {
@@ -56,6 +62,32 @@ class DataRouter
                 $this->storeInFallbackTable($key, $value, $resourceType, $endpointName);
             }
         }
+    }
+
+    /**
+     * Check if item is a hardware sensor (fan, temperature)
+     */
+    protected function isHardwareSensor(array $itemContext): bool
+    {
+        if (empty($itemContext['name'])) {
+            return false;
+        }
+
+        $name = strtoupper($itemContext['name']);
+
+        // Check for hardware sensor patterns
+        $patterns = [
+            '/^CT[0-9]\.FAN[0-9]+$/i',      // CT0.FAN0, CT1.FAN1, etc.
+            '/^CT[0-9]\.TMP[0-9]+$/i',      // CT0.TMP0, CT1.TMP1, etc.
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -112,8 +144,12 @@ class DataRouter
     protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            // Use item context (e.g., volume name) or device_id if array-level capacity
-            $storageDescr = $this->itemContext['name'] ?? 'rest-api-storage-' . ($this->itemContext['index'] ?? 0);
+            $storageDescr = $this->itemContext['name'] ?? ($this->itemContext['id'] ?? null);
+            
+            if (!$storageDescr) {
+                Log::warning("[{$endpointName}] Cannot create storage entry without name or id");
+                return false;
+            }
 
             $storage = Storage::where('device_id', $this->device->device_id)
                 ->where('storage_descr', $storageDescr)
@@ -122,7 +158,7 @@ class DataRouter
             if (!$storage) {
                 $storage = new Storage();
                 $storage->device_id = $this->device->device_id;
-                $storage->storage_descr = substr($storageDescr, 0, 64);
+                $storage->storage_descr = substr($storageDescr, 0, 255);
                 $storage->storage_index = (string)abs(crc32($this->device->device_id . '_' . $storageDescr));
                 $storage->storage_type = 'rest-api';
                 $storage->type = 'rest-api';
@@ -157,7 +193,12 @@ class DataRouter
     protected function storeInPortsTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            $portName = $this->itemContext['name'] ?? 'rest-api-port-' . ($this->itemContext['index'] ?? 0);
+            $portName = $this->itemContext['name'] ?? null;
+            
+            if (!$portName) {
+                Log::warning("[{$endpointName}] Cannot create port entry without name");
+                return false;
+            }
 
             $port = Port::where('device_id', $this->device->device_id)
                 ->where('ifName', $portName)
@@ -166,18 +207,18 @@ class DataRouter
             if (!$port) {
                 $port = new Port();
                 $port->device_id = $this->device->device_id;
-                $port->ifName = substr($portName, 0, 32);
-                $port->ifDescr =  $portName;
+                $port->ifName = substr($portName, 0, 255);
+                $port->ifDescr = $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
                 $port->save();
             }
 
-            // Manually set the field and save to avoid $fillable restrictions.
-						if (property_exists($port, $field)) {
-						    $port->{$field} = $transformedValue;
-						    $port->save();
-						}
+            // Update field
+            if (property_exists($port, $field)) {
+                $port->{$field} = $value;
+                $port->save();
+            }
 
             Log::info("[{$endpointName}] {$displayKey} -> ports.{$field} (port: {$portName}) = {$value}");
             return true;
@@ -193,7 +234,12 @@ class DataRouter
     protected function storeInEntPhysicalTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
         try {
-            $entityName = $this->itemContext['name'] ?? 'rest-api-entity-' . ($this->itemContext['index'] ?? 0);
+            $entityName = $this->itemContext['name'] ?? ($this->itemContext['id'] ?? null);
+            
+            if (!$entityName) {
+                Log::warning("[{$endpointName}] Cannot create entPhysical entry without name or id");
+                return false;
+            }
 
             $entity = EntPhysical::where('device_id', $this->device->device_id)
                 ->where('entPhysicalDescr', $entityName)
@@ -202,16 +248,15 @@ class DataRouter
             if (!$entity) {
                 $entity = new EntPhysical();
                 $entity->device_id = $this->device->device_id;
-                $entity->entPhysicalDescr = substr($entityName, 0, 64);
+                $entity->entPhysicalDescr = substr($entityName, 0, 255);
                 $entity->entPhysicalIndex = abs(crc32($this->device->device_id . '_' . $entityName));
-                $entity->entPhysicalClass = $this->itemContext['class'] ?? 'module'; // Use module as default class for controllers
+                $entity->entPhysicalClass = $this->itemContext['class'] ?? 'module';
                 $entity->entPhysicalName = $entityName;
                 $entity->entPhysicalVendorType = 'rest-api';
-                $entity->entPhysicalContainedIn = 0; // Assume top level unless context provides parent
+                $entity->entPhysicalContainedIn = 0;
                 $entity->save();
             }
 
-            // Only update if value is non-null or non-empty for structural fields
             if (!empty($value) || $field === 'entPhysicalOperStatus' || $field === 'entPhysicalAdminStatus') {
                 $entity->update([$field => $value]);
             }
@@ -237,20 +282,17 @@ class DataRouter
 
             $sensorInfo = $this->determineSensorType($field, $unit, $displayKey);
 
-            // --- NEW: Skip storing sensors with a value of 0 for specific classes ---
             if ($value === 0 && in_array($sensorInfo['class'], ['temperature', 'voltage'])) {
                 Log::info("[{$endpointName}] Skipping zero value for non-zero sensor type: {$sensorInfo['class']} ({$displayKey})");
-                return true; // Return true as if handled, but don't store it
+                return true;
             }
-            // --- END NEW ---
 
-            // Create descriptive sensor name
             if (!empty($this->itemContext['name'])) {
                 $sensorDescr = $this->itemContext['name'] . ' - ' . str_replace('_', ' ', ucwords($displayKey, '_'));
             } else {
                 $sensorDescr = str_replace('_', ' ', ucwords($displayKey, '_'));
             }
-            $sensorDescr = substr(preg_replace('/\s+/', ' ', $sensorDescr), 0, 64);
+            $sensorDescr = substr(preg_replace('/\s+/', ' ', $sensorDescr), 0, 255);
 
             $indexBase = !empty($this->itemContext['name'])
                 ? $this->itemContext['name'] . '_' . $displayKey
@@ -273,7 +315,6 @@ class DataRouter
                 $sensor->sensor_oid = 'rest-api.' . $displayKey;
                 $sensor->poller_type = 'rest-api';
 
-                // Set limits based on sensor class
                 if ($sensorInfo['class'] === 'temperature') {
                     $sensor->sensor_limit = 70;
                     $sensor->sensor_limit_low = 10;
@@ -374,7 +415,6 @@ class DataRouter
     protected function storeInComplexMetrics(string $key, $value, string $resourceType, string $endpointName): bool
     {
         try {
-            // Determine metric type based on key
             $metricType = 'space_accounting';
             if (strpos($key, 'data_reduction') !== false || strpos($key, 'total_reduction') !== false) {
                 $metricType = 'data_reduction';
@@ -384,7 +424,6 @@ class DataRouter
                 $metricType = 'replication';
             }
 
-            // Note: StorageArrayMetric is a custom model, used here as fallback for complex/custom metrics
             StorageArrayMetric::storeMetric(
                 $this->device->device_id,
                 $metricType,
