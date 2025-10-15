@@ -69,6 +69,8 @@ class RestApiMetricFieldMapping extends Model
                 return $value * 100;
             case 'boolean_to_int':
                 return $value ? 1 : 0;
+            case 'boolean_to_updown':
+                return $value ? 'up' : 'down';
             case 'string_to_lower':
                 return strtolower($value);
             case 'string_to_upper':
