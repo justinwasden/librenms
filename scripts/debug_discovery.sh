@@ -67,7 +67,7 @@ echo "Post-Discovery Database Check"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-DEV_ID=$(mysql librenms -N -e "SELECT device_id FROM devices WHERE hostname = '$DEVICE';")
+DEV_ID=$(mysql -u librenms -p librenms -N -e "SELECT device_id FROM devices WHERE hostname = '$DEVICE';")
 
 if [ -z "$DEV_ID" ]; then
     echo "Device not found!"
@@ -90,7 +90,7 @@ echo ""
 echo "Sample Ports:"
 mysql librenms -e "
 SELECT ifName, ifSpeed, ifAdminStatus, ifPhysAddress, ifMtu, ifType
-FROM ports 
+FROM ports
 WHERE device_id = $DEV_ID
 ORDER BY ifName
 LIMIT 10;
