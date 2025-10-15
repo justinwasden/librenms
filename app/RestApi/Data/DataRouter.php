@@ -31,10 +31,18 @@ class DataRouter
     {
         $this->itemContext = $itemContext;
 
-        // Skip if this is a hardware sensor item (fan, temp)
+        // Skip if this is a hardware sensor item (fan, temp) or non-network interface
         if ($this->isHardwareSensor($itemContext)) {
             Log::debug("[{$endpointName}] Skipping hardware sensor: {$itemContext['name']}");
             return;
+        }
+
+        // For network interfaces, skip non-network items
+        if ($resourceType === 'network-interfaces' || $resourceType === 'network-interface') {
+            if ($this->isNonNetworkInterface($itemContext)) {
+                Log::debug("[{$endpointName}] Skipping non-network interface: {$itemContext['name']}");
+                return;
+            }
         }
 
         foreach ($flattenedData as $key => $value) {
@@ -85,6 +93,80 @@ class DataRouter
             if (preg_match($pattern, $name)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if item is a non-network interface (hardware component, VM, etc.)
+     * These should NOT be added to the ports table
+     */
+    protected function isNonNetworkInterface(array $itemContext): bool
+    {
+        if (empty($itemContext['name'])) {
+            return false;
+        }
+
+        $name = $itemContext['name'];
+
+        // Hardware backplane/chassis components (not actual network interfaces)
+        $hardwarePatterns = [
+            '/^CH[0-9]\.BAY[0-9]+$/i',      // Blade bay slots: CH0.BAY0, CH0.BAY16, etc.
+            '/^CH[0-9]\.NVB[0-9]+$/i',      // NVMe backplane: CH0.NVB0, CH0.NVB1, etc.
+            '/^CH[0-9]\.PWR[0-9]+$/i',      // Power supplies: CH0.PWR0, CH0.PWR1, etc.
+            '/^CH[0-9]\.TMP[0-9]+$/i',      // Temperature sensors: CH0.TMP0, etc.
+            '/^CH[0-9]$/i',                  // Chassis: CH0, CH1
+            '/^CT[0-9]$/i',                  // Controllers: CT0, CT1
+        ];
+
+        foreach ($hardwarePatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering hardware component from ports: {$name}");
+                return true;
+            }
+        }
+
+        // Virtual machines and ESXi hosts (these are REST API inventory, not network interfaces)
+        $vmPatterns = [
+            '/^ITS-RSA-ESXI-/i',            // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-C1S7, etc.
+            '/^ALM-C220-ESXI-/i',           // ALM-C220-ESXI-01, ALM-C220-ESXI-02, etc.
+            '/^ALMH-C[0-9]S[0-9]+$/i',      // ALMH-C1S5, ALMH-C1S6, etc.
+            '/^RSA-SW-/i',                  // RSA-SW-SQL, etc.
+            '/^SL-SW-/i',                   // SL-SW-SQL, etc.
+            '/^RSA-IAAS-/i',                // RSA-IAAS-HX5-01, etc.
+            '/^RSA-MH-/i',                  // RSA-MH-X20, etc.
+            '/^RSA-PS-/i',                  // RSA-PS-X50, etc.
+        ];
+
+        foreach ($vmPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering VM/host from ports: {$name}");
+                return true;
+            }
+        }
+
+        // Only allow actual network interfaces
+        $validInterfacePatterns = [
+            '/^ct[0-9]\.eth[0-9]+$/i',           // ct0.eth0, ct1.eth18, etc.
+            '/^ct[0-9]\.eth[0-9]+\.[0-9]+$/i',  // ct0.eth18.313, ct0.eth18.314 (VLAN subinterfaces)
+            '/^vir[0-9]+$/i',                    // vir0, vir1, vir4 (virtual interfaces)
+            '/^vir[0-9]+\.[0-9]+$/i',           // vir4.8 (virtual interface VLANs)
+            '/^replbond$/i',                     // replbond (replication bond interface)
+        ];
+
+        $isValidInterface = false;
+        foreach ($validInterfacePatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                $isValidInterface = true;
+                break;
+            }
+        }
+
+        // If it doesn't match any valid interface pattern, filter it out
+        if (!$isValidInterface) {
+            Log::debug("Interface doesn't match valid patterns, filtering: {$name}");
+            return true;
         }
 
         return false;
