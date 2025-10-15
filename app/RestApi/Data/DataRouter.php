@@ -167,7 +167,7 @@ class DataRouter
                 $port = new Port();
                 $port->device_id = $this->device->device_id;
                 $port->ifName = substr($portName, 0, 32);
-                $port->ifDescr = "REST API Port: {$portName}";
+                $port->ifDescr =  $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
                 $port->save();
