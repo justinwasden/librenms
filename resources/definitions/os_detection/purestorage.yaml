@@ -12,6 +12,7 @@ over:
     - { graph: device_purestorage_iops, text: 'Array IOPS' }
     - { graph: device_purestorage_latency, text: 'Array Latency' }
 poller_modules:
+    arp-table: false
     bgp-peers: false
     cisco-mac-accounting: false
     cisco-otv: false
@@ -20,18 +21,29 @@ poller_modules:
     cisco-vrf-lite: false
     cisco-vss: false
     entity-physical: false
+    entity-state: false
+    fdb-table: disable
     ipsec-tunnels: false
+    ipv4-addresses: false
+    ipv6-addresses: false
+    ipv6-nd: false
     isis: false
+    ipv6-nd: false
+    mpls: false
+    mempools: false
     mpls: false
     nac: false
+    ntp: false
     os: true
     ospf: false
+    ports_fdb: false
     processors: false  # No CPU polling
-    restapi: true
     route: false
     stp: false
     ucd-diskio: false
     ucd-mib: false
+    vlans: false
+    vrf: false
     wireless: false
 discovery_modules:
     arp-table: false
@@ -48,18 +60,22 @@ discovery_modules:
     fdb-table: false
     ipv4-addresses: false
     ipv6-addresses: false
+    ipv6-nd: false
     isis: false
     mempools: false  # No memory polling
     mpls: false
     nac: false
+    ntp: false
     ospf: false
+    processors: false  # No CPU polling
     processors: false  # No CPU discovery
-    restapi: true
     route: false
     sensors: false  # Use REST API for metrics instead
     slas: false
     storage: false  # Use REST API for storage metrics
     stp: false
+    ucd-diskio: false
+    ucd-mib: false
     vlans: false
     vrf: false
     wireless: false

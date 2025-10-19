@@ -4214,6 +4214,14 @@
             },
             "type": "graph"
         },
+        "graph_types.device.purestorage_total_capacity": {
+					  "default": {
+					    "section": "storage",
+					    "order": 0,
+					    "descr": "Total Capacity"
+					  },
+					  "type": "graph"
+				}
         "graphite.enable": {
             "default": false,
             "type": "boolean",
