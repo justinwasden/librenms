@@ -351,11 +351,13 @@ class RestApiTemplateController extends Controller
             'template_id' => 'required|exists:rest_api_templates,id',
             'connection_index' => 'required|integer|min:0',
             'endpoint_index' => 'required|integer|min:0',
+            'device_id' => 'nullable|exists:devices,device_id', // Optional device for testing
         ]);
 
         $template = RestApiTemplate::findOrFail($validated['template_id']);
         $connIdx = $validated['connection_index'];
         $epIdx = $validated['endpoint_index'];
+        $deviceId = $validated['device_id'] ?? null;
 
         try {
             // Get template data
@@ -388,12 +390,19 @@ class RestApiTemplateController extends Controller
                 ], 400);
             }
 
+            // If device_id is provided, use it to replace placeholders
+            if ($deviceId) {
+                $device = \App\Models\Device::findOrFail($deviceId);
+                $connData = $this->replacePlaceholdersInArray($connData, $device);
+                $endpointData = $this->replacePlaceholdersInArray($endpointData, $device);
+            }
+
             // Fetch API response
             $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData);
 
             // Get vendor mapper for recommendations
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
-            $device = null; // Could add device detection logic here if needed
+            $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
             $vendorMapper = $vendorMapperFactory->getMapper($device);
 
             $recommendations = [];
@@ -468,155 +477,58 @@ class RestApiTemplateController extends Controller
      * Uses the same authentication logic as actual polling
      * Supports: API Key, Session Token (with login), Bearer Token, Basic Auth
      * 
+     * For Session Token: First performs a POST to the login endpoint to obtain the token
+     * For other types: Uses direct authentication headers
+     * 
      * @param array $connData Connection configuration
      * @param $client Guzzle HTTP Client for session token login
      * @return array Headers array
+     * @throws \Exception if authentication fails
      */
     private function getTemplateAuthHeaders(array $connData, $client): array
     {
         if (!isset($connData['credential_id'])) {
+            \Log::info('No credential_id in connection data');
             return [];
         }
 
         $credential = \App\Models\RestApiCredential::findOrFail($connData['credential_id']);
         $authType = Str::lower($credential->authenticationType->name);
+        
+        \Log::info("Using authentication type: {$authType}");
 
         // For session token, we need to login first to get the token
         if ($authType === 'session token') {
-            $sessionToken = $this->obtainSessionTokenForTemplate(
+            \Log::info('Session token auth detected - performing login first');
+            
+            // Use the shared CredentialHelper to obtain session token
+            $sessionToken = \App\RestApi\Credentials\CredentialHelper::obtainSessionToken(
                 $credential,
                 $connData['base_url'],
-                $connData,
-                !($connData['disable_ssl_verify'] ?? false),
-                $client
+                [
+                    'login_method' => $connData['login_method'] ?? 'POST',
+                    'login_path' => $connData['login_path'] ?? '/api/login',
+                    'api_token_header' => $connData['api_token_header'] ?? 'api-token',
+                    'session_token_header' => $connData['token_header'] ?? 'x-auth-token',
+                ],
+                !($connData['disable_ssl_verify'] ?? false)
             );
 
             if ($sessionToken) {
                 $params = $credential->params->pluck('value', 'key')->toArray();
                 $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                \Log::info("✓ Session token obtained, using header: {$tokenHeader}");
                 return [
                     $tokenHeader => $sessionToken,
                 ];
+            } else {
+                \Log::warning('Failed to obtain session token');
+                throw new \Exception('Failed to obtain session token during preview');
             }
-
-            return [];
         }
 
         // For other auth types, use CredentialHelper
+        \Log::info("Using {$authType} authentication directly");
         return \App\RestApi\Credentials\CredentialHelper::getAuthHeaderFromModel($credential);
-    }
-
-    /**
-     * Obtain session token for template preview
-     * Performs login request using credential's API token
-     * 
-     * @param $credential RestApiCredential model
-     * @param string $baseUrl Base URL of API
-     * @param array $connData Connection configuration
-     * @param bool $verifySsl Whether to verify SSL
-     * @param $client Guzzle HTTP Client
-     * @return string|null Session token or null if failed
-     */
-    private function obtainSessionTokenForTemplate($credential, string $baseUrl, array $connData, bool $verifySsl, $client): ?string
-    {
-        try {
-            $params = $credential->params->pluck('value', 'key')->toArray();
-
-            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
-            $loginPath = $params['login_path'] ?? '/api/login';
-            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
-            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
-            $loginMethod = Str::upper($params['login_method'] ?? 'POST');
-
-            if (!$apiToken || !$loginPath) {
-                return null;
-            }
-
-            $loginUrl = rtrim($baseUrl, '/') . '/' . ltrim($loginPath, '/');
-
-            \Log::info("Obtaining session token from: {$loginUrl}");
-
-            $loginOptions = [
-                'headers' => [
-                    $apiTokenHeader => $apiToken,
-                    'Content-Type' => 'application/json',
-                ],
-                'verify' => $verifySsl,
-            ];
-
-            $response = $client->request($loginMethod, $loginUrl, $loginOptions);
-
-            // Check response headers for token
-            if ($response->hasHeader($tokenHeader)) {
-                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
-                if ($sessionToken) {
-                    \Log::info("Session token obtained successfully from header: {$tokenHeader}");
-                    return $sessionToken;
-                }
-            }
-
-            // Check response body for token
-            $body = json_decode((string)$response->getBody(), true);
-            if (isset($body['token'])) {
-                \Log::info("Session token obtained successfully from body");
-                return $body['token'];
-            }
-
-            \Log::warning("Could not obtain session token from login response");
-            return null;
-
-        } catch (\Exception $e) {
-            \Log::error("Failed to obtain session token: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    private function getSessionToken(array $connData, \App\Models\Device $device, $client, bool $verifySsl): ?string
-    {
-        if (!isset($connData['credential_id'])) {
-            return null;
-        }
-
-        $credential = \App\Models\RestApiCredential::find($connData['credential_id']);
-        if (!$credential || Str::lower($credential->authenticationType->name) !== 'session token') {
-            return null;
-        }
-
-        try {
-            $params = $credential->params->pluck('value', 'key');
-
-            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
-            $loginPath = $params['login_path'] ?? null;
-            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
-            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
-
-            if (!$apiToken || !$loginPath) {
-                return null;
-            }
-
-            $loginUrl = rtrim($connData['base_url'], '/') . '/' . ltrim($loginPath, '/');
-
-            $loginOptions = [
-                'headers' => [
-                    $apiTokenHeader => $apiToken,
-                    'Content-Type' => 'application/json',
-                ],
-                'verify' => $verifySsl,
-            ];
-
-            $loginMethod = Str::upper($params['login_method'] ?? 'POST');
-            $response = $client->request($loginMethod, $loginUrl, $loginOptions);
-
-            $sessionToken = null;
-            if ($response->hasHeader($tokenHeader)) {
-                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
-            }
-
-            return $sessionToken;
-
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to obtain session token for test: " . $e->getMessage());
-            return null;
-        }
     }
 }

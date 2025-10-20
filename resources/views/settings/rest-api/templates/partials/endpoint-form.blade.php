@@ -145,6 +145,30 @@
                 Configure the endpoint above, then click "Fetch API Preview" to see available fields.
             </div>
 
+            {{-- Device Selection for Testing --}}
+            <div class="form-group mb-3">
+                <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}">
+                    <i class="fas fa-server"></i> Select Device for Testing (Optional)
+                </label>
+                <select class="form-control test-device" 
+                        id="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}"
+                        data-conn-idx="{{ $connectionIndex }}"
+                        data-ep-idx="{{ $endpointIndex }}">
+                    <option value="">-- No device (show template structure) --</option>
+                    @foreach(\App\Models\Device::orderBy('hostname')->get() as $device)
+                        <option value="{{ $device->device_id }}">
+                            {{ $device->hostname }}
+                            @if($device->ip)
+                                ({{ $device->ip }})
+                            @endif
+                        </option>
+                    @endforeach
+                </select>
+                <small class="form-text text-muted">
+                    Select a device to replace template placeholders like {device_hostname}. Leave empty to see template structure.
+                </small>
+            </div>
+
             {{-- API Preview Fetch Button --}}
             <div class="form-group mb-3">
                 <button type="button" 
@@ -316,6 +340,10 @@ document.addEventListener('DOMContentLoaded', function() {
             statusEl.textContent = '⟳ Fetching...';
             statusEl.className = 'preview-status loading';
 
+            // Get selected device (if any)
+            const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
+            const deviceId = deviceSelect ? deviceSelect.value : null;
+            
             // Make AJAX request to get API preview
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
                              document.querySelector('input[name="_token"]')?.value;
@@ -336,27 +364,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({
                     template_id: templateId,
                     connection_index: connIdx,
-                    endpoint_index: epIdx
+                    endpoint_index: epIdx,
+                    device_id: deviceId || null
                 })
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    statusEl.textContent = '✓ Preview ready';
-                    statusEl.className = 'preview-status success';
+            .then(response => response.text().then(text => {
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    statusText: response.statusText,
+                    text: text
+                };
+            }))
+            .then(({ ok, status, statusText, text }) => {
+                console.log('Response Status:', status, statusText);
+                console.log('Response Text:', text.substring(0, 500));
+                
+                // Try to parse as JSON
+                try {
+                    const data = JSON.parse(text);
+                    
+                    if (data.success) {
+                        statusEl.textContent = '✓ Preview ready';
+                        statusEl.className = 'preview-status success';
 
-                    // Populate preview containers
-                    displayPreview(data.preview, connIdx, epIdx);
-                    displayRecommendations(data.recommendations, connIdx, epIdx, data.preview);
-                    populateFieldMapper(data.preview, connIdx, epIdx);
+                        // Populate preview containers
+                        displayPreview(data.preview, connIdx, epIdx);
+                        displayRecommendations(data.recommendations, connIdx, epIdx, data.preview);
+                        populateFieldMapper(data.preview, connIdx, epIdx);
 
-                    // Show containers
-                    document.getElementById('api-preview-container-' + connIdx + '-' + epIdx).style.display = 'block';
-                    document.getElementById('recommendations-container-' + connIdx + '-' + epIdx).style.display = 'block';
-                    document.getElementById('field-mapper-container-' + connIdx + '-' + epIdx).style.display = 'block';
-                } else {
-                    statusEl.textContent = '✗ ' + (data.error || 'Error fetching preview');
+                        // Show containers
+                        document.getElementById('api-preview-container-' + connIdx + '-' + epIdx).style.display = 'block';
+                        document.getElementById('recommendations-container-' + connIdx + '-' + epIdx).style.display = 'block';
+                        document.getElementById('field-mapper-container-' + connIdx + '-' + epIdx).style.display = 'block';
+                    } else {
+                        statusEl.textContent = '✗ ' + (data.error || 'Error fetching preview');
+                        statusEl.className = 'preview-status error';
+                    }
+                } catch (parseError) {
+                    // If not JSON, show the status and text
+                    statusEl.textContent = `✗ HTTP ${status}: ${statusText}`;
                     statusEl.className = 'preview-status error';
+                    console.error('Failed to parse response as JSON:', parseError);
+                    console.error('Response was:', text.substring(0, 500));
                 }
             })
             .catch(error => {
