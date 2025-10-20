@@ -786,9 +786,11 @@ function endpointManager() {
                 
                 let data;
                 const contentType = res.headers.get('content-type');
+                console.log('Content-Type:', contentType);
                 
                 if (contentType && contentType.includes('application/json')) {
                     data = await res.json();
+                    console.log('Response data:', data);
                 } else {
                     const text = await res.text();
                     console.error('Non-JSON response received:', text.substring(0, 500));
