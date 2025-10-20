@@ -38,14 +38,6 @@ class DataRouter
             return;
         }
 
-        // For volumes, skip pod/container volumes
-        if (in_array($resourceType, ['volumes', 'volume'])) {
-            if ($this->isNonVolume($itemContext)) {
-                Log::debug("[{$endpointName}] Skipping non-volume: {$itemContext['name']}");
-                return;
-            }
-        }
-
         // For network interfaces and ports, skip non-network items
         if (in_array($resourceType, ['network-interfaces', 'network-interface', 'port', 'ports'])) {
             if ($this->isNonNetworkInterface($itemContext)) {
@@ -79,32 +71,6 @@ class DataRouter
                 $this->storeInFallbackTable($key, $value, $resourceType, $endpointName);
             }
         }
-    }
-
-    /**
-     * Check if item is a non-volume (pod/container volume)
-     * These should NOT be added to the storage table
-     */
-    protected function isNonVolume(array $itemContext): bool
-    {
-        if (empty($itemContext['name'])) {
-            return false;
-        }
-
-        $name = $itemContext['name'];
-
-        // Pod/container volumes - not actual volumes
-        $podPatterns = [
-            '/^[A-Z]+::/i',  // Pod namespace volumes: ALMH::, etc
-        ];
-
-        foreach ($podPatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

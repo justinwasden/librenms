@@ -32,30 +32,13 @@ $shared = (float)($array_data->get('space_shared')?->metric_value ?? 0);
 $snapshots = (float)($array_data->get('space_snapshots')?->metric_value ?? 0);
 $version = $array_data->get('version')?->metric_value ?? $device['version'] ?? 'Unknown';
 
-// Get volumes only - exclude non-volume entries
+// Get volumes from storage table (DataRouter only stores actual volumes here now)
 $volumes = Storage::where('device_id', $device_id)
     ->where('type', 'rest-api')
-    ->where(function ($query) {
-        $query->whereNotLike('storage_descr', 'CH0%')
-              ->whereNotLike('storage_descr', 'CH1%')
-              ->whereNotLike('storage_descr', 'CT0%')
-              ->whereNotLike('storage_descr', 'CT1%')
-              ->whereNotLike('storage_descr', 'ITS-RSA%')
-              ->whereNotLike('storage_descr', 'ALM-C%')
-              ->whereNotLike('storage_descr', 'RSA-X%')
-              ->whereNotLike('storage_descr', 'RSA-SW%')
-              ->whereNotLike('storage_descr', 'RSA-MH%')
-              ->whereNotLike('storage_descr', 'RSA-IAAS%')
-              ->whereNotLike('storage_descr', 'SL-SW%')
-              ->whereNotLike('storage_descr', 'SW-SQL%')
-              ->whereNotLike('storage_descr', 'RSA-Druva%')
-              ->whereNotLike('storage_descr', 'ALMH::%');
-    })
-    ->where('storage_descr', '!=', $device['hostname'])
     ->orderBy('storage_descr')
     ->get();
 
-// Get controllers from entPhysical table
+// Get controllers from entPhysical table (CT0, CT1 only)
 $controllers = EntPhysical::where('device_id', $device_id)
     ->whereIn('entPhysicalDescr', ['CT0', 'CT1'])
     ->orderBy('entPhysicalDescr')
@@ -111,7 +94,7 @@ $queue_read_lat = DB::table('sensors')
     ->first();
 $queue_read_lat_val = ($queue_read_lat?->sensor_current ?? 0) / 1000;
 
-$has_data = $array_data->count() > 0;
+$has_data = $array_data->count() > 0 || $volumes->count() > 0;
 
 @endphp
 
