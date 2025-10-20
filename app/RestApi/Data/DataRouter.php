@@ -363,6 +363,14 @@ class DataRouter
                 $port->ifDescr = $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
+                
+                // CRITICAL: Set ifType so LibreNMS displays the port
+                // ifType=6 is ethernetCsmacd (standard Ethernet interface)
+                $port->ifType = 6;
+                $port->ifOperStatus = 'up';  // Default to up
+                $port->ifAdminStatus = 1;    // 1 = admin up
+                $port->ifSpeed = 1000000000; // 1Gbps default
+                
                 $port->deleted = 0;  // Mark as active
                 $port->save();
                 Log::info("[{$endpointName}] Created new REST API port: {$portName}");
