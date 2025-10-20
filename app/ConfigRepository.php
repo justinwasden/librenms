@@ -75,7 +75,28 @@ class ConfigRepository
      */
     public function getDefinitions(): array
     {
-        return json_decode(file_get_contents($this->get('install_dir') . '/resources/definitions/config_definitions.json'), true)['config'];
+        $install_dir = $this->get('install_dir') ?: realpath(__DIR__ . '/..');
+        $json_file = $install_dir . '/resources/definitions/config_definitions.json';
+        
+        if (!file_exists($json_file)) {
+            throw new Exception("Config definitions file not found: $json_file");
+        }
+        
+        $content = file_get_contents($json_file);
+        if ($content === false) {
+            throw new Exception("Failed to read config definitions file: $json_file");
+        }
+        
+        $decoded = json_decode($content, true);
+        if ($decoded === null) {
+            throw new Exception("Invalid JSON in config definitions file: $json_file. Error: " . json_last_error_msg());
+        }
+        
+        if (!isset($decoded['config']) || !is_array($decoded['config'])) {
+            throw new Exception("Invalid config definitions structure: missing 'config' key");
+        }
+        
+        return $decoded['config'];
     }
 
     /**
