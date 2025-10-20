@@ -352,12 +352,14 @@ class RestApiTemplateController extends Controller
             'connection_index' => 'required|integer|min:0',
             'endpoint_index' => 'required|integer|min:0',
             'device_id' => 'nullable|exists:devices,device_id', // Optional device for testing
+            'credential_id' => 'nullable|exists:rest_api_credentials,id', // Optional credential override for testing
         ]);
 
         $template = RestApiTemplate::findOrFail($validated['template_id']);
         $connIdx = $validated['connection_index'];
         $epIdx = $validated['endpoint_index'];
         $deviceId = $validated['device_id'] ?? null;
+        $credentialId = $validated['credential_id'] ?? null;
 
         try {
             // Get template data
@@ -398,7 +400,7 @@ class RestApiTemplateController extends Controller
             }
 
             // Fetch API response
-            $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData);
+            $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData, $credentialId);
 
             // Get vendor mapper for recommendations
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
@@ -434,7 +436,7 @@ class RestApiTemplateController extends Controller
      * @return array API response
      * @throws \Exception
      */
-    private function fetchTemplateApiResponse(array $connData, array $endpointData): array
+    private function fetchTemplateApiResponse(array $connData, array $endpointData, $credentialId = null): array
     {
         if (empty($connData['base_url'])) {
             throw new \Exception('Base URL not configured');
@@ -447,7 +449,7 @@ class RestApiTemplateController extends Controller
         ]);
 
         // Get authentication headers
-        $headers = $this->getTemplateAuthHeaders($connData, $client);
+        $headers = $this->getTemplateAuthHeaders($connData, $client, $credentialId);
 
         // Build the request
         $method = $endpointData['method'] ?? 'GET';
@@ -485,14 +487,17 @@ class RestApiTemplateController extends Controller
      * @return array Headers array
      * @throws \Exception if authentication fails
      */
-    private function getTemplateAuthHeaders(array $connData, $client): array
+    private function getTemplateAuthHeaders(array $connData, $client, $credentialId = null): array
     {
-        if (!isset($connData['credential_id'])) {
-            \Log::info('No credential_id in connection data');
+        // Use override credential if provided, otherwise use connection's credential
+        $credId = $credentialId ?? $connData['credential_id'] ?? null;
+        
+        if (!$credId) {
+            \Log::info('No credential_id in connection data or provided');
             return [];
         }
 
-        $credential = \App\Models\RestApiCredential::findOrFail($connData['credential_id']);
+        $credential = \App\Models\RestApiCredential::findOrFail($credId);
         $authType = Str::lower($credential->authenticationType->name);
         
         \Log::info("Using authentication type: {$authType}");

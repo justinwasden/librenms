@@ -396,6 +396,9 @@
     </div>
 </div>
 
+{{-- DEVICE SELECTOR MODAL --}}
+@include('settings.rest-api.templates.partials.device-selector-modal')
+
 <script>
 function templateEditor() {
     return { init() { console.log('Template Editor Loaded'); } }
@@ -411,6 +414,16 @@ function endpointManager() {
         previewLoading: false,
         previewSuccess: false,
         previewError: false,
+        showDeviceSelectorModal: false,
+        allDevices: [],
+        filteredDevices: [],
+        searchText: '',
+        selectedDevice: null,
+        selectedCredentialId: '',
+        availableCredentials: [],
+        selectedCredentialInfo: {},
+        deviceSelectorError: '',
+        deviceSelectorSuccess: '',
 
         loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
@@ -470,64 +483,10 @@ function endpointManager() {
                 return;
             }
 
-            // Check if path has placeholders and device is required
-            const hasPlaceholders = /{device_hostname}|{device_ip}|{device_sysname}|{device_attrib:/.test(this.selectedEndpoint.path);
-            if (hasPlaceholders) {
-                const deviceId = prompt('This endpoint has device placeholders {device_hostname}, {device_ip}, etc.\n\nEnter a Device ID or hostname to test with:\n(Leave empty to see placeholders as-is)');
-                if (!deviceId && deviceId !== '') {
-                    return; // User cancelled
-                }
-            }
-
-            this.previewLoading = true;
-            this.previewSuccess = false;
-            this.previewError = false;
-
-            try {
-                const templateId = {{ $template->id }};
-                const connIdx = this.selectedEndpoint._connection_index || 0;
-                const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
-                const deviceId = this.selectedEndpoint._device_id_for_preview || null; // Will be null if user didn't enter
-                
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-                const res = await fetch('/api/rest-api/template-preview', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-                    body: JSON.stringify({
-                        template_id: templateId,
-                        connection_index: connIdx,
-                        endpoint_index: epIdx,
-                        device_id: deviceId || null
-                    })
-                });
-
-                const data = await res.json();
-                
-                if (data.success) {
-                    this.previewLoading = false;
-                    this.previewSuccess = true;
-                    this.previewError = false;
-                    
-                    // Show preview and recommendations
-                    let previewText = '✓ API Preview successful!\n\n';
-                    previewText += 'Response Structure (first 500 chars):\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
-                    if (data.recommendations && data.recommendations.length > 0) {
-                        previewText += 'Found ' + data.recommendations.length + ' recommended field mappings!';
-                    }
-                    alert(previewText);
-                } else {
-                    this.previewLoading = false;
-                    this.previewSuccess = false;
-                    this.previewError = true;
-                    alert('✗ Error: ' + (data.error || 'Unknown error'));
-                }
-            } catch (err) {
-                console.error(err);
-                this.previewLoading = false;
-                this.previewSuccess = false;
-                this.previewError = true;
-                alert('✗ Failed to fetch preview: ' + err.message);
+            // Show device selector modal
+            let modal = document.getElementById('deviceSelectorModal');
+            if (modal) {
+                $(modal).modal('show');
             }
         },
 
@@ -723,6 +682,128 @@ function endpointManager() {
                 console.error(err);
                 alert('Failed to delete endpoint. Check console for details.');
             }
+        },
+
+        // DEVICE SELECTOR METHODS
+        async loadDevices() {
+            this.deviceSelectorError = '';
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const res = await fetch('/api/rest-api/devices', {
+                    headers: { 'X-CSRF-TOKEN': token }
+                });
+                const data = await res.json();
+                this.allDevices = data.devices || [];
+                this.filteredDevices = this.allDevices;
+                console.log(`Loaded ${this.allDevices.length} devices`);
+            } catch (err) {
+                console.error('Failed to load devices:', err);
+                this.deviceSelectorError = 'Failed to load devices: ' + err.message;
+            }
+        },
+
+        async loadCredentials() {
+            this.deviceSelectorError = '';
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const res = await fetch('/api/rest-api/credentials', {
+                    headers: { 'X-CSRF-TOKEN': token }
+                });
+                const data = await res.json();
+                this.availableCredentials = data.credentials || [];
+                console.log(`Loaded ${this.availableCredentials.length} credentials`);
+            } catch (err) {
+                console.error('Failed to load credentials:', err);
+                this.deviceSelectorError = 'Failed to load credentials: ' + err.message;
+            }
+        },
+
+        filterDevices() {
+            const search = this.searchText.toLowerCase();
+            this.filteredDevices = this.allDevices.filter(d => 
+                d.hostname.toLowerCase().includes(search) || 
+                d.ip.toLowerCase().includes(search)
+            );
+        },
+
+        selectDevice(device) {
+            this.selectedDevice = device;
+            this.searchText = device.hostname;
+        },
+
+        onCredentialChange() {
+            const cred = this.availableCredentials.find(c => c.id == this.selectedCredentialId);
+            if (cred) {
+                this.selectedCredentialInfo = cred;
+            } else {
+                this.selectedCredentialInfo = {};
+            }
+        },
+
+        // Placeholder for device selector to interact with
+        async performPreview(deviceId, credentialId) {
+            this.previewLoading = true;
+            this.previewError = false;
+            this.deviceSelectorError = '';
+
+            try {
+                const templateId = {{ $template->id }};
+                const connIdx = this.selectedEndpoint._connection_index || 0;
+                const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
+                
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+                const res = await fetch('/api/rest-api/template-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                    body: JSON.stringify({
+                        template_id: templateId,
+                        connection_index: connIdx,
+                        endpoint_index: epIdx,
+                        device_id: deviceId,
+                        credential_id: credentialId
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (data.success) {
+                    this.previewLoading = false;
+                    this.previewSuccess = true;
+                    $('#deviceSelectorModal').modal('hide');
+                    
+                    // Show success message
+                    let previewText = '✓ API Preview successful!\n\n';
+                    previewText += 'Response Structure (first 500 chars):\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
+                    if (data.recommendations && data.recommendations.length > 0) {
+                        previewText += 'Found ' + data.recommendations.length + ' recommended field mappings!';
+                    }
+                    alert(previewText);
+                } else {
+                    this.previewLoading = false;
+                    this.previewError = true;
+                    this.deviceSelectorError = '✗ Error: ' + (data.error || 'Unknown error');
+                }
+            } catch (err) {
+                console.error(err);
+                this.previewLoading = false;
+                this.previewError = true;
+                this.deviceSelectorError = '✗ Failed to fetch preview: ' + err.message;
+            }
+        },
+
+        closeDeviceSelector() {
+            this.showDeviceSelectorModal = false;
+            this.resetDeviceSelector();
+        },
+
+        resetDeviceSelector() {
+            this.searchText = '';
+            this.selectedDevice = null;
+            this.selectedCredentialId = '';
+            this.selectedCredentialInfo = {};
+            this.deviceSelectorError = '';
+            this.filteredDevices = this.allDevices;
         },
     }
 }
