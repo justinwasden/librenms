@@ -298,33 +298,19 @@ class DataRouter
                 ->first();
 
             if (!$port) {
-						    $port = new Port();
-						    $port->device_id = $this->device->device_id;
-						    $port->ifName = substr($portName, 0, 255);
-						    $port->ifDescr = $portName;
-						    $port->port_descr_type = 'rest-api';
-						    $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
-						    $port->deleted = 0;  // ← NEW: Mark as active
-						    $port->save();
-						    Log::info("[{$endpointName}] Created new REST API port: {$portName}");
-						} else {
-						    // Ensure port is marked as active if it was previously deleted
-						    if ($port->deleted == 1) {
-						        $port->deleted = 0;  // ← NEW: Reactivate
-						        $port->save();
-						        Log::info("[{$endpointName}] Reactivated previously deleted port: {$portName}");
-						    }
-						}
+                $port = new Port();
+                $port->device_id = $this->device->device_id;
+                $port->ifName = substr($portName, 0, 255);
                 $port->ifDescr = $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
-                $port->deleted = 0;  // Mark as active (not deleted)
+                $port->deleted = 0;  // Mark as active
                 $port->save();
                 Log::info("[{$endpointName}] Created new REST API port: {$portName}");
             } else {
                 // Ensure port is marked as active if it was previously deleted
                 if ($port->deleted == 1) {
-                    $port->deleted = 0;
+                    $port->deleted = 0;  // Reactivate
                     $port->save();
                     Log::info("[{$endpointName}] Reactivated previously deleted port: {$portName}");
                 }
