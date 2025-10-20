@@ -317,11 +317,21 @@ document.addEventListener('DOMContentLoaded', function() {
             statusEl.className = 'preview-status loading';
 
             // Make AJAX request to get API preview
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
+                             document.querySelector('input[name="_token"]')?.value;
+            
+            if (!csrfToken) {
+                statusEl.textContent = '✗ CSRF token not found';
+                statusEl.className = 'preview-status error';
+                console.error('CSRF token not found in page');
+                return;
+            }
+
             fetch(`/api/rest-api/template-preview`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    'X-CSRF-TOKEN': csrfToken
                 },
                 body: JSON.stringify({
                     template_id: templateId,
