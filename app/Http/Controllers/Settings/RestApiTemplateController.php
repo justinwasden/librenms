@@ -417,7 +417,7 @@ class RestApiTemplateController extends Controller
                 
                 try {
                     $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
-                    $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, (object)$endpointData);
+                    $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
                 } catch (\Exception $e) {
                     \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
                     // Continue without recommendations if mapper fails
