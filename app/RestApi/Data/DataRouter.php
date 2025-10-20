@@ -46,6 +46,14 @@ class DataRouter
             }
         }
 
+        // For storage (volumes), skip items that shouldn't be in storage table
+        if ($resourceType === 'storage' || in_array($endpointName, ['volumes', '/api/2.26/volumes'])) {
+            if ($this->isNonStorageItem($itemContext)) {
+                Log::debug("[{$endpointName}] Skipping non-storage item: {$itemContext['name']}");
+                return;
+            }
+        }
+
         foreach ($flattenedData as $key => $value) {
             // Skip pagination metadata
             if ($this->shouldSkip($key)) {
@@ -74,8 +82,58 @@ class DataRouter
     }
 
     /**
-     * Check if item is a hardware sensor (fan, temperature)
+     * Check if item is not a storage volume (hardware, hosts, drives, etc.)
+     * Only actual volumes should go in storage table
      */
+    protected function isNonStorageItem(array $itemContext): bool
+    {
+        if (empty($itemContext['name'])) {
+            return false;
+        }
+
+        $name = $itemContext['name'];
+
+        // Hardware components - these come from /api/2.26/hardware, /api/2.26/drives, etc
+        $hardwarePatterns = [
+            '/^CH[0-9]\./i',       // Chassis components: CH0.BAY*, CH0.PWR*, etc
+            '/^CH[0-9]$/i',         // Chassis itself
+        ];
+
+        foreach ($hardwarePatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return true;
+            }
+        }
+
+        // Hosts and ESXi - these come from /api/2.26/hosts
+        $hostPatterns = [
+            '/^ITS-RSA-ESXI-/i',    // ITS-RSA-ESXI-C1S1, etc
+            '/^ALM-C220-ESXI-/i',   // ALM-C220-ESXI-01, etc
+            '/^ALMH-C[0-9]S[0-9]+$/i', // ALMH-C1S5, etc
+            '/^RSA-IAAS-/i',        // RSA-IAAS-HX5-01, etc
+            '/^RSA-X[0-9]+-[0-9]+$/i', // RSA-X50-101 as host, but keep RSA-X50-101 as volume
+        ];
+
+        foreach ($hostPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return true;
+            }
+        }
+
+        // Array itself
+        if (preg_match('/^RSA-PS-/i', $name)) {
+            return true;  // RSA-PS-X50 is the array name, not a volume
+        }
+
+        // If it has 0 provisioned space, it's likely not a real volume
+        if (isset($itemContext['provisioned']) && $itemContext['provisioned'] == 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    
     protected function isHardwareSensor(array $itemContext): bool
     {
         if (empty($itemContext['name'])) {
