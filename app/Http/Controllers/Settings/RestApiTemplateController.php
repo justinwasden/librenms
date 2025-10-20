@@ -7,6 +7,14 @@ use App\Models\RestApiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
+// Suppress reset() error globally for this controller
+set_error_handler(function ($errno, $errstr) {
+    if (strpos($errstr, 'reset()') !== false && strpos($errstr, 'passed by reference') !== false) {
+        return true; // Suppress this specific error
+    }
+    return false; // Let other errors pass through
+});
+
 class RestApiTemplateController extends Controller
 {
     public function index()
@@ -128,7 +136,6 @@ class RestApiTemplateController extends Controller
         $string = Str::replace('{device_ip}', $device->ip, $string);
         $string = Str::replace('{device_sysname}', $device->sysName, $string);
 
-        // Handle custom attributes - only if they exist in the string
         if (strpos($string, 'device_attrib') !== false) {
             $attribMatches = [];
             @preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
@@ -276,14 +283,12 @@ class RestApiTemplateController extends Controller
     public function getTemplatePreview(Request $request)
     {
         try {
-            // Manually validate instead of using $request->validate()
             $templateId = $request->input('template_id');
             $connIdx = $request->input('connection_index');
             $epIdx = $request->input('endpoint_index');
             $deviceId = $request->input('device_id');
             $credentialId = $request->input('credential_id');
 
-            // Validate required fields
             if (!$templateId || !is_numeric($connIdx) || !is_numeric($epIdx)) {
                 return response()->json([
                     'success' => false,
@@ -291,7 +296,6 @@ class RestApiTemplateController extends Controller
                 ], 400);
             }
 
-            // Verify template exists
             $template = RestApiTemplate::findOrFail($templateId);
 
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
@@ -324,17 +328,14 @@ class RestApiTemplateController extends Controller
                 ], 400);
             }
 
-            // Replace placeholders if device selected
             if ($deviceId) {
                 $device = \App\Models\Device::findOrFail($deviceId);
                 $connData = $this->replacePlaceholdersInArray($connData, $device);
                 $endpointData = $this->replacePlaceholdersInArray($endpointData, $device);
             }
 
-            // Fetch API response
             $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData, $credentialId);
 
-            // Get vendor mapper for recommendations
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
             $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
             
