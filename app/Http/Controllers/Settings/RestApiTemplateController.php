@@ -26,7 +26,7 @@ class RestApiTemplateController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|unique:rest_api_templates,name|max:255',
             'vendor' => 'nullable|string|max:255',
-            'resource_type' => 'nullable|string|max:50', // ADDED validation for template-level resource_type
+            'resource_type' => 'nullable|string|max:50',
             'template_data' => 'required|json',
             'description' => 'nullable|string',
         ]);
@@ -49,7 +49,7 @@ class RestApiTemplateController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
             'vendor' => 'nullable|string|max:255',
-            'resource_type' => 'nullable|string|max:50', // ADDED validation for template-level resource_type
+            'resource_type' => 'nullable|string|max:50',
             'template_data' => 'required',
             'description' => 'nullable|string',
         ]);
@@ -60,43 +60,11 @@ class RestApiTemplateController extends Controller
 
         $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
 
-        // Normalize booleans and ensure resource_type is saved from the endpoint form
-        if (isset($validated['template_data']['connections'])) {
-            foreach ($validated['template_data']['connections'] as &$connection) {
-                // Normalize SSL verify flag
-                if (isset($connection['disable_ssl_verify'])) {
-                    $connection['disable_ssl_verify'] = filter_var(
-                        $connection['disable_ssl_verify'],
-                        FILTER_VALIDATE_BOOLEAN
-                    );
-                }
+        $template->update($validated);
 
-                if (isset($connection['endpoints'])) {
-                    foreach ($connection['endpoints'] as &$endpoint) {
-                        // Normalize enabled field
-                        $endpoint['enabled'] = filter_var($endpoint['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
-
-                        // Ensure endpoint resource_type is captured
-                        $endpoint['resource_type'] = $endpoint['resource_type'] ?? 'unknown';
-
-                        if (isset($endpoint['metric_map']) && is_string($endpoint['metric_map']) && $this->isJson($endpoint['metric_map'])) {
-                            $endpoint['metric_map'] = json_decode($endpoint['metric_map'], true);
-                        }
-
-                        if (isset($endpoint['response_mapping']) && is_string($endpoint['response_mapping']) && $this->isJson($endpoint['response_mapping'])) {
-                            $endpoint['response_mapping'] = json_decode($endpoint['response_mapping'], true);
-                        }
-                    }
-                }
-            }
-        }
-
-            $template->update($validated);
-
-				    return redirect()
-				        // FIX: Change 'devices.rest-api' to the correct 'settings.rest-api' prefix
-				        ->route('settings.rest-api.templates.edit', $template->id)
-				        ->with('success', 'Template updated successfully.');
+        return redirect()
+            ->route('settings.rest-api.templates.edit', $template->id)
+            ->with('success', 'Template updated successfully.');
     }
 
     public function destroy(RestApiTemplate $template)
@@ -112,29 +80,18 @@ class RestApiTemplateController extends Controller
             $data = json_decode($data, true) ?? [];
         }
 
-        foreach ($data as $key => &$value) {
+        $result = [];
+        foreach ($data as $key => $value) {
             if (is_string($value) && $this->isJson($value)) {
-                $value = json_decode($value, true);
-            }
-
-            if (is_array($value)) {
-                foreach ($value as $subKey => &$subValue) {
-                    if (is_string($subValue) && $this->isJson($subValue)) {
-                        $subValue = json_decode($subValue, true);
-                    }
-
-                    if (is_array($subValue)) {
-                        foreach ($subValue as $innerKey => &$innerValue) {
-                            if (is_string($innerValue) && $this->isJson($innerValue)) {
-                                $innerValue = json_decode($innerValue, true);
-                            }
-                        }
-                    }
-                }
+                $result[$key] = json_decode($value, true);
+            } elseif (is_array($value)) {
+                $result[$key] = $this->cleanTemplateMappings($value);
+            } else {
+                $result[$key] = $value;
             }
         }
 
-        return $data;
+        return $result;
     }
 
     private function isJson($string)
@@ -151,13 +108,10 @@ class RestApiTemplateController extends Controller
         $result = [];
         foreach ($data as $key => $value) {
             if (is_array($value)) {
-                // Recursively process nested arrays
                 $result[$key] = $this->replacePlaceholdersInArray($value, $device);
             } elseif (is_string($value)) {
-                // Replace placeholders in strings
                 $result[$key] = $this->replacePlaceholdersInString($value, $device);
             } else {
-                // Keep other values as-is
                 $result[$key] = $value;
             }
         }
@@ -167,44 +121,31 @@ class RestApiTemplateController extends Controller
 
     private function replacePlaceholdersInString(string $string, \App\Models\Device $device): string
     {
-        // Support Laravel Blade-style placeholders: {{ $device->hostname }}
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
         $string = Str::replace('{{ $device->sysName }}', $device->sysName, $string);
-
-        // Support simple placeholder format: {device_hostname}
         $string = Str::replace('{device_hostname}', $device->hostname, $string);
         $string = Str::replace('{device_ip}', $device->ip, $string);
         $string = Str::replace('{device_sysname}', $device->sysName, $string);
 
-        // Support getAttrib for custom attributes
-        preg_match_all('/\{\{ \$device->getAttrib\(([\'"])(.*?)\1\) \}\}/', $string, $matches);
-
-        if (!empty($matches[2])) {
-            foreach ($matches[2] as $index => $attribName) {
-                $attribValue = $device->getAttrib($attribName);
-                $fullPlaceholder = $matches[0][$index];
-                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
-            }
-        }
-
-        // Support simple attrib format: {device_attrib:name}
-        preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
-
-        if (!empty($attribMatches[1])) {
-            foreach ($attribMatches[1] as $index => $attribName) {
-                $attribValue = $device->getAttrib($attribName);
-                $fullPlaceholder = $attribMatches[0][$index];
-                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
+        // Handle custom attributes - only if they exist in the string
+        if (strpos($string, 'device_attrib') !== false) {
+            $attribMatches = [];
+            @preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
+            
+            if (!empty($attribMatches[1])) {
+                foreach ($attribMatches[1] as $index => $attribName) {
+                    if (isset($attribMatches[0][$index])) {
+                        $attribValue = $device->getAttrib(trim($attribName));
+                        $string = Str::replace($attribMatches[0][$index], $attribValue ?? '', $string);
+                    }
+                }
             }
         }
 
         return $string;
     }
 
-    /**
-     * Add a new endpoint to the template's JSON data
-     */
     public function addEndpoint(Request $request, RestApiTemplate $template)
     {
         $validated = $request->validate([
@@ -230,7 +171,6 @@ class RestApiTemplateController extends Controller
             ], 404);
         }
 
-        // Add the new endpoint
         if (!isset($templateData['connections'][$connIndex]['endpoints'])) {
             $templateData['connections'][$connIndex]['endpoints'] = [];
         }
@@ -254,9 +194,6 @@ class RestApiTemplateController extends Controller
         ]);
     }
 
-    /**
-     * Update an endpoint in the template's JSON data
-     */
     public function updateEndpoint(Request $request, RestApiTemplate $template)
     {
         $validated = $request->validate([
@@ -284,7 +221,6 @@ class RestApiTemplateController extends Controller
             ], 404);
         }
 
-        // Update the endpoint
         $templateData['connections'][$connIndex]['endpoints'][$epIndex] = array_merge(
             $templateData['connections'][$connIndex]['endpoints'][$epIndex],
             $validated['endpoint_data']
@@ -306,9 +242,6 @@ class RestApiTemplateController extends Controller
         ]);
     }
 
-    /**
-     * Delete an endpoint from the template's JSON data
-     */
     public function deleteEndpoint(Request $request, RestApiTemplate $template)
     {
         $validated = $request->validate([
@@ -330,7 +263,6 @@ class RestApiTemplateController extends Controller
             ], 404);
         }
 
-        // Remove the endpoint
         array_splice($templateData['connections'][$connIndex]['endpoints'], $epIndex, 1);
 
         $template->update(['template_data' => $templateData]);
@@ -341,18 +273,6 @@ class RestApiTemplateController extends Controller
         ]);
     }
 
-    /**
-     * API endpoint: Get API preview for template endpoint configuration
-     * Called from endpoint-form.blade.php when user clicks "Fetch API Preview"
-     * 
-     * Handles authentication using the same logic as polling:
-     * - API Key: Direct header
-     * - Session Token: Login first to get x-auth-token
-     * - Bearer Token: Direct header
-     * - Basic Auth: Direct header
-     * 
-     * POST /api/rest-api/template-preview
-     */
     public function getTemplatePreview(Request $request)
     {
         try {
@@ -372,8 +292,6 @@ class RestApiTemplateController extends Controller
 
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
 
-            try {
-            // Get template data
             $templateData = is_array($template->template_data) 
                 ? $template->template_data 
                 : json_decode($template->template_data, true);
@@ -395,7 +313,6 @@ class RestApiTemplateController extends Controller
             $connData = $templateData['connections'][$connIdx];
             $endpointData = $connData['endpoints'][$epIdx];
 
-            // Validate required endpoint fields
             if (empty($endpointData['path'])) {
                 return response()->json([
                     'success' => false,
@@ -403,7 +320,7 @@ class RestApiTemplateController extends Controller
                 ], 400);
             }
 
-            // If device_id is provided, use it to replace placeholders
+            // Replace placeholders if device selected
             if ($deviceId) {
                 $device = \App\Models\Device::findOrFail($deviceId);
                 $connData = $this->replacePlaceholdersInArray($connData, $device);
@@ -419,7 +336,6 @@ class RestApiTemplateController extends Controller
             
             $recommendations = [];
             if ($device && $apiResponse) {
-                // Create a temporary endpoint object for mapper
                 $tempEndpoint = new \App\Models\RestApiEndpoint();
                 $tempEndpoint->fill($endpointData);
                 
@@ -428,7 +344,6 @@ class RestApiTemplateController extends Controller
                     $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
                 } catch (\Exception $e) {
                     \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
-                    // Continue without recommendations if mapper fails
                 }
             }
 
@@ -438,10 +353,6 @@ class RestApiTemplateController extends Controller
                 'recommendations' => $recommendations,
             ]);
 
-            } catch (\Exception $e) {
-                \Log::error("Template preview inner error: " . $e->getMessage());
-                throw $e;
-            }
         } catch (\Throwable $e) {
             \Log::error('Template preview error: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
             return response()->json([
@@ -451,15 +362,6 @@ class RestApiTemplateController extends Controller
         }
     }
 
-    /**
-     * Fetch API response for template endpoint
-     * Handles authentication the same way as actual polling
-     * 
-     * @param array $connData Connection configuration from template
-     * @param array $endpointData Endpoint configuration from template
-     * @return array API response
-     * @throws \Exception
-     */
     private function fetchTemplateApiResponse(array $connData, array $endpointData, $credentialId = null): array
     {
         if (empty($connData['base_url'])) {
@@ -472,14 +374,10 @@ class RestApiTemplateController extends Controller
             'verify' => !($connData['disable_ssl_verify'] ?? false),
         ]);
 
-        // Get authentication headers
         $headers = $this->getTemplateAuthHeaders($connData, $client, $credentialId);
-
-        // Build the request
         $method = $endpointData['method'] ?? 'GET';
         $path = $endpointData['path'];
 
-        // Make the request
         $response = $client->request($method, $path, [
             'headers' => $headers,
         ]);
@@ -498,22 +396,8 @@ class RestApiTemplateController extends Controller
         return $decoded;
     }
 
-    /**
-     * Get authentication headers for template endpoint
-     * Uses the same authentication logic as actual polling
-     * Supports: API Key, Session Token (with login), Bearer Token, Basic Auth
-     * 
-     * For Session Token: First performs a POST to the login endpoint to obtain the token
-     * For other types: Uses direct authentication headers
-     * 
-     * @param array $connData Connection configuration
-     * @param $client Guzzle HTTP Client for session token login
-     * @return array Headers array
-     * @throws \Exception if authentication fails
-     */
     private function getTemplateAuthHeaders(array $connData, $client, $credentialId = null): array
     {
-        // Use override credential if provided, otherwise use connection's credential
         $credId = $credentialId ?? $connData['credential_id'] ?? null;
         
         if (!$credId) {
@@ -526,11 +410,9 @@ class RestApiTemplateController extends Controller
         
         \Log::info("Using authentication type: {$authType}");
 
-        // For session token, we need to login first to get the token
         if ($authType === 'session token') {
             \Log::info('Session token auth detected - performing login first');
             
-            // Use the shared CredentialHelper to obtain session token
             $sessionToken = \App\RestApi\Credentials\CredentialHelper::obtainSessionToken(
                 $credential,
                 $connData['base_url'],
@@ -556,15 +438,10 @@ class RestApiTemplateController extends Controller
             }
         }
 
-        // For other auth types, use CredentialHelper
         \Log::info("Using {$authType} authentication directly");
         return \App\RestApi\Credentials\CredentialHelper::getAuthHeaderFromModel($credential);
     }
 
-    /**
-     * Get list of devices for selector dropdown
-     * GET /api/rest-api/devices
-     */
     public function getDevicesList(Request $request)
     {
         try {
@@ -580,7 +457,7 @@ class RestApiTemplateController extends Controller
                 'devices' => $devices,
             ]);
         } catch (\Throwable $e) {
-            \Log::error('Failed to load devices: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
+            \Log::error('Failed to load devices: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -588,10 +465,6 @@ class RestApiTemplateController extends Controller
         }
     }
 
-    /**
-     * Get list of REST API credentials for selector dropdown
-     * GET /api/rest-api/credentials
-     */
     public function getCredentialsList(Request $request)
     {
         try {
@@ -607,7 +480,7 @@ class RestApiTemplateController extends Controller
                             $authTypeName = $cred->authenticationType->name;
                         }
                     } catch (\Throwable $e) {
-                        \Log::warning('Error loading auth type for credential ' . $cred->id . ': ' . $e->getMessage());
+                        \Log::warning('Error loading auth type for credential ' . $cred->id);
                     }
                     return [
                         'id' => $cred->id,
@@ -623,7 +496,7 @@ class RestApiTemplateController extends Controller
                 'credentials' => $credentials,
             ]);
         } catch (\Throwable $e) {
-            \Log::error('Failed to load credentials: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
+            \Log::error('Failed to load credentials: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
