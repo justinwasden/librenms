@@ -315,10 +315,33 @@
                                         <small class="form-text text-muted">Determines which database table to store data in</small>
                                     </div>
                                     <div class="form-group">
-                                        <label>Metric Mapping (JSON) <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
+                                        <label>Metric Mapping <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
+                                        
+                                        {{-- API Preview Button --}}
+                                        <div class="mb-3">
+                                            <button type="button" class="btn btn-info btn-sm fetch-api-preview-btn"
+                                                    @click="fetchApiPreview()">
+                                                <i class="fas fa-download"></i> Fetch API Preview
+                                            </button>
+                                            <span class="preview-status ml-2" x-show="previewLoading" style="color: #0066cc;">
+                                                ⟳ Fetching...
+                                            </span>
+                                            <span class="preview-status ml-2" x-show="previewSuccess && !previewLoading" style="color: #28a745;">
+                                                ✓ Preview ready
+                                            </span>
+                                            <span class="preview-status ml-2" x-show="previewError && !previewLoading" style="color: #dc3545;">
+                                                ✗ Error
+                                            </span>
+                                        </div>
+
+                                        {{-- JSON Textarea --}}
                                         <textarea class="form-control font-monospace" rows="10" x-model="selectedEndpoint.metric_map_json"
                                                   @input="checkForChanges()" placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
                                         <small class="form-text text-muted">Leave empty to let the system auto-learn field mappings</small>
+                                        <button type="button" class="btn btn-sm btn-secondary mt-2"
+                                                @click="beautifyJson()">
+                                            <i class="fas fa-indent"></i> Beautify JSON
+                                        </button>
                                     </div>
 
                                     <div class="text-right mt-4">
