@@ -464,6 +464,16 @@ function endpointManager() {
             }
 
             console.log('Init complete. selectedEndpointIndex:', this.selectedEndpointIndex);
+            
+            // Listen for deviceSelected event from device selector modal
+            const self = this;
+            document.addEventListener('deviceSelected', function(event) {
+                const { deviceId, credentialId } = event.detail;
+                console.log('deviceSelected event received:', deviceId, credentialId);
+                if (self && self.performPreview) {
+                    self.performPreview(deviceId, credentialId);
+                }
+            });
         },
 
         selectEndpoint(index) {
