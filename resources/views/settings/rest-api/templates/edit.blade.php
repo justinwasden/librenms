@@ -470,6 +470,15 @@ function endpointManager() {
                 return;
             }
 
+            // Check if path has placeholders and device is required
+            const hasPlaceholders = /{device_hostname}|{device_ip}|{device_sysname}|{device_attrib:/.test(this.selectedEndpoint.path);
+            if (hasPlaceholders) {
+                const deviceId = prompt('This endpoint has device placeholders {device_hostname}, {device_ip}, etc.\n\nEnter a Device ID or hostname to test with:\n(Leave empty to see placeholders as-is)');
+                if (!deviceId && deviceId !== '') {
+                    return; // User cancelled
+                }
+            }
+
             this.previewLoading = true;
             this.previewSuccess = false;
             this.previewError = false;
@@ -478,6 +487,7 @@ function endpointManager() {
                 const templateId = {{ $template->id }};
                 const connIdx = this.selectedEndpoint._connection_index || 0;
                 const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
+                const deviceId = this.selectedEndpoint._device_id_for_preview || null; // Will be null if user didn't enter
                 
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
@@ -487,7 +497,8 @@ function endpointManager() {
                     body: JSON.stringify({
                         template_id: templateId,
                         connection_index: connIdx,
-                        endpoint_index: epIdx
+                        endpoint_index: epIdx,
+                        device_id: deviceId || null
                     })
                 });
 
@@ -499,24 +510,24 @@ function endpointManager() {
                     this.previewError = false;
                     
                     // Show preview and recommendations
-                    let previewText = 'API Preview successful!\n\n';
-                    previewText += 'Response Structure:\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
+                    let previewText = '✓ API Preview successful!\n\n';
+                    previewText += 'Response Structure (first 500 chars):\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
                     if (data.recommendations && data.recommendations.length > 0) {
-                        previewText += 'Found ' + data.recommendations.length + ' recommended mappings!';
+                        previewText += 'Found ' + data.recommendations.length + ' recommended field mappings!';
                     }
                     alert(previewText);
                 } else {
                     this.previewLoading = false;
                     this.previewSuccess = false;
                     this.previewError = true;
-                    alert('Error: ' + (data.error || 'Unknown error'));
+                    alert('✗ Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error(err);
                 this.previewLoading = false;
                 this.previewSuccess = false;
                 this.previewError = true;
-                alert('Failed to fetch preview: ' + err.message);
+                alert('✗ Failed to fetch preview: ' + err.message);
             }
         },
 
