@@ -18,12 +18,17 @@ class PureStorageParser
         // Many Pure APIs wrap data under 'items'
         if (isset($response['items']) && is_array($response['items'])) {
             foreach ($response['items'] as $index => $item) {
+                // Extract resource identifier (name, id, etc)
+                $resource_name = $item['name'] ?? $item['id'] ?? 'item_' . $index;
+                $resource_id = $item['id'] ?? null;
+                
                 // Pass the resource type for context during flattening
                 $flattened = $this->flattenArray($item, '', $resource);
                 $parsed[] = [
                     'resource_type' => $resource,
-                    // Note: We no longer need the numeric index, as the unique name/ID will be in 'metrics'
-                    'metrics'       => $flattened,
+                    'resource_name' => $resource_name,
+                    'resource_id' => $resource_id,
+                    'metrics' => $flattened,
                 ];
             }
         } else {
@@ -31,8 +36,9 @@ class PureStorageParser
             $flattened = $this->flattenArray($response, '', $resource);
             $parsed[] = [
                 'resource_type' => $resource,
-                // Note: Index is still 0 for top-level responses
-                'metrics'       => $flattened,
+                'resource_name' => $response['name'] ?? 'array',
+                'resource_id' => $response['id'] ?? null,
+                'metrics' => $flattened,
             ];
         }
 
@@ -401,7 +407,7 @@ class PureStorageParser
 		                $rounded = round($converted, 2);
 		                break;
 		            case Str::contains($target, ['temperature']):
-		                $unit = '°C';
+		                $unit = 'ï¿½C';
 		                $rounded = round($converted, 1);
 		                break;
 		            case Str::contains($target, ['voltage']):

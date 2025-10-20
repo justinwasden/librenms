@@ -11,10 +11,12 @@ class PureStorage
             '/api/2.26/alerts',
             '/api/2.26/controllers',
             '/api/2.26/volumes',
-            '/api/2.26/ports',
             '/api/2.26/hosts',
-            '/api/2.26/performance',
-            '/api/2.26/performance-by-array',
+            '/api/2.26/hardware',
+            '/api/2.26/drives',
+            '/api/2.26/network-interfaces',
+            '/api/2.26/arrays/performance',
+            '/api/2.26/volumes/performance',
         ];
     }
 
@@ -23,12 +25,18 @@ class PureStorage
     {
         return [
             '/api/2.26/arrays' => [
-                'array_total_physical_space' => 'items.space.total_physical',
-                'array_total_used_space' => 'items.space.total_used',
-                'array_total_provisioned_space' => 'items.space.total_provisioned',
-                'array_data_reduction' => 'items.space.data_reduction',
-                'array_total_reduction' => 'items.space.total_reduction',
-                'array_capacity' => 'items.capacity',
+                'capacity' => 'items.capacity',
+                'total_physical' => 'items.space.total_physical',
+                'total_used' => 'items.space.total_used',
+                'total_provisioned' => 'items.space.total_provisioned',
+                'data_reduction' => 'items.space.data_reduction',
+                'total_reduction' => 'items.space.total_reduction',
+                'unique' => 'items.space.unique',
+                'shared' => 'items.space.shared',
+                'snapshots' => 'items.space.snapshots',
+                'name' => 'items.name',
+                'version' => 'items.version',
+                'os' => 'items.os',
             ],
             '/api/2.26/alerts' => [
                 'alert_id' => 'items.id',
