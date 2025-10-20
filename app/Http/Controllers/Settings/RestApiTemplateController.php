@@ -544,26 +544,22 @@ class RestApiTemplateController extends Controller
     public function getDevicesList(Request $request)
     {
         try {
-            $devices = \App\Models\Device::select('device_id', 'hostname', 'ip')
+            $devices = \App\Models\Device::query()
+                ->select('device_id', 'hostname', 'ip')
                 ->orderBy('hostname')
+                ->limit(1000)
                 ->get()
-                ->map(function ($device) {
-                    return [
-                        'device_id' => $device->device_id,
-                        'hostname' => $device->hostname,
-                        'ip' => $device->ip,
-                    ];
-                });
+                ->toArray();
 
             return response()->json([
                 'success' => true,
                 'devices' => $devices,
             ]);
-        } catch (\Exception $e) {
-            \Log::error('Failed to load devices: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load devices: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to load devices',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -575,13 +571,19 @@ class RestApiTemplateController extends Controller
     public function getCredentialsList(Request $request)
     {
         try {
-            $credentials = \App\Models\RestApiCredential::with('authenticationType')
+            $credentials = \App\Models\RestApiCredential::query()
+                ->with('authenticationType')
                 ->orderBy('name')
+                ->limit(1000)
                 ->get()
                 ->map(function ($cred) {
                     $authTypeName = 'Unknown';
-                    if ($cred->authenticationType) {
-                        $authTypeName = $cred->authenticationType->name;
+                    try {
+                        if ($cred->authenticationType) {
+                            $authTypeName = $cred->authenticationType->name;
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::warning('Error loading auth type for credential ' . $cred->id . ': ' . $e->getMessage());
                     }
                     return [
                         'id' => $cred->id,
@@ -589,17 +591,18 @@ class RestApiTemplateController extends Controller
                         'auth_type' => $authTypeName,
                         'description' => null,
                     ];
-                });
+                })
+                ->toArray();
 
             return response()->json([
                 'success' => true,
                 'credentials' => $credentials,
             ]);
-        } catch (\Exception $e) {
-            \Log::error('Failed to load credentials: ' . $e->getMessage() . ' ' . $e->getTraceAsString());
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load credentials: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to load credentials: ' . $e->getMessage(),
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
