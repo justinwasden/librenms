@@ -148,12 +148,18 @@ class RestApiTemplateController extends Controller
 
     private function replacePlaceholdersInArray(array $data, \App\Models\Device $device): array
     {
-        array_walk_recursive($data, function (&$value) use ($device) {
-            if (is_string($value)) {
-                $value = $this->replacePlaceholdersInString($value, $device);
+        // Recursively process array to replace placeholders
+        $processArray = function(&$item) use ($device, &$processArray) {
+            if (is_array($item)) {
+                foreach ($item as &$value) {
+                    $processArray($value);
+                }
+            } elseif (is_string($item)) {
+                $item = $this->replacePlaceholdersInString($item, $device);
             }
-        });
-
+        };
+        
+        $processArray($data);
         return $data;
     }
 
