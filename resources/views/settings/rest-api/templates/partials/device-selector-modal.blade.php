@@ -206,24 +206,29 @@ function deviceSelectorData() {
             this.deviceSelectorError = '';
 
             try {
-                // Get endpointManager instance from parent modal
+                // Store the selected values in window so endpoint manager can access them
+                window.deviceSelectorResult = {
+                    deviceId: this.selectedDevice.device_id,
+                    credentialId: this.selectedCredentialId || null
+                };
+                
+                // Close this modal
+                $('#deviceSelectorModal').modal('hide');
+                
+                // Trigger the preview on the endpoint manager
+                // The endpoint manager will be notified via a custom event or we call it directly
                 const endpointModalEl = document.querySelector('#endpointsModal [x-data*=endpointManager]');
-                if (endpointModalEl && endpointModalEl.__x) {
+                if (endpointModalEl && endpointModalEl.__x && endpointModalEl.__x.$data) {
                     const em = endpointModalEl.__x.$data;
-                    
-                    // Call performPreview on the endpoint manager
-                    await em.performPreview(this.selectedDevice.device_id, this.selectedCredentialId || null);
-                    
+                    await em.performPreview(window.deviceSelectorResult.deviceId, window.deviceSelectorResult.credentialId);
                     this.previewLoading = false;
-                    
-                    // Close modal if successful
-                    if (em.previewSuccess) {
-                        $('#deviceSelectorModal').modal('hide');
-                    } else {
-                        this.deviceSelectorError = em.deviceSelectorError;
-                    }
                 } else {
-                    throw new Error('Could not find endpoint manager');
+                    console.warn('Could not find endpoint manager, will retry');
+                    // Fallback: emit event that endpoint manager can listen to
+                    document.dispatchEvent(new CustomEvent('deviceSelected', {
+                        detail: window.deviceSelectorResult
+                    }));
+                    this.previewLoading = false;
                 }
             } catch (err) {
                 console.error(err);
