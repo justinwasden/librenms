@@ -10,56 +10,70 @@ use App\Models\Sensor;
 use App\Models\StorageArrayMetric;
 use App\Models\EntPhysical;
 use App\RestApi\Mapping\MappingEngine;
+use App\RestApi\Vendors\VendorMapperFactory;
+use App\Models\RestApiEndpoint;
 use Log;
 
+/**
+ * Generic Data Router for REST API metrics
+ * Routes metrics to appropriate database tables based on mappings
+ * Delegates vendor-specific logic to VendorMapper implementations
+ *
+ * REFACTORED: No vendor-specific hardcoding - now fully generic
+ */
 class DataRouter
 {
     protected Device $device;
     protected MappingEngine $mappingEngine;
+    protected VendorMapperFactory $vendorMapperFactory;
     protected array $itemContext = [];
+    protected $vendorMapper = null;
+    protected ?RestApiEndpoint $endpoint = null;
 
-    public function __construct(Device $device)
+    public function __construct(Device $device, ?RestApiEndpoint $endpoint = null)
     {
         $this->device = $device;
         $this->mappingEngine = new MappingEngine($device);
+        $this->vendorMapperFactory = new VendorMapperFactory();
+        $this->endpoint = $endpoint;
+
+        // Get vendor-specific mapper
+        if ($endpoint) {
+            $this->vendorMapper = $this->vendorMapperFactory->getMapper($device, $endpoint);
+        }
     }
 
     /**
      * Route data to appropriate storage location
+     * NOW GENERIC - vendor-specific logic delegated to VendorMapper
+     *
+     * @param array $flattenedData
+     * @param string $resourceType
+     * @param array $metricMap
+     * @param string $endpointName
+     * @param array $itemContext
+     * @return void
      */
-    public function route(array $flattenedData, string $resourceType, array $metricMap = [], string $endpointName = 'unknown', array $itemContext = []): void
+    public function route(
+        array $flattenedData,
+        string $resourceType,
+        array $metricMap = [],
+        string $endpointName = 'unknown',
+        array $itemContext = []
+    ): void
     {
         $this->itemContext = $itemContext;
 
-        // CRITICAL: Filter out hardware sensors and non-network interfaces BEFORE any routing
-        // This prevents invalid entries from being created in the ports table
-        if ($this->isHardwareSensor($itemContext)) {
-            Log::debug("[{$endpointName}] Skipping hardware sensor: {$itemContext['name']}");
+        Log::debug("[{$endpointName}] DataRouter: Processing resource type '{$resourceType}' for item '{$itemContext['name'] ?? 'unnamed'}'");
+
+        // Let vendor mapper decide if this item should be filtered
+        if ($this->vendorMapper && $this->vendorMapper->shouldFilterItem($itemContext, $resourceType)) {
+            Log::debug("[{$endpointName}] Item filtered by vendor mapper: {$itemContext['name'] ?? 'unnamed'}");
             return;
         }
 
-        // For network interfaces and ports, skip non-network items
-        if (in_array($resourceType, ['network-interfaces', 'network-interface', 'port', 'ports'])) {
-            if ($this->isNonNetworkInterface($itemContext)) {
-                Log::debug("[{$endpointName}] Skipping non-network interface: {$itemContext['name']}");
-                return;
-            }
-            
-            // CRITICAL: During discovery, ensure the port exists in the database
-            // This creates port records even if there are no metrics to store
-            $this->ensurePortExists($itemContext, $endpointName);
-        }
-
-        // For storage (volumes), skip items that shouldn't be in storage table
-        if (in_array($resourceType, ['storage', 'volume']) || in_array($endpointName, ['volumes', '/api/2.26/volumes', 'Volumes Info'])) {
-            if ($this->isNonStorageItem($itemContext)) {
-                Log::debug("[{$endpointName}] Skipping non-storage item: {$itemContext['name']}");
-                return;
-            }
-        }
-
+        // Process each metric
         foreach ($flattenedData as $key => $value) {
-            // Skip pagination metadata
             if ($this->shouldSkip($key)) {
                 continue;
             }
@@ -73,8 +87,8 @@ class DataRouter
                 $routed = $this->storeUsingMapping($mapping, $key, $value, $endpointName);
             }
 
-            // 2. Check if it's Pure Storage-specific complex metric (space accounting, data reduction, etc.)
-            if (!$routed && $this->isPureStorageComplexMetric($key, $resourceType)) {
+            // 2. Check if it's a complex metric (vendor-specific)
+            if (!$routed && $this->vendorMapper && $this->vendorMapper->isComplexMetric($key, $resourceType)) {
                 $routed = $this->storeInComplexMetrics($key, $value, $resourceType, $endpointName);
             }
 
@@ -86,162 +100,14 @@ class DataRouter
     }
 
     /**
-     * Check if item is not a storage volume (hardware, hosts, drives, etc.)
-     * Only actual volumes should go in storage table
-     */
-    protected function isNonStorageItem(array $itemContext): bool
-    {
-        if (empty($itemContext['name'])) {
-            return false;
-        }
-
-        $name = $itemContext['name'];
-
-        // Hardware components - these come from /api/2.26/hardware, /api/2.26/drives, etc
-        $hardwarePatterns = [
-            '/^CH[0-9]\./i',       // Chassis components: CH0.BAY*, CH0.PWR*, etc
-            '/^CH[0-9]$/i',         // Chassis itself
-        ];
-
-        foreach ($hardwarePatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                return true;
-            }
-        }
-
-        // Hosts and ESXi - these come from /api/2.26/hosts
-        // These are infrastructure hosts, not volumes
-        $hostPatterns = [
-            '/^ITS-RSA-ESXI-/i',      // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-S2S2, etc
-            '/^ALM-C220-ESXI-/i',     // ALM-C220-ESXI-01, etc
-            '/^ALMH-C[0-9]S[0-9]+$/i', // ALMH-C1S5, ALMH-C1S6, etc - ESXi hosts
-            '/^RSA-IAAS-/i',          // RSA-IAAS-HX5-01, RSA-IAAS-HX5-02, etc
-            '/^RSA-MH-/i',            // RSA-MH-X20 (Hyperconverged node, not a volume)
-        ];
-
-        foreach ($hostPatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                return true;
-            }
-        }
-
-        // Array itself
-        if (preg_match('/^RSA-PS-/i', $name)) {
-            return true;  // RSA-PS-X50 is the array name, not a volume
-        }
-
-        // If it has 0 provisioned space, it's likely not a real volume
-        if (isset($itemContext['provisioned']) && $itemContext['provisioned'] == 0) {
-            return true;
-        }
-
-        return false;
-    }
-
-    
-    protected function isHardwareSensor(array $itemContext): bool
-    {
-        if (empty($itemContext['name'])) {
-            return false;
-        }
-
-        $name = strtoupper($itemContext['name']);
-
-        // Check for hardware sensor patterns
-        $patterns = [
-            '/^CT[0-9]\.FAN[0-9]+$/i',      // CT0.FAN0, CT1.FAN1, etc.
-            '/^CT[0-9]\.TMP[0-9]+$/i',      // CT0.TMP0, CT1.TMP1, etc.
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if item is a non-network interface (hardware component, VM, etc.)
-     * These should NOT be added to the ports table
-     */
-    protected function isNonNetworkInterface(array $itemContext): bool
-    {
-        if (empty($itemContext['name'])) {
-            return false;
-        }
-
-        $name = $itemContext['name'];
-
-        // Hardware backplane/chassis components (not actual network interfaces)
-        $hardwarePatterns = [
-            '/^CH[0-9]\.BAY[0-9]+$/i',      // Blade bay slots: CH0.BAY0, CH0.BAY16, etc.
-            '/^CH[0-9]\.NVB[0-9]+$/i',      // NVMe backplane: CH0.NVB0, CH0.NVB1, etc.
-            '/^CH[0-9]\.PWR[0-9]+$/i',      // Power supplies: CH0.PWR0, CH0.PWR1, etc.
-            '/^CH[0-9]\.TMP[0-9]+$/i',      // Temperature sensors: CH0.TMP0, etc.
-            '/^CH[0-9]$/i',                  // Chassis: CH0, CH1
-            '/^CT[0-9]$/i',                  // Controllers: CT0, CT1
-        ];
-
-        foreach ($hardwarePatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                Log::debug("Filtering hardware component from ports: {$name}");
-                return true;
-            }
-        }
-
-        // Virtual machines and ESXi hosts (these are REST API inventory, not network interfaces)
-        $vmPatterns = [
-            '/^ITS-RSA-ESXI-/i',            // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-C1S7, etc.
-            '/^ALM-C220-ESXI-/i',           // ALM-C220-ESXI-01, ALM-C220-ESXI-02, etc.
-            '/^ALMH-C[0-9]S[0-9]+$/i',      // ALMH-C1S5, ALMH-C1S6, etc.
-            '/^ALMH::/i',                   // ALMH::ALMH01 (volume names)
-            '/^RSA-SW-/i',                  // RSA-SW-SQL, etc.
-            '/^SL-SW-/i',                   // SL-SW-SQL, etc.
-            '/^SW-SQL\//i',                 // SW-SQL/RSA-SWSQL-01, etc.
-            '/^RSA-IAAS-/i',                // RSA-IAAS-HX5-01, etc.
-            '/^RSA-MH-/i',                  // RSA-MH-X20, etc.
-            '/^RSA-PS-/i',                  // RSA-PS-X50, etc.
-            '/^RSA-X[0-9]+-/i',             // RSA-X50-101, RSA-X50-102, etc.
-            '/^RSA-[A-Z][a-z]+[A-Z]/i',     // RSA-DruvaCC, etc. (mixed case = app name)
-        ];
-
-        foreach ($vmPatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                Log::debug("Filtering VM/host from ports: {$name}");
-                return true;
-            }
-        }
-
-        // Only allow actual network interfaces
-        $validInterfacePatterns = [
-            '/^ct[0-9]\.eth[0-9]+$/i',           // ct0.eth0, ct1.eth18, etc.
-            '/^ct[0-9]\.eth[0-9]+\.[0-9]+$/i',  // ct0.eth18.313, ct0.eth18.314 (VLAN subinterfaces)
-            '/^vir[0-9]+$/i',                    // vir0, vir1, vir4 (virtual interfaces)
-            '/^vir[0-9]+\.[0-9]+$/i',           // vir4.8 (virtual interface VLANs)
-            '/^replbond$/i',                     // replbond (replication bond interface)
-        ];
-
-        $isValidInterface = false;
-        foreach ($validInterfacePatterns as $pattern) {
-            if (preg_match($pattern, $name)) {
-                $isValidInterface = true;
-                break;
-            }
-        }
-
-        // If it doesn't match any valid interface pattern, filter it out
-        if (!$isValidInterface) {
-            Log::debug("Interface doesn't match valid patterns, filtering: {$name}");
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
      * Store data using a MetricFieldMapping
+     * Uses vendor mapper for validation
+     *
+     * @param object $mapping
+     * @param string $key
+     * @param mixed $value
+     * @param string $endpointName
+     * @return bool
      */
     protected function storeUsingMapping($mapping, string $key, $value, string $endpointName = 'unknown'): bool
     {
@@ -254,6 +120,23 @@ class DataRouter
                 return false;
             }
 
+            // Let vendor mapper validate if configured
+            if ($this->vendorMapper) {
+                $validation = $this->vendorMapper->validateMapping(
+                    $key,
+                    $value,
+                    $mapping->librenms_table,
+                    $mapping->librenms_field
+                );
+
+                if (!$validation['valid']) {
+                    Log::warning(
+                        "[{$endpointName}] Validation failed for {$key}: {$validation['reason']}"
+                    );
+                    return false;
+                }
+            }
+
             // Update the mapping's last_seen
             $mapping->update([
                 'last_matched_device_id' => $this->device->device_id,
@@ -263,20 +146,44 @@ class DataRouter
             // Route to appropriate LibreNMS table
             switch ($mapping->librenms_table) {
                 case 'storage':
-                    return $this->storeInStorageTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
+                    return $this->storeInStorageTable(
+                        $mapping->librenms_field,
+                        $transformedValue,
+                        $endpointName,
+                        $key,
+                        $mapping
+                    );
 
                 case 'ports':
-                    return $this->storeInPortsTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
+                    return $this->storeInPortsTable(
+                        $mapping->librenms_field,
+                        $transformedValue,
+                        $endpointName,
+                        $key,
+                        $mapping
+                    );
 
                 case 'sensors':
-                    // Pass unit from mapping to storeInSensorsTable
-                    return $this->storeInSensorsTable($mapping->librenms_field, $transformedValue, $mapping->unit, $endpointName, $key, $mapping);
+                    return $this->storeInSensorsTable(
+                        $mapping->librenms_field,
+                        $transformedValue,
+                        $mapping->unit,
+                        $endpointName,
+                        $key,
+                        $mapping
+                    );
 
                 case 'devices':
                     return $this->storeInDevicesTable($mapping->librenms_field, $transformedValue, $endpointName, $key);
 
                 case 'entPhysical':
-                    return $this->storeInEntPhysicalTable($mapping->librenms_field, $transformedValue, $endpointName, $key, $mapping);
+                    return $this->storeInEntPhysicalTable(
+                        $mapping->librenms_field,
+                        $transformedValue,
+                        $endpointName,
+                        $key,
+                        $mapping
+                    );
 
                 default:
                     Log::debug("No handler for table: {$mapping->librenms_table}");
@@ -290,6 +197,13 @@ class DataRouter
 
     /**
      * Store in storage table (volumes/LUNs)
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param string $endpointName
+     * @param string $displayKey
+     * @param object $mapping
+     * @return bool
      */
     protected function storeInStorageTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
@@ -339,6 +253,13 @@ class DataRouter
 
     /**
      * Store in ports table (network interfaces)
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param string $endpointName
+     * @param string $displayKey
+     * @param object $mapping
+     * @return bool
      */
     protected function storeInPortsTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
@@ -347,12 +268,6 @@ class DataRouter
 
             if (!$portName) {
                 Log::warning("[{$endpointName}] Cannot create port entry without name");
-                return false;
-            }
-
-            // DOUBLE CHECK: Verify this is actually a network interface before creating port
-            if ($this->isNonNetworkInterface($this->itemContext)) {
-                Log::warning("[{$endpointName}] Attempted to create port for non-network interface: {$portName}");
                 return false;
             }
 
@@ -367,21 +282,20 @@ class DataRouter
                 $port->ifDescr = $portName;
                 $port->port_descr_type = 'rest-api';
                 $port->ifIndex = abs(crc32($this->device->device_id . '_' . $portName));
-                
-                // CRITICAL: Set ifType so LibreNMS displays the port
-                // ifType=6 is ethernetCsmacd (standard Ethernet interface)
-                $port->ifType = 6;
-                $port->ifOperStatus = 'up';  // Default to up
-                $port->ifAdminStatus = 1;    // 1 = admin up
-                $port->ifSpeed = 1000000000; // 1Gbps default
-                
-                $port->deleted = 0;  // Mark as active
+
+                // Set defaults for display
+                $port->ifType = 6;  // ethernetCsmacd
+                $port->ifOperStatus = 'up';
+                $port->ifAdminStatus = 1;
+                $port->ifSpeed = 1000000000;  // 1Gbps
+
+                $port->deleted = 0;
                 $port->save();
                 Log::info("[{$endpointName}] Created new REST API port: {$portName}");
             } else {
                 // Ensure port is marked as active if it was previously deleted
                 if ($port->deleted == 1) {
-                    $port->deleted = 0;  // Reactivate
+                    $port->deleted = 0;
                     $port->save();
                     Log::info("[{$endpointName}] Reactivated previously deleted port: {$portName}");
                 }
@@ -403,6 +317,13 @@ class DataRouter
 
     /**
      * Store in entPhysical table (hardware/controllers)
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param string $endpointName
+     * @param string $displayKey
+     * @param object $mapping
+     * @return bool
      */
     protected function storeInEntPhysicalTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
@@ -444,6 +365,14 @@ class DataRouter
 
     /**
      * Store in sensors table (performance metrics, hardware sensors)
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param string|null $unit
+     * @param string $endpointName
+     * @param string $displayKey
+     * @param object $mapping
+     * @return bool
      */
     protected function storeInSensorsTable(string $field, $value, ?string $unit = null, string $endpointName = 'unknown', string $displayKey = '', $mapping = null): bool
     {
@@ -512,6 +441,11 @@ class DataRouter
 
     /**
      * Determine sensor type and class from field name and unit
+     *
+     * @param string $field
+     * @param string|null $unit
+     * @param string $displayKey
+     * @return array
      */
     protected function determineSensorType(string $field, ?string $unit, string $displayKey): array
     {
@@ -548,6 +482,12 @@ class DataRouter
 
     /**
      * Store in devices table (array-level info)
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param string $endpointName
+     * @param string $displayKey
+     * @return bool
      */
     protected function storeInDevicesTable(string $field, $value, string $endpointName = 'unknown', string $displayKey = ''): bool
     {
@@ -562,49 +502,25 @@ class DataRouter
     }
 
     /**
-     * Check if this is a Pure Storage complex metric that needs special handling
-     */
-    protected function isPureStorageComplexMetric(string $key, string $resourceType): bool
-    {
-        $complexPatterns = [
-            '/^space_(data_reduction|thin_provisioning|shared|snapshots|unique|virtual)/',
-            '/^(data_reduction|total_reduction|thin_provisioning)$/',
-            '/^host_(connectivity|iqns|wwns|nqns|connections)/',
-            '/^pod_(replication|status)/',
-        ];
-
-        foreach ($complexPatterns as $pattern) {
-            if (preg_match($pattern, $key)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Store complex Pure Storage metrics in the JSON metrics table
+     * Store complex metrics in the JSON metrics table
+     *
+     * @param string $key
+     * @param mixed $value
+     * @param string $resourceType
+     * @param string $endpointName
+     * @return bool
      */
     protected function storeInComplexMetrics(string $key, $value, string $resourceType, string $endpointName): bool
     {
         try {
-            $metricType = 'space_accounting';
-            if (strpos($key, 'data_reduction') !== false || strpos($key, 'total_reduction') !== false) {
-                $metricType = 'data_reduction';
-            } elseif (strpos($key, 'host_') === 0) {
-                $metricType = 'host_connectivity';
-            } elseif (strpos($key, 'pod_') === 0) {
-                $metricType = 'replication';
-            }
-
             StorageArrayMetric::storeMetric(
                 $this->device->device_id,
-                $metricType,
+                'complex_metric',
                 $key,
-                ['value' => $value, 'endpoint' => $endpointName]
+                ['value' => $value, 'endpoint' => $endpointName, 'type' => $resourceType]
             );
 
-            Log::debug("[{$endpointName}] {$key} -> storage_array_metrics ({$metricType})");
+            Log::debug("[{$endpointName}] {$key} -> storage_array_metrics (complex)");
             return true;
         } catch (\Exception $e) {
             Log::error("[{$endpointName}] Failed to store complex metric {$key}: " . $e->getMessage());
@@ -614,6 +530,12 @@ class DataRouter
 
     /**
      * Store in fallback table when no mapping found
+     *
+     * @param string $key
+     * @param mixed $value
+     * @param string $resourceType
+     * @param string $endpointName
+     * @return void
      */
     protected function storeInFallbackTable(string $key, $value, string $resourceType, string $endpointName = 'unknown'): void
     {
@@ -626,7 +548,7 @@ class DataRouter
                 ],
                 [
                     'endpoint_name' => $endpointName,
-                    'metric_value' => is_array($value) ? json_encode($value) : (string) $value,
+                    'metric_value' => is_array($value) ? json_encode($value) : (string)$value,
                     'last_updated' => now(),
                 ]
             );
@@ -639,53 +561,10 @@ class DataRouter
 
     /**
      * Check if key should be skipped (pagination metadata)
+     *
+     * @param string $key
+     * @return bool
      */
-    /**
-     * CRITICAL: Ensure port exists during discovery
-     * This creates the port record immediately during discovery,
-     * even if there are no metrics to store.
-     */
-    protected function ensurePortExists(array $itemContext, string $endpointName = 'unknown'): void
-    {
-        try {
-            $portName = $itemContext['name'] ?? null;
-
-            if (!$portName) {
-                Log::warning("[{$endpointName}] Cannot create port without name");
-                return;
-            }
-
-            $port = Port::where('device_id', $this->device->device_id)
-                ->where('ifName', $portName)
-                ->first();
-
-            if ($port) {
-                if ($port->deleted == 1) {
-                    $port->update(['deleted' => 0]);
-                    Log::info("[{$endpointName}] Reactivated port: {$portName}");
-                }
-                return;
-            }
-
-            Port::create([
-                'device_id' => $this->device->device_id,
-                'ifName' => substr($portName, 0, 255),
-                'ifDescr' => substr($portName, 0, 255),
-                'port_descr_type' => 'rest-api',
-                'ifIndex' => abs(crc32($this->device->device_id . '_' . $portName)),
-                'ifType' => 6,
-                'ifOperStatus' => 'up',
-                'ifAdminStatus' => 1,
-                'ifSpeed' => 1000000000,
-                'deleted' => 0,
-            ]);
-
-            Log::info("[{$endpointName}] DISCOVERY: Created port: {$portName}");
-        } catch (\Exception $e) {
-            Log::error("[{$endpointName}] Failed to ensure port exists: " . $e->getMessage());
-        }
-    }
-
     protected function shouldSkip(string $key): bool
     {
         $cleanKey = strtolower($key);
@@ -702,6 +581,7 @@ class DataRouter
                 return true;
             }
         }
+
         return false;
     }
 }
