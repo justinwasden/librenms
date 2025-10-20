@@ -74,7 +74,10 @@ Route::get('graph/{path?}', GraphController::class)
 Route::middleware(['auth'])->group(function () {
     // REST API Template Preview endpoint - CSRF protected
     Route::post('/api/rest-api/template-preview', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getTemplatePreview'])->name('api.rest-api.template-preview');
-
+    
+    // Device and Credentials list endpoints for selector modal - CSRF protected
+    Route::get('/api/rest-api/devices', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getDevicesList'])->name('api.rest-api.devices');
+    Route::get('/api/rest-api/credentials', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getCredentialsList'])->name('api.rest-api.credentials');
     // pages
     Route::post('alert/{alert}/ack', [AlertController::class, 'ack'])->name('alert.ack');
     Route::resource('device-groups', DeviceGroupController::class);

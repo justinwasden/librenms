@@ -122,12 +122,20 @@ function deviceSelectorData() {
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const res = await fetch('/api/rest-api/devices', {
-                    headers: { 'X-CSRF-TOKEN': token }
+                    method: 'GET',
+                    headers: { 
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json'
+                    }
                 });
                 const data = await res.json();
-                this.allDevices = data.devices || [];
-                this.filteredDevices = this.allDevices;
-                console.log(`Loaded ${this.allDevices.length} devices`);
+                if (data.success) {
+                    this.allDevices = data.devices || [];
+                    this.filteredDevices = this.allDevices;
+                    console.log(`Loaded ${this.allDevices.length} devices`);
+                } else {
+                    this.deviceSelectorError = 'Failed to load devices: ' + (data.error || 'Unknown error');
+                }
             } catch (err) {
                 console.error('Failed to load devices:', err);
                 this.deviceSelectorError = 'Failed to load devices: ' + err.message;
@@ -139,14 +147,21 @@ function deviceSelectorData() {
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const res = await fetch('/api/rest-api/credentials', {
-                    headers: { 'X-CSRF-TOKEN': token }
+                    method: 'GET',
+                    headers: { 
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json'
+                    }
                 });
                 const data = await res.json();
-                this.availableCredentials = data.credentials || [];
-                console.log(`Loaded ${this.availableCredentials.length} credentials`);
+                if (data.success) {
+                    this.availableCredentials = data.credentials || [];
+                    console.log(`Loaded ${this.availableCredentials.length} credentials`);
+                } else {
+                    console.warn('Failed to load credentials:', data.error);
+                }
             } catch (err) {
                 console.error('Failed to load credentials:', err);
-                this.deviceSelectorError = 'Failed to load credentials: ' + err.message;
             }
         },
 
