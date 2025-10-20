@@ -86,6 +86,55 @@ class PureStorageMappingsSeeder extends Seeder
             ],
 
             // =================================================================
+            // ENTPHYSICAL TABLE - Controllers
+            // =================================================================
+            [
+                'api_field_name' => 'controller_name',
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalDescr',
+                'unit' => null,
+                'transform' => null,
+                'enabled' => true,
+                'user_created' => false,
+            ],
+            [
+                'api_field_name' => 'controller_model',
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalModelName',
+                'unit' => null,
+                'transform' => null,
+                'enabled' => true,
+                'user_created' => false,
+            ],
+            [
+                'api_field_name' => 'controller_status',
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalOperStatus',
+                'unit' => null,
+                'transform' => null,
+                'enabled' => true,
+                'user_created' => false,
+            ],
+            [
+                'api_field_name' => 'controller_mode',
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalClass',
+                'unit' => null,
+                'transform' => null,
+                'enabled' => true,
+                'user_created' => false,
+            ],
+            [
+                'api_field_name' => 'purity_version',
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalHardwareRev',
+                'unit' => null,
+                'transform' => null,
+                'enabled' => true,
+                'user_created' => false,
+            ],
+
+            // =================================================================
             // PORTS TABLE - Network Interfaces (Basic Info)
             // =================================================================
             [

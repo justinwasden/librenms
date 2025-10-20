@@ -1,25 +1,36 @@
 {{--
     PureStorage Array Overview
-    Displays comprehensive array information, performance metrics, and volumes
+    Displays comprehensive array information, performance metrics, volumes, and controllers
 --}}
 
 @php
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
 use App\Models\Storage;
+use App\Models\EntPhysical;
 
 $device_id = $device['device_id'];
 
-// Get the array itself (usually stored with array name as storage_descr)
-$array = Storage::where('device_id', $device_id)
-    ->where('type', 'rest-api')
-    ->where(function ($query) {
-        $query->where('storage_descr', $device['hostname'])
-              ->orWhere('storage_descr', 'like', '%X50%')
-              ->orWhere('storage_descr', 'like', '%X20%')
-              ->orWhere('storage_descr', 'like', '%MX%');
-    })
-    ->first();
+// Get array data from REST API metrics table (stored from /api/2.26/arrays endpoint)
+$array_data = DB::table('rest_api_metrics')
+    ->where('device_id', $device_id)
+    ->where('resource_type', 'arrays')
+    ->orderBy('last_updated', 'desc')
+    ->get()
+    ->keyBy('metric_key');
+
+// Extract array metrics
+$array_name = $array_data->get('name')?->metric_value ?? $device['hostname'];
+$capacity = (float)($array_data->get('capacity')?->metric_value ?? 0);
+$total_physical = (float)($array_data->get('space_total_physical')?->metric_value ?? 0);
+$total_provisioned = (float)($array_data->get('space_total_provisioned')?->metric_value ?? 0);
+$data_reduction = (float)($array_data->get('space_data_reduction')?->metric_value ?? 1.0);
+$total_reduction = (float)($array_data->get('space_total_reduction')?->metric_value ?? 1.0);
+$unique = (float)($array_data->get('space_unique')?->metric_value ?? 0);
+$shared = (float)($array_data->get('space_shared')?->metric_value ?? 0);
+$snapshots = (float)($array_data->get('space_snapshots')?->metric_value ?? 0);
+$version = $array_data->get('version')?->metric_value ?? $device['version'] ?? 'Unknown';
+$os = $array_data->get('os')?->metric_value ?? 'Purity//FA';
 
 // Get volumes only - exclude non-volume entries
 $volumes = Storage::where('device_id', $device_id)
@@ -41,21 +52,67 @@ $volumes = Storage::where('device_id', $device_id)
               ->whereNotLike('storage_descr', 'RSA-Druva%')
               ->whereNotLike('storage_descr', 'ALMH::%');
     })
-    ->where('storage_descr', '!=', $device['hostname']) // Exclude the array itself
+    ->where('storage_descr', '!=', $device['hostname'])
     ->orderBy('storage_descr')
     ->get();
 
-$has_data = !is_null($array) || $volumes->count() > 0;
+// Get controllers from entPhysical table (CT0, CT1 only)
+$controllers = EntPhysical::where('device_id', $device_id)
+    ->whereIn('entPhysicalDescr', ['CT0', 'CT1'])
+    ->orderBy('entPhysicalDescr')
+    ->get();
 
-// Helper to get sensor value safely
-$getSensorValue = function($metric_name) use ($device_id) {
-    $sensor = DB::table('sensors')
-        ->where('device_id', $device_id)
-        ->where('sensor_descr', 'like', "%{$metric_name}%")
-        ->orderBy('lastupdate', 'desc')
-        ->first();
-    return $sensor?->sensor_current ?? null;
-};
+// Get performance metrics from sensors table
+$read_bw = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%read_bytes_per_sec%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$read_bw_val = ($read_bw?->sensor_current ?? 0) / 1024 / 1024;
+
+$write_bw = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%write_bytes_per_sec%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$write_bw_val = ($write_bw?->sensor_current ?? 0) / 1024 / 1024;
+
+$read_iops = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%reads_per_sec%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$read_iops_val = $read_iops?->sensor_current ?? 0;
+
+$write_iops = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%writes_per_sec%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$write_iops_val = $write_iops?->sensor_current ?? 0;
+
+$read_lat = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%usec_per_read_op%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$read_lat_val = ($read_lat?->sensor_current ?? 0) / 1000;
+
+$write_lat = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%usec_per_write_op%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$write_lat_val = ($write_lat?->sensor_current ?? 0) / 1000;
+
+$queue_read_lat = DB::table('sensors')
+    ->where('device_id', $device_id)
+    ->where('sensor_descr', 'like', '%queue_usec_per_read_op%')
+    ->orderBy('lastupdate', 'desc')
+    ->first();
+$queue_read_lat_val = ($queue_read_lat?->sensor_current ?? 0) / 1000;
+
+$has_data = $array_data->count() > 0;
 
 @endphp
 
@@ -83,7 +140,6 @@ $getSensorValue = function($metric_name) use ($device_id) {
     </div>
     <div class="panel-body" style="padding: 20px;">
 
-        @if($array)
         <!-- Array Information and Performance Metrics Row -->
         <div class="row" style="margin-bottom: 30px;">
             <!-- Left Column: Array Information -->
@@ -93,52 +149,33 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 </h4>
                 <table class="table table-striped" style="margin-bottom: 0;">
                     <tbody>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold; width: 50%;">Array Name</td>
-                            <td>{{ $array->storage_descr ?? $device['hostname'] }}</td>
+                            <td>{{ $array_name }}</td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold;">Purity Version</td>
-                            <td>{{ $device['version'] ?? 'Unknown' }}</td>
+                            <td>{{ $version }}</td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Raw Capacity</td>
-                            <td>{{ Number::formatBi($array->storage_size ?? 0) }}</td>
+                            <td>{{ Number::formatBi($capacity) }}</td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold;">Total Physical Space</td>
-                            <td>{{ Number::formatBi($array->storage_used ?? 0) }}</td>
+                            <td>{{ Number::formatBi($total_physical) }}</td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Total Provisioned Space</td>
-                            <td>
-                                @php
-                                    $provisioned = DB::table('storage')
-                                        ->where('device_id', $device_id)
-                                        ->where('type', 'rest-api')
-                                        ->sum('storage_size');
-                                @endphp
-                                {{ Number::formatBi($provisioned ?? 0) }}
-                            </td>
+                            <td>{{ Number::formatBi($total_provisioned) }}</td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold;">Total Reduction</td>
-                            <td>
-                                @php
-                                    // Try to get from a sensor or custom field
-                                    $reduction_metric = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%reduction%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $reduction = $reduction_metric?->sensor_current ?? 9.0;
-                                @endphp
-                                {{ number_format($reduction, 2) }}:1
-                            </td>
+                            <td>{{ number_format($total_reduction, 2) }}:1</td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Last Polled At</td>
-                            <td>{{ $array->updated_at ? \Carbon\Carbon::parse($array->updated_at)->format('Y-m-d H:i:s e') : 'Never' }}</td>
+                            <td>{{ \Carbon\Carbon::now()->format('Y-m-d H:i:s e') }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -151,45 +188,17 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 </h4>
                 <table class="table table-striped" style="margin-bottom: 0;">
                     <tbody>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold; width: 50%;">Read Bandwidth</td>
-                            <td>
-                                @php
-                                    $read_bw = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%read_bytes_per_sec%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $read_bw_val = ($read_bw?->sensor_current ?? 0) / 1024 / 1024;
-                                @endphp
-                                {{ number_format($read_bw_val, 2) }} MB/s
-                            </td>
+                            <td>{{ number_format($read_bw_val, 2) }} MB/s</td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold;">Write Bandwidth</td>
-                            <td>
-                                @php
-                                    $write_bw = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%write_bytes_per_sec%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $write_bw_val = ($write_bw?->sensor_current ?? 0) / 1024 / 1024;
-                                @endphp
-                                {{ number_format($write_bw_val, 2) }} MB/s
-                            </td>
+                            <td>{{ number_format($write_bw_val, 2) }} MB/s</td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Read IOPs</td>
                             <td>
-                                @php
-                                    $read_iops = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%reads_per_sec%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $read_iops_val = $read_iops?->sensor_current ?? 0;
-                                @endphp
                                 {{ number_format($read_iops_val) }}
                                 @if($read_iops_val >= 1000)
                                     ({{ number_format($read_iops_val/1000, 1) }}K)
@@ -199,66 +208,70 @@ $getSensorValue = function($metric_name) use ($device_id) {
                         <tr>
                             <td style="font-weight: bold;">Write IOPs</td>
                             <td>
-                                @php
-                                    $write_iops = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%writes_per_sec%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $write_iops_val = $write_iops?->sensor_current ?? 0;
-                                @endphp
                                 {{ number_format($write_iops_val) }}
                                 @if($write_iops_val >= 1000)
                                     ({{ number_format($write_iops_val/1000, 1) }}K)
                                 @endif
                             </td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Avg Read Latency</td>
-                            <td>
-                                @php
-                                    $read_lat = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%usec_per_read_op%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $read_lat_val = ($read_lat?->sensor_current ?? 0) / 1000;
-                                @endphp
-                                {{ number_format($read_lat_val, 2) }} ms
-                            </td>
+                            <td>{{ number_format($read_lat_val, 2) }} ms</td>
                         </tr>
                         <tr>
                             <td style="font-weight: bold;">Avg Write Latency</td>
-                            <td>
-                                @php
-                                    $write_lat = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%usec_per_write_op%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $write_lat_val = ($write_lat?->sensor_current ?? 0) / 1000;
-                                @endphp
-                                {{ number_format($write_lat_val, 2) }} ms
-                            </td>
+                            <td>{{ number_format($write_lat_val, 2) }} ms</td>
                         </tr>
-                        <tr>
+                        <tr style="background-color: #f9f9f9;">
                             <td style="font-weight: bold;">Queue Read Latency</td>
-                            <td>
-                                @php
-                                    $queue_read_lat = DB::table('sensors')
-                                        ->where('device_id', $device_id)
-                                        ->where('sensor_descr', 'like', '%queue_usec_per_read_op%')
-                                        ->orderBy('lastupdate', 'desc')
-                                        ->first();
-                                    $queue_read_lat_val = ($queue_read_lat?->sensor_current ?? 0) / 1000;
-                                @endphp
-                                {{ number_format($queue_read_lat_val, 2) }} ms
-                            </td>
+                            <td>{{ number_format($queue_read_lat_val, 2) }} ms</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <!-- Controllers Section -->
+        @if($controllers->count() > 0)
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd;">
+            <h4 style="margin-bottom: 15px;">
+                <i class="fa fa-microchip"></i> Controllers
+            </h4>
+            <table class="table table-striped table-hover" style="margin-bottom: 20px;">
+                <thead style="background-color: #f5f5f5;">
+                    <tr>
+                        <th style="font-weight: bold;">Controller Name</th>
+                        <th style="font-weight: bold;">Model</th>
+                        <th style="font-weight: bold;">Status</th>
+                        <th style="font-weight: bold;">Mode</th>
+                        <th style="font-weight: bold;">Version</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($controllers as $controller)
+                    <tr>
+                        <td><strong>{{ $controller->entPhysicalDescr ?? 'Unknown' }}</strong></td>
+                        <td>{{ $controller->entPhysicalModelName ?? 'N/A' }}</td>
+                        <td>
+                            @php
+                                $status = strtolower($controller->entPhysicalOperStatus ?? 'unknown');
+                            @endphp
+                            @if($status === 'ready' || $status === 'ok' || $status === 'up')
+                                <span class="label label-success">{{ strtoupper($controller->entPhysicalOperStatus ?? 'OK') }}</span>
+                            @elseif($status === 'failed' || $status === 'down')
+                                <span class="label label-danger">{{ strtoupper($controller->entPhysicalOperStatus ?? 'FAILED') }}</span>
+                            @else
+                                <span class="label label-warning">{{ strtoupper($controller->entPhysicalOperStatus ?? 'UNKNOWN') }}</span>
+                            @endif
+                        </td>
+                        <td>{{ ucfirst($controller->entPhysicalClass ?? 'N/A') }}</td>
+                        <td>{{ $controller->entPhysicalHardwareRev ?? 'N/A' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @endif
 
         <!-- Volumes Section -->
         @if($volumes->count() > 0)
@@ -267,49 +280,33 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 <i class="fa fa-hdd-o"></i> Volumes
             </h4>
             <table class="table table-striped table-hover" style="margin-bottom: 0;">
-                <thead>
+                <thead style="background-color: #f5f5f5;">
                     <tr>
                         <th style="font-weight: bold;">Volume Name</th>
-                        <th style="font-weight: bold; text-align: right;">Read Bandwidth</th>
-                        <th style="font-weight: bold; text-align: right;">Write Bandwidth</th>
-                        <th style="font-weight: bold; text-align: right;">Read IOPs</th>
-                        <th style="font-weight: bold; text-align: right;">Write IOPs</th>
-                        <th style="font-weight: bold; text-align: right;">Avg Read Latency</th>
-                        <th style="font-weight: bold; text-align: right;">Avg Write Latency</th>
+                        <th style="font-weight: bold; text-align: right;">Provisioned</th>
+                        <th style="font-weight: bold; text-align: right;">Used</th>
+                        <th style="font-weight: bold; text-align: right;">Available</th>
+                        <th style="font-weight: bold; text-align: center;">Usage %</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($volumes as $volume)
-                    @php
-                        // Try to get performance data from sensors table
-                        $vol_read_bw = DB::table('sensors')
-                            ->where('device_id', $device_id)
-                            ->where('sensor_descr', 'like', "%{$volume->storage_descr}%read%")
-                            ->orderBy('lastupdate', 'desc')
-                            ->first();
-                        $vol_read_bw_val = ($vol_read_bw?->sensor_current ?? 0) / 1024;
-
-                        $vol_write_bw = DB::table('sensors')
-                            ->where('device_id', $device_id)
-                            ->where('sensor_descr', 'like', "%{$volume->storage_descr}%write%")
-                            ->orderBy('lastupdate', 'desc')
-                            ->first();
-                        $vol_write_bw_val = ($vol_write_bw?->sensor_current ?? 0) / 1024;
-
-                        // Default to 0 for IOPS and latency if not found
-                        $vol_read_iops = 0;
-                        $vol_write_iops = 0;
-                        $vol_read_lat = 0;
-                        $vol_write_lat = 0;
-                    @endphp
                     <tr>
                         <td><strong>{{ $volume->storage_descr }}</strong></td>
-                        <td style="text-align: right;">{{ number_format($vol_read_bw_val, 2) }} KB/s</td>
-                        <td style="text-align: right;">{{ number_format($vol_write_bw_val, 2) }} KB/s</td>
-                        <td style="text-align: right;">{{ number_format($vol_read_iops) }}</td>
-                        <td style="text-align: right;">{{ number_format($vol_write_iops) }}</td>
-                        <td style="text-align: right;">{{ number_format($vol_read_lat, 2) }} ms</td>
-                        <td style="text-align: right;">{{ number_format($vol_write_lat, 2) }} ms</td>
+                        <td style="text-align: right;">{{ Number::formatBi($volume->storage_size ?? 0) }}</td>
+                        <td style="text-align: right;">{{ Number::formatBi($volume->storage_used ?? 0) }}</td>
+                        <td style="text-align: right;">{{ Number::formatBi(($volume->storage_size ?? 0) - ($volume->storage_used ?? 0)) }}</td>
+                        <td style="text-align: center;">
+                            @php
+                                $perc = ($volume->storage_size && $volume->storage_size > 0) 
+                                    ? round(($volume->storage_used / $volume->storage_size) * 100, 1) 
+                                    : 0;
+                                $perc_color = $perc > 80 ? '#d9534f' : ($perc > 60 ? '#f0ad4e' : '#5cb85c');
+                            @endphp
+                            <span style="background-color: {{ $perc_color }}; color: white; padding: 2px 8px; border-radius: 3px; display: inline-block;">
+                                {{ $perc }}%
+                            </span>
+                        </td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -317,7 +314,6 @@ $getSensorValue = function($metric_name) use ($device_id) {
         </div>
         @endif
 
-        @endif
     </div>
 </div>
 
@@ -325,13 +321,15 @@ $getSensorValue = function($metric_name) use ($device_id) {
 
 <style>
 .panel-body {
-    background-color: #1a1a1a;
-    color: #e0e0e0;
+    background-color: transparent;
 }
 .table-striped > tbody > tr:nth-of-type(odd) {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: rgba(0, 0, 0, 0.02);
 }
 .table-striped > tbody > tr:nth-of-type(even) {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: #fff;
+}
+.table-striped > tbody > tr:hover {
+    background-color: #f5f5f5;
 }
 </style>
