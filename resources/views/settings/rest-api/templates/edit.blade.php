@@ -408,6 +408,9 @@ function endpointManager() {
         selectedEndpoint: {},
         originalEndpoint: {},
         isDirty: false,
+        previewLoading: false,
+        previewSuccess: false,
+        previewError: false,
 
         loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
@@ -455,6 +458,77 @@ function endpointManager() {
             this.selectedEndpoint = JSON.parse(JSON.stringify(this.endpoints[index]));
             this.originalEndpoint = JSON.parse(JSON.stringify(this.endpoints[index]));
             this.isDirty = false;
+            this.previewLoading = false;
+            this.previewSuccess = false;
+            this.previewError = false;
+        },
+
+        // NEW METHOD: Fetch API Preview
+        async fetchApiPreview() {
+            if (!this.selectedEndpoint.path) {
+                alert('Please enter an API path first');
+                return;
+            }
+
+            this.previewLoading = true;
+            this.previewSuccess = false;
+            this.previewError = false;
+
+            try {
+                const templateId = {{ $template->id }};
+                const connIdx = this.selectedEndpoint._connection_index || 0;
+                const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
+                
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+                const res = await fetch('/api/rest-api/template-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                    body: JSON.stringify({
+                        template_id: templateId,
+                        connection_index: connIdx,
+                        endpoint_index: epIdx
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (data.success) {
+                    this.previewLoading = false;
+                    this.previewSuccess = true;
+                    this.previewError = false;
+                    
+                    // Show preview and recommendations
+                    let previewText = 'API Preview successful!\n\n';
+                    previewText += 'Response Structure:\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
+                    if (data.recommendations && data.recommendations.length > 0) {
+                        previewText += 'Found ' + data.recommendations.length + ' recommended mappings!';
+                    }
+                    alert(previewText);
+                } else {
+                    this.previewLoading = false;
+                    this.previewSuccess = false;
+                    this.previewError = true;
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error(err);
+                this.previewLoading = false;
+                this.previewSuccess = false;
+                this.previewError = true;
+                alert('Failed to fetch preview: ' + err.message);
+            }
+        },
+
+        // NEW METHOD: Beautify JSON
+        beautifyJson() {
+            try {
+                const json = JSON.parse(this.selectedEndpoint.metric_map_json);
+                this.selectedEndpoint.metric_map_json = JSON.stringify(json, null, 2);
+                this.checkForChanges();
+            } catch (e) {
+                alert('Invalid JSON: ' + e.message);
+            }
         },
 
         // Check if current endpoint has changes
