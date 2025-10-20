@@ -347,21 +347,24 @@ class RestApiTemplateController extends Controller
      */
     public function getTemplatePreview(Request $request)
     {
-        $validated = $request->validate([
-            'template_id' => 'required|exists:rest_api_templates,id',
-            'connection_index' => 'required|integer|min:0',
-            'endpoint_index' => 'required|integer|min:0',
-            'device_id' => 'nullable|exists:devices,device_id', // Optional device for testing
-            'credential_id' => 'nullable|exists:rest_api_credentials,id', // Optional credential override for testing
-        ]);
-
-        $template = RestApiTemplate::findOrFail($validated['template_id']);
-        $connIdx = $validated['connection_index'];
-        $epIdx = $validated['endpoint_index'];
-        $deviceId = $validated['device_id'] ?? null;
-        $credentialId = $validated['credential_id'] ?? null;
-
         try {
+            $validated = $request->validate([
+                'template_id' => 'required|exists:rest_api_templates,id',
+                'connection_index' => 'required|integer|min:0',
+                'endpoint_index' => 'required|integer|min:0',
+                'device_id' => 'nullable|exists:devices,device_id',
+                'credential_id' => 'nullable|exists:rest_api_credentials,id',
+            ]);
+
+            $template = RestApiTemplate::findOrFail($validated['template_id']);
+            $connIdx = $validated['connection_index'];
+            $epIdx = $validated['endpoint_index'];
+            $deviceId = $validated['device_id'] ?? null;
+            $credentialId = $validated['credential_id'] ?? null;
+
+            \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
+
+            try {
             // Get template data
             $templateData = is_array($template->template_data) 
                 ? $template->template_data 
@@ -418,11 +421,15 @@ class RestApiTemplateController extends Controller
                 'recommendations' => $recommendations,
             ]);
 
-        } catch (\Exception $e) {
-            \Log::warning("Template preview error: " . $e->getMessage());
+            } catch (\Exception $e) {
+                \Log::error("Template preview inner error: " . $e->getMessage());
+                throw $e;
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Template preview error: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 400);
         }
     }
