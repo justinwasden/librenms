@@ -536,4 +536,68 @@ class RestApiTemplateController extends Controller
         \Log::info("Using {$authType} authentication directly");
         return \App\RestApi\Credentials\CredentialHelper::getAuthHeaderFromModel($credential);
     }
+
+    /**
+     * Get list of devices for selector dropdown
+     * GET /api/rest-api/devices
+     */
+    public function getDevicesList(Request $request)
+    {
+        try {
+            $devices = \App\Models\Device::select('device_id', 'hostname', 'ip')
+                ->orderBy('hostname')
+                ->get()
+                ->map(function ($device) {
+                    return [
+                        'device_id' => $device->device_id,
+                        'hostname' => $device->hostname,
+                        'ip' => $device->ip,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'devices' => $devices,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to load devices: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to load devices',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get list of REST API credentials for selector dropdown
+     * GET /api/rest-api/credentials
+     */
+    public function getCredentialsList(Request $request)
+    {
+        try {
+            $credentials = \App\Models\RestApiCredential::select('id', 'name', 'description')
+                ->with('authenticationType:id,name')
+                ->orderBy('name')
+                ->get()
+                ->map(function ($cred) {
+                    return [
+                        'id' => $cred->id,
+                        'name' => $cred->name,
+                        'auth_type' => $cred->authenticationType->name ?? 'Unknown',
+                        'description' => $cred->description ?? null,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'credentials' => $credentials,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to load credentials: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to load credentials',
+            ], 500);
+        }
+    }
 }

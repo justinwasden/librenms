@@ -113,6 +113,7 @@ function deviceSelectorData() {
 
         async init() {
             console.log('Device Selector initialized');
+            console.log('Current location origin:', window.location.origin);
             await this.loadDevices();
             await this.loadCredentials();
         },
@@ -121,12 +122,16 @@ function deviceSelectorData() {
             this.deviceSelectorError = '';
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/api/rest-api/devices', {
+                // Use window.location.origin to ensure we're hitting the correct LibreNMS host
+                const url = window.location.origin + '/api/rest-api/devices';
+                console.log('Fetching devices from:', url);
+                const res = await fetch(url, {
                     method: 'GET',
                     headers: { 
                         'X-CSRF-TOKEN': token,
                         'Accept': 'application/json'
-                    }
+                    },
+                    credentials: 'same-origin'
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -146,12 +151,16 @@ function deviceSelectorData() {
             this.deviceSelectorError = '';
             try {
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/api/rest-api/credentials', {
+                // Use window.location.origin to ensure we're hitting the correct LibreNMS host
+                const url = window.location.origin + '/api/rest-api/credentials';
+                console.log('Fetching credentials from:', url);
+                const res = await fetch(url, {
                     method: 'GET',
                     headers: { 
                         'X-CSRF-TOKEN': token,
                         'Accept': 'application/json'
-                    }
+                    },
+                    credentials: 'same-origin'
                 });
                 const data = await res.json();
                 if (data.success) {
