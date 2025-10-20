@@ -39,6 +39,23 @@ use LibreNMS\Validations\Php;
 class Checks
 {
     /**
+     * Check that the script is being run as the correct user
+     */
+    public static function runningUser(): void
+    {
+        // This check ensures the script is run as the librenms user (or root for installation)
+        $running_user = posix_getpwuid(posix_geteuid())['name'];
+        $config_user = getenv('LIBRENMS_USER') ?: 'librenms';
+        
+        // Allow root for installation/setup
+        if ($running_user !== 'root' && $running_user !== $config_user) {
+            echo "ERROR: This script should be run as '$config_user' user, not '$running_user'.\n";
+            echo "Please run: sudo -u $config_user ./lnms <command>\n";
+            exit(1);
+        }
+    }
+
+    /**
      * Post boot Toast messages
      */
     public static function postAuth()
