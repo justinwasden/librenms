@@ -41,6 +41,8 @@ $volumes = Storage::where('device_id', $device_id)
               ->whereNotLike('storage_descr', 'CH1%')
               ->whereNotLike('storage_descr', 'CT0%')
               ->whereNotLike('storage_descr', 'CT1%')
+              ->whereNotLike('storage_descr', '%.BAY%')
+              ->whereNotLike('storage_descr', '%.NVB%')
               ->whereNotLike('storage_descr', 'ITS-RSA%')
               ->whereNotLike('storage_descr', 'ALM-C%')
               ->whereNotLike('storage_descr', 'RSA-X%')
@@ -298,8 +300,8 @@ $has_data = $array_data->count() > 0;
                         <td style="text-align: right;">{{ Number::formatBi(($volume->storage_size ?? 0) - ($volume->storage_used ?? 0)) }}</td>
                         <td style="text-align: center;">
                             @php
-                                $perc = ($volume->storage_size && $volume->storage_size > 0) 
-                                    ? round(($volume->storage_used / $volume->storage_size) * 100, 1) 
+                                $perc = ($volume->storage_size && $volume->storage_size > 0)
+                                    ? round(($volume->storage_used / $volume->storage_size) * 100, 1)
                                     : 0;
                                 $perc_color = $perc > 80 ? '#d9534f' : ($perc > 60 ? '#f0ad4e' : '#5cb85c');
                             @endphp
