@@ -11,6 +11,11 @@
 |
 */
 
+// REST API Template Preview - For fetching API responses during template configuration
+Route::middleware('auth')->prefix('rest-api')->group(function () {
+    Route::post('template-preview', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getTemplatePreview'])->name('template-preview');
+});
+
 Route::prefix('v0')->group(function () {
     Route::get('system', [App\Api\Controllers\LegacyApiController::class, 'server_info'])->name('server_info');
     Route::get('', [App\Api\Controllers\LegacyApiController::class, 'show_endpoints']);

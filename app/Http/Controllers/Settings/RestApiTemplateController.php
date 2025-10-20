@@ -333,6 +333,244 @@ class RestApiTemplateController extends Controller
         ]);
     }
 
+    /**
+     * API endpoint: Get API preview for template endpoint configuration
+     * Called from endpoint-form.blade.php when user clicks "Fetch API Preview"
+     * 
+     * Handles authentication using the same logic as polling:
+     * - API Key: Direct header
+     * - Session Token: Login first to get x-auth-token
+     * - Bearer Token: Direct header
+     * - Basic Auth: Direct header
+     * 
+     * POST /api/rest-api/template-preview
+     */
+    public function getTemplatePreview(Request $request)
+    {
+        $validated = $request->validate([
+            'template_id' => 'required|exists:rest_api_templates,id',
+            'connection_index' => 'required|integer|min:0',
+            'endpoint_index' => 'required|integer|min:0',
+        ]);
+
+        $template = RestApiTemplate::findOrFail($validated['template_id']);
+        $connIdx = $validated['connection_index'];
+        $epIdx = $validated['endpoint_index'];
+
+        try {
+            // Get template data
+            $templateData = is_array($template->template_data) 
+                ? $template->template_data 
+                : json_decode($template->template_data, true);
+
+            if (!isset($templateData['connections'][$connIdx])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Connection not found in template'
+                ], 404);
+            }
+
+            if (!isset($templateData['connections'][$connIdx]['endpoints'][$epIdx])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Endpoint not found in template'
+                ], 404);
+            }
+
+            $connData = $templateData['connections'][$connIdx];
+            $endpointData = $connData['endpoints'][$epIdx];
+
+            // Validate required endpoint fields
+            if (empty($endpointData['path'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Endpoint path is required'
+                ], 400);
+            }
+
+            // Fetch API response
+            $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData);
+
+            // Get vendor mapper for recommendations
+            $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
+            $device = null; // Could add device detection logic here if needed
+            $vendorMapper = $vendorMapperFactory->getMapper($device);
+
+            $recommendations = [];
+            if ($vendorMapper && $apiResponse) {
+                $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, (object)$endpointData);
+            }
+
+            return response()->json([
+                'success' => true,
+                'preview' => $apiResponse,
+                'recommendations' => $recommendations,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::warning("Template preview error: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Fetch API response for template endpoint
+     * Handles authentication the same way as actual polling
+     * 
+     * @param array $connData Connection configuration from template
+     * @param array $endpointData Endpoint configuration from template
+     * @return array API response
+     * @throws \Exception
+     */
+    private function fetchTemplateApiResponse(array $connData, array $endpointData): array
+    {
+        if (empty($connData['base_url'])) {
+            throw new \Exception('Base URL not configured');
+        }
+
+        $client = new \GuzzleHttp\Client([
+            'base_uri' => $connData['base_url'],
+            'timeout' => 15,
+            'verify' => !($connData['disable_ssl_verify'] ?? false),
+        ]);
+
+        // Get authentication headers
+        $headers = $this->getTemplateAuthHeaders($connData, $client);
+
+        // Build the request
+        $method = $endpointData['method'] ?? 'GET';
+        $path = $endpointData['path'];
+
+        // Make the request
+        $response = $client->request($method, $path, [
+            'headers' => $headers,
+        ]);
+
+        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+            throw new \Exception("HTTP {$response->getStatusCode()}");
+        }
+
+        $body = (string)$response->getBody();
+        $decoded = json_decode($body, true);
+
+        if ($decoded === null) {
+            throw new \Exception("Invalid JSON response: " . json_last_error_msg());
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Get authentication headers for template endpoint
+     * Uses the same authentication logic as actual polling
+     * Supports: API Key, Session Token (with login), Bearer Token, Basic Auth
+     * 
+     * @param array $connData Connection configuration
+     * @param $client Guzzle HTTP Client for session token login
+     * @return array Headers array
+     */
+    private function getTemplateAuthHeaders(array $connData, $client): array
+    {
+        if (!isset($connData['credential_id'])) {
+            return [];
+        }
+
+        $credential = \App\Models\RestApiCredential::findOrFail($connData['credential_id']);
+        $authType = Str::lower($credential->authenticationType->name);
+
+        // For session token, we need to login first to get the token
+        if ($authType === 'session token') {
+            $sessionToken = $this->obtainSessionTokenForTemplate(
+                $credential,
+                $connData['base_url'],
+                $connData,
+                !($connData['disable_ssl_verify'] ?? false),
+                $client
+            );
+
+            if ($sessionToken) {
+                $params = $credential->params->pluck('value', 'key')->toArray();
+                $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+                return [
+                    $tokenHeader => $sessionToken,
+                ];
+            }
+
+            return [];
+        }
+
+        // For other auth types, use CredentialHelper
+        return \App\RestApi\Credentials\CredentialHelper::getAuthHeaderFromModel($credential);
+    }
+
+    /**
+     * Obtain session token for template preview
+     * Performs login request using credential's API token
+     * 
+     * @param $credential RestApiCredential model
+     * @param string $baseUrl Base URL of API
+     * @param array $connData Connection configuration
+     * @param bool $verifySsl Whether to verify SSL
+     * @param $client Guzzle HTTP Client
+     * @return string|null Session token or null if failed
+     */
+    private function obtainSessionTokenForTemplate($credential, string $baseUrl, array $connData, bool $verifySsl, $client): ?string
+    {
+        try {
+            $params = $credential->params->pluck('value', 'key')->toArray();
+
+            $apiToken = $params['api_token'] ?? $params['token'] ?? null;
+            $loginPath = $params['login_path'] ?? '/api/login';
+            $tokenHeader = $params['token_header'] ?? 'x-auth-token';
+            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+            $loginMethod = Str::upper($params['login_method'] ?? 'POST');
+
+            if (!$apiToken || !$loginPath) {
+                return null;
+            }
+
+            $loginUrl = rtrim($baseUrl, '/') . '/' . ltrim($loginPath, '/');
+
+            \Log::info("Obtaining session token from: {$loginUrl}");
+
+            $loginOptions = [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'verify' => $verifySsl,
+            ];
+
+            $response = $client->request($loginMethod, $loginUrl, $loginOptions);
+
+            // Check response headers for token
+            if ($response->hasHeader($tokenHeader)) {
+                $sessionToken = $response->getHeader($tokenHeader)[0] ?? null;
+                if ($sessionToken) {
+                    \Log::info("Session token obtained successfully from header: {$tokenHeader}");
+                    return $sessionToken;
+                }
+            }
+
+            // Check response body for token
+            $body = json_decode((string)$response->getBody(), true);
+            if (isset($body['token'])) {
+                \Log::info("Session token obtained successfully from body");
+                return $body['token'];
+            }
+
+            \Log::warning("Could not obtain session token from login response");
+            return null;
+
+        } catch (\Exception $e) {
+            \Log::error("Failed to obtain session token: " . $e->getMessage());
+            return null;
+        }
+    }
+
     private function getSessionToken(array $connData, \App\Models\Device $device, $client, bool $verifySsl): ?string
     {
         if (!isset($connData['credential_id'])) {
