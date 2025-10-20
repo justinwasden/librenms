@@ -4221,7 +4221,7 @@
 					    "descr": "Total Capacity"
 					  },
 					  "type": "graph"
-				}
+				},
         "graphite.enable": {
             "default": false,
             "type": "boolean",
