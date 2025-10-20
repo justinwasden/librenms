@@ -93,7 +93,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 </h4>
                 <table class="table table-striped" style="margin-bottom: 0;">
                     <tbody>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold; width: 50%;">Array Name</td>
                             <td>{{ $array->storage_descr ?? $device['hostname'] }}</td>
                         </tr>
@@ -101,7 +101,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                             <td style="font-weight: bold;">Purity Version</td>
                             <td>{{ $device['version'] ?? 'Unknown' }}</td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Raw Capacity</td>
                             <td>{{ Number::formatBi($array->storage_size ?? 0) }}</td>
                         </tr>
@@ -109,7 +109,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                             <td style="font-weight: bold;">Total Physical Space</td>
                             <td>{{ Number::formatBi($array->storage_used ?? 0) }}</td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Total Provisioned Space</td>
                             <td>
                                 @php
@@ -136,7 +136,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                                 {{ number_format($reduction, 2) }}:1
                             </td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Last Polled At</td>
                             <td>{{ $array->updated_at ? \Carbon\Carbon::parse($array->updated_at)->format('Y-m-d H:i:s e') : 'Never' }}</td>
                         </tr>
@@ -151,7 +151,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 </h4>
                 <table class="table table-striped" style="margin-bottom: 0;">
                     <tbody>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold; width: 50%;">Read Bandwidth</td>
                             <td>
                                 @php
@@ -179,7 +179,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                                 {{ number_format($write_bw_val, 2) }} MB/s
                             </td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Read IOPs</td>
                             <td>
                                 @php
@@ -213,7 +213,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                                 @endif
                             </td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Avg Read Latency</td>
                             <td>
                                 @php
@@ -241,7 +241,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                                 {{ number_format($write_lat_val, 2) }} ms
                             </td>
                         </tr>
-                        <tr style="background-color: #f9f9f9;">
+                        <tr>
                             <td style="font-weight: bold;">Queue Read Latency</td>
                             <td>
                                 @php
@@ -267,7 +267,7 @@ $getSensorValue = function($metric_name) use ($device_id) {
                 <i class="fa fa-hdd-o"></i> Volumes
             </h4>
             <table class="table table-striped table-hover" style="margin-bottom: 0;">
-                <thead style="background-color: #f5f5f5;">
+                <thead>
                     <tr>
                         <th style="font-weight: bold;">Volume Name</th>
                         <th style="font-weight: bold; text-align: right;">Read Bandwidth</th>
