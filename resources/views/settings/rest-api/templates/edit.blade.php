@@ -762,10 +762,16 @@ function endpointManager() {
                 const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
                 
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                // Use window.location.origin to ensure correct host
+                // Try using the web route path instead of /api/
+                const url = window.location.origin + '/api/rest-api/template-preview';
+                console.log('Calling preview API at:', url);
+                console.log('window.location.href:', window.location.href);
 
-                const res = await fetch('/api/rest-api/template-preview', {
+                const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         template_id: templateId,
                         connection_index: connIdx,
@@ -775,7 +781,19 @@ function endpointManager() {
                     })
                 });
 
-                const data = await res.json();
+                console.log('Response status:', res.status);
+                console.log('Response headers:', res.headers);
+                
+                let data;
+                const contentType = res.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    data = await res.json();
+                } else {
+                    const text = await res.text();
+                    console.error('Non-JSON response received:', text.substring(0, 500));
+                    throw new Error('Server returned non-JSON response (status ' + res.status + '). Check browser console for details.');
+                }
                 
                 if (data.success) {
                     this.previewLoading = false;
@@ -795,7 +813,7 @@ function endpointManager() {
                     this.deviceSelectorError = '✗ Error: ' + (data.error || 'Unknown error');
                 }
             } catch (err) {
-                console.error(err);
+                console.error('Preview error:', err);
                 this.previewLoading = false;
                 this.previewError = true;
                 this.deviceSelectorError = '✗ Failed to fetch preview: ' + err.message;
