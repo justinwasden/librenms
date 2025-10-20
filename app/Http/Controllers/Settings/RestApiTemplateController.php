@@ -276,19 +276,23 @@ class RestApiTemplateController extends Controller
     public function getTemplatePreview(Request $request)
     {
         try {
-            $validated = $request->validate([
-                'template_id' => 'required|exists:rest_api_templates,id',
-                'connection_index' => 'required|integer|min:0',
-                'endpoint_index' => 'required|integer|min:0',
-                'device_id' => 'nullable|exists:devices,device_id',
-                'credential_id' => 'nullable|exists:rest_api_credentials,id',
-            ]);
+            // Manually validate instead of using $request->validate()
+            $templateId = $request->input('template_id');
+            $connIdx = $request->input('connection_index');
+            $epIdx = $request->input('endpoint_index');
+            $deviceId = $request->input('device_id');
+            $credentialId = $request->input('credential_id');
 
-            $template = RestApiTemplate::findOrFail($validated['template_id']);
-            $connIdx = $validated['connection_index'];
-            $epIdx = $validated['endpoint_index'];
-            $deviceId = $validated['device_id'] ?? null;
-            $credentialId = $validated['credential_id'] ?? null;
+            // Validate required fields
+            if (!$templateId || !is_numeric($connIdx) || !is_numeric($epIdx)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Missing required parameters'
+                ], 400);
+            }
+
+            // Verify template exists
+            $template = RestApiTemplate::findOrFail($templateId);
 
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
 
