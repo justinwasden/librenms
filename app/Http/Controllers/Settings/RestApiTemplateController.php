@@ -7,14 +7,6 @@ use App\Models\RestApiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
-// Suppress reset() error globally for this controller
-set_error_handler(function ($errno, $errstr) {
-    if (strpos($errstr, 'reset()') !== false && strpos($errstr, 'passed by reference') !== false) {
-        return true; // Suppress this specific error
-    }
-    return false; // Let other errors pass through
-});
-
 class RestApiTemplateController extends Controller
 {
     public function index()
