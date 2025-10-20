@@ -367,6 +367,16 @@ class Device extends BaseModel
     }
 
     /**
+     * Get the device status array for legacy code compatibility
+     *
+     * @return array
+     */
+    public function getDeviceStatus(): array
+    {
+        return $this->toArray();
+    }
+
+    /**
      * @return string
      */
     public function logo()
