@@ -575,7 +575,7 @@ class RestApiTemplateController extends Controller
     public function getCredentialsList(Request $request)
     {
         try {
-            $credentials = \App\Models\RestApiCredential::select('id', 'name', 'description')
+            $credentials = \App\Models\RestApiCredential::select('id', 'name')
                 ->with('authenticationType:id,name')
                 ->orderBy('name')
                 ->get()
@@ -583,8 +583,8 @@ class RestApiTemplateController extends Controller
                     return [
                         'id' => $cred->id,
                         'name' => $cred->name,
-                        'auth_type' => $cred->authenticationType->name ?? 'Unknown',
-                        'description' => $cred->description ?? null,
+                        'auth_type' => optional($cred->authenticationType)->name ?? 'Unknown',
+                        'description' => null,
                     ];
                 });
 
@@ -596,7 +596,7 @@ class RestApiTemplateController extends Controller
             \Log::error('Failed to load credentials: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to load credentials',
+                'error' => 'Failed to load credentials: ' . $e->getMessage(),
             ], 500);
         }
     }
