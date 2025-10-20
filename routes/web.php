@@ -274,8 +274,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
 
-        // Metric Field Mapping Routes
-        require __DIR__ . '/metric_field_mapping_routes.php';
+        // Note: Metric Field Mapping Routes are already defined above in the admin prefix group
 
     });
 
