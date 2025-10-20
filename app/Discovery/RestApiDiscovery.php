@@ -167,7 +167,7 @@ class RestApiDiscovery
             $cacheKey = "connection_{$connection->id}";
             
             if (!isset($this->sessionTokens[$cacheKey])) {
-                Log::info("Obtaining session token for connection: {$connection->name}");
+                Log::info("Obtaining session token for connection: {$conn->name}");
                 
                 $params = $credential->params->pluck('value', 'key')->toArray();
                 $connectionConfig = [
@@ -225,19 +225,22 @@ class RestApiDiscovery
     }
 
     /**
-     * Check if item should be filtered out for Pure Storage devices
-     * Filters hardware components and VMs from network interface discovery
-     * 
-     * CRITICAL: This is the FIRST LINE OF DEFENSE - must catch all invalid items
-     * before they get routed to the ports table
+     * Check if item should be filtered out during discovery
+     * For Pure Storage: filters hardware, VMs/hosts from network interfaces AND non-storage items from volumes
      */
     protected function shouldFilterPureStorageItem(array $itemContext, string $resourceType): bool
     {
-        // Only filter for network interfaces on Pure Storage devices
+        // Only filter for Pure Storage devices
         if ($this->device->os !== 'purestorage') {
             return false;
         }
 
+        // Filter for storage/volumes - exclude hosts, hardware, array itself
+        if (in_array($resourceType, ['storage', 'volume'])) {
+            return $this->shouldFilterNonStorageItem($itemContext);
+        }
+
+        // Filter for network interfaces - exclude hardware and VMs
         if (!in_array($resourceType, ['network-interface', 'network-interfaces', 'port', 'ports'])) {
             return false;
         }
@@ -309,6 +312,62 @@ class RestApiDiscovery
         return true;
     }
 
+    /**
+     * Check if item is a non-storage item (hosts, hardware, array, etc.)
+     * Used to filter storage volumes during discovery
+     */
+    protected function shouldFilterNonStorageItem(array $itemContext): bool
+    {
+        if (empty($itemContext['name'])) {
+            return false;
+        }
+
+        $name = $itemContext['name'];
+
+        // Hardware components
+        $hardwarePatterns = [
+            '/^CH[0-9]\./i',       // Chassis components: CH0.BAY*, CH0.PWR*, etc
+            '/^CH[0-9]$/i',         // Chassis itself
+        ];
+
+        foreach ($hardwarePatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering hardware component: {$name}");
+                return true;
+            }
+        }
+
+        // Hosts and ESXi
+        $hostPatterns = [
+            '/^ITS-RSA-ESXI-/i',      // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-S2S2, etc
+            '/^ALM-C220-ESXI-/i',     // ALM-C220-ESXI-01, etc
+            '/^ALMH-C[0-9]S[0-9]+$/i', // ALMH-C1S5, ALMH-C1S6, etc - ESXi hosts
+            '/^RSA-IAAS-/i',          // RSA-IAAS-HX5-01, RSA-IAAS-HX5-02, etc
+            '/^RSA-MH-/i',            // RSA-MH-X20 (Hyperconverged node, not a volume)
+        ];
+
+        foreach ($hostPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                Log::debug("Filtering host/infrastructure from storage: {$name}");
+                return true;
+            }
+        }
+
+        // Array itself
+        if (preg_match('/^RSA-PS-/i', $name)) {
+            Log::debug("Filtering array itself from storage: {$name}");
+            return true;
+        }
+
+        // If it has 0 provisioned space, it's likely not a real volume
+        if (isset($itemContext['provisioned']) && $itemContext['provisioned'] == 0) {
+            Log::debug("Filtering zero-provisioned item from storage: {$name}");
+            return true;
+        }
+
+        return false;
+    }
+
     protected function processMultiItemResponse(array $response, $endpoint, array $metricMap, string $resourceType): void
     {
         $items = $response['items'] ?? $response['data'] ?? [];
@@ -334,11 +393,14 @@ class RestApiDiscovery
                 'name' => $item['name'] ?? null,
                 'id' => $item['id'] ?? null,
                 'index' => $index,
+                'provisioned' => $item['provisioned'] ?? null,  // For storage filtering
             ];
             
-            // Filter out hardware components and VMs for Pure Storage
+            // FIRST LINE OF DEFENSE: Filter out hardware components and VMs for Pure Storage
+            // This prevents them from being discovered as storage or network interfaces
             if ($this->shouldFilterPureStorageItem($itemContext, $resourceType)) {
                 $filteredCount++;
+                Log::debug("[{$endpoint->name}] Filtered item: " . ($itemContext['name'] ?? "item_{$index}"));
                 continue;
             }
             
