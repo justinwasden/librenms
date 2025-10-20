@@ -73,6 +73,24 @@ class DataRouter
         }
     }
 
+        }
+
+        $name = $itemContext['name'];
+
+        // Pod/container volumes - not actual volumes
+        $podPatterns = [
+            '/^[A-Z]+::/i',  // Pod namespace volumes: ALMH::, etc
+        ];
+
+        foreach ($podPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Check if item is a hardware sensor (fan, temperature)
      */
