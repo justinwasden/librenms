@@ -44,6 +44,10 @@ class DataRouter
                 Log::debug("[{$endpointName}] Skipping non-network interface: {$itemContext['name']}");
                 return;
             }
+            
+            // CRITICAL: During discovery, ensure the port exists in the database
+            // This creates port records even if there are no metrics to store
+            $this->ensurePortExists($itemContext, $endpointName);
         }
 
         // For storage (volumes), skip items that shouldn't be in storage table
@@ -636,6 +640,52 @@ class DataRouter
     /**
      * Check if key should be skipped (pagination metadata)
      */
+    /**
+     * CRITICAL: Ensure port exists during discovery
+     * This creates the port record immediately during discovery,
+     * even if there are no metrics to store.
+     */
+    protected function ensurePortExists(array $itemContext, string $endpointName = 'unknown'): void
+    {
+        try {
+            $portName = $itemContext['name'] ?? null;
+
+            if (!$portName) {
+                Log::warning("[{$endpointName}] Cannot create port without name");
+                return;
+            }
+
+            $port = Port::where('device_id', $this->device->device_id)
+                ->where('ifName', $portName)
+                ->first();
+
+            if ($port) {
+                if ($port->deleted == 1) {
+                    $port->update(['deleted' => 0]);
+                    Log::info("[{$endpointName}] Reactivated port: {$portName}");
+                }
+                return;
+            }
+
+            Port::create([
+                'device_id' => $this->device->device_id,
+                'ifName' => substr($portName, 0, 255),
+                'ifDescr' => substr($portName, 0, 255),
+                'port_descr_type' => 'rest-api',
+                'ifIndex' => abs(crc32($this->device->device_id . '_' . $portName)),
+                'ifType' => 6,
+                'ifOperStatus' => 'up',
+                'ifAdminStatus' => 1,
+                'ifSpeed' => 1000000000,
+                'deleted' => 0,
+            ]);
+
+            Log::info("[{$endpointName}] DISCOVERY: Created port: {$portName}");
+        } catch (\Exception $e) {
+            Log::error("[{$endpointName}] Failed to ensure port exists: " . $e->getMessage());
+        }
+    }
+
     protected function shouldSkip(string $key): bool
     {
         $cleanKey = strtolower($key);
