@@ -72,6 +72,9 @@ Route::get('graph/{path?}', GraphController::class)
 
 // WebUI
 Route::middleware(['auth'])->group(function () {
+    // REST API Template Preview endpoint
+    Route::post('/api/rest-api/template-preview', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getTemplatePreview'])->name('api.rest-api.template-preview');
+
     // pages
     Route::post('alert/{alert}/ack', [AlertController::class, 'ack'])->name('alert.ack');
     Route::resource('device-groups', DeviceGroupController::class);
