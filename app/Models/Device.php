@@ -367,13 +367,25 @@ class Device extends BaseModel
     }
 
     /**
-     * Get the device status array for legacy code compatibility
+     * Get the device status enum for display purposes
      *
-     * @return array
+     * @return \LibreNMS\Enum\DeviceStatus
      */
-    public function getDeviceStatus(): array
+    public function getDeviceStatus(): \LibreNMS\Enum\DeviceStatus
     {
-        return $this->toArray();
+        if ($this->disabled) {
+            return \LibreNMS\Enum\DeviceStatus::DISABLED;
+        }
+
+        if (! $this->last_polled) {
+            return \LibreNMS\Enum\DeviceStatus::NEVER_POLLED;
+        }
+
+        if ($this->status) {
+            return $this->ignore ? \LibreNMS\Enum\DeviceStatus::IGNORED_UP : \LibreNMS\Enum\DeviceStatus::UP;
+        }
+
+        return $this->ignore ? \LibreNMS\Enum\DeviceStatus::IGNORED_DOWN : \LibreNMS\Enum\DeviceStatus::DOWN;
     }
 
     /**
