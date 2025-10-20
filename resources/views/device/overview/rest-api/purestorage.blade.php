@@ -118,11 +118,11 @@ $has_data = $array_data->count() > 0;
 @if(!$has_data)
 <div class="row">
     <div class="col-md-12">
-        <x-alert type="info">
+        <div class="alert alert-info">
             <i class="fa fa-info-circle"></i>
             <strong>No Pure Storage data available</strong>
             <br>Data will appear after the next polling cycle.
-        </x-alert>
+        </div>
     </div>
 </div>
 @else
@@ -248,11 +248,11 @@ $has_data = $array_data->count() > 0;
                                 $status = strtolower($controller->entPhysicalOperStatus ?? 'unknown');
                             @endphp
                             @if($status === 'ready' || $status === 'ok' || $status === 'up')
-                                <x-label status="up">{{ strtoupper($controller->entPhysicalOperStatus ?? 'OK') }}</x-label>
+                                <span class="label label-success">{{ strtoupper($controller->entPhysicalOperStatus ?? 'OK') }}</span>
                             @elseif($status === 'failed' || $status === 'down')
-                                <x-label status="down">{{ strtoupper($controller->entPhysicalOperStatus ?? 'FAILED') }}</x-label>
+                                <span class="label label-danger">{{ strtoupper($controller->entPhysicalOperStatus ?? 'FAILED') }}</span>
                             @else
-                                <x-label status="warning">{{ strtoupper($controller->entPhysicalOperStatus ?? 'UNKNOWN') }}</x-label>
+                                <span class="label label-warning">{{ strtoupper($controller->entPhysicalOperStatus ?? 'UNKNOWN') }}</span>
                             @endif
                         </td>
                         <td>{{ ucfirst($controller->entPhysicalClass ?? 'N/A') }}</td>
@@ -298,9 +298,9 @@ $has_data = $array_data->count() > 0;
                                 $perc = ($volume->storage_size && $volume->storage_size > 0) 
                                     ? round(($volume->storage_used / $volume->storage_size) * 100, 1) 
                                     : 0;
-                                $status_map = $perc > 80 ? 'danger' : ($perc > 60 ? 'warning' : 'ok');
+                                $label_class = $perc > 80 ? 'label-danger' : ($perc > 60 ? 'label-warning' : 'label-success');
                             @endphp
-                            <x-label :status="$status_map">{{ $perc }}%</x-label>
+                            <span class="label {{ $label_class }}">{{ $perc }}%</span>
                         </td>
                     </tr>
                     @endforeach
