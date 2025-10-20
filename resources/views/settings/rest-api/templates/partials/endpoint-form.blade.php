@@ -146,31 +146,36 @@
             </div>
 
             {{-- Device Selection for Testing --}}
-            <div class="form-group mb-3">
-                <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}">
-                    <i class="fas fa-server"></i> <strong>Select Device for Testing</strong> <span class="text-danger">*</span>
+            <div class="form-group mb-3" style="background-color: #fff3cd; padding: 15px; border: 2px solid #ffc107; border-radius: 5px;">
+                <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}" style="font-size: 16px; font-weight: bold; color: #000;">
+                    <i class="fas fa-exclamation-triangle" style="color: #ff6b6b;"></i> SELECT A DEVICE TO TEST <span class="text-danger">*REQUIRED*</span>
                 </label>
                 <select class="form-control test-device" 
                         id="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}"
                         data-conn-idx="{{ $connectionIndex }}"
-                        data-ep-idx="{{ $endpointIndex }}">
-                    <option value="">-- SELECT A DEVICE TO TEST --</option>
+                        data-ep-idx="{{ $endpointIndex }}"
+                        style="font-size: 14px; font-weight: bold; border: 2px solid #ff6b6b;">
+                    <option value="" selected style="font-weight: bold; color: red;">🔴 *** REQUIRED *** SELECT A DEVICE ***</option>
                     @foreach(\App\Models\Device::orderBy('hostname')->get() as $device)
                         <option value="{{ $device->device_id }}">
-                            {{ $device->hostname }}
+                            ✓ {{ $device->hostname }}
                             @if($device->ip)
                                 ({{ $device->ip }})
                             @endif
                         </option>
                     @endforeach
                 </select>
-                <small class="form-text text-muted">
-                    <strong>Required to:</strong> Replace {device_hostname}, {device_ip} placeholders + obtain session tokens for authentication
+                <small class="form-text" style="color: #d9534f; font-weight: bold; margin-top: 10px; display: block;">
+                    ⚠️ WITHOUT SELECTING A DEVICE: Placeholders like {device_hostname} will NOT be replaced and you'll get "Bad hostname" error<br/>
+                    ✓ AFTER SELECTING A DEVICE: All placeholders replaced + authentication tokens obtained + endpoint tested
                 </small>
             </div>
 
             {{-- API Preview Fetch Button --}}
             <div class="form-group mb-3">
+                <div class="alert alert-warning" style="font-size: 14px; font-weight: bold;">
+                    <i class="fas fa-arrow-up"></i> Did you select a device above? If not, go back and select one before clicking this button!
+                </div>
                 <button type="button" 
                         class="btn btn-info btn-sm fetch-api-preview"
                         data-conn-idx="{{ $connectionIndex }}"
