@@ -1,3 +1,4 @@
+{{-- /resources/views/settings/rest-api/templates/partials/endpoint-form.blade.php --}}
 <div class="border rounded p-3 bg-light">
 
     {{-- Row 1: Endpoint Name and Path (Consolidated) --}}
@@ -21,11 +22,11 @@
                        class="form-control endpoint-path"
                        name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][path]"
                        value="{{ $endpoint['path'] ?? '' }}"
-                       placeholder="/api/endpoint"
+                       placeholder="/api/endpoint or /api/{device_hostname}/endpoint"
                        data-conn-idx="{{ $connectionIndex }}"
                        data-ep-idx="{{ $endpointIndex }}"
                        required>
-                <small class="form-text text-muted">Example: /api/v1/data</small>
+                <small class="form-text text-muted">Example: /api/v1/data or /api/{device_hostname}/drives</small>
             </div>
         </div>
     </div>
@@ -90,7 +91,6 @@
         <div class="col-md-6">
             <div class="form-group">
                 <div class="custom-control custom-checkbox pt-4">
-                    {{-- Hidden input to ensure a value is always sent --}}
                     <input type="hidden"
                            name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][enabled]"
                            value="0">
@@ -142,19 +142,19 @@
             <div class="alert alert-info mb-3">
                 <i class="fas fa-info-circle"></i>
                 <strong>Map API response fields to LibreNMS metrics.</strong><br>
-                Configure the endpoint above, then click "Fetch API Preview" to see available fields.
+                1. Select a device below 2. Click "Fetch API Preview" 3. Map fields to metrics
             </div>
 
             {{-- Device Selection for Testing --}}
             <div class="form-group mb-3">
                 <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}">
-                    <i class="fas fa-server"></i> Select Device for Testing (Optional)
+                    <i class="fas fa-server"></i> <strong>Select Device for Testing</strong> <span class="text-danger">*</span>
                 </label>
                 <select class="form-control test-device" 
                         id="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}"
                         data-conn-idx="{{ $connectionIndex }}"
                         data-ep-idx="{{ $endpointIndex }}">
-                    <option value="">-- No device (show template structure) --</option>
+                    <option value="">-- SELECT A DEVICE TO TEST --</option>
                     @foreach(\App\Models\Device::orderBy('hostname')->get() as $device)
                         <option value="{{ $device->device_id }}">
                             {{ $device->hostname }}
@@ -165,7 +165,7 @@
                     @endforeach
                 </select>
                 <small class="form-text text-muted">
-                    Select a device to replace template placeholders like {device_hostname}. Leave empty to see template structure.
+                    <strong>Required to:</strong> Replace {device_hostname}, {device_ip} placeholders + obtain session tokens for authentication
                 </small>
             </div>
 
@@ -189,7 +189,7 @@
                         <h6 class="mb-0">API Response Preview</h6>
                     </div>
                     <div class="card-body">
-                        <ul class="nav nav-tabs" role="tablist" id="preview-tabs-{{ $connectionIndex }}-{{ $endpointIndex }}">
+                        <ul class="nav nav-tabs" role="tablist">
                             <li class="nav-item">
                                 <a class="nav-link active" data-toggle="tab" href="#preview-structure-{{ $connectionIndex }}-{{ $endpointIndex }}" role="tab">
                                     <i class="fas fa-tree"></i> Structure
@@ -222,42 +222,6 @@
                 </div>
             </div>
 
-            {{-- Recommended Mappings (Initially Hidden) --}}
-            <div id="recommendations-container-{{ $connectionIndex }}-{{ $endpointIndex }}" 
-                 style="display: none; margin-bottom: 20px;">
-                <div class="card bg-light border-success">
-                    <div class="card-header bg-success text-white">
-                        <h6 class="mb-0">
-                            <i class="fas fa-lightbulb"></i> Recommended Mappings
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <div id="recommendations-list-{{ $connectionIndex }}-{{ $endpointIndex }}"></div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Interactive Field Mapper --}}
-            <div id="field-mapper-container-{{ $connectionIndex }}-{{ $endpointIndex }}" 
-                 style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">Configure Mappings</h6>
-                    </div>
-                    <div class="card-body">
-                        <div id="field-mapper-{{ $connectionIndex }}-{{ $endpointIndex }}">
-                            {{-- Dynamically populated with field rows --}}
-                        </div>
-                        <button type="button" 
-                                class="btn btn-sm btn-secondary mt-2 add-field-mapping"
-                                data-conn-idx="{{ $connectionIndex }}"
-                                data-ep-idx="{{ $endpointIndex }}">
-                            <i class="fas fa-plus"></i> Add Mapping
-                        </button>
-                    </div>
-                </div>
-            </div>
-
             {{-- Fallback: JSON textarea (for manual entry) --}}
             <div class="form-group">
                 <label for="metric_map_json_{{ $connectionIndex }}_{{ $endpointIndex }}">Metric Mapping (JSON)</label>
@@ -265,19 +229,12 @@
                           name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][metric_map]"
                           class="form-control font-monospace metric-map-json"
                           rows="10"
-                          placeholder="Enter or paste JSON mapping here..."
+                          placeholder="Paste JSON mapping here after fetching preview..."
                           style="white-space: pre; resize: vertical;">{{ old('metric_map_json', json_encode($endpoint['metric_map'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) }}</textarea>
                 <small class="form-text text-muted">
-                    Paste valid JSON mapping. Example: <code>{"storage_size": "items.0.space.total_physical"}</code>
+                    Format: <code>{"api_field": "librenms_table.librenms_field"}</code><br>
+                    Example: <code>{"capacity": "storage.storage_size"}</code>
                 </small>
-                <button type="button" 
-                        class="btn btn-sm btn-secondary mt-2 beautify-json"
-                        data-conn-idx="{{ $connectionIndex }}"
-                        data-ep-idx="{{ $endpointIndex }}"
-                        id="beautifyJson_{{ $connectionIndex }}_{{ $endpointIndex }}">
-                    <i class="fas fa-indent"></i> Beautify JSON
-                </button>
-                <div id="jsonError_{{ $connectionIndex }}_{{ $endpointIndex }}" class="text-danger mt-2" style="display: none;"></div>
             </div>
         </div>
     </div>
@@ -296,18 +253,6 @@
     .preview-status.error {
         color: #dc3545;
     }
-    .field-mapping-row {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 10px;
-        align-items: flex-start;
-    }
-    .field-mapping-row > div {
-        flex: 1;
-    }
-    .field-mapping-row .btn-sm {
-        margin-top: 23px;
-    }
 </style>
 
 <script>
@@ -322,13 +267,28 @@ document.addEventListener('DOMContentLoaded', function() {
     if (fetchBtn) {
         fetchBtn.addEventListener('click', function() {
             const pathInput = document.querySelector('.endpoint-path[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
-            const methodInput = document.querySelector('.endpoint-method[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
             const statusEl = document.getElementById('preview-status-' + connIdx + '-' + epIdx);
             
             if (!pathInput || !pathInput.value.trim()) {
                 statusEl.textContent = '✗ Please enter an API path first';
                 statusEl.className = 'preview-status error';
                 return;
+            }
+
+            // Check if path contains placeholders
+            const pathValue = pathInput.value.trim();
+            const hasPlaceholders = /{device_hostname}|{device_ip}|{device_sysname}|{device_attrib:/.test(pathValue);
+            
+            if (hasPlaceholders) {
+                // Get selected device
+                const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
+                const deviceId = deviceSelect ? deviceSelect.value : null;
+                
+                if (!deviceId) {
+                    statusEl.textContent = '✗ Path has {device_*} placeholders - SELECT A DEVICE';
+                    statusEl.className = 'preview-status error';
+                    return;
+                }
             }
 
             if (!templateId) {
@@ -340,11 +300,11 @@ document.addEventListener('DOMContentLoaded', function() {
             statusEl.textContent = '⟳ Fetching...';
             statusEl.className = 'preview-status loading';
 
-            // Get selected device (if any)
+            // Get selected device
             const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
             const deviceId = deviceSelect ? deviceSelect.value : null;
             
-            // Make AJAX request to get API preview
+            // Get CSRF token
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
                              document.querySelector('input[name="_token"]')?.value;
             
@@ -355,6 +315,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            console.log('Fetching preview with device_id:', deviceId, 'template_id:', templateId);
+
+            // Make API request
             fetch(`/api/rest-api/template-preview`, {
                 method: 'POST',
                 headers: {
@@ -377,10 +340,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             }))
             .then(({ ok, status, statusText, text }) => {
-                console.log('Response Status:', status, statusText);
-                console.log('Response Text:', text.substring(0, 500));
+                console.log('Response:', status, statusText, text.substring(0, 300));
                 
-                // Try to parse as JSON
                 try {
                     const data = JSON.parse(text);
                     
@@ -388,239 +349,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         statusEl.textContent = '✓ Preview ready';
                         statusEl.className = 'preview-status success';
 
-                        // Populate preview containers
-                        displayPreview(data.preview, connIdx, epIdx);
-                        displayRecommendations(data.recommendations, connIdx, epIdx, data.preview);
-                        populateFieldMapper(data.preview, connIdx, epIdx);
+                        // Display preview
+                        if (data.preview) {
+                            const rawJson = JSON.stringify(data.preview, null, 2);
+                            document.getElementById('raw-content-' + connIdx + '-' + epIdx).textContent = rawJson;
+                            document.getElementById('structure-content-' + connIdx + '-' + epIdx).textContent = rawJson;
+                            document.getElementById('sample-content-' + connIdx + '-' + epIdx).textContent = rawJson.substring(0, 500);
+                        }
 
-                        // Show containers
                         document.getElementById('api-preview-container-' + connIdx + '-' + epIdx).style.display = 'block';
-                        document.getElementById('recommendations-container-' + connIdx + '-' + epIdx).style.display = 'block';
-                        document.getElementById('field-mapper-container-' + connIdx + '-' + epIdx).style.display = 'block';
                     } else {
                         statusEl.textContent = '✗ ' + (data.error || 'Error fetching preview');
                         statusEl.className = 'preview-status error';
                     }
                 } catch (parseError) {
-                    // If not JSON, show the status and text
                     statusEl.textContent = `✗ HTTP ${status}: ${statusText}`;
                     statusEl.className = 'preview-status error';
-                    console.error('Failed to parse response as JSON:', parseError);
-                    console.error('Response was:', text.substring(0, 500));
+                    console.error('Parse error:', parseError);
+                    console.error('Response:', text);
                 }
             })
             .catch(error => {
-                statusEl.textContent = '✗ Network error';
+                statusEl.textContent = '✗ Network error: ' + error.message;
                 statusEl.className = 'preview-status error';
                 console.error('Fetch error:', error);
             });
         });
-    }
-
-    // Beautify JSON Button Handler
-    const beautifyBtn = document.getElementById('beautifyJson_' + connIdx + '_' + epIdx);
-    if (beautifyBtn) {
-        beautifyBtn.addEventListener('click', function() {
-            const textarea = document.getElementById('metric_map_json_' + connIdx + '_' + epIdx);
-            const errorDiv = document.getElementById('jsonError_' + connIdx + '_' + epIdx);
-            
-            try {
-                const json = JSON.parse(textarea.value);
-                textarea.value = JSON.stringify(json, null, 2);
-                errorDiv.style.display = 'none';
-            } catch (e) {
-                errorDiv.textContent = 'Invalid JSON: ' + e.message;
-                errorDiv.style.display = 'block';
-            }
-        });
-    }
-
-    // Helper function to display API preview
-    function displayPreview(data, connIdx, epIdx) {
-        if (!data) return;
-
-        const rawJson = JSON.stringify(data, null, 2);
-        document.getElementById('raw-content-' + connIdx + '-' + epIdx).textContent = rawJson;
-
-        // Build structure view
-        const structure = buildStructure(data);
-        document.getElementById('structure-content-' + connIdx + '-' + epIdx).textContent = structure;
-
-        // Build sample data view
-        const sample = buildSampleData(data);
-        document.getElementById('sample-content-' + connIdx + '-' + epIdx).textContent = sample;
-    }
-
-    function buildStructure(obj, indent = '') {
-        let result = '';
-        if (Array.isArray(obj)) {
-            result += '[\n';
-            if (obj.length > 0) {
-                result += indent + '  {\n';
-                const keys = Object.keys(obj[0]);
-                keys.forEach((key, idx) => {
-                    const val = obj[0][key];
-                    const type = typeof val === 'object' ? (Array.isArray(val) ? 'array' : 'object') : typeof val;
-                    result += indent + '    ' + key + ': ' + type;
-                    result += (idx < keys.length - 1) ? ',\n' : '\n';
-                });
-                result += indent + '  }\n';
-            }
-            result += indent + ']';
-        } else if (typeof obj === 'object' && obj !== null) {
-            result += '{\n';
-            const keys = Object.keys(obj);
-            keys.forEach((key, idx) => {
-                const val = obj[key];
-                const type = typeof val === 'object' ? (Array.isArray(val) ? 'array' : 'object') : typeof val;
-                result += indent + '  ' + key + ': ' + type;
-                result += (idx < keys.length - 1) ? ',\n' : '\n';
-            });
-            result += indent + '}';
-        }
-        return result;
-    }
-
-    function buildSampleData(obj) {
-        if (Array.isArray(obj) && obj.length > 0) {
-            return JSON.stringify(obj[0], null, 2);
-        }
-        return JSON.stringify(obj, null, 2).substring(0, 500) + '...';
-    }
-
-    function displayRecommendations(recommendations, connIdx, epIdx, apiData) {
-        const container = document.getElementById('recommendations-list-' + connIdx + '-' + epIdx);
-        if (!recommendations || recommendations.length === 0) {
-            container.innerHTML = '<p class="text-muted">No recommendations available</p>';
-            return;
-        }
-
-        let html = '';
-        recommendations.forEach(rec => {
-            const confidence = rec.confidence || 0;
-            const color = confidence > 0.8 ? 'success' : confidence > 0.5 ? 'warning' : 'info';
-            html += `
-                <div class="row mb-2 align-items-center">
-                    <div class="col-md-4">
-                        <small><strong>${rec.api_field}</strong></small>
-                    </div>
-                    <div class="col-md-4">
-                        <small class="badge badge-${color}">${(confidence * 100).toFixed(0)}% match</small>
-                    </div>
-                    <div class="col-md-3">
-                        <small>${rec.librenms_field}</small>
-                    </div>
-                    <div class="col-md-1">
-                        <button type="button" class="btn btn-xs btn-primary apply-recommendation" 
-                                data-api-field="${rec.api_field}" 
-                                data-librenms-field="${rec.librenms_field}"
-                                data-table="${rec.librenms_table}">
-                            Apply
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
-
-        // Add event listeners for apply buttons
-        container.querySelectorAll('.apply-recommendation').forEach(btn => {
-            btn.addEventListener('click', function() {
-                applyRecommendation(this.dataset.apiField, this.dataset.librenmsField, this.dataset.table, connIdx, epIdx);
-            });
-        });
-    }
-
-    function populateFieldMapper(apiData, connIdx, epIdx) {
-        const container = document.getElementById('field-mapper-' + connIdx + '-' + epIdx);
-        const fields = extractFields(apiData);
-        
-        let html = '';
-        fields.forEach(field => {
-            html += `
-                <div class="field-mapping-row">
-                    <div>
-                        <label class="small">API Field</label>
-                        <input type="text" class="form-control form-control-sm" value="${field}" readonly>
-                    </div>
-                    <div>
-                        <label class="small">LibreNMS Table</label>
-                        <select class="form-control form-control-sm libreNMS-table" data-api-field="${field}">
-                            <option value="">-- Select --</option>
-                            <option value="storage">Storage</option>
-                            <option value="ports">Ports</option>
-                            <option value="sensors">Sensors</option>
-                            <option value="devices">Device</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="small">LibreNMS Field</label>
-                        <input type="text" class="form-control form-control-sm libreNMS-field" data-api-field="${field}" placeholder="e.g., storage_size">
-                    </div>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-danger remove-mapping" data-api-field="${field}">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-
-        container.innerHTML = html;
-        syncFieldMapperToJson(connIdx, epIdx);
-
-        // Update JSON textarea when fields change
-        container.querySelectorAll('select, input.libreNMS-field').forEach(el => {
-            el.addEventListener('change', () => syncFieldMapperToJson(connIdx, epIdx));
-        });
-
-        // Handle remove mapping
-        container.querySelectorAll('.remove-mapping').forEach(btn => {
-            btn.addEventListener('click', function() {
-                this.closest('.field-mapping-row').remove();
-                syncFieldMapperToJson(connIdx, epIdx);
-            });
-        });
-    }
-
-    function extractFields(obj, prefix = '') {
-        let fields = [];
-        if (Array.isArray(obj) && obj.length > 0) {
-            fields = extractFields(obj[0], prefix);
-        } else if (typeof obj === 'object' && obj !== null) {
-            Object.keys(obj).forEach(key => {
-                const fullPath = prefix ? prefix + '.' + key : key;
-                fields.push(fullPath);
-            });
-        }
-        return fields.sort();
-    }
-
-    function syncFieldMapperToJson(connIdx, epIdx) {
-        const mapping = {};
-        const container = document.getElementById('field-mapper-' + connIdx + '-' + epIdx);
-        
-        container.querySelectorAll('.field-mapping-row').forEach(row => {
-            const apiField = row.querySelector('input').value;
-            const table = row.querySelector('.libreNMS-table').value;
-            const field = row.querySelector('.libreNMS-field').value;
-            
-            if (apiField && table && field) {
-                mapping[apiField] = `${table}.${field}`;
-            }
-        });
-
-        document.getElementById('metric_map_json_' + connIdx + '_' + epIdx).value = JSON.stringify(mapping, null, 2);
-    }
-
-    function applyRecommendation(apiField, librenmsField, table, connIdx, epIdx) {
-        const mapping = {};
-        mapping[apiField] = `${table}.${librenmsField}`;
-        
-        const jsonEl = document.getElementById('metric_map_json_' + connIdx + '_' + epIdx);
-        let current = JSON.parse(jsonEl.value || '{}');
-        current = Object.assign(current, mapping);
-        jsonEl.value = JSON.stringify(current, null, 2);
     }
 });
 </script>
