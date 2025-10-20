@@ -47,7 +47,7 @@ class DataRouter
         }
 
         // For storage (volumes), skip items that shouldn't be in storage table
-        if ($resourceType === 'storage' || in_array($endpointName, ['volumes', '/api/2.26/volumes'])) {
+        if (in_array($resourceType, ['storage', 'volume']) || in_array($endpointName, ['volumes', '/api/2.26/volumes', 'Volumes Info'])) {
             if ($this->isNonStorageItem($itemContext)) {
                 Log::debug("[{$endpointName}] Skipping non-storage item: {$itemContext['name']}");
                 return;
@@ -106,12 +106,13 @@ class DataRouter
         }
 
         // Hosts and ESXi - these come from /api/2.26/hosts
+        // These are infrastructure hosts, not volumes
         $hostPatterns = [
-            '/^ITS-RSA-ESXI-/i',    // ITS-RSA-ESXI-C1S1, etc
-            '/^ALM-C220-ESXI-/i',   // ALM-C220-ESXI-01, etc
-            '/^ALMH-C[0-9]S[0-9]+$/i', // ALMH-C1S5, etc
-            '/^RSA-IAAS-/i',        // RSA-IAAS-HX5-01, etc
-            '/^RSA-X[0-9]+-[0-9]+$/i', // RSA-X50-101 as host, but keep RSA-X50-101 as volume
+            '/^ITS-RSA-ESXI-/i',      // ITS-RSA-ESXI-C1S1, ITS-RSA-ESXI-S2S2, etc
+            '/^ALM-C220-ESXI-/i',     // ALM-C220-ESXI-01, etc
+            '/^ALMH-C[0-9]S[0-9]+$/i', // ALMH-C1S5, ALMH-C1S6, etc - ESXi hosts
+            '/^RSA-IAAS-/i',          // RSA-IAAS-HX5-01, RSA-IAAS-HX5-02, etc
+            '/^RSA-MH-/i',            // RSA-MH-X20 (Hyperconverged node, not a volume)
         ];
 
         foreach ($hostPatterns as $pattern) {
