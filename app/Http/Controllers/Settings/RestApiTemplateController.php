@@ -408,11 +408,20 @@ class RestApiTemplateController extends Controller
             // Get vendor mapper for recommendations
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
             $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
-            $vendorMapper = $vendorMapperFactory->getMapper($device);
-
+            
             $recommendations = [];
-            if ($vendorMapper && $apiResponse) {
-                $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, (object)$endpointData);
+            if ($device && $apiResponse) {
+                // Create a temporary endpoint object for mapper
+                $tempEndpoint = new \App\Models\RestApiEndpoint();
+                $tempEndpoint->fill($endpointData);
+                
+                try {
+                    $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
+                    $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, (object)$endpointData);
+                } catch (\Exception $e) {
+                    \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
+                    // Continue without recommendations if mapper fails
+                }
             }
 
             return response()->json([
