@@ -6,7 +6,7 @@ use App\Models\Device;
 use App\Models\RestApiConnection;
 use App\RestApi\Services\MapperSelectionService;
 use App\RestApi\Credentials\CredentialHelper;
-use App\RestApi\Utilities\JsonPathExtractor;
+use App\RestApi\Utils\JsonPathExtractor;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
