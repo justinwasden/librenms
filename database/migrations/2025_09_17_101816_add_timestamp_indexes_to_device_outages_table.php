@@ -23,8 +23,13 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('device_outages', function (Blueprint $table) {
-            $table->dropIndex('going_down');
-            $table->dropIndex('up_again');
+            // Check if indexes exist before dropping
+            $indexes = \DB::select("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'device_outages' AND INDEX_NAME IN ('going_down', 'up_again')");
+            
+            if (count($indexes) > 0) {
+                $table->dropIndex('going_down');
+                $table->dropIndex('up_again');
+            }
         });
     }
 };
