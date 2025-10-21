@@ -378,7 +378,8 @@
                                                 <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'" 
                                                    :class="{ 'active': activePreviewTab === 'recommendations' }">
                                                     <i class="fas fa-lightbulb"></i> Recommendations
-                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length" 
+                                                    <span class="badge badge-info ml-2" x-show="apiPreviewRecommendations.length === 0">(Vendor-specific only)</span>
+                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length > 0" 
                                                           x-text="apiPreviewRecommendations.length"></span>
                                                 </a>
                                             </li>
@@ -398,11 +399,14 @@
 
                                         {{-- Recommendations Tab Content --}}
                                         <div x-show="activePreviewTab === 'recommendations'">
-                                            <div x-show="apiPreviewRecommendations.length === 0" class="text-muted text-center py-3">
-                                                No recommendations available.
+                                            <div x-show="apiPreviewRecommendations.length === 0" class="text-muted text-center py-4">
+                                                <p><i class="fas fa-info-circle"></i> <strong>No vendor-specific recommendations available</strong></p>
+                                                <p class="mb-0">Use the <strong>Structure</strong> tab below to manually map fields to LibreNMS tables.</p>
+                                                <p class="mb-0 small mt-2">Most API fields will need custom mapping based on your specific use case.</p>
                                             </div>
 
                                             <div x-show="apiPreviewRecommendations.length > 0" class="table-responsive">
+                                                <p class="text-muted"><i class="fas fa-star"></i> <strong>Vendor-Specific Recommendations</strong></p>
                                                 <table class="table table-sm table-hover mb-0">
                                                     <thead class="table-light">
                                                         <tr>

@@ -328,10 +328,10 @@ class RestApiTemplateController extends Controller
 
             $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData, $credentialId);
 
-            // Generate recommendations from API response structure
-            $recommendations = $this->generateRecommendations($apiResponse, $endpointData);
+            // Don't generate generic recommendations - let vendor mapper or user decide
+            $recommendations = [];
 
-            // Try vendor mapper if available
+            // Try vendor mapper if available for VENDOR-SPECIFIC recommendations only
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
             $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
             
@@ -343,7 +343,7 @@ class RestApiTemplateController extends Controller
                     $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
                     @$vendorRecommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
                     if (is_array($vendorRecommendations) && !empty($vendorRecommendations)) {
-                        $recommendations = array_merge($recommendations, $vendorRecommendations);
+                        $recommendations = $vendorRecommendations;
                     }
                 } catch (\Throwable $e) {
                     \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
