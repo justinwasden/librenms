@@ -11,7 +11,8 @@ return new class extends Migration
         if (!Schema::hasTable('rest_api_device_mappings')) {
             Schema::create('rest_api_device_mappings', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('device_id')->constrained('devices')->onDelete('cascade');
+                $table->unsignedInteger('device_id');
+                $table->foreign('device_id')->references('device_id')->on('devices')->onDelete('cascade');
                 $table->foreignId('endpoint_id')->constrained('rest_api_endpoints')->onDelete('cascade');
                 $table->enum('mapping_type', ['vendor', 'custom'])->default('vendor');
                 $table->string('mapping_name');
