@@ -513,11 +513,11 @@
 @include('settings.rest-api.templates.partials.device-selector-modal')
 
 <script>
-function templateEditor() {
+window.templateEditor = function() {
     return { init() { console.log('Template Editor Loaded'); } }
 }
 
-function endpointManager() {
+window.endpointManager = function() {
     return {
         endpoints: [],
         selectedEndpointIndex: null,
@@ -537,13 +537,13 @@ function endpointManager() {
         selectedCredentialInfo: {},
         deviceSelectorError: '',
         deviceSelectorSuccess: '',
-                apiPreviewData: null,
-                apiPreviewRecommendations: [],
-                apiPreviewFields: {},
-                apiPreviewSample: {},
-                previewFetched: false,
-                activePreviewTab: 'recommendations',
-                previewErrorMessage: '','
+        apiPreviewData: null,
+        apiPreviewRecommendations: [],
+        apiPreviewFields: {},
+        apiPreviewSample: {},
+        previewFetched: false,
+        activePreviewTab: 'recommendations',
+        previewErrorMessage: '',
 
         loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
