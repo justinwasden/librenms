@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Add missing columns to rest_api_connections and rest_api_endpoints tables
+     * Add missing columns to rest_api tables and fix schema mismatches
      */
     public function up(): void
     {
@@ -21,10 +21,19 @@ return new class extends Migration
 
         // Fix rest_api_endpoints table
         if (Schema::hasTable('rest_api_endpoints')) {
-            // Rename method to http_method if it exists
-            if (Schema::hasColumn('rest_api_endpoints', 'method')) {
+            // Add connection_id if missing
+            if (!Schema::hasColumn('rest_api_endpoints', 'connection_id')) {
                 Schema::table('rest_api_endpoints', function (Blueprint $table) {
-                    $table->renameColumn('method', 'http_method');
+                    $table->unsignedBigInteger('connection_id')->nullable()->after('id');
+                    $table->foreign('connection_id')->references('id')->on('rest_api_connections')->onDelete('cascade');
+                });
+            }
+
+            // Add http_method if only method exists
+            if (Schema::hasColumn('rest_api_endpoints', 'method') && 
+                !Schema::hasColumn('rest_api_endpoints', 'http_method')) {
+                Schema::table('rest_api_endpoints', function (Blueprint $table) {
+                    $table->string('http_method')->default('GET')->after('path');
                 });
             }
 
@@ -35,26 +44,26 @@ return new class extends Migration
                 });
             }
 
-            // Drop connection_id if it exists (we use template_id instead)
-            if (Schema::hasColumn('rest_api_endpoints', 'connection_id')) {
+            // Add metric_map if it doesn't exist
+            if (!Schema::hasColumn('rest_api_endpoints', 'metric_map')) {
                 Schema::table('rest_api_endpoints', function (Blueprint $table) {
-                    $table->dropForeign(['connection_id']);
-                    $table->dropColumn('connection_id');
+                    $table->json('metric_map')->nullable()->after('resource_type');
                 });
             }
 
-            // Drop metric_map if it exists
-            if (Schema::hasColumn('rest_api_endpoints', 'metric_map')) {
-                Schema::table('rest_api_endpoints', function (Blueprint $table) {
-                    $table->dropColumn('metric_map');
-                });
-            }
-
-            // Make template_id non-nullable
+            // Make template_id nullable if it exists and isn't already
             if (Schema::hasColumn('rest_api_endpoints', 'template_id')) {
-                Schema::table('rest_api_endpoints', function (Blueprint $table) {
-                    $table->unsignedBigInteger('template_id')->nullable(false)->change();
-                });
+                // Check current definition
+                $columns = Schema::getColumnListing('rest_api_endpoints');
+                if (in_array('template_id', $columns)) {
+                    try {
+                        Schema::table('rest_api_endpoints', function (Blueprint $table) {
+                            $table->unsignedBigInteger('template_id')->nullable()->change();
+                        });
+                    } catch (\Exception $e) {
+                        // Silently fail if column is already nullable or can't be changed
+                    }
+                }
             }
         }
     }
@@ -73,9 +82,10 @@ return new class extends Migration
         }
 
         if (Schema::hasTable('rest_api_endpoints')) {
-            if (Schema::hasColumn('rest_api_endpoints', 'http_method')) {
+            if (Schema::hasColumn('rest_api_endpoints', 'connection_id')) {
                 Schema::table('rest_api_endpoints', function (Blueprint $table) {
-                    $table->renameColumn('http_method', 'method');
+                    $table->dropForeign(['connection_id']);
+                    $table->dropColumn('connection_id');
                 });
             }
         }

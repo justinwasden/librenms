@@ -97,18 +97,24 @@ return new class extends Migration
         if (!Schema::hasTable('rest_api_endpoints')) {
             Schema::create('rest_api_endpoints', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('template_id');
+                $table->unsignedBigInteger('connection_id');
+                $table->unsignedBigInteger('template_id')->nullable();
                 $table->string('name');
                 $table->string('path');
                 $table->string('http_method')->default('GET');
+                $table->string('method')->default('GET'); // Legacy name support
                 $table->unsignedInteger('poll_interval')->default(300);
                 $table->string('resource_type')->nullable();
+                $table->json('metric_map')->nullable();
                 $table->json('template_response_mapping')->nullable();
                 $table->boolean('enabled')->default(true);
                 $table->timestamps();
                 
-                $table->foreign('template_id')->references('id')->on('rest_api_templates')->onDelete('cascade');
-                $table->index(['template_id', 'enabled']);
+                $table->foreign('connection_id')->references('id')->on('rest_api_connections')->onDelete('cascade');
+                if (Schema::hasTable('rest_api_templates')) {
+                    $table->foreign('template_id')->references('id')->on('rest_api_templates')->onDelete('set null');
+                }
+                $table->index(['connection_id', 'enabled']);
             });
         }
 

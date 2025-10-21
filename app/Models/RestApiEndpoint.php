@@ -10,22 +10,33 @@ class RestApiEndpoint extends Model
 {
     protected $fillable = [
         'template_id',
+        'connection_id',
         'name',
         'path',
         'http_method',
+        'method',
         'poll_interval',
         'resource_type',
         'template_response_mapping',
+        'metric_map',
+        'enabled',
     ];
 
     protected $casts = [
         'template_response_mapping' => 'array',
+        'metric_map' => 'array',
         'poll_interval' => 'integer',
+        'enabled' => 'boolean',
     ];
 
     public function template(): BelongsTo
     {
         return $this->belongsTo(RestApiTemplate::class);
+    }
+
+    public function connection(): BelongsTo
+    {
+        return $this->belongsTo(RestApiConnection::class);
     }
 
     public function mappings(): HasMany
@@ -35,7 +46,7 @@ class RestApiEndpoint extends Model
 
     public function getMappingConfig(): array
     {
-        return $this->template_response_mapping ?? [];
+        return $this->template_response_mapping ?? $this->metric_map ?? [];
     }
 
     public function getUrl(string $baseUrl): string
