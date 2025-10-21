@@ -4,9 +4,12 @@ namespace App\RestApi\Pollers;
 
 use App\Models\Device;
 use App\Models\RestApiMapping;
+use App\Models\RestApiDeviceTemplate;
 use App\RestApi\Utils\JsonPathExtractor;
 use App\RestApi\Storage\MetricStorageEngine;
+use App\RestApi\Services\MapperSelectionService;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Str;
 use Log;
 
@@ -25,6 +28,7 @@ class RestApiSimplePoller
 {
     protected Device $device;
     protected array $sessionTokens = [];
+    protected Client $client;
 
     public function __construct(Device $device)
     {
@@ -36,12 +40,28 @@ class RestApiSimplePoller
      */
     public function poll()
     {
+        // Get device template configuration
+        $deviceTemplate = $this->device->restApiTemplate;
+        if (!$deviceTemplate) {
+            Log::debug("No REST API template configured for {$this->device->hostname}");
+            return;
+        }
+
+        // Select appropriate mapper
+        $mapperConfig = MapperSelectionService::selectMapper($deviceTemplate);
+        $mapper = $mapperConfig['mapper'];
+
+        Log::info("REST API Poller: {$this->device->hostname} using mapper: {$mapperConfig['mapper_name']} (source: {$mapperConfig['source']})");
+
         $connections = $this->device->restApiConnections()
             ->where('enabled', 1)
-            ->with(['credential' => function($q) { $q->with(['authenticationType', 'params']); }, 'endpoints' => function($q) { $q->with('mappings'); }])
+            ->with(['credential' => function($q) { $q->with(['authenticationType', 'params']); }, 'template' => function($q) { $q->with('endpoints'); }])
             ->get();
 
-        Log::info("REST API Poller: {$this->device->hostname} ({$connections->count()} connections)");
+        if ($connections->isEmpty()) {
+            Log::debug("No REST API connections configured for {$this->device->hostname}");
+            return;
+        }
 
         foreach ($connections as $conn) {
             if (!$conn->credential) {
@@ -49,8 +69,15 @@ class RestApiSimplePoller
                 continue;
             }
 
-            foreach ($conn->endpoints as $endpoint) {
-                $this->pollEndpoint($conn, $endpoint);
+            // Initialize HTTP client for this connection
+            $this->client = new Client([
+                'base_uri' => $conn->base_url,
+                'timeout' => 15,
+                'verify' => !$conn->disable_ssl_verify,
+            ]);
+
+            foreach ($conn->template->endpoints as $endpoint) {
+                $this->pollEndpoint($conn, $endpoint, $mapper);
             }
         }
 
@@ -60,33 +87,30 @@ class RestApiSimplePoller
     /**
      * Poll single endpoint
      */
-    protected function pollEndpoint($connection, $endpoint)
+    protected function pollEndpoint($connection, $endpoint, $mapper)
     {
         try {
-            // Get all mappings for this endpoint
-            $mappings = RestApiMapping::where('endpoint_id', $endpoint->id)
-                ->where('enabled', 1)
-                ->get()
-                ->groupBy('target_table');
+            // Get mappings from mapper for this endpoint
+            $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
 
-            if ($mappings->isEmpty()) {
-                Log::debug("[{$endpoint->name}] No mappings defined");
+            if (empty($mappings)) {
+                Log::debug("[{$endpoint->path}] No mappings defined in mapper");
                 return;
             }
 
             // Fetch API response
             $response = $this->requestEndpoint($connection, $endpoint);
 
-            Log::info("[{$endpoint->name}] Polling {$connection->base_url}{$endpoint->path}");
+            Log::info("Polling {$connection->base_url}{$endpoint->path}");
 
-            // Store metrics using mappings
+            // Store metrics using mapper's field mappings
             $engine = new MetricStorageEngine($this->device);
-            $engine->store($response, $mappings, $endpoint->name);
+            $engine->storeFromResponse($response, $endpoint, $mapper);
 
-            Log::info("[{$endpoint->name}] Success");
+            Log::info("[{$endpoint->path}] Success");
 
         } catch (\Exception $e) {
-            Log::error("[{$endpoint->name}] Failed: " . $e->getMessage());
+            Log::error("[{$endpoint->path}] Failed: " . $e->getMessage());
         }
     }
 
@@ -95,82 +119,145 @@ class RestApiSimplePoller
      */
     protected function requestEndpoint($connection, $endpoint): array
     {
-        $client = new Client([
-            'base_uri' => $connection->base_url,
-            'timeout' => 15,
-            'verify' => !$connection->disable_ssl_verify,
-        ]);
-
         // Get auth headers
-        $headers = $this->getAuthHeaders($connection, $client);
+        $headers = $this->getAuthHeaders($connection);
         if (empty($headers)) {
-            throw new \Exception("No auth headers");
+            throw new \Exception("Failed to obtain authentication headers");
         }
 
-        $res = $client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
+        try {
+            $res = $this->client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
 
-        if ($res->getStatusCode() != 200) {
-            throw new \Exception("HTTP {$res->getStatusCode()}");
+            if ($res->getStatusCode() != 200) {
+                throw new \Exception("HTTP {$res->getStatusCode()}");
+            }
+
+            $body = (string)$res->getBody();
+        } catch (RequestException $e) {
+            throw new \Exception("Request failed: " . $e->getMessage());
         }
-
-        $body = (string)$res->getBody();
 
         // Check for HTML (session expired)
         if (stripos($body, '<!DOCTYPE html>') !== false) {
-            Log::warning("[{$endpoint->name}] Session expired, retrying");
+            Log::warning("Session expired for {$connection->name}, retrying with new token");
             $cacheKey = "rest_token_{$connection->id}";
             unset($this->sessionTokens[$cacheKey]);
-            $headers = $this->getAuthHeaders($connection, $client);
-            $res = $client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
+            
+            $headers = $this->getAuthHeaders($connection);
+            $res = $this->client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
             $body = (string)$res->getBody();
         }
 
         $decoded = json_decode($body, true);
         if (!$decoded) {
-            throw new \Exception("Invalid JSON");
+            throw new \Exception("Invalid JSON response");
         }
 
         return $decoded;
     }
 
     /**
-     * Get authentication headers
+     * Get authentication headers based on credential type
      */
-    protected function getAuthHeaders($connection, $client): array
+    protected function getAuthHeaders($connection): array
     {
         $credential = $connection->credential;
-        $authType = Str::lower($credential->authenticationType->name);
+        $authType = Str::lower($credential->authenticationType->name ?? '');
+        $params = $credential->params->pluck('value', 'key')->toArray();
 
-        if ($authType === 'session token') {
-            $cacheKey = "rest_token_{$connection->id}";
+        switch ($authType) {
+            case 'api token':
+                $header = $params['api_token_header'] ?? 'Authorization';
+                $value = "Bearer " . ($params['api_token'] ?? '');
+                return [$header => $value];
 
-            if (!isset($this->sessionTokens[$cacheKey])) {
-                // Get session token (implementation in CredentialHelper)
-                $params = $credential->params->pluck('value', 'key')->toArray();
-                $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+            case 'bearer token':
+                $token = $params['bearer_token'] ?? '';
+                return ['Authorization' => "Bearer $token"];
 
-                // Placeholder - implement CredentialHelper::obtainSessionToken
-                $token = $this->obtainSessionToken($connection, $client, $params);
-                if (!$token) {
-                    return [];
-                }
+            case 'basic auth':
+                $username = $params['username'] ?? '';
+                $password = $params['password'] ?? '';
+                $encoded = base64_encode("$username:$password");
+                return ['Authorization' => "Basic $encoded"];
 
-                $this->sessionTokens[$cacheKey] = $token;
-            }
+            case 'session token':
+                return $this->getSessionTokenHeaders($connection, $params);
 
-            $tokenHeader = $credential->params->pluck('value', 'key')['session_token_header'] ?? 'x-auth-token';
-            return [$tokenHeader => $this->sessionTokens[$cacheKey]];
+            default:
+                return [];
         }
-
-        return [];
     }
 
     /**
-     * Placeholder for obtaining session token
+     * Get session token headers (two-stage authentication)
      */
-    protected function obtainSessionToken($connection, $client, array $params)
+    protected function getSessionTokenHeaders($connection, array $params): array
     {
-        // TODO: Implement session token retrieval
-        return null;
+        $cacheKey = "rest_token_{$connection->id}";
+
+        // Return cached token if available
+        if (isset($this->sessionTokens[$cacheKey])) {
+            $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+            return [$tokenHeader => $this->sessionTokens[$cacheKey]];
+        }
+
+        // Obtain new session token
+        $token = $this->obtainSessionToken($connection, $params);
+        if (!$token) {
+            Log::error("Failed to obtain session token for {$connection->name}");
+            return [];
+        }
+
+        // Cache the token
+        $this->sessionTokens[$cacheKey] = $token;
+
+        $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+        return [$tokenHeader => $token];
+    }
+
+    /**
+     * Obtain session token from login endpoint
+     * 
+     * This implements Pure Storage's two-stage authentication:
+     * 1. POST to login endpoint with API token
+     * 2. Extract session token from response header
+     */
+    protected function obtainSessionToken($connection, array $params): ?string
+    {
+        $loginPath = $params['login_path'] ?? '/login';
+        $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+        $apiToken = $params['api_token'] ?? '';
+        $sessionTokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+
+        if (!$apiToken) {
+            Log::error("No API token configured for session authentication");
+            return null;
+        }
+
+        try {
+            $response = $this->client->request('POST', $loginPath, [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Content-Type' => 'application/json',
+                ],
+            ]);
+
+            // Extract session token from response header
+            if ($response->hasHeader($sessionTokenHeader)) {
+                $token = $response->getHeader($sessionTokenHeader)[0] ?? null;
+                if ($token) {
+                    Log::info("Successfully obtained session token for {$connection->name}");
+                    return $token;
+                }
+            }
+
+            Log::error("Session token header '{$sessionTokenHeader}' not found in login response");
+            return null;
+
+        } catch (RequestException $e) {
+            Log::error("Failed to obtain session token: " . $e->getMessage());
+            return null;
+        }
     }
 }

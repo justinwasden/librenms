@@ -2,6 +2,7 @@
 
 namespace App\Pollers;
 
+use App\Models\Device;
 use App\Models\RestApiDeviceTemplate;
 use App\RestApi\Services\MapperSelectionService;
 use App\RestApi\Utilities\JsonPathExtractor;
@@ -9,58 +10,78 @@ use Illuminate\Support\Facades\Log;
 
 class RestApiPoller
 {
-    public function poll($device)
+    protected $client;
+
+    public function poll(Device $device)
     {
         $deviceTemplate = $device->restApiTemplate;
         
         if (!$deviceTemplate) {
-            Log::info("Device {$device->id}: No REST API template configured");
+            Log::info("Device {$device->device_id}: No REST API template configured");
             return;
         }
 
-        // SELECT MAPPER
+        // SELECT MAPPER with intelligent priority
         $mapperResult = MapperSelectionService::selectMapper($deviceTemplate);
         $mapper = $mapperResult['mapper'];
+        $mapperName = $mapperResult['mapper_name'];
+        $mapperSource = $mapperResult['source'];
         
-        Log::info("Device {$device->id}: Using mapper {$mapperResult['mapper_name']} ({$mapperResult['source']})");
+        Log::info("Device {$device->device_id}: Using mapper '{$mapperName}' (source: {$mapperSource})");
 
         // POLL ENDPOINTS
-        foreach ($deviceTemplate->template->endpoints as $endpoint) {
-            $this->pollEndpoint($device, $deviceTemplate, $endpoint, $mapper);
+        $endpoints = $deviceTemplate->template->endpoints;
+        
+        if ($endpoints->isEmpty()) {
+            Log::warning("Device {$device->device_id}: No endpoints in template");
+            return;
+        }
+
+        foreach ($endpoints as $endpoint) {
+            $this->pollEndpoint($device, $endpoint, $mapper);
         }
     }
 
-    private function pollEndpoint($device, $deviceTemplate, $endpoint, $mapper)
+    private function pollEndpoint(Device $device, $endpoint, $mapper)
     {
         // Get mappings for this endpoint
         $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
         
         if (empty($mappings)) {
-            Log::warning("Device {$device->id}: No mappings for endpoint {$endpoint->path}");
+            Log::warning("Device {$device->device_id}: No mappings for endpoint '{$endpoint->path}'");
             return;
         }
 
         try {
             // Fetch from API
-            $response = $this->fetchEndpoint($device, $deviceTemplate, $endpoint);
+            $response = $this->fetchEndpoint($device, $endpoint);
+            
+            if (!$response) {
+                Log::warning("Device {$device->device_id}: Empty response from {$endpoint->path}");
+                return;
+            }
             
             // Extract and store data
             $this->processResponse($device, $endpoint, $mapper, $mappings, $response);
             
-            Log::info("Device {$device->id}: Successfully polled {$endpoint->path}");
+            Log::info("Device {$device->device_id}: Successfully polled {$endpoint->path}");
         } catch (\Exception $e) {
-            Log::error("Device {$device->id}: Error polling {$endpoint->path}: {$e->getMessage()}");
+            Log::error("Device {$device->device_id}: Error polling {$endpoint->path}: {$e->getMessage()}");
         }
     }
 
-    private function fetchEndpoint($device, $deviceTemplate, $endpoint)
+    private function fetchEndpoint(Device $device, $endpoint)
     {
         // TODO: Implement HTTP client to fetch from API
-        // Use credential auth, handle pagination, etc.
+        // - Use device credential for authentication
+        // - Handle pagination
+        // - Handle rate limiting
+        // - Parse JSON response
+        
         return [];
     }
 
-    private function processResponse($device, $endpoint, $mapper, $mappings, $response)
+    private function processResponse(Device $device, $endpoint, $mapper, $mappings, $response)
     {
         $targetTable = $mapper->getTargetTableForEndpoint($endpoint->path);
         $items = $response['items'] ?? [$response];
@@ -83,9 +104,11 @@ class RestApiPoller
         }
     }
 
-    private function storeValue($device, $table, $field, $value, $endpoint)
+    private function storeValue(Device $device, $table, $field, $value, $endpoint)
     {
         // TODO: Store to appropriate table based on $table
-        // Handle devices, ports, storage, sensors, links, etc.
+        // Tables: devices, ports, storage, sensors, links, custom
+        // Handle different schema for each table type
+        // Update or insert based on identifiers from mapper
     }
 }
