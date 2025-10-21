@@ -37,7 +37,7 @@ class RestApiPoller
         
         Log::info("Device {$device->device_id}: Using mapper '{$mapperName}' (source: {$mapperSource})");
 
-        // POLL ENDPOINTS
+        // POLL ENDPOINTS - get from template_data
         $endpoints = $deviceTemplate->template->endpoints;
         
         if (!$endpoints || $endpoints->isEmpty()) {

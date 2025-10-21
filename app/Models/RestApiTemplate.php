@@ -37,4 +37,24 @@ class RestApiTemplate extends Model
             'device_id'
         );
     }
+
+    /**
+     * Get endpoints from template_data (connections -> endpoints)
+     * Returns a collection-like array that works with isEmpty()
+     */
+    public function getEndpointsAttribute()
+    {
+        $connections = $this->template_data['connections'] ?? [];
+        $endpoints = [];
+        
+        foreach ($connections as $connection) {
+            foreach ($connection['endpoints'] ?? [] as $endpoint) {
+                // Add connection info to each endpoint
+                $endpoint['connection'] = $connection;
+                $endpoints[] = (object) $endpoint;
+            }
+        }
+        
+        return collect($endpoints);
+    }
 }
