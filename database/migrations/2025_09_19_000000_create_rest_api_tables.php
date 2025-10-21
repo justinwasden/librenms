@@ -51,7 +51,7 @@ return new class extends Migration
             Schema::create('rest_api_credentials', function (Blueprint $table) {
                 $table->id();
                 $table->string('name')->nullable()->default(null);
-                $table->unsignedBigInteger('authentication_type_id');
+                $table->unsignedBigInteger('authentication_type_id')->nullable()->default(null);
                 $table->text('notes')->nullable();
                 $table->timestamps();
                 
