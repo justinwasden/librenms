@@ -64,11 +64,12 @@ class DataRouter
     {
         $this->itemContext = $itemContext;
 
-        Log::debug("[{$endpointName}] DataRouter: Processing resource type '{$resourceType}' for item '{$itemContext['name'] ?? 'unnamed'}'");
+        $itemName = $itemContext['name'] ?? 'unnamed';
+        Log::debug("[{$endpointName}] DataRouter: Processing resource type '{$resourceType}' for item '{$itemName}'");
 
         // Let vendor mapper decide if this item should be filtered
         if ($this->vendorMapper && $this->vendorMapper->shouldFilterItem($itemContext, $resourceType)) {
-            Log::debug("[{$endpointName}] Item filtered by vendor mapper: {$itemContext['name'] ?? 'unnamed'}");
+            Log::debug("[{$endpointName}] Item filtered by vendor mapper: {$itemName}");
             return;
         }
 
