@@ -2,28 +2,39 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RestApiTemplate extends Model
 {
-    use HasFactory;
-
-    protected $fillable = ['name', 'vendor', 'resource_type', 'template_data', 'description'];
+    protected $fillable = [
+        'name',
+        'vendor',
+        'description',
+        'template_data',
+    ];
 
     protected $casts = [
         'template_data' => 'array',
     ];
 
-    public function scopeForDevice($query, Device $device)
+    public function endpoints(): HasMany
     {
-        return $query->where(function ($q) use ($device) {
-            $q->where('vendor', $device->hardware)
-              ->orWhere('vendor', $device->os)
-              ->orWhere('vendor', 'LIKE', '%' . $device->hardware . '%')
-              ->orWhere('vendor', 'LIKE', '%' . $device->os . '%')
-              ->orWhereNull('vendor')
-              ->orWhere('vendor', '');
-        });
+        return $this->hasMany(RestApiEndpoint::class);
+    }
+
+    public function deviceTemplates(): HasMany
+    {
+        return $this->hasMany(RestApiDeviceTemplate::class);
+    }
+
+    public function devices()
+    {
+        return $this->hasManyThrough(
+            Device::class,
+            RestApiDeviceTemplate::class,
+            'template_id',
+            'device_id'
+        );
     }
 }

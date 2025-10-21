@@ -2,28 +2,42 @@
 
 namespace App\Models;
 
-use App\Models\Traits\Encryptable;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RestApiCredential extends Model
 {
-    use HasFactory, Encryptable;
+    protected $fillable = [
+        'device_id',
+        'auth_type',
+        'username',
+        'password',
+        'auth_token',
+        'extra_data',
+    ];
 
-    protected $fillable = ['name', 'authentication_type_id'];
+    protected $hidden = [
+        'password',
+        'auth_token',
+    ];
 
-    public function authenticationType()
+    protected $casts = [
+        'extra_data' => 'array',
+    ];
+
+    public function device(): BelongsTo
     {
-        return $this->belongsTo(RestApiAuthenticationType::class, 'authentication_type_id');
+        return $this->belongsTo(Device::class);
     }
 
-    public function params()
+    public function getAuthHeader(): array
     {
-        return $this->hasMany(RestApiCredentialParam::class, 'credential_id');
-    }
-
-    public function connections()
-    {
-        return $this->hasMany(RestApiConnection::class, 'credential_id');
+        return match($this->auth_type) {
+            'bearer_token' => ['Authorization' => "Bearer {$this->auth_token}"],
+            'api_token' => ['Authorization' => "Bearer {$this->auth_token}"],
+            'oauth2' => ['Authorization' => "Bearer {$this->auth_token}"],
+            'basic_auth' => ['Authorization' => 'Basic ' . base64_encode("{$this->username}:{$this->password}")],
+            default => [],
+        };
     }
 }

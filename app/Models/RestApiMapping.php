@@ -3,38 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/**
- * RestApiMapping - Maps REST API response fields to LibreNMS database fields
- * 
- * Each mapping defines:
- * - Which field in the API response (JSONPath)
- * - Where to store it (table + field)
- * - Optional data transformation
- */
 class RestApiMapping extends Model
 {
-    protected $table = 'rest_api_mappings';
-
     protected $fillable = [
         'endpoint_id',
-        'target_table',
-        'target_field',
         'source_field',
+        'target_field',
+        'target_table',
         'data_type',
         'is_identifier',
         'is_required',
-        'transformation',
-        'enabled',
+        'transform_logic',
     ];
 
     protected $casts = [
         'is_identifier' => 'boolean',
         'is_required' => 'boolean',
-        'enabled' => 'boolean',
     ];
 
-    public function endpoint()
+    public function endpoint(): BelongsTo
     {
         return $this->belongsTo(RestApiEndpoint::class);
     }
