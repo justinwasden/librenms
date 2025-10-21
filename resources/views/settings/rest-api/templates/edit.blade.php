@@ -413,15 +413,15 @@
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        <template x-for="rec in apiPreviewRecommendations" :key="rec.api_field">
+                                                        <template x-for="(rec, recIndex) in apiPreviewRecommendations" :key="recIndex">
                                                             <tr>
-                                                                <td><code x-text="rec.api_field" style="font-size: 11px;"></code></td>
+                                                                <td><code x-text="rec.api_field || rec.field" style="font-size: 11px;"></code></td>
                                                                 <td>
                                                                     <span class="badge" 
                                                                           :class="getDataTypeBadgeClass(rec.dataType || rec.type)"
                                                                           x-text="rec.dataType || rec.type"></span>
                                                                 </td>
-                                                                <td><small x-text="rec.librenms_table + '.' + rec.librenms_field"></small></td>
+                                                                <td><small x-text="(rec.librenms_table || rec.table) + '.' + (rec.librenms_field || rec.field)"></small></td>
                                                                 <td>
                                                                     <div class="progress" style="height: 18px; width: 60px;">
                                                                         <div class="progress-bar" 
@@ -930,7 +930,9 @@ window.endpointManager = function() {
                     this.previewSuccess = true;
                     this.previewFetched = true;
                     this.apiPreviewData = data.preview;
-                    this.apiPreviewRecommendations = data.recommendations || [];
+                    
+                    // Validate and clean recommendations
+                    this.apiPreviewRecommendations = this.sanitizeRecommendations(data.recommendations || []);
                     this.activePreviewTab = 'recommendations';
                     
                     // Extract fields from first item in response
@@ -939,8 +941,13 @@ window.endpointManager = function() {
                     this.apiPreviewFields = firstItem;
                     this.apiPreviewSample = firstItem;
                     
+                    console.log('✓ Preview loaded:', {
+                        itemCount: items.length,
+                        recommendationCount: this.apiPreviewRecommendations.length,
+                        fieldCount: Object.keys(firstItem).length
+                    });
+                    
                     $('#deviceSelectorModal').modal('hide');
-                    console.log('Preview data loaded successfully');
                 } else {
                     this.previewLoading = false;
                     this.previewError = true;
@@ -958,7 +965,47 @@ window.endpointManager = function() {
             }
         },
 
-        // Helper method to get badge class for data type
+        // Sanitize recommendations - remove duplicates and validate structure
+        sanitizeRecommendations(recs) {
+            if (!Array.isArray(recs)) {
+                console.warn('Recommendations is not an array:', typeof recs);
+                return [];
+            }
+            
+            // Remove duplicates by creating a Map with api_field as key
+            const seen = new Map();
+            const cleaned = [];
+            
+            recs.forEach((rec, idx) => {
+                if (!rec || typeof rec !== 'object') {
+                    console.warn('Invalid recommendation at index', idx, rec);
+                    return;
+                }
+                
+                const key = rec.api_field || rec.field || `rec_${idx}`;
+                
+                if (seen.has(key)) {
+                    console.warn('Duplicate recommendation key:', key);
+                    return;
+                }
+                
+                // Ensure all required properties exist
+                const cleaned_rec = {
+                    api_field: rec.api_field || rec.field || 'unknown',
+                    librenms_table: rec.librenms_table || rec.table || 'unknown',
+                    librenms_field: rec.librenms_field || rec.field || 'unknown',
+                    confidence: typeof rec.confidence === 'number' ? rec.confidence : 0.5,
+                    dataType: rec.dataType || rec.type || 'unknown',
+                    reason: rec.reason || ''
+                };
+                
+                seen.set(key, true);
+                cleaned.push(cleaned_rec);
+            });
+            
+            console.log('Cleaned recommendations:', cleaned.length, cleaned);
+            return cleaned;
+        },
         getDataTypeBadgeClass(type) {
             const typeMap = {
                 'string': 'badge-success',
