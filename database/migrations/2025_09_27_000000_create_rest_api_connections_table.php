@@ -12,7 +12,11 @@ return new class extends Migration
 
 		public function up(): void
 		{
-		    Schema::create('rest_api_connections', function (Blueprint $table) {
+		if (Schema::hasTable('rest_api_connections')) {
+            return;
+        }
+        
+        Schema::create('rest_api_connections', function (Blueprint $table) {
 		        $table->id();
 		        $table->integer('device_id')->unsigned();
 		        $table->foreign('device_id')->references('device_id')->on('devices')->onDelete('cascade');

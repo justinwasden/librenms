@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('rest_api_credential_params')) {
+            return;
+        }
+        
         Schema::create('rest_api_credential_params', function (Blueprint $table) {
             $table->id();
             $table->foreignId('credential_id')->constrained('rest_api_credentials')->onDelete('cascade');

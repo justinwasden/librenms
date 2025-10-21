@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('rest_api_credentials')) {
+            return;
+        }
+        
         Schema::create('rest_api_credentials', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
