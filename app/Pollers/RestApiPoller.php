@@ -21,6 +21,14 @@ class RestApiPoller
             return;
         }
 
+        // Load the template relationship
+        $deviceTemplate->load('template');
+        
+        if (!$deviceTemplate->template) {
+            Log::error("Device {$device->device_id}: Template not found for device template ID {$deviceTemplate->id}");
+            return;
+        }
+
         // SELECT MAPPER with intelligent priority
         $mapperResult = MapperSelectionService::selectMapper($deviceTemplate);
         $mapper = $mapperResult['mapper'];
@@ -32,7 +40,7 @@ class RestApiPoller
         // POLL ENDPOINTS
         $endpoints = $deviceTemplate->template->endpoints;
         
-        if ($endpoints->isEmpty()) {
+        if (!$endpoints || $endpoints->isEmpty()) {
             Log::warning("Device {$device->device_id}: No endpoints in template");
             return;
         }
