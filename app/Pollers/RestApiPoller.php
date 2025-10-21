@@ -121,8 +121,9 @@ class RestApiPoller
                 if ($authType === 'session token') {
                     $sessionToken = $this->getSessionToken($device, $connection);
                     if ($sessionToken) {
+                        // Get params as key=>value array (values are auto-decrypted by Encryptable trait)
                         $params = $connection->credential->params->pluck('value', 'key')->toArray();
-                        $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+                        $tokenHeader = $params['token_header'] ?? 'x-auth-token';
                         $headers[$tokenHeader] = $sessionToken;
                         Log::debug("Device {$device->device_id}: Added session token header: {$tokenHeader}");
                     } else {
@@ -178,12 +179,20 @@ class RestApiPoller
 
         try {
             $credential = $connection->credential;
+            
+            // Ensure params are loaded (this triggers automatic decryption via Encryptable trait)
+            if (!$credential->relationLoaded('params')) {
+                $credential->load('params');
+            }
+            
             $params = $credential->params->pluck('value', 'key')->toArray();
             
-            // Get API token for login
-            $apiToken = $params['token'] ?? null;
+            Log::debug("Device {$device->device_id}: Credential params keys: " . implode(', ', array_keys($params)));
+            
+            // Get API token for login (key is 'api_token')
+            $apiToken = $params['api_token'] ?? null;
             if (!$apiToken) {
-                Log::error("Device {$device->device_id}: No API token found in credential");
+                Log::error("Device {$device->device_id}: No API token found in credential. Available keys: " . implode(', ', array_keys($params)));
                 return null;
             }
 
