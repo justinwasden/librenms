@@ -357,6 +357,119 @@
                                             <i class="fas fa-save"></i> Save Endpoint
                                         </button>
                                     </div>
+
+                                    {{-- API PREVIEW SECTION --}}
+                                    <hr class="mt-4 mb-3">
+                                    <h6 class="text-info mb-3"><i class="fas fa-database"></i> API Response Preview</h6>
+                                    
+                                    <div x-show="!apiPreviewData && !previewError && previewFetched" class="alert alert-info mb-3">
+                                        <i class="fas fa-info-circle"></i> Click "Fetch API Preview" above to load API response data.
+                                    </div>
+
+                                    <div x-show="previewError && previewFetched" class="alert alert-danger mb-3">
+                                        <i class="fas fa-exclamation-triangle"></i> <strong>Error fetching preview:</strong>
+                                        <p class="mb-0" x-text="previewErrorMessage"></p>
+                                    </div>
+
+                                    <div x-show="apiPreviewData && previewFetched" class="bg-light p-3 rounded" style="max-height: 600px; overflow-y: auto;">
+                                        {{-- Recommendations Tab --}}
+                                        <ul class="nav nav-tabs mb-3" role="tablist">
+                                            <li class="nav-item">
+                                                <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'" 
+                                                   :class="{ 'active': activePreviewTab === 'recommendations' }">
+                                                    <i class="fas fa-lightbulb"></i> Recommendations
+                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length" 
+                                                          x-text="apiPreviewRecommendations.length"></span>
+                                                </a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'structure'"
+                                                   :class="{ 'active': activePreviewTab === 'structure' }">
+                                                    <i class="fas fa-sitemap"></i> Structure
+                                                </a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'sample'"
+                                                   :class="{ 'active': activePreviewTab === 'sample' }">
+                                                    <i class="fas fa-code"></i> Sample Data
+                                                </a>
+                                            </li>
+                                        </ul>
+
+                                        {{-- Recommendations Tab Content --}}
+                                        <div x-show="activePreviewTab === 'recommendations'">
+                                            <div x-show="apiPreviewRecommendations.length === 0" class="text-muted text-center py-3">
+                                                No recommendations available.
+                                            </div>
+
+                                            <div x-show="apiPreviewRecommendations.length > 0" class="table-responsive">
+                                                <table class="table table-sm table-hover mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>API Field</th>
+                                                            <th>Data Type</th>
+                                                            <th>Recommended</th>
+                                                            <th>Confidence</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template x-for="rec in apiPreviewRecommendations" :key="rec.api_field">
+                                                            <tr>
+                                                                <td><code x-text="rec.api_field" style="font-size: 11px;"></code></td>
+                                                                <td>
+                                                                    <span class="badge" 
+                                                                          :class="getDataTypeBadgeClass(rec.dataType || rec.type)"
+                                                                          x-text="rec.dataType || rec.type"></span>
+                                                                </td>
+                                                                <td><small x-text="rec.librenms_table + '.' + rec.librenms_field"></small></td>
+                                                                <td>
+                                                                    <div class="progress" style="height: 18px; width: 60px;">
+                                                                        <div class="progress-bar" 
+                                                                             :style="'width: ' + (rec.confidence * 100) + '%; background-color: ' + getConfidenceColor(rec.confidence)"
+                                                                             :title="Math.round(rec.confidence * 100) + '%'">
+                                                                            <small x-text="Math.round(rec.confidence * 100) + '%'" style="font-size: 9px;"></small>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        {{-- Structure Tab Content --}}
+                                        <div x-show="activePreviewTab === 'structure'" class="table-responsive">
+                                            <table class="table table-sm mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Field</th>
+                                                        <th>Type</th>
+                                                        <th>Sample Value</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <template x-for="(field, name) in apiPreviewFields" :key="name">
+                                                        <tr>
+                                                            <td><code x-text="name" style="font-size: 11px;"></code></td>
+                                                            <td>
+                                                                <span class="badge badge-light" 
+                                                                      x-text="getFieldType(field)"></span>
+                                                            </td>
+                                                            <td>
+                                                                <small x-text="getFieldSample(field)"></small>
+                                                            </td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {{-- Sample Data Tab Content --}}
+                                        <div x-show="activePreviewTab === 'sample'">
+                                            <pre style="font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code x-text="JSON.stringify(apiPreviewSample, null, 2)"></code></pre>
+                                        </div>
+                                    </div>
                                 </div>
                             </template>
 
@@ -424,6 +537,13 @@ function endpointManager() {
         selectedCredentialInfo: {},
         deviceSelectorError: '',
         deviceSelectorSuccess: '',
+                apiPreviewData: null,
+                apiPreviewRecommendations: [],
+                apiPreviewFields: {},
+                apiPreviewSample: {},
+                previewFetched: false,
+                activePreviewTab: 'recommendations',
+                previewErrorMessage: '','
 
         loadEndpoints(endpointsData) {
             console.log('=== Endpoint Manager Init ===');
@@ -484,6 +604,13 @@ function endpointManager() {
             this.previewLoading = false;
             this.previewSuccess = false;
             this.previewError = false;
+            this.previewFetched = false;
+            this.apiPreviewData = null;
+            this.apiPreviewRecommendations = [];
+            this.apiPreviewFields = {};
+            this.apiPreviewSample = {};
+            this.activePreviewTab = 'recommendations';
+            this.previewErrorMessage = '';
         },
 
         // NEW METHOD: Fetch API Preview
@@ -755,6 +882,7 @@ function endpointManager() {
             this.previewLoading = true;
             this.previewError = false;
             this.deviceSelectorError = '';
+            this.previewFetched = false;
 
             try {
                 const templateId = {{ $template->id }};
@@ -800,26 +928,73 @@ function endpointManager() {
                 if (data.success) {
                     this.previewLoading = false;
                     this.previewSuccess = true;
-                    $('#deviceSelectorModal').modal('hide');
+                    this.previewFetched = true;
+                    this.apiPreviewData = data.preview;
+                    this.apiPreviewRecommendations = data.recommendations || [];
+                    this.activePreviewTab = 'recommendations';
                     
-                    // Show success message
-                    let previewText = '✓ API Preview successful!\n\n';
-                    previewText += 'Response Structure (first 500 chars):\n' + JSON.stringify(data.preview, null, 2).substring(0, 500) + '...\n\n';
-                    if (data.recommendations && data.recommendations.length > 0) {
-                        previewText += 'Found ' + data.recommendations.length + ' recommended field mappings!';
-                    }
-                    alert(previewText);
+                    // Extract fields from first item in response
+                    const items = data.preview.items || data.preview.data || [data.preview];
+                    const firstItem = items[0] || {};
+                    this.apiPreviewFields = firstItem;
+                    this.apiPreviewSample = firstItem;
+                    
+                    $('#deviceSelectorModal').modal('hide');
+                    console.log('Preview data loaded successfully');
                 } else {
                     this.previewLoading = false;
                     this.previewError = true;
+                    this.previewFetched = true;
+                    this.previewErrorMessage = data.error || 'Unknown error';
                     this.deviceSelectorError = '✗ Error: ' + (data.error || 'Unknown error');
                 }
             } catch (err) {
                 console.error('Preview error:', err);
                 this.previewLoading = false;
                 this.previewError = true;
+                this.previewFetched = true;
+                this.previewErrorMessage = err.message;
                 this.deviceSelectorError = '✗ Failed to fetch preview: ' + err.message;
             }
+        },
+
+        // Helper method to get badge class for data type
+        getDataTypeBadgeClass(type) {
+            const typeMap = {
+                'string': 'badge-success',
+                'integer': 'badge-info',
+                'float': 'badge-info',
+                'double': 'badge-info',
+                'boolean': 'badge-warning',
+                'array': 'badge-danger',
+                'object': 'badge-danger',
+                'null': 'badge-secondary',
+            };
+            return typeMap[type] || 'badge-secondary';
+        },
+
+        // Helper method to get color for confidence score
+        getConfidenceColor(confidence) {
+            if (confidence >= 0.95) return '#28a745'; // green
+            if (confidence >= 0.85) return '#17a2b8'; // info
+            if (confidence >= 0.70) return '#ffc107'; // warning
+            return '#dc3545'; // danger
+        },
+
+        // Helper to get field type
+        getFieldType(field) {
+            if (field === null) return 'null';
+            if (Array.isArray(field)) return 'array';
+            return typeof field;
+        },
+
+        // Helper to get sample value
+        getFieldSample(field) {
+            if (field === null) return 'null';
+            if (Array.isArray(field)) return `[${field.length} items]`;
+            if (typeof field === 'string') return field.length > 50 ? field.substring(0, 50) + '...' : field;
+            if (typeof field === 'object') return '[object]';
+            return String(field);
         },
 
         closeDeviceSelector() {
