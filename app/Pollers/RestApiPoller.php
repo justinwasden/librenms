@@ -3,6 +3,10 @@
 namespace App\Pollers;
 
 use App\Models\Device;
+use App\Models\Port;
+use App\Models\Sensor;
+use App\Models\Storage;
+use App\Models\Link;
 use App\Models\RestApiConnection;
 use App\RestApi\Services\MapperSelectionService;
 use App\RestApi\Credentials\CredentialHelper;
@@ -16,6 +20,7 @@ class RestApiPoller
 {
     protected Client $client;
     protected array $sessionTokens = [];
+    protected Device $device;
 
     public function __construct()
     {
@@ -27,6 +32,8 @@ class RestApiPoller
 
     public function poll(Device $device)
     {
+        $this->device = $device;
+        
         $deviceTemplate = $device->restApiTemplate;
         
         if (!$deviceTemplate) {
@@ -244,10 +251,21 @@ class RestApiPoller
 
     private function processResponse(Device $device, $endpoint, $mapper, $mappings, $response)
     {
+        // Get target table for this endpoint
         $targetTable = $mapper->getTargetTableForEndpoint($endpoint->path);
+        
+        // Handle multi-item responses
         $items = $response['items'] ?? [$response];
+        
+        if (empty($items)) {
+            return;
+        }
 
         foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
             foreach ($mappings as $targetField => $jsonPath) {
                 // Extract value from API response using JSONPath
                 $value = JsonPathExtractor::extract($item, $jsonPath);
@@ -256,20 +274,277 @@ class RestApiPoller
                     continue;
                 }
 
-                // Transform value (data type conversion, calculations, etc.)
-                $value = $mapper->transformValue($targetField, $value);
-
                 // Store to database
-                $this->storeValue($device, $targetTable, $targetField, $value, $endpoint->path);
+                $this->storeValue($device, $targetTable, $item, $targetField, $value, $endpoint->path);
             }
         }
     }
 
-    private function storeValue(Device $device, $table, $field, $value, $endpoint)
+    /**
+     * Store metric value to appropriate LibreNMS table
+     * 
+     * @param Device $device
+     * @param string $table Target table (devices, ports, storage, sensors, links)
+     * @param array $itemData Complete item data for context
+     * @param string $field Target field name
+     * @param mixed $value Field value
+     * @param string $endpoint Endpoint path for context
+     */
+    private function storeValue(Device $device, string $table, array $itemData, string $field, $value, string $endpoint)
     {
-        // TODO: Store to appropriate table based on $table
-        // Tables: devices, ports, storage, sensors, links, custom
-        // Handle different schema for each table type
-        // Update or insert based on identifiers from mapper
+        try {
+            $field = trim($field);
+            $value = trim((string) $value);
+
+            Log::debug("Device {$device->device_id}: Storing {$table}.{$field} = {$value}");
+
+            switch ($table) {
+                case 'devices':
+                    $this->storeDeviceMetric($device, $field, $value);
+                    break;
+
+                case 'ports':
+                    $this->storePortMetric($device, $itemData, $field, $value);
+                    break;
+
+                case 'storage':
+                    $this->storeStorageMetric($device, $itemData, $field, $value);
+                    break;
+
+                case 'sensors':
+                    $this->storeSensorMetric($device, $itemData, $field, $value, $endpoint);
+                    break;
+
+                case 'links':
+                    $this->storeLinkMetric($device, $itemData, $field, $value);
+                    break;
+
+                default:
+                    Log::warning("Device {$device->device_id}: Unknown table type: {$table}");
+            }
+        } catch (\Exception $e) {
+            Log::error("Device {$device->device_id}: Error storing metric {$table}.{$field}: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Store device-level metrics (hostname, version, hardware, etc.)
+     */
+    private function storeDeviceMetric(Device $device, string $field, $value)
+    {
+        // Map Pure Storage field names to Device model fields
+        $fieldMap = [
+            'hostname' => 'hostname',
+            'version' => 'version',
+            'hardware' => 'hardware',
+            'serial' => 'serial',
+            'os' => 'os',
+            'sysName' => 'sysName',
+        ];
+
+        if (isset($fieldMap[$field])) {
+            $dbField = $fieldMap[$field];
+            $device->update([$dbField => $value]);
+            Log::debug("Device {$device->device_id}: Updated device.{$dbField} = {$value}");
+        }
+    }
+
+    /**
+     * Store port/network interface metrics
+     */
+    private function storePortMetric(Device $device, array $itemData, string $field, $value)
+    {
+        $portName = $itemData['name'] ?? null;
+        if (!$portName) {
+            return;
+        }
+
+        // Find or create port
+        $port = Port::firstOrCreate(
+            [
+                'device_id' => $device->device_id,
+                'ifName' => $portName,
+            ],
+            [
+                'ifDescr' => $itemData['services'][0] ?? $portName,
+                'ifType' => $itemData['interface_type'] ?? 'other',
+                'ifSpeed' => $itemData['speed'] ?? 0,
+                'ifPhysAddress' => $itemData['eth']['mac_address'] ?? '',
+                'ifMtu' => $itemData['eth']['mtu'] ?? 1500,
+            ]
+        );
+
+        // Map Pure Storage fields to Port model fields
+        $fieldMap = [
+            'speed' => 'ifSpeed',
+            'mac_address' => 'ifPhysAddress',
+            'mtu' => 'ifMtu',
+            'address' => 'ipv4_address',
+            'netmask' => 'ipv4_netmask',
+            'vlan' => 'ifVlan',
+        ];
+
+        if (isset($fieldMap[$field])) {
+            $port->update([$fieldMap[$field] => $value]);
+            Log::debug("Device {$device->device_id}: Updated port {$portName}.{$fieldMap[$field]} = {$value}");
+        }
+    }
+
+    /**
+     * Store storage/volume metrics
+     */
+    private function storeStorageMetric(Device $device, array $itemData, string $field, $value)
+    {
+        $storageName = $itemData['name'] ?? null;
+        if (!$storageName) {
+            return;
+        }
+
+        // Find or create storage entry
+        $storage = Storage::firstOrCreate(
+            [
+                'device_id' => $device->device_id,
+                'storage_index' => md5($storageName), // Use hash as unique index
+            ],
+            [
+                'storage_descr' => $storageName,
+                'storage_type' => 'pure-volume',
+            ]
+        );
+
+        // Map Pure Storage fields
+        $fieldMap = [
+            'storage_size' => 'storage_size',
+            'storage_used' => 'storage_used',
+            'storage_free' => 'storage_free',
+            'storage_perc' => 'storage_perc',
+        ];
+
+        if (isset($fieldMap[$field])) {
+            $storage->update([$fieldMap[$field] => $value]);
+            Log::debug("Device {$device->device_id}: Updated storage {$storageName}.{$fieldMap[$field]} = {$value}");
+        }
+    }
+
+    /**
+     * Store sensor metrics (performance, temperature, status, etc.)
+     */
+    private function storeSensorMetric(Device $device, array $itemData, string $field, $value, string $endpoint)
+    {
+        // Determine sensor type from endpoint and field
+        $sensorType = $this->determineSensorType($endpoint, $field);
+        $sensorClass = $this->determineSensorClass($field);
+        
+        $sensorDescr = $itemData['name'] ?? "{$sensorClass}_{$field}";
+        $sensorIndex = md5("{$sensorDescr}_{$endpoint}");
+
+        // Find or create sensor
+        $sensor = Sensor::firstOrCreate(
+            [
+                'device_id' => $device->device_id,
+                'sensor_type' => $sensorType,
+                'sensor_index' => $sensorIndex,
+            ],
+            [
+                'poller_type' => 'rest-api',
+                'sensor_class' => $sensorClass,
+                'sensor_descr' => $sensorDescr,
+                'rrd_type' => 'GAUGE',
+            ]
+        );
+
+        // Update sensor value
+        $sensor->update(['sensor_current' => $value]);
+        Log::debug("Device {$device->device_id}: Updated sensor {$sensorDescr} = {$value}");
+    }
+
+    /**
+     * Store link/connection metrics
+     */
+    private function storeLinkMetric(Device $device, array $itemData, string $field, $value)
+    {
+        $localPort = $itemData['local_port'] ?? null;
+        $remotePort = $itemData['remote_port'] ?? null;
+        $remoteHost = $itemData['name'] ?? null;
+
+        if (!$localPort || !$remotePort || !$remoteHost) {
+            return;
+        }
+
+        // Try to find remote device
+        $remoteDevice = Device::where('hostname', $remoteHost)->first();
+        if (!$remoteDevice) {
+            Log::debug("Device {$device->device_id}: Remote device not found: {$remoteHost}");
+            return;
+        }
+
+        // Find or create link
+        $link = Link::firstOrCreate(
+            [
+                'local_device_id' => $device->device_id,
+                'local_port_id' => $localPort,
+                'remote_device_id' => $remoteDevice->device_id,
+                'remote_port_id' => $remotePort,
+            ],
+            [
+                'link_type' => $itemData['replication_transport'] ?? 'unknown',
+            ]
+        );
+
+        // Store link status if present
+        if ($field === 'status') {
+            $link->update(['link_status' => $value]);
+            Log::debug("Device {$device->device_id}: Updated link status = {$value}");
+        }
+    }
+
+    /**
+     * Determine sensor type from endpoint and field
+     */
+    private function determineSensorType(string $endpoint, string $field): string
+    {
+        if (strpos($endpoint, 'performance') !== false) {
+            if (strpos($field, 'latency') !== false) {
+                return 'latency';
+            } elseif (strpos($field, 'iops') !== false || strpos($field, 'reads_per_sec') !== false) {
+                return 'iops';
+            } elseif (strpos($field, 'bytes_per_sec') !== false) {
+                return 'throughput';
+            }
+        }
+
+        if (strpos($endpoint, 'hardware') !== false) {
+            if (strpos($field, 'temperature') !== false) {
+                return 'temperature';
+            } elseif (strpos($field, 'voltage') !== false) {
+                return 'voltage';
+            }
+        }
+
+        return 'generic';
+    }
+
+    /**
+     * Determine sensor class for RRD graphing
+     */
+    private function determineSensorClass(string $field): string
+    {
+        if (strpos($field, 'temperature') !== false) {
+            return 'temperature';
+        } elseif (strpos($field, 'voltage') !== false) {
+            return 'voltage';
+        } elseif (strpos($field, 'current') !== false || strpos($field, 'bias') !== false) {
+            return 'current';
+        } elseif (strpos($field, 'power') !== false) {
+            return 'power';
+        } elseif (strpos($field, 'status') !== false || strpos($field, 'state') !== false) {
+            return 'state';
+        } elseif (strpos($field, 'latency') !== false) {
+            return 'delay';
+        } elseif (strpos($field, 'iops') !== false || strpos($field, 'operations') !== false) {
+            return 'counter';
+        }
+
+        return 'gauge';
     }
 }
