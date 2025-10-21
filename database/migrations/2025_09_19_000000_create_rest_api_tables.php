@@ -122,9 +122,9 @@ return new class extends Migration
                 $table->timestamp('last_seen_at')->nullable();
                 $table->timestamps();
                 
-                $table->index(['api_field_name', 'librenms_table']);
-                $table->index(['device_id', 'enabled']);
-                $table->index('confidence_score');
+                $table->index(['api_field_name', 'librenms_table'], 'api_librenms_idx');
+                $table->index(['device_id', 'enabled'], 'device_enabled_idx');
+                $table->index('confidence_score', 'confidence_idx');
             });
         }
 
