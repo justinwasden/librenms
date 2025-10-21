@@ -66,7 +66,41 @@ class MapperSelectionService
             ];
         }
 
-        // 4. Return generic fallback
+        // 4. Check for template mappings from template_response_mapping
+        if ($deviceTemplate->template && $deviceTemplate->template->template_data) {
+            $templateData = $deviceTemplate->template->template_data;
+            $mappings = [];
+            
+            // Extract mappings from each connection's endpoints
+            if (isset($templateData['connections'])) {
+                foreach ($templateData['connections'] as $connection) {
+                    if (isset($connection['endpoints'])) {
+                        foreach ($connection['endpoints'] as $endpoint) {
+                            $path = $endpoint['path'] ?? null;
+                            $metricMap = $endpoint['metric_map'] ?? null;
+                            if ($path && $metricMap) {
+                                $mappings[$path] = $metricMap;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (!empty($mappings)) {
+                $mapper = new GenericMapper([
+                    'vendor_name' => $deviceTemplate->template->vendor,
+                    'mappings' => $mappings,
+                ]);
+
+                return [
+                    'mapper' => $mapper,
+                    'source' => 'template',
+                    'mapper_name' => $deviceTemplate->template->name,
+                ];
+            }
+        }
+
+        // 5. Return generic fallback
         $mapper = new GenericMapper([
             'vendor_name' => 'Generic',
             'mappings' => [],
