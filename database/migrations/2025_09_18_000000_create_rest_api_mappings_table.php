@@ -13,10 +13,15 @@ class CreateRestApiMappingsTable extends Migration
      */
     public function up()
     {
+        // Only create if table doesn't exist
+        if (Schema::hasTable('rest_api_mappings')) {
+            return;
+        }
+
         // Create mappings table
         Schema::create('rest_api_mappings', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('endpoint_id');
+            $table->unsignedBigInteger('endpoint_id')->nullable();
             $table->string('target_table');       // 'devices', 'storage', 'ports', 'sensors'
             $table->string('target_field');       // 'hostname', 'storage_descr', etc
             $table->string('source_field');       // JSONPath: '$.items[*].name'
@@ -27,25 +32,27 @@ class CreateRestApiMappingsTable extends Migration
             $table->boolean('enabled')->default(true);
             $table->timestamps();
 
-            $table->foreign('endpoint_id')->references('id')->on('rest_api_endpoints')->onDelete('cascade');
+            // Don't create foreign key yet - will be added in separate migration
             $table->index(['endpoint_id', 'enabled']);
         });
 
         // Create mapping suggestions table (for preview analysis)
-        Schema::create('rest_api_mapping_suggestions', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('endpoint_id');
-            $table->string('source_field');
-            $table->string('suggested_target_table');
-            $table->string('suggested_target_field');
-            $table->float('confidence')->default(0.5); // 0-1
-            $table->string('reason')->nullable();
-            $table->text('sample_value')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('rest_api_mapping_suggestions')) {
+            Schema::create('rest_api_mapping_suggestions', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('endpoint_id')->nullable();
+                $table->string('source_field');
+                $table->string('suggested_target_table');
+                $table->string('suggested_target_field');
+                $table->float('confidence')->default(0.5); // 0-1
+                $table->string('reason')->nullable();
+                $table->text('sample_value')->nullable();
+                $table->timestamps();
 
-            $table->foreign('endpoint_id')->references('id')->on('rest_api_endpoints')->onDelete('cascade');
-            $table->index(['endpoint_id', 'confidence']);
-        });
+                // Don't create foreign key yet - will be added in separate migration
+                $table->index(['endpoint_id', 'confidence']);
+            });
+        }
     }
 
     /**

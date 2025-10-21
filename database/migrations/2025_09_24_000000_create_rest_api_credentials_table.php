@@ -24,6 +24,13 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('rest_api_credentials');
+        // Disable foreign key checks temporarily
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        
+        try {
+            Schema::dropIfExists('rest_api_credentials');
+        } finally {
+            \DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
     }
 };
