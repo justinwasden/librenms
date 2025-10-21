@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class RestApiTemplate extends Model
 {
@@ -40,9 +41,9 @@ class RestApiTemplate extends Model
 
     /**
      * Get endpoints from template_data (connections -> endpoints)
-     * Returns a collection-like array that works with isEmpty()
+     * Returns a collection that works with isEmpty()
      */
-    public function getEndpointsAttribute()
+    public function getEndpoints(): Collection
     {
         $connections = $this->template_data['connections'] ?? [];
         $endpoints = [];
