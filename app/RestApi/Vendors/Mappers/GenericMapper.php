@@ -71,4 +71,43 @@ class GenericMapper implements VendorMapperInterface
 
         return isset($mappings[$field]);
     }
+
+    public function getSensorClass(string $endpoint, string $sensorDescr): ?string
+    {
+        // Check if sensor class is defined in config
+        if (isset($this->config['sensor_classes'][$endpoint][$sensorDescr])) {
+            return $this->config['sensor_classes'][$endpoint][$sensorDescr];
+        }
+
+        // Try to infer from sensor description
+        $lowerDescr = strtolower($sensorDescr);
+        if (preg_match('/(temperature|temp)/i', $lowerDescr)) {
+            return 'temperature';
+        }
+        if (preg_match('/(voltage|volt|power|watt)/i', $lowerDescr)) {
+            return 'power';
+        }
+        if (preg_match('/(current|amp|amps)/i', $lowerDescr)) {
+            return 'current';
+        }
+        if (preg_match('/(frequency|hz)/i', $lowerDescr)) {
+            return 'frequency';
+        }
+
+        // Default to gauge
+        return 'gauge';
+    }
+
+    public function getSensorDescription(string $endpoint, string $apiField): string
+    {
+        // Check if description is defined in config
+        if (isset($this->config['sensor_descriptions'][$endpoint][$apiField])) {
+            return $this->config['sensor_descriptions'][$endpoint][$apiField];
+        }
+
+        // Convert API field name to readable format
+        // Convert snake_case to Title Case
+        $desc = str_replace(['_', '.'], ' ', $apiField);
+        return ucwords($desc);
+    }
 }

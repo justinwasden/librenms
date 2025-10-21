@@ -132,16 +132,16 @@ return new class extends Migration
         if (!Schema::hasTable('rest_api_templates')) {
             Schema::create('rest_api_templates', function (Blueprint $table) {
                 $table->id();
-                $table->string('name');
-                $table->text('description')->nullable();
+                $table->string('name')->unique();
                 $table->string('vendor')->nullable();
-                $table->string('model')->nullable();
+                $table->text('description')->nullable();
+                $table->text('template_data')->nullable(); // JSON blob for connections and endpoints
                 $table->json('endpoints')->nullable();
                 $table->json('mappings')->nullable();
                 $table->boolean('is_global')->default(false);
                 $table->timestamps();
                 
-                $table->index(['vendor', 'model']);
+                $table->index(['vendor', 'name']);
             });
         }
     }

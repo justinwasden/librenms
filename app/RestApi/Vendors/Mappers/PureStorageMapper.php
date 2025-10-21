@@ -110,7 +110,63 @@ class PureStorageMapper implements VendorMapperInterface
         return isset($mappings[$field]) && $targetTableForEndpoint === $targetTable;
     }
 
-    // =====================================================================
+    public function getSensorClass(string $endpoint, string $sensorDescr): ?string
+    {
+        // Map Pure Storage metrics to sensor classes
+        $sensorClasses = [
+            '/arrays/performance' => [
+                'Array_Read_Throughput' => 'gauge',
+                'Array_Write_Throughput' => 'gauge',
+                'Array_Read_IOPS' => 'gauge',
+                'Array_Write_IOPS' => 'gauge',
+                'Array_Read_Latency' => 'gauge',
+                'Array_Write_Latency' => 'gauge',
+                'Array_Read_Queue_Latency' => 'gauge',
+                'Array_Write_Queue_Latency' => 'gauge',
+                'Array_Bytes_Per_Read' => 'gauge',
+                'Array_Bytes_Per_Write' => 'gauge',
+            ],
+            '/volumes/performance' => [
+                'Volume_Read_Throughput' => 'gauge',
+                'Volume_Write_Throughput' => 'gauge',
+                'Volume_Read_IOPS' => 'gauge',
+                'Volume_Write_IOPS' => 'gauge',
+                'Volume_Read_Latency' => 'gauge',
+                'Volume_Write_Latency' => 'gauge',
+                'Volume_Queue_Latency_Read' => 'gauge',
+                'Volume_Queue_Latency_Write' => 'gauge',
+            ],
+            '/hardware' => [
+                'Hardware_Temperature' => 'temperature',
+                'Hardware_Voltage' => 'power',
+                'Hardware_Status' => 'state',
+            ],
+            '/network-interfaces/port-details' => [
+                'Optic_Temperature' => 'temperature',
+                'Optic_Vcc' => 'power',
+                'TX_Bias_Current' => 'current',
+                'TX_Optical_Power' => 'power',
+                'RX_Optical_Power' => 'power',
+                'TX_Fault' => 'state',
+                'RX_Loss_of_Signal' => 'state',
+            ],
+            '/controllers' => [
+                'Controller_Status' => 'state',
+            ],
+        ];
+
+        if (isset($sensorClasses[$endpoint][$sensorDescr])) {
+            return $sensorClasses[$endpoint][$sensorDescr];
+        }
+
+        return 'gauge'; // Default
+    }
+
+    public function getSensorDescription(string $endpoint, string $apiField): string
+    {
+        // Use the field name as-is (it's already formatted nicely in our mappings)
+        return $apiField;
+    }
     // ENDPOINT MAPPING DEFINITIONS
     // =====================================================================
 
