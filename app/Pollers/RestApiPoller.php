@@ -3,14 +3,24 @@
 namespace App\Pollers;
 
 use App\Models\Device;
-use App\Models\RestApiDeviceTemplate;
+use App\Models\RestApiConnection;
 use App\RestApi\Services\MapperSelectionService;
 use App\RestApi\Utilities\JsonPathExtractor;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
 
 class RestApiPoller
 {
-    protected $client;
+    protected Client $client;
+
+    public function __construct()
+    {
+        $this->client = new Client([
+            'timeout' => 30,
+            'verify' => false,
+        ]);
+    }
 
     public function poll(Device $device)
     {
@@ -26,6 +36,13 @@ class RestApiPoller
         
         if (!$deviceTemplate->template) {
             Log::error("Device {$device->device_id}: Template not found for device template ID {$deviceTemplate->id}");
+            return;
+        }
+
+        // Get REST API connection for this device
+        $connection = $device->restApiConnections()->where('enabled', 1)->first();
+        if (!$connection) {
+            Log::warning("Device {$device->device_id}: No enabled REST API connection found");
             return;
         }
 
@@ -46,11 +63,11 @@ class RestApiPoller
         }
 
         foreach ($endpoints as $endpoint) {
-            $this->pollEndpoint($device, $endpoint, $mapper);
+            $this->pollEndpoint($device, $connection, $endpoint, $mapper);
         }
     }
 
-    private function pollEndpoint(Device $device, $endpoint, $mapper)
+    private function pollEndpoint(Device $device, RestApiConnection $connection, $endpoint, $mapper)
     {
         // Get mappings for this endpoint
         $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
@@ -62,7 +79,7 @@ class RestApiPoller
 
         try {
             // Fetch from API
-            $response = $this->fetchEndpoint($device, $endpoint);
+            $response = $this->fetchEndpoint($device, $connection, $endpoint);
             
             if (!$response) {
                 Log::warning("Device {$device->device_id}: Empty response from {$endpoint->path}");
@@ -78,15 +95,52 @@ class RestApiPoller
         }
     }
 
-    private function fetchEndpoint(Device $device, $endpoint)
+    private function fetchEndpoint(Device $device, RestApiConnection $connection, $endpoint)
     {
-        // TODO: Implement HTTP client to fetch from API
-        // - Use device credential for authentication
-        // - Handle pagination
-        // - Handle rate limiting
-        // - Parse JSON response
-        
-        return [];
+        try {
+            // Build URL
+            $baseUrl = str_replace('{device_hostname}', $device->hostname, $connection->base_url);
+            $url = $baseUrl . $endpoint->path;
+
+            Log::debug("Device {$device->device_id}: Fetching {$url}");
+
+            // Build headers with authentication
+            $headers = ['Accept' => 'application/json'];
+            
+            if ($connection->credential) {
+                $authType = $connection->credential->authenticationType->name ?? null;
+                
+                if ($authType === 'Basic Auth') {
+                    $username = $connection->credential->params()->where('param_name', 'username')->value('param_value');
+                    $password = $connection->credential->params()->where('param_name', 'password')->value('param_value');
+                    $headers['Authorization'] = 'Basic ' . base64_encode("{$username}:{$password}");
+                } elseif ($authType === 'Bearer Token') {
+                    $token = $connection->credential->params()->where('param_name', 'token')->value('param_value');
+                    $headers['Authorization'] = "Bearer {$token}";
+                } elseif ($authType === 'API Key') {
+                    $key = $connection->credential->params()->where('param_name', 'api_key')->value('param_value');
+                    $headers['X-API-Key'] = $key;
+                }
+            }
+
+            // Make request
+            $response = $this->client->request('GET', $url, [
+                'headers' => $headers,
+                'verify' => !$connection->disable_ssl_verify,
+            ]);
+
+            // Parse response
+            $body = $response->getBody()->getContents();
+            $data = json_decode($body, true);
+
+            return $data ?: [];
+        } catch (GuzzleException $e) {
+            Log::error("Device {$device->device_id}: HTTP error fetching {$endpoint->path}: {$e->getMessage()}");
+            return [];
+        } catch (\Exception $e) {
+            Log::error("Device {$device->device_id}: Error fetching {$endpoint->path}: {$e->getMessage()}");
+            return [];
+        }
     }
 
     private function processResponse(Device $device, $endpoint, $mapper, $mappings, $response)
