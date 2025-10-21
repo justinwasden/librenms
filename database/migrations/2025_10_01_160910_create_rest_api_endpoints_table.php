@@ -31,8 +31,16 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Drop dependent tables first
-        Schema::dropIfExists('rest_api_mappings');
-        Schema::dropIfExists('rest_api_endpoints');
+        // Disable foreign key checks temporarily
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        
+        try {
+            // Drop dependent tables first
+            Schema::dropIfExists('rest_api_mappings');
+            Schema::dropIfExists('rest_api_endpoints');
+        } finally {
+            // Re-enable foreign key checks
+            \DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
     }
 };
