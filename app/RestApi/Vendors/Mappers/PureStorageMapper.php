@@ -90,7 +90,8 @@ class PureStorageMapper implements VendorMapperInterface
         $recommendations = [];
 
         // Analyze first item in response
-        $sample = reset($apiResponse['items'] ?? []);
+        $items = $apiResponse['items'] ?? [];
+        $sample = reset($items);
         if (!$sample) {
             return $recommendations;
         }
