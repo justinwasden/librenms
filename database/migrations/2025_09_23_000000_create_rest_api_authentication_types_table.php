@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('rest_api_authentication_types')) {
+            return; // Table already exists
+        }
+        
         Schema::create('rest_api_authentication_types', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
