@@ -50,7 +50,7 @@ return new class extends Migration
         if (!Schema::hasTable('rest_api_credentials')) {
             Schema::create('rest_api_credentials', function (Blueprint $table) {
                 $table->id();
-                $table->string('name');
+                $table->string('name')->nullable()->default(null);
                 $table->unsignedBigInteger('authentication_type_id');
                 $table->text('notes')->nullable();
                 $table->timestamps();
