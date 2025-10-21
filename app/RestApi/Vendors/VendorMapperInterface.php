@@ -82,7 +82,22 @@ interface VendorMapperInterface
     public function getDescription(): string;
 
     /**
-     * Get version of this mapper (for tracking updates)
+     * Get sensor class for a specific sensor
+     * Optional - used for determining sensor type (gauge, temperature, power, etc.)
+     * 
+     * @param string $endpoint API endpoint path
+     * @param string $sensorDescr Sensor description/name
+     * @return string|null Sensor class (gauge, temperature, power, etc.) or null for default
      */
-    public function getVersion(): string;
+    public function getSensorClass(string $endpoint, string $sensorDescr): ?string;
+
+    /**
+     * Get sensor description from API field name
+     * Optional - used for generating human-readable sensor descriptions
+     * 
+     * @param string $endpoint API endpoint path
+     * @param string $apiField API field name
+     * @return string Readable sensor description
+     */
+    public function getSensorDescription(string $endpoint, string $apiField): string;
 }
