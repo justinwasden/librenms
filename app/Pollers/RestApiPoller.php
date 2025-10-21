@@ -3,15 +3,24 @@
 namespace App\Pollers;
 
 use App\Models\Device;
-use App\RestApi\Data\DataRouter;
+use App\Models\RestApiMapping;
+use App\RestApi\Utils\JsonPathExtractor;
+use App\RestApi\Storage\MetricStorageEngine;
 use App\RestApi\Credentials\CredentialHelper;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
 use Log;
 
 /**
- * Clean REST API Poller
- * Uses template-based mappings only - no parsing, no matching, no fallbacks
+ * Simple REST API Poller
+ * 
+ * Uses static mappings only:
+ * 1. Get endpoint mappings from database
+ * 2. Fetch API response
+ * 3. Extract values using JSONPath
+ * 4. Store to database directly
+ * 
+ * No parsing, no matching, no fallbacks
  */
 class RestApiPoller
 {
@@ -24,59 +33,66 @@ class RestApiPoller
     }
 
     /**
-     * Poll all REST API connections for device
+     * Poll all REST API connections
      */
     public function poll()
     {
         $connections = $this->device->restApiConnections()
             ->where('enabled', 1)
-            ->with(['credential' => function($q) { $q->with(['authenticationType', 'params']); }, 'endpoints'])
+            ->with(['credential' => function($q) { $q->with(['authenticationType', 'params']); }, 'endpoints' => function($q) { $q->with('mappings'); }])
             ->get();
 
-        Log::info("REST API Poller: {$this->device->hostname} with " . $connections->count() . " connections");
+        Log::info("REST API Poller: {$this->device->hostname} ({$connections->count()} connections)");
 
         foreach ($connections as $conn) {
-            if (!$conn->credential || !$conn->credential->relationLoaded('authenticationType')) {
-                Log::warning("REST API: Connection '{$conn->name}' missing credential/auth");
+            if (!$conn->credential) {
+                Log::warning("REST API: Connection '{$conn->name}' has no credential");
                 continue;
             }
 
-            Log::debug("REST API: Processing {$conn->name}");
-
             foreach ($conn->endpoints as $endpoint) {
-                try {
-                    // Request endpoint
-                    $response = $this->requestEndpoint($conn, $endpoint);
-
-                    // Get mappings from template
-                    $template = $endpoint->template;
-                    if (!$template || empty($template->template_response_mapping)) {
-                        Log::warning("[{$endpoint->name}] No mappings defined");
-                        continue;
-                    }
-
-                    $mappings = json_decode($template->template_response_mapping, true);
-                    if (!$mappings) {
-                        Log::warning("[{$endpoint->name}] Invalid mapping JSON");
-                        continue;
-                    }
-
-                    // Route directly to database using template mappings
-                    $router = new DataRouter($this->device, $mappings);
-                    $router->routeByTemplate($response, $mappings, $endpoint->name);
-
-                    Log::info("[{$endpoint->name}] Polling successful");
-                } catch (\Exception $e) {
-                    Log::error("[{$endpoint->name}] Polling failed: " . $e->getMessage());
-                }
+                $this->pollEndpoint($conn, $endpoint);
             }
         }
 
-        Log::info("REST API Poller: {$this->device->hostname} completed");
+        Log::info("REST API Poller: {$this->device->hostname} complete");
     }
 
     /**
-     * Request endpoint and return decoded JSON
+     * Poll single endpoint
+     */
+    protected function pollEndpoint($connection, $endpoint)
+    {
+        try {
+            // Get all mappings for this endpoint
+            $mappings = RestApiMapping::where('endpoint_id', $endpoint->id)
+                ->where('enabled', 1)
+                ->get()
+                ->groupBy('target_table');
+
+            if ($mappings->isEmpty()) {
+                Log::debug("[{$endpoint->name}] No mappings defined");
+                return;
+            }
+
+            // Fetch API response
+            $response = $this->requestEndpoint($connection, $endpoint);
+
+            Log::info("[{$endpoint->name}] Polling {$connection->base_url}{$endpoint->path}");
+
+            // Store metrics using mappings
+            $engine = new MetricStorageEngine($this->device);
+            $engine->store($response, $mappings, $endpoint->name);
+
+            Log::info("[{$endpoint->name}] Success");
+
+        } catch (\Exception $e) {
+            Log::error("[{$endpoint->name}] Failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Request endpoint from API
      */
     protected function requestEndpoint($connection, $endpoint): array
     {
@@ -89,10 +105,8 @@ class RestApiPoller
         // Get auth headers
         $headers = $this->getAuthHeaders($connection, $client);
         if (empty($headers)) {
-            throw new \Exception("No authentication headers");
+            throw new \Exception("No auth headers");
         }
-
-        Log::debug("[{$endpoint->name}] Requesting {$endpoint->path}");
 
         $res = $client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
 
@@ -104,12 +118,9 @@ class RestApiPoller
 
         // Check for HTML (session expired)
         if (stripos($body, '<!DOCTYPE html>') !== false) {
-            Log::warning("[{$endpoint->name}] Received HTML - session expired, retrying");
-
-            // Invalidate cached token and retry
-            $cacheKey = "rest_api_token_" . $connection->id;
+            Log::warning("[{$endpoint->name}] Session expired, retrying");
+            $cacheKey = "rest_token_{$connection->id}";
             unset($this->sessionTokens[$cacheKey]);
-
             $headers = $this->getAuthHeaders($connection, $client);
             $res = $client->request($endpoint->method ?? 'GET', $endpoint->path, ['headers' => $headers]);
             $body = (string)$res->getBody();
@@ -117,30 +128,30 @@ class RestApiPoller
 
         $decoded = json_decode($body, true);
         if (!$decoded) {
-            Log::error("[{$endpoint->name}] JSON decode failed: " . json_last_error_msg());
-            throw new \Exception("Invalid JSON response");
+            throw new \Exception("Invalid JSON");
         }
 
         return $decoded;
     }
 
     /**
-     * Get auth headers for connection
+     * Get authentication headers
      */
     protected function getAuthHeaders($connection, $client): array
     {
         $credential = $connection->credential;
-        $authType = Str::lower($credential->authenticationType->name);
+        $authType = Str::lower($credential->authenticationType->name ?? 'none');
 
-        // Session token auth
         if ($authType === 'session token') {
-            $cacheKey = "rest_api_token_" . $connection->id;
+            $cacheKey = "rest_token_{$connection->id}";
 
             if (!isset($this->sessionTokens[$cacheKey])) {
+                // Get session token via login
                 $params = $credential->params->pluck('value', 'key')->toArray();
                 $config = [
-                    'login_path' => $params['login_path'] ?? '/api/login',
+                    'login_path' => $params['login_path'] ?? '/login',
                     'login_method' => $params['login_method'] ?? 'POST',
+                    'api_token_header' => $params['api_token_header'] ?? 'api-token',
                     'session_token_header' => $params['session_token_header'] ?? 'x-auth-token',
                 ];
 
@@ -152,7 +163,8 @@ class RestApiPoller
                 );
 
                 if (!$token) {
-                    throw new \Exception("Failed to obtain session token");
+                    Log::error("Failed to obtain session token for connection: {$connection->name}");
+                    return [];
                 }
 
                 $this->sessionTokens[$cacheKey] = $token;
@@ -163,7 +175,7 @@ class RestApiPoller
             return [$tokenHeader => $this->sessionTokens[$cacheKey]];
         }
 
-        // Other auth types
+        // Use CredentialHelper for other auth types
         return CredentialHelper::getAuthHeaderFromModel($credential);
     }
 }
