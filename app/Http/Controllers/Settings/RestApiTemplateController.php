@@ -328,24 +328,25 @@ class RestApiTemplateController extends Controller
 
             $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData, $credentialId);
 
+            // Generate recommendations from API response structure
+            $recommendations = $this->generateRecommendations($apiResponse, $endpointData);
+
+            // Try vendor mapper if available
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
             $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
             
-            $recommendations = [];
             if ($device && $apiResponse) {
                 $tempEndpoint = new \App\Models\RestApiEndpoint();
                 $tempEndpoint->fill($endpointData);
                 
                 try {
                     $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
-                    // Wrap in error suppression since vendor mappers may have by-reference issues
-                    @$recommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
-                    if (!is_array($recommendations)) {
-                        $recommendations = [];
+                    @$vendorRecommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
+                    if (is_array($vendorRecommendations) && !empty($vendorRecommendations)) {
+                        $recommendations = array_merge($recommendations, $vendorRecommendations);
                     }
                 } catch (\Throwable $e) {
                     \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
-                    $recommendations = [];
                 }
             }
 
@@ -403,6 +404,153 @@ class RestApiTemplateController extends Controller
         }
 
         return $decoded;
+    }
+
+    /**
+     * Generate smart recommendations based on API response field names
+     * Analyzes field names to suggest appropriate LibreNMS mappings
+     */
+    private function generateRecommendations(array $apiResponse, array $endpointData): array
+    {
+        $recommendations = [];
+        $resourceType = $endpointData['resource_type'] ?? 'custom';
+        
+        // Extract all fields from response
+        $fields = $this->extractAllFields($apiResponse);
+        
+        foreach ($fields as $fieldName => $sampleValue) {
+            $rec = $this->suggestMapping($fieldName, $sampleValue, $resourceType);
+            if ($rec) {
+                $recommendations[] = $rec;
+            }
+        }
+        
+        return $recommendations;
+    }
+
+    /**
+     * Extract all fields from API response (flattened)
+     */
+    private function extractAllFields(array $data, string $prefix = ''): array
+    {
+        $fields = [];
+        
+        if (isset($data['items']) && is_array($data['items']) && !empty($data['items'])) {
+            $firstItem = $data['items'][0];
+            if (is_array($firstItem)) {
+                foreach ($firstItem as $key => $value) {
+                    $fields[$key] = $value;
+                }
+            }
+        }
+        
+        return $fields;
+    }
+
+    /**
+     * Suggest a mapping based on field name and type
+     */
+    private function suggestMapping(string $fieldName, $sampleValue, string $resourceType): ?array
+    {
+        $field = strtolower($fieldName);
+        $confidence = 0.5;
+        
+        // Storage/Capacity metrics
+        if (preg_match('/(capacity|size|bytes|used|free)/i', $field)) {
+            $table = 'storage';
+            if (preg_match('/(capacity|size)_used|used_capacity/i', $field)) {
+                $librenmsField = 'storage_used';
+                $confidence = 0.95;
+            } elseif (preg_match('/(capacity|size)_total|total_capacity|capacity_size/i', $field)) {
+                $librenmsField = 'storage_size';
+                $confidence = 0.95;
+            } elseif (preg_match('/(capacity|size)_free|free_capacity/i', $field)) {
+                $librenmsField = 'storage_free';
+                $confidence = 0.95;
+            } elseif (preg_match('/percent|percentage|%/i', $field)) {
+                $librenmsField = 'storage_perc';
+                $confidence = 0.90;
+            } else {
+                $librenmsField = 'storage_used';
+                $confidence = 0.70;
+            }
+            
+            return [
+                'api_field' => $fieldName,
+                'librenms_table' => $table,
+                'librenms_field' => $librenmsField,
+                'confidence' => $confidence,
+                'type' => 'storage'
+            ];
+        }
+        
+        // Sensor metrics (temperature, voltage, fan, etc.)
+        if (preg_match('/(temp|temperature|celsius|°c|voltage|volt|fan|rpm|power|watt|watts|current|amps)/i', $field)) {
+            return [
+                'api_field' => $fieldName,
+                'librenms_table' => 'sensors',
+                'librenms_field' => 'sensor_current',
+                'confidence' => 0.85,
+                'type' => 'sensor'
+            ];
+        }
+        
+        // Network interface metrics
+        if (preg_match('/(bytes_in|bytes_out|octets_in|octets_out|packets|errors|drops)/i', $field)) {
+            $table = 'ports';
+            if (preg_match('/bytes_in|octets_in/i', $field)) {
+                $librenmsField = 'ifInOctets';
+            } elseif (preg_match('/bytes_out|octets_out/i', $field)) {
+                $librenmsField = 'ifOutOctets';
+            } else {
+                $librenmsField = 'ifInOctets';
+            }
+            
+            return [
+                'api_field' => $fieldName,
+                'librenms_table' => $table,
+                'librenms_field' => $librenmsField,
+                'confidence' => 0.80,
+                'type' => 'network'
+            ];
+        }
+        
+        // Performance/IOPS metrics
+        if (preg_match('/(iops|throughput|latency|response_time|bandwidth)/i', $field)) {
+            return [
+                'api_field' => $fieldName,
+                'librenms_table' => 'sensors',
+                'librenms_field' => 'sensor_current',
+                'confidence' => 0.75,
+                'type' => 'performance'
+            ];
+        }
+        
+        // Status/State fields
+        if (preg_match('/(status|state|health|condition|online|operational)/i', $field)) {
+            return [
+                'api_field' => $fieldName,
+                'librenms_table' => 'entPhysical',
+                'librenms_field' => 'entPhysicalOperStatus',
+                'confidence' => 0.70,
+                'type' => 'status'
+            ];
+        }
+        
+        // Name/Description fields
+        if (preg_match('/(name|description|descr|title|label)/i', $field)) {
+            if ($resourceType === 'storage') {
+                return [
+                    'api_field' => $fieldName,
+                    'librenms_table' => 'storage',
+                    'librenms_field' => 'storage_descr',
+                    'confidence' => 0.80,
+                    'type' => 'identifier'
+                ];
+            }
+        }
+        
+        return null;
     }
 
     private function getTemplateAuthHeaders(array $connData, $client, $credentialId = null): array
