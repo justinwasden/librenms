@@ -31,6 +31,8 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Drop dependent tables first
+        Schema::dropIfExists('rest_api_mappings');
         Schema::dropIfExists('rest_api_endpoints');
     }
 };
