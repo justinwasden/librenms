@@ -2,42 +2,58 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RestApiCredential extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
-        'device_id',
-        'auth_type',
-        'username',
-        'password',
-        'auth_token',
-        'extra_data',
+        'name',
+        'authentication_type_id',
+        'notes',
     ];
 
-    protected $hidden = [
-        'password',
-        'auth_token',
-    ];
+    protected $hidden = [];
 
-    protected $casts = [
-        'extra_data' => 'array',
-    ];
+    protected $casts = [];
 
-    public function device(): BelongsTo
+    /**
+     * Get the authentication type this credential uses
+     */
+    public function authenticationType(): BelongsTo
     {
-        return $this->belongsTo(Device::class);
+        return $this->belongsTo(RestApiAuthenticationType::class, 'authentication_type_id');
     }
 
-    public function getAuthHeader(): array
+    /**
+     * Get all parameters for this credential
+     */
+    public function params(): HasMany
     {
-        return match($this->auth_type) {
-            'bearer_token' => ['Authorization' => "Bearer {$this->auth_token}"],
-            'api_token' => ['Authorization' => "Bearer {$this->auth_token}"],
-            'oauth2' => ['Authorization' => "Bearer {$this->auth_token}"],
-            'basic_auth' => ['Authorization' => 'Basic ' . base64_encode("{$this->username}:{$this->password}")],
-            default => [],
-        };
+        return $this->hasMany(RestApiCredentialParam::class, 'credential_id');
+    }
+
+    /**
+     * Get a specific parameter value by key
+     */
+    public function getParamValue(string $key, $default = null)
+    {
+        return $this->params()
+            ->where('key', $key)
+            ->value('value') ?? $default;
+    }
+
+    /**
+     * Get all parameters as key => value array
+     */
+    public function getParamsArray(): array
+    {
+        return $this->params()
+            ->pluck('value', 'key')
+            ->toArray();
     }
 }
