@@ -1424,4 +1424,12 @@ class Device extends BaseModel
     {
         return $this->hasMany(RestApiConnection::class, 'device_id', 'device_id');
     }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\RestApiDeviceTemplate, $this>
+     */
+    public function restApiTemplate(): HasOne
+    {
+        return $this->hasOne(RestApiDeviceTemplate::class, 'device_id', 'device_id');
+    }
 }
