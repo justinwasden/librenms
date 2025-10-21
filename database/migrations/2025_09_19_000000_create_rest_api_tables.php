@@ -82,6 +82,7 @@ return new class extends Migration
                 $table->string('base_url');
                 $table->unsignedBigInteger('credential_id')->nullable();
                 $table->unsignedBigInteger('template_id')->nullable();
+                $table->unsignedInteger('rate_limit')->default(60);
                 $table->boolean('enabled')->default(true);
                 $table->boolean('disable_ssl_verify')->default(false);
                 $table->timestamps();
@@ -96,19 +97,18 @@ return new class extends Migration
         if (!Schema::hasTable('rest_api_endpoints')) {
             Schema::create('rest_api_endpoints', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('connection_id');
-                $table->unsignedBigInteger('template_id')->nullable();
+                $table->unsignedBigInteger('template_id');
                 $table->string('name');
                 $table->string('path');
-                $table->string('method')->default('GET');
+                $table->string('http_method')->default('GET');
+                $table->unsignedInteger('poll_interval')->default(300);
                 $table->string('resource_type')->nullable();
-                $table->json('metric_map')->nullable();
                 $table->json('template_response_mapping')->nullable();
                 $table->boolean('enabled')->default(true);
                 $table->timestamps();
                 
-                $table->foreign('connection_id')->references('id')->on('rest_api_connections')->onDelete('cascade');
-                $table->index(['connection_id', 'enabled']);
+                $table->foreign('template_id')->references('id')->on('rest_api_templates')->onDelete('cascade');
+                $table->index(['template_id', 'enabled']);
             });
         }
 
