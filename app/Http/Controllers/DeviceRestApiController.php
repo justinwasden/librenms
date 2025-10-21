@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Device;
 use App\Models\RestApiTemplate;
 use App\Models\RestApiCredential;
+use App\Models\RestApiAuthenticationType;
 use App\Models\RestApiDeviceTemplate;
 use App\RestApi\Services\MapperSelectionService;
 use Illuminate\Http\Request;
@@ -14,13 +15,30 @@ class DeviceRestApiController extends Controller
     public function edit(Device $device)
     {
         $deviceTemplate = $device->restApiTemplate;
+        $templates = RestApiTemplate::all();
+        $credentials = RestApiCredential::where('device_id', $device->device_id)->orWhereNull('device_id')->get();
+        $authTypes = RestApiAuthenticationType::all();
+        
+        // Get vendor and custom mappings
+        $vendorMappings = [
+            'pure_storage' => 'Pure Storage',
+            'cisco' => 'Cisco',
+            'aruba' => 'Aruba',
+        ];
+        
+        $customMappings = [];
+        $currentMapping = null;
 
         return view('devices.rest-api-settings', [
             'device' => $device,
             'deviceTemplate' => $deviceTemplate,
-            'templates' => RestApiTemplate::all(),
-            'credentials' => RestApiCredential::where('device_id', $device->device_id)->get(),
+            'templates' => $templates,
+            'credentials' => $credentials,
+            'authTypes' => $authTypes,
             'availableMappers' => MapperSelectionService::getAvailableMappers(),
+            'vendorMappings' => $vendorMappings,
+            'customMappings' => $customMappings,
+            'currentMapping' => $currentMapping,
         ]);
     }
 
