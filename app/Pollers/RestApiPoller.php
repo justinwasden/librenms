@@ -108,24 +108,27 @@ class RestApiPoller
             $headers = ['Accept' => 'application/json'];
             
             if ($connection->credential) {
+                $connection->credential->load('authenticationType');
                 $authType = $connection->credential->authenticationType->name ?? null;
                 
                 Log::debug("Device {$device->device_id}: Auth type: {$authType}");
                 
                 if ($authType === 'Basic Auth') {
-                    $username = $connection->credential->params()->where('param_name', 'username')->value('param_value');
-                    $password = $connection->credential->params()->where('param_name', 'password')->value('param_value');
-                    $headers['Authorization'] = 'Basic ' . base64_encode("{$username}:{$password}");
-                    Log::debug("Device {$device->device_id}: Using Basic Auth");
-                } elseif ($authType === 'Bearer Token') {
-                    $token = $connection->credential->params()->where('param_name', 'token')->value('param_value');
-                    $headers['Authorization'] = "Bearer {$token}";
-                    Log::debug("Device {$device->device_id}: Using Bearer Token");
-                } elseif ($authType === 'API Key') {
-                    $apiKey = $connection->credential->params()->where('param_name', 'api_key')->value('param_value');
-                    if (!$apiKey) {
-                        $apiKey = $connection->credential->params()->where('param_name', 'key')->value('param_value');
+                    $username = $connection->credential->getParamValue('username');
+                    $password = $connection->credential->getParamValue('password');
+                    if ($username && $password) {
+                        $headers['Authorization'] = 'Basic ' . base64_encode("{$username}:{$password}");
+                        Log::debug("Device {$device->device_id}: Using Basic Auth");
                     }
+                } elseif ($authType === 'Bearer Token') {
+                    $token = $connection->credential->getParamValue('token');
+                    if ($token) {
+                        $headers['Authorization'] = "Bearer {$token}";
+                        Log::debug("Device {$device->device_id}: Using Bearer Token");
+                    }
+                } elseif ($authType === 'API Key') {
+                    $apiKey = $connection->credential->getParamValue('api_key') 
+                        ?? $connection->credential->getParamValue('key');
                     if ($apiKey) {
                         $headers['X-API-Key'] = $apiKey;
                         Log::debug("Device {$device->device_id}: Using API Key");
