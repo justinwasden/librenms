@@ -10,6 +10,7 @@ use App\RestApi\Utilities\JsonPathExtractor;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class RestApiPoller
 {
@@ -113,15 +114,29 @@ class RestApiPoller
                 // Load credential relationships
                 $connection->credential->load(['authenticationType', 'params']);
                 
-                $authType = strtolower($connection->credential->authenticationType->name ?? '');
+                $authType = Str::lower($connection->credential->authenticationType->name ?? '');
                 Log::debug("Device {$device->device_id}: Auth type: {$authType}");
                 
-                // Get auth headers using CredentialHelper
-                $authHeaders = CredentialHelper::getAuthHeaderFromModel($connection->credential);
-                $headers = array_merge($headers, $authHeaders);
-                
-                if (!empty($authHeaders)) {
-                    Log::debug("Device {$device->device_id}: Added " . count($authHeaders) . " auth header(s)");
+                // Handle session token auth (two-stage)
+                if ($authType === 'session token') {
+                    $sessionToken = $this->getSessionToken($device, $connection);
+                    if ($sessionToken) {
+                        $params = $connection->credential->params->pluck('value', 'key')->toArray();
+                        $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+                        $headers[$tokenHeader] = $sessionToken;
+                        Log::debug("Device {$device->device_id}: Added session token header: {$tokenHeader}");
+                    } else {
+                        Log::error("Device {$device->device_id}: Failed to obtain session token");
+                        return [];
+                    }
+                } else {
+                    // Get auth headers using CredentialHelper for other auth types
+                    $authHeaders = CredentialHelper::getAuthHeaderFromModel($connection->credential);
+                    $headers = array_merge($headers, $authHeaders);
+                    
+                    if (!empty($authHeaders)) {
+                        Log::debug("Device {$device->device_id}: Added " . count($authHeaders) . " auth header(s)");
+                    }
                 }
             }
 
@@ -144,6 +159,77 @@ class RestApiPoller
         } catch (\Exception $e) {
             Log::error("Device {$device->device_id}: Error fetching {$endpoint->path}: {$e->getMessage()}");
             return [];
+        }
+    }
+
+    /**
+     * Get session token via login endpoint
+     * Uses API token to authenticate and receives session token in response header
+     */
+    private function getSessionToken(Device $device, RestApiConnection $connection): ?string
+    {
+        $cacheKey = "device_{$device->device_id}_connection_{$connection->id}";
+        
+        // Return cached token if available
+        if (isset($this->sessionTokens[$cacheKey])) {
+            Log::debug("Device {$device->device_id}: Using cached session token");
+            return $this->sessionTokens[$cacheKey];
+        }
+
+        try {
+            $credential = $connection->credential;
+            $params = $credential->params->pluck('value', 'key')->toArray();
+            
+            // Get API token for login
+            $apiToken = $params['token'] ?? null;
+            if (!$apiToken) {
+                Log::error("Device {$device->device_id}: No API token found in credential");
+                return null;
+            }
+
+            // Build login URL
+            $baseUrl = str_replace('{device_hostname}', $device->hostname, $connection->base_url);
+            $loginPath = $params['login_path'] ?? '/login';
+            $loginUrl = $baseUrl . $loginPath;
+            
+            // Get header names from params
+            $apiTokenHeader = $params['api_token_header'] ?? 'api-token';
+            $sessionTokenHeader = $params['session_token_header'] ?? 'x-auth-token';
+
+            Log::debug("Device {$device->device_id}: Obtaining session token from {$loginUrl}");
+            Log::debug("Device {$device->device_id}: API token header: {$apiTokenHeader}, Session token header: {$sessionTokenHeader}");
+
+            // Make login request with API token
+            $response = $this->client->request('POST', $loginUrl, [
+                'headers' => [
+                    $apiTokenHeader => $apiToken,
+                    'Accept' => 'application/json',
+                ],
+                'verify' => !$connection->disable_ssl_verify,
+            ]);
+
+            // Extract session token from response header
+            $sessionToken = $response->getHeader($sessionTokenHeader)[0] ?? null;
+
+            if (!$sessionToken) {
+                Log::error("Device {$device->device_id}: Session token not found in response header: {$sessionTokenHeader}");
+                Log::debug("Device {$device->device_id}: Response headers: " . json_encode($response->getHeaders()));
+                return null;
+            }
+
+            Log::debug("Device {$device->device_id}: Session token obtained successfully");
+            
+            // Cache the token
+            $this->sessionTokens[$cacheKey] = $sessionToken;
+            
+            return $sessionToken;
+
+        } catch (GuzzleException $e) {
+            Log::error("Device {$device->device_id}: HTTP error obtaining session token: {$e->getMessage()}");
+            return null;
+        } catch (\Exception $e) {
+            Log::error("Device {$device->device_id}: Error obtaining session token: {$e->getMessage()}");
+            return null;
         }
     }
 
