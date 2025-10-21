@@ -9,10 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('rest_api_device_templates', function (Blueprint $table) {
-            $table->string('mapper_name')->nullable()->after('template_id')->comment('Selected vendor mapper (Pure Storage, Cisco, etc)');
-            $table->longText('custom_mappings')->nullable()->after('mapper_name')->comment('User-defined custom mappings as JSON');
-            $table->string('custom_mapping_name')->nullable()->after('custom_mappings')->comment('Name of custom mapping configuration');
-            $table->string('mapper_source')->default('fallback')->after('custom_mapping_name')->comment('How mapper was selected: user_selected, auto_detected, custom_device, fallback');
+            if (!Schema::hasColumn('rest_api_device_templates', 'mapper_name')) {
+                $table->string('mapper_name')->nullable()->after('template_id')->comment('Selected vendor mapper (Pure Storage, Cisco, etc)');
+            }
+            if (!Schema::hasColumn('rest_api_device_templates', 'custom_mappings')) {
+                $table->longText('custom_mappings')->nullable()->after('mapper_name')->comment('User-defined custom mappings as JSON');
+            }
+            if (!Schema::hasColumn('rest_api_device_templates', 'custom_mapping_name')) {
+                $table->string('custom_mapping_name')->nullable()->after('custom_mappings')->comment('Name of custom mapping configuration');
+            }
+            if (!Schema::hasColumn('rest_api_device_templates', 'mapper_source')) {
+                $table->string('mapper_source')->default('fallback')->after('custom_mapping_name')->comment('How mapper was selected: user_selected, auto_detected, custom_device, fallback');
+            }
         });
     }
 
