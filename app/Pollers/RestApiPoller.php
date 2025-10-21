@@ -5,6 +5,7 @@ namespace App\Pollers;
 use App\Models\Device;
 use App\Models\RestApiConnection;
 use App\RestApi\Services\MapperSelectionService;
+use App\RestApi\Credentials\CredentialHelper;
 use App\RestApi\Utilities\JsonPathExtractor;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 class RestApiPoller
 {
     protected Client $client;
+    protected array $sessionTokens = [];
 
     public function __construct()
     {
@@ -108,31 +110,18 @@ class RestApiPoller
             $headers = ['Accept' => 'application/json'];
             
             if ($connection->credential) {
-                $connection->credential->load('authenticationType');
-                $authType = $connection->credential->authenticationType->name ?? null;
+                // Load credential relationships
+                $connection->credential->load(['authenticationType', 'params']);
                 
+                $authType = strtolower($connection->credential->authenticationType->name ?? '');
                 Log::debug("Device {$device->device_id}: Auth type: {$authType}");
                 
-                if ($authType === 'Basic Auth') {
-                    $username = $connection->credential->getParamValue('username');
-                    $password = $connection->credential->getParamValue('password');
-                    if ($username && $password) {
-                        $headers['Authorization'] = 'Basic ' . base64_encode("{$username}:{$password}");
-                        Log::debug("Device {$device->device_id}: Using Basic Auth");
-                    }
-                } elseif ($authType === 'Bearer Token') {
-                    $token = $connection->credential->getParamValue('token');
-                    if ($token) {
-                        $headers['Authorization'] = "Bearer {$token}";
-                        Log::debug("Device {$device->device_id}: Using Bearer Token");
-                    }
-                } elseif ($authType === 'API Key') {
-                    $apiKey = $connection->credential->getParamValue('api_key') 
-                        ?? $connection->credential->getParamValue('key');
-                    if ($apiKey) {
-                        $headers['X-API-Key'] = $apiKey;
-                        Log::debug("Device {$device->device_id}: Using API Key");
-                    }
+                // Get auth headers using CredentialHelper
+                $authHeaders = CredentialHelper::getAuthHeaderFromModel($connection->credential);
+                $headers = array_merge($headers, $authHeaders);
+                
+                if (!empty($authHeaders)) {
+                    Log::debug("Device {$device->device_id}: Added " . count($authHeaders) . " auth header(s)");
                 }
             }
 
@@ -146,6 +135,8 @@ class RestApiPoller
             $body = $response->getBody()->getContents();
             $data = json_decode($body, true);
 
+            Log::debug("Device {$device->device_id}: Got response from {$endpoint->path} with " . (is_array($data) ? count($data) : 1) . " top-level key(s)");
+            
             return $data ?: [];
         } catch (GuzzleException $e) {
             Log::error("Device {$device->device_id}: HTTP error fetching {$endpoint->path}: {$e->getMessage()}");
