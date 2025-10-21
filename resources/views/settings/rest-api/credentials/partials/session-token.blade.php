@@ -10,7 +10,7 @@
                name="params[api_token]" 
                id="params_api_token" 
                class="form-control" 
-               value="{{ old('params.api_token', $credential->params->firstWhere('key', 'api_token')->value ?? '') }}" 
+               value="{{ old('params.api_token', optional($credential->params)->firstWhere('key', 'api_token')->value ?? '') }}" 
                required>
         <div class="input-group-append">
             <span class="input-group-text" id="token-timer" style="display: none;">
@@ -26,7 +26,7 @@
 <div class="form-group">
     <label for="params_login_path">Login Path <span class="text-danger">*</span></label>
     <input type="text" name="params[login_path]" id="params_login_path" class="form-control" 
-           value="{{ old('params.login_path', $credential->params->firstWhere('key', 'login_path')->value ?? '') }}" 
+           value="{{ old('params.login_path', optional($credential->params)->firstWhere('key', 'login_path')->value ?? '') }}" 
            placeholder="api/2.26/login" required>
     <small class="form-text text-muted">The relative path to the login endpoint (e.g., api/2.26/login for PureStorage).</small>
 </div>
@@ -37,7 +37,7 @@
            name="params[token_header]" 
            id="params_token_header" 
            class="form-control" 
-           value="{{ old('params.token_header', $credential->params->firstWhere('key', 'token_header')->value ?? 'x-auth-token') }}">
+           value="{{ old('params.token_header', optional($credential->params)->firstWhere('key', 'token_header')->value ?? 'x-auth-token') }}">
     <small class="form-text text-muted">The response header name containing the session token (default: x-auth-token).</small>
 </div>
 
@@ -47,7 +47,7 @@
            name="params[api_token_header]" 
            id="params_api_token_header" 
            class="form-control" 
-           value="{{ old('params.api_token_header', $credential->params->firstWhere('key', 'api_token_header')->value ?? 'api-token') }}">
+           value="{{ old('params.api_token_header', optional($credential->params)->firstWhere('key', 'api_token_header')->value ?? 'api-token') }}">
     <small class="form-text text-muted">The request header name for sending the API token to the login endpoint (default: api-token).</small>
 </div>
 
@@ -55,7 +55,7 @@
     <label for="params_login_method">Login Method</label>
     <select name="params[login_method]" id="params_login_method" class="form-control">
         @php
-            $currentMethod = old('params.login_method', $credential->params->firstWhere('key', 'login_method')->value ?? 'POST');
+            $currentMethod = old('params.login_method', optional($credential->params)->firstWhere('key', 'login_method')->value ?? 'POST');
         @endphp
         <option value="POST" {{ $currentMethod == 'POST' ? 'selected' : '' }}>POST</option>
         <option value="GET" {{ $currentMethod == 'GET' ? 'selected' : '' }}>GET</option>
@@ -67,7 +67,7 @@
 <div class="form-group">
     <label for="params_session_ttl">Session Cache TTL (seconds)</label>
     <input type="number" name="params[session_ttl]" id="params_session_ttl" class="form-control" 
-           value="{{ old('params.session_ttl', $credential->params->firstWhere('key', 'session_ttl')->value ?? '3600') }}" 
+           value="{{ old('params.session_ttl', optional($credential->params)->firstWhere('key', 'session_ttl')->value ?? '3600') }}" 
            min="60" step="60">
     <small class="form-text text-muted">How long to cache the session token before re-authenticating (default: 3600 seconds / 1 hour).</small>
 </div>
