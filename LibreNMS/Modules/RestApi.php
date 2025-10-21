@@ -111,8 +111,8 @@ class RestApi implements Module
         $device = $os->getDevice();
 
         try {
-            $poller = new RestApiPoller($device);
-            $poller->poll();
+            $poller = new RestApiPoller();
+            $poller->poll($device);
 
             Log::info("REST API Polling completed for device {$device->hostname}");
         } catch (\Exception $e) {
