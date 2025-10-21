@@ -23,11 +23,7 @@ class VendorMapperFactory
 
     public function __construct()
     {
-        // Register vendor mappers
-        $this->register('purestorage', new PureStorageMapper());
-        // Add more vendors as needed
-        // $this->register('cisco', new CiscoMapper());
-        // $this->register('dell', new DellMapper());
+
     }
 
     /**
@@ -86,4 +82,11 @@ class VendorMapperFactory
     {
         return $this->mappers[$vendor] ?? null;
     }
+
+    private function registerPureStorageMapper(): void
+		{
+		    if (!isset($this->mappers['purestorage'])) {
+		        $this->register('purestorage', new PureStorageMapper());
+		    }
+		}
 }
