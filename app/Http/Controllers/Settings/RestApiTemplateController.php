@@ -274,6 +274,7 @@ class RestApiTemplateController extends Controller
 
     public function getTemplatePreview(Request $request)
     {
+        ob_start();
         try {
             $templateId = $request->input('template_id');
             $connIdx = $request->input('connection_index');
@@ -282,14 +283,13 @@ class RestApiTemplateController extends Controller
             $credentialId = $request->input('credential_id');
 
             if (!$templateId || !is_numeric($connIdx) || !is_numeric($epIdx)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Missing required parameters'
-                ], 400);
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Missing required parameters']);
+                exit();
             }
 
             $template = RestApiTemplate::findOrFail($templateId);
-
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
 
             $templateData = is_array($template->template_data) 
@@ -297,27 +297,27 @@ class RestApiTemplateController extends Controller
                 : json_decode($template->template_data, true);
 
             if (!isset($templateData['connections'][$connIdx])) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Connection not found in template'
-                ], 404);
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Connection not found']);
+                exit();
             }
 
             if (!isset($templateData['connections'][$connIdx]['endpoints'][$epIdx])) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Endpoint not found in template'
-                ], 404);
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Endpoint not found']);
+                exit();
             }
 
             $connData = $templateData['connections'][$connIdx];
             $endpointData = $connData['endpoints'][$epIdx];
 
             if (empty($endpointData['path'])) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Endpoint path is required'
-                ], 400);
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Endpoint path required']);
+                exit();
             }
 
             if ($deviceId) {
@@ -338,24 +338,36 @@ class RestApiTemplateController extends Controller
                 
                 try {
                     $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
-                    $recommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
-                } catch (\Exception $e) {
+                    // Wrap in error suppression since vendor mappers may have by-reference issues
+                    @$recommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
+                    if (!is_array($recommendations)) {
+                        $recommendations = [];
+                    }
+                } catch (\Throwable $e) {
                     \Log::warning('Failed to get vendor mapper: ' . $e->getMessage());
+                    $recommendations = [];
                 }
             }
 
-            return response()->json([
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode([
                 'success' => true,
                 'preview' => $apiResponse,
                 'recommendations' => $recommendations,
             ]);
+            exit();
 
         } catch (\Throwable $e) {
+            ob_end_clean();
             \Log::error('Template preview error: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
-            return response()->json([
+            header('Content-Type: application/json');
+            http_response_code(400);
+            echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage(),
-            ], 400);
+            ]);
+            exit();
         }
     }
 
