@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 
 class RestApiPollerService
 {
+    private $authTokens = [];  // Cache auth tokens per connection
+
     /**
      * JSONPath parser - extracts values from arrays using JSONPath notation
      * Supports: $.items[*].field, $.items[0].field, $.field.subfield
@@ -92,10 +94,26 @@ class RestApiPollerService
                     }
                 }
             });
+        
+        // Clear cached tokens after polling
+        $this->authTokens = [];
     }
 
     public function pollDeviceConnection(RestApiConnection $connection): void
     {
+        // For Pure Storage: authenticate and get session token
+        if ($connection->credential && strtolower($connection->credential->authenticationType->name ?? '') === 'api_key') {
+            try {
+                $this->pureStorageLogin($connection);
+            } catch (\Throwable $e) {
+                Log::error("Pure Storage login failed for {$connection->device->hostname}: {$e->getMessage()}", [
+                    'device_id' => $connection->device_id,
+                    'error' => (string) $e,
+                ]);
+                return;
+            }
+        }
+
         foreach ($connection->endpoints()->where('enabled', true)->get() as $endpoint) {
             try {
                 $this->processEndpoint($connection, $endpoint);
@@ -109,6 +127,53 @@ class RestApiPollerService
         }
     }
 
+    /**
+     * Pure Storage requires POST /login with X-API-Token to get X-Auth-Token
+     * This exchanges the API token for a session token
+     */
+    protected function pureStorageLogin(RestApiConnection $connection): void
+    {
+        $loginUrl = rtrim($connection->base_url, '/') . '/login';
+        
+        $request = Http::withOptions([
+            'verify' => !$connection->disable_ssl_verify,
+            'timeout' => 30,
+        ]);
+
+        // Get API key from credential
+        $params = $connection->credential->getParamsArray();
+        $apiKey = $params['api_key'] ?? null;
+        $headerName = $params['header_name'] ?? 'X-API-Token';
+
+        if (!$apiKey) {
+            throw new \Exception("No API key found in credential");
+        }
+
+        // Send login request with X-API-Token
+        $response = $request->withHeaders([
+            $headerName => $apiKey,
+        ])->post($loginUrl);
+
+        if (!$response->successful()) {
+            throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
+        }
+
+        // Extract X-Auth-Token from response headers
+        $authToken = $response->header('X-Auth-Token');
+
+        if (!$authToken) {
+            throw new \Exception("No X-Auth-Token in response headers");
+        }
+
+        // Cache for this connection
+        $this->authTokens[$connection->id] = $authToken;
+
+        Log::info("Pure Storage login successful for connection {$connection->id}", [
+            'device_id' => $connection->device_id,
+            'base_url' => $connection->base_url,
+        ]);
+    }
+
     protected function processEndpoint(RestApiConnection $connection, $endpoint): void
     {
         $url = rtrim($connection->base_url, '/') . $endpoint->path;
@@ -119,9 +184,19 @@ class RestApiPollerService
             'timeout' => 30,
         ]);
 
-        // Apply credentials if present
+        // Apply credentials/auth headers
         if ($connection->credential) {
-            $request = $this->applyAuthentication($request, $connection->credential);
+            $authType = strtolower($connection->credential->authenticationType->name ?? '');
+            
+            // Pure Storage: use cached X-Auth-Token from login
+            if ($authType === 'api_key' && isset($this->authTokens[$connection->id])) {
+                $request = $request->withHeaders([
+                    'X-Auth-Token' => $this->authTokens[$connection->id],
+                ]);
+            } else {
+                // Other auth types
+                $request = $this->applyAuthentication($request, $connection->credential);
+            }
         }
 
         $response = $request->get($url);
@@ -138,7 +213,7 @@ class RestApiPollerService
                 'device_id' => $connection->device_id,
                 'endpoint' => $endpoint->path,
                 'status' => $response->status(),
-                'body' => $response->body(),
+                'body' => substr($response->body(), 0, 200),
             ]);
             return;
         }
@@ -168,7 +243,7 @@ class RestApiPollerService
     }
 
     /**
-     * Apply authentication to HTTP request
+     * Apply authentication to HTTP request (for non-Pure Storage APIs)
      */
     protected function applyAuthentication($request, $credential)
     {
