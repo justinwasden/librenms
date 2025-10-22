@@ -19,31 +19,31 @@ class RestApi implements Module
     }
 
     public function poll(OS $os, DataStorageInterface $datastore): void
-    {
-        $deviceId = $os->device_id;
-        if ($this->deviceHasApiConnections($deviceId)) {
-            $this->pollerService->pollDeviceById($deviceId);
-        }
+{
+    $device = $os->getDevice();
+    if ($this->deviceHasApiConnections($device->id)) {
+        $this->pollerService->pollDeviceById($device->id);
     }
+}
+
+public function discover(OS $os): void
+{
+    $device = $os->getDevice();
+    if ($this->deviceHasApiConnections($device->id)) {
+        $this->pollerService->discoverDeviceById($device->id);
+    }
+}
 
     public function shouldPoll(OS $os, ModuleStatus $status): bool
-    {
-        return $this->deviceHasApiConnections($os->device_id);
-    }
-
-    public function shouldDiscover(OS $os, ModuleStatus $status): bool
-    {
-        return $this->deviceHasApiConnections($os->device_id);
-    }
-
-    public function discover(OS $os): void
 {
-    $deviceId = $os->device_id;
+    $device = $os->getDevice();
+    return $this->deviceHasApiConnections($device->id);
+}
 
-    if ($this->deviceHasApiConnections($deviceId)) {
-        // Optional: call your poller service discovery logic
-        $this->pollerService->discoverDeviceById($deviceId);
-    }
+public function shouldDiscover(OS $os, ModuleStatus $status): bool
+{
+    $device = $os->getDevice();
+    return $this->deviceHasApiConnections($device->id);
 }
 
     public function dataExists(Device $device): bool
