@@ -4,8 +4,10 @@ namespace LibreNMS\Modules;
 use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\OS;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
+use LibreNMS\Interfaces\Module;
+use Log;
 
-class RestApi implements ModuleInterface
+class RestApi implements Module
 {
     protected RestApiPollerService $pollerService;
 
