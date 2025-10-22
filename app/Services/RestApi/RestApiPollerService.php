@@ -137,7 +137,7 @@ class RestApiPollerService
 		{
 		    // 1. Retrieve parameters from the Session Token credential configuration
 		    $params = $connection->credential->getParamsArray();
-
+				$tokenHeader = $params['token_header'] ?? 'X-Auth-Token'; // <--- FIX 1: Use dynamic response header name
 		    // Retrieve configurable login details (using keys from session-token.blade.php)
 		    $loginPath = $params['login_path'] ?? 'login';
 		    $loginMethod = strtoupper($params['login_method'] ?? 'POST');
@@ -168,15 +168,15 @@ class RestApiPollerService
 		    $response = $request->{$loginMethod}($loginUrl, []);
 
 		    if (!$response->successful()) {
-		        throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
-		    }
+    		    throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
+  		  }
 
 		    // 4. Extract Session Token using the configured response header name
-		    $authToken = $response->header($receiveHeaderName);
+		    $authToken = $response->header($tokenHeader);
 
 		    if (!$authToken) {
-		        throw new \Exception("No {$receiveHeaderName} in response headers");
-		    }
+    		    throw new \Exception("No {$tokenHeader} in response headers");
+  		  }
 
 		    // Cache the token
 		    $this->authTokens[$connection->id] = $authToken;
