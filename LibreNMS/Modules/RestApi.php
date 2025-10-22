@@ -146,10 +146,14 @@ class RestApi implements Module
     /**
      * Check if the device has API connections
      */
-    protected function deviceHasApiConnections(int $deviceId): bool
-    {
-        return \DB::table('rest_api_connections')
-            ->where('device_id', $deviceId)
-            ->exists();
-    }
+    protected function deviceHasApiConnections(?int $deviceId): bool
+		{
+		    if (!$deviceId) {
+		        return false; // safely skip
+		    }
+
+		    return \DB::table('rest_api_connections')
+		        ->where('device_id', $deviceId)
+		        ->exists();
+		}
 }
