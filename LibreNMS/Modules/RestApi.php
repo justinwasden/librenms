@@ -44,11 +44,10 @@ class RestApi implements Module
     }
 }
 
-    public function dataExists(OS $os, DataStorageInterface $datastore): bool
-    {
-        // Return true if this module has already stored data for the device
-        return $this->deviceHasApiConnections($os->device_id);
-    }
+    public function dataExists(Device $device): bool
+{
+    return $this->deviceHasApiConnections($device->id);
+}
 
     public function cleanup(OS $os, DataStorageInterface $datastore): void
     {
