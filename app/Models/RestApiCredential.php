@@ -49,11 +49,14 @@ class RestApiCredential extends Model
 
     /**
      * Get all parameters as key => value array
+     * Note: This properly decrypts values using the model's getAttribute accessor
      */
     public function getParamsArray(): array
     {
-        return $this->params()
-            ->pluck('value', 'key')
-            ->toArray();
+        $result = [];
+        foreach ($this->params as $param) {
+            $result[$param->key] = $param->value; // This uses getAttribute() which decrypts
+        }
+        return $result;
     }
 }
