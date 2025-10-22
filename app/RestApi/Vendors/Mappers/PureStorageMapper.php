@@ -82,8 +82,8 @@ class PureStorageMapper implements VendorMapperInterface
             '/arrays' => 'devices',
             '/network-interfaces', '/network-interfaces/performance' => 'ports',
             '/volumes', '/drives' => 'storage',
-            '/arrays/performance', '/volumes/performance', '/controllers', '/hardware', '/network-interfaces/port-details', '/subnets', '/space' => 'sensors',
-            '/array-connections' => 'custom',
+            '/arrays/performance', '/volumes/performance', '/controllers', '/hardware', '/network-interfaces/port-details', '/space' => 'sensors',
+            '/array-connections', '/subnets' => 'custom',
             default => 'custom',
         };
     }
@@ -284,29 +284,25 @@ class PureStorageMapper implements VendorMapperInterface
 
     private function getControllersMappings(): array
     {
+        // Only state sensor, no metadata fields
         return [
             'Controller_Status' => '$.items[*].status',
-            'sensor_descr' => '$.items[*].name',
-            'component_model' => '$.items[*].model',
-            'component_version' => '$.items[*].version',
-            'component_mode' => '$.items[*].mode',
         ];
     }
 
     private function getHardwareMappings(): array
     {
+        // Only actual sensor measurements, no metadata
         return [
             'Hardware_Temperature' => '$.items[*].temperature',
             'Hardware_Voltage' => '$.items[*].voltage',
             'Hardware_Status' => '$.items[*].status',
-            'sensor_descr' => '$.items[*].name',
-            'component_type' => '$.items[*].type',
-            'component_serial' => '$.items[*].serial',
         ];
     }
 
     private function getPortDetailsMappings(): array
     {
+        // Only actual sensor measurements, no static metadata
         return [
             'Optic_Temperature' => '$.items[*].temperature[0].measurement',
             'Optic_Vcc' => '$.items[*].voltage[0].measurement',
@@ -315,12 +311,6 @@ class PureStorageMapper implements VendorMapperInterface
             'RX_Optical_Power' => '$.items[*].rx_power[0].measurement',
             'TX_Fault' => '$.items[*].tx_fault[0].flag',
             'RX_Loss_of_Signal' => '$.items[*].rx_los[0].flag',
-            'Transceiver_Vendor' => '$.items[*].static.vendor_name',
-            'Transceiver_Serial' => '$.items[*].static.vendor_serial_number',
-            'Wavelength' => '$.items[*].static.wavelength',
-            'Connector_Type' => '$.items[*].static.connector_type',
-            'Cable_Technology' => '$.items[*].static.cable_technology',
-            'Link_Length' => '$.items[*].static.link_length',
         ];
     }
 
@@ -337,11 +327,8 @@ class PureStorageMapper implements VendorMapperInterface
 
     private function getSubnetsMappings(): array
     {
-        return [
-            'ipv4_network' => '$.items[*].prefix',
-            'vlan_id' => '$.items[*].vlan',
-            'vlan_name' => '$.items[*].name',
-        ];
+        // Subnets are configuration, not sensors - this endpoint should not create sensors
+        return [];
     }
 
     private function getSpaceMappings(): array

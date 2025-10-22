@@ -35,6 +35,7 @@ class MetricStorageEngine
     public function storeFromResponse(array $response, $endpoint, $mapper)
     {
         $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
+        $targetTable = $mapper->getTargetTableForEndpoint($endpoint->path);
         $items = $response['items'] ?? [$response];
         
         if (!is_array($items)) {
@@ -42,9 +43,7 @@ class MetricStorageEngine
         }
 
         foreach ($items as $item) {
-            foreach ($mappings as $targetTable => $fieldMappings) {
-                $this->storeItemToTable($item, $targetTable, $fieldMappings, $endpoint->path, $mapper);
-            }
+            $this->storeItemToTable($item, $targetTable, $mappings, $endpoint->path, $mapper);
         }
     }
 
