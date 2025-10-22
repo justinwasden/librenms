@@ -283,24 +283,22 @@ class RestApiPollerService
         }
 
         // Check for special endpoint handlers that bypass mappings
-        $specialEndpoints = [
-            'port-details',
-            'network-interfaces/port-details',
-            'network-interfaces/performance',
-        ];
+        if (str_contains($endpoint->path, 'port-details')) {
+            // Transceiver/DOM data endpoint
+            $this->processTransceiverData($connection, $endpoint, $data);
+            return;
+        }
 
-        foreach ($specialEndpoints as $specialPath) {
-            if (str_contains($endpoint->path, $specialPath)) {
-                // Use special handler - mappings are ignored
-                $this->processMappings($connection, $endpoint, [], $data);
-                return;
-            }
+        if (str_contains($endpoint->path, 'performance') && str_contains($endpoint->path, 'network-interfaces')) {
+            // Port performance/statistics endpoint
+            $this->processPortPerformanceData($connection, $endpoint, [], $data);
+            return;
         }
 
         // Regular endpoints: check if mapping to /api/2.26/network-interfaces specifically
         if (preg_match('#/network-interfaces$#', $endpoint->path) || preg_match('#/api/\d+\.\d+/network-interfaces$#', $endpoint->path)) {
             // Use special handler for main network interfaces endpoint
-            $this->processMappings($connection, $endpoint, [], $data);
+            $this->processNetworkInterfacesData($connection, $endpoint, [], $data);
             return;
         }
 
