@@ -505,7 +505,6 @@ class RestApiPollerService
 
             if (isset($item['speed'])) {
                 $portData['ifSpeed'] = $item['speed'];
-                $portData['ifHighSpeed'] = intval($item['speed'] / 1000000); // Convert to Mbps
             }
 
             if (isset($item['enabled'])) {
@@ -534,6 +533,15 @@ class RestApiPollerService
                     $portData['ifVlan'] = $eth['vlan'];
                 }
             }
+
+            // Filter to only valid ports columns
+            $validColumns = [
+                'ifIndex', 'ifName', 'ifDescr', 'ifAlias', 'ifType', 'ifOperStatus', 'ifAdminStatus',
+                'ifSpeed', 'ifMtu', 'ifPhysAddress', 'ifLastChange', 'ifVlan', 'ifTrunk',
+                'disabled', 'deleted', 'ignore'
+            ];
+
+            $portData = array_intersect_key($portData, array_flip($validColumns));
 
             // Update or create the port
             DB::table('ports')->updateOrInsert(
