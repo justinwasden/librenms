@@ -755,7 +755,22 @@ window.endpointManager = function() {
                     body: JSON.stringify(payload)
                 });
 
-                const data = await res.json();
+                // Read response as text first, then parse as JSON
+                const responseText = await res.text();
+                let data;
+                
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    console.error('Response text:', responseText.substring(0, 500));
+                    throw new Error(`Invalid JSON response from server (HTTP ${res.status}): ${responseText.substring(0, 200)}`);
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${data.message || data.error || 'Unknown error'}`);
+                }
+
                 if (data.success) {
                     // Update the endpoint with new metadata
                     if (data.endpoint) {
@@ -786,11 +801,11 @@ window.endpointManager = function() {
                         }, 2000);
                     }
                 } else {
-                    alert('Error saving endpoint: ' + (data.message || 'Unknown error'));
+                    throw new Error(data.message || 'Unknown error saving endpoint');
                 }
             } catch (err) {
-                console.error(err);
-                alert('Failed to save endpoint. Check console for details.');
+                console.error('saveEndpointChanges error:', err);
+                alert('Failed to save endpoint: ' + err.message);
             }
         },
 
