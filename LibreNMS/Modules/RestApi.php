@@ -7,7 +7,7 @@ use App\Models\Device;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Module;
 use Log;
-namespace App\Services\RestApi;
+use App\Services\RestApi\RestApiPollerService;
 
 class RestApi implements Module
 {
