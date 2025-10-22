@@ -132,8 +132,27 @@ class RestApiPollerService
 
         $data = $response->json();
 
+        // Check if response is null or empty
+        if ($data === null) {
+            Log::warning("API response was null/empty for {$endpoint->path}", [
+                'device_id' => $connection->device_id,
+                'endpoint' => $endpoint->path,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            return;
+        }
+
         // Get mappings from template_response_mapping or database mappings
         $mappings = $this->getMappingsForEndpoint($endpoint);
+
+        if (empty($mappings)) {
+            Log::warning("No mappings found for endpoint {$endpoint->path}", [
+                'device_id' => $connection->device_id,
+                'endpoint_id' => $endpoint->id,
+            ]);
+            return;
+        }
 
         foreach ($mappings as $mapping) {
             try {
@@ -141,6 +160,7 @@ class RestApiPollerService
             } catch (\Throwable $e) {
                 Log::warning("Failed to process mapping for {$endpoint->path}: {$e->getMessage()}", [
                     'mapping' => $mapping,
+                    'error' => (string) $e,
                 ]);
             }
         }
