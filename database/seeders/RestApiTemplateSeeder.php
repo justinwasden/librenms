@@ -15,69 +15,74 @@ class RestApiTemplateSeeder extends Seeder
         // Define common metric mapping arrays.
         // NOTE: Metric names changed to match LibreNMS database fields (e.g., "storage_size", "ifDescr", "state").
 
+        // --- UPDATED PURE STORAGE MAPPINGS based on new request data ---
         $pureStorageArrayInfoMapping = [
-						    "total_capacity"       => "capacity",
-						    "data_reduction"=>"data_reduction",
-						    "snapshots" => "snapshots",
-								"thin_provisioning"=>"thin_provisioning",
-                "total_physical" => "total_physical",
-						    "total_used"           => "total_used",
-						    "total_provisioned"    => "total_provisioned",
-						    "total_reduction"=>"total_reduction",
-						    "used_provisioned"    => "used_provisioned",
-						    "name"=>"name",
+            "devices.hostname" => "items.0.name",
+            "devices.sysName" => "items.0.name",
+            "devices.version" => "items.0.version",
+            "devices.os" => "items.0.os",
+            "devices.hardware" => "items.0.model",
+            "devices.serial" => "items.0.id",
+            "devices.location" => "items.0.time_zone",
+            "total_capacity" => "capacity",
+            "data_reduction" => "data_reduction",
+            "snapshots" => "snapshots",
+            "thin_provisioning" => "thin_provisioning",
+            "total_physical" => "total_physical",
+            "total_used" => "total_used",
+            "total_provisioned" => "total_provisioned",
+            "total_reduction" => "total_reduction",
+            "used_provisioned" => "used_provisioned",
+            "name" => "name",
         ];
 
         $pureStorageVolumesInfoMapping = [
-            "created_at" => "created",
-						"host_count" => "connection_count",
-            "serial" => "serial",
-            "pod.name" => "pod.name",
-            "data_reduction" => "data_reduction",
-            "snapshots" => "snapshots",
-            "total_physical" => "total_physical",
-            "total_provisioned" => "total_provisioned",
-            "used_provisioned" => "used_provisioned",
-            "total_used" => "total_used",
-            "name" => "name",
-            "total_reduction" => "total_reduction",
-            "total_reduction" => "total_reduction",
-            "volume_group" => "volume_group.name",
+            "storage.storage_descr" => "name",
+            "storage.storage_size" => "space.total_provisioned",
+            "storage.storage_used" => "space.total_physical",
+            "storage.storage_shared" => "space.snapshots",
+            "storage.block_size" => "block_size",
+            "storage.serial" => "serial",
         ];
 
         $pureStorageControllersStatusMapping = [
-            // Controllers are components; status maps better to sensor field "state" or "status"
-            "model" => "model", // Stored as component name/label
+            // Mapped to entPhysical attributes as components/sensors
+            "entPhysical.entPhysicalName" => "name",
+            "entPhysical.entPhysicalModelName" => "model",
+            "entPhysical.entPhysicalFirmwareRev" => "version",
+            "entPhysical.entPhysicalSerialNum" => "serial",
             "status" => "status",
-            "mode" => "mode", // Using generic state field for status indicator
-            "name" => "name",
-            "version" => "version",
+            "mode" => "mode",
         ];
 
+        // *** MAPPING CHANGED TO rest_api_metrics (Custom) ***
         $pureStorageArrayPerformanceMapping = [
-            "bw_read" => "items.0.read_bytes_per_sec",
-            "bw_write" => "items.0.write_bytes_per_sec",
-            "latency_read" => "items.0.usec_per_read_op",
-            "latency_write" => "items.0.usec_per_write_op",
-            "array_reads_per_sec" => "items.0.reads_per_sec",
-            "array_writes_per_sec" => "items.0.writes_per_sec",
-            "array_queue_usec_per_read_op" => "items.0.queue_usec_per_read_op",
-            "array_queue_usec_per_write_op" => "items.0.queue_usec_per_write_op",
-            "array_bytes_per_read" => "items.0.bytes_per_read",
-            "array_bytes_per_write" => "items.0.bytes_per_write",
+            "rest_api_metrics.array_name" => "items.0.name",
+            "rest_api_metrics.read_bytes_per_sec" => "items.0.read_bytes_per_sec",
+            "rest_api_metrics.write_bytes_per_sec" => "items.0.write_bytes_per_sec",
+            "rest_api_metrics.usec_per_read_op" => "items.0.usec_per_read_op",
+            "rest_api_metrics.usec_per_write_op" => "items.0.usec_per_write_op",
+            "rest_api_metrics.reads_per_sec" => "items.0.reads_per_sec",
+            "rest_api_metrics.writes_per_sec" => "items.0.writes_per_sec",
+            "rest_api_metrics.queue_usec_per_read_op" => "items.0.queue_usec_per_read_op",
+            "rest_api_metrics.queue_usec_per_write_op" => "items.0.queue_usec_per_write_op",
+            "rest_api_metrics.bytes_per_read" => "items.0.bytes_per_read",
+            "rest_api_metrics.bytes_per_write" => "items.0.bytes_per_write",
         ];
 
         $pureStorageVolumePerformanceMapping = [
-            "iops_read" => "reads_per_sec",
-            "iops_write" => "writes_per_sec",
-            "latency_read" => "usec_per_read_op",
-            "latency_write" => "usec_per_write_op",
-            "bw_read" => "read_bytes_per_sec",
-            "bw_write" => "write_bytes_per_sec",
-            "volume_queue_usec_per_read_op" => "queue_usec_per_read_op",
-            "volume_queue_usec_per_write_op" => "queue_usec_per_write_op",
-            "volume_bytes_per_read" => "bytes_per_read",
-            "volume_bytes_per_write" => "bytes_per_write",
+            // These already mapped to a custom `rest_api_metrics` structure
+            "rest_api_metrics.volume_name" => "name",
+            "rest_api_metrics.reads_per_sec" => "reads_per_sec",
+            "rest_api_metrics.writes_per_sec" => "writes_per_sec",
+            "rest_api_metrics.usec_per_read_op" => "usec_per_read_op",
+            "rest_api_metrics.usec_per_write_op" => "usec_per_write_op",
+            "rest_api_metrics.read_bytes_per_sec" => "read_bytes_per_sec",
+            "rest_api_metrics.write_bytes_per_sec" => "write_bytes_per_sec",
+            "rest_api_metrics.queue_usec_per_read_op" => "queue_usec_per_read_op",
+            "rest_api_metrics.queue_usec_per_write_op" => "queue_usec_per_write_op",
+            "rest_api_metrics.bytes_per_read" => "bytes_per_read",
+            "rest_api_metrics.bytes_per_write" => "bytes_per_write",
         ];
 
         $pureStorageAlertsMapping = [
@@ -94,45 +99,54 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $pureStorageHardwareComponentsMapping = [
-            "hardware_name" => "name",
+            "entPhysical.entPhysicalName" => "name",
+            "entPhysical.entPhysicalClass" => "type",
+            "entPhysical.entPhysicalModelName" => "model",
+            "entPhysical.entPhysicalSerialNum" => "serial",
             "state" => "status", // Status mapped to generic "state" field
-            "hardware_type" => "type",
-            "hardware_serial" => "serial",
             "temperature" => "temperature", // Maps to standard sensor value
             "voltage" => "voltage", // Maps to standard sensor value
         ];
 
         $pureStorageDrivesMapping = [
-            "storage_descr" => "name", 
-            "state" => "status", // Drive status mapped to sensor "state"
-            "type" => "type", //map to storage.type
-            "storage_size" => "capacity", // Drive capacity mapped to storage size
-            "drive_protocol" => "protocol",
-            "drive_details" => "details",
+            "storage.storage_descr" => "name",
+            "storage.storage_type" => "type",
+            "storage.storage_size" => "capacity",
+            "storage.serial" => "serial",
         ];
 
         $pureStorageNetworkInterfacesMapping = [
-            "ifDescr" => "name", // Mapped to primary interface description
-            "ifPhysAddress" => "eth.mac_address",
-            "ifAdminStatus" => "enabled",
-            "ifOperStatus" => "enabled",
-            "ifSpeed" => "speed",
-            "ifMtu" => "eth.mtu",
-            "ifType" => "interface_type",
-            "ipv4_address" => "eth.address",
-            "ifVlan" => "eth.vlan",
+            "ports.ifName" => "name",
+            "ports.ifDescr" => "services.0",
+            "ports.ifType" => "interface_type",
+            "ports.ifSpeed" => "speed",
+            "ports.ifPhysAddress" => "eth.mac_address",
+            "ports.ifAdminStatus" => "enabled",
+            "ports.ifOperStatus" => "enabled",
+            "ports.ifMtu" => "eth.mtu",
+            "ports.ifAlias" => "eth.address",
         ];
 
+        // *** UPDATED pureStorageHostsMapping for native tables ***
         $pureStorageHostsMapping = [
-            "host_name" => "name",
-            "host_group" => "host_group.name",
-            "host_connections" => "connection_count",
-            "host_connection_status" => "port_connectivity.status",
-            "host_connection_details" => "port_connectivity.details",
-            "host_totalspace" => "space.total_physical",
-            "host_provisioned_space" => "space.total_provisioned",
-            "host_total_reduction" => "space.total_reduction",
+            // Map core Host Name/Personality (OS) to devices table (assuming host is modeled as a device)
+            "devices.hostname" => "name",
+            "devices.os" => "personality",
+
+            // Map connection/status data to devices_attribs
+            "devices_attribs.connection_count" => "connection_count",
+            "devices_attribs.host_group" => "host_group.name",
+            "devices_attribs.conn_status" => "port_connectivity.status",
+            "devices_attribs.conn_details" => "port_connectivity.details",
+
+            // Map storage data to the Storage table (using arbitrary index/type for unique entry)
+            // Note: This requires complex handling in LibreNMS poller to link correctly, but maps the data.
+            "storage.storage_descr" => "name", // Use host name as storage descr
+            "storage.storage_type" => "personality", // Use personality as storage type
+            "storage.storage_size" => "space.total_provisioned",
+            "storage.storage_used" => "space.total_physical",
         ];
+        // --- END UPDATED PURE STORAGE MAPPINGS ---
 
         // Define mapping arrays for TrueNAS SCALE
         $trueNasSystemInfoMapping = [
@@ -347,6 +361,32 @@ class RestApiTemplateSeeder extends Seeder
             "networking_category_name" => "report.result.entry.0.category-of-name",
             "networking_sessions" => "report.result.entry.0.nsess",
             "networking_bytes" => "report.result.entry.0.nbytes",
+        ];
+
+        // Define mapping arrays for Proxmox VE
+        $proxmoxClusterStatusMapping = [
+            "cluster_status" => "quorate", // Boolean/int, maps to generic sensor state
+            "node_count" => "nodecount", // Not directly in the API, using 'quorate' for status
+        ];
+
+        $proxmoxNodeStatusMapping = [
+            "uptime_seconds" => "uptime",
+            "cpu_usage_fraction" => "cpu", // CPU usage 0..1
+            "memory_total" => "memory.total",
+            "memory_used" => "memory.used",
+            "swap_total" => "swap.total",
+            "swap_used" => "swap.used",
+            "pve_version" => "pveversion",
+            "kernel_version" => "kversion",
+        ];
+
+        $proxmoxStorageStatusMapping = [
+            "storage_descr" => "storage", // Storage ID
+            "storage_size" => "total", // Total capacity
+            "storage_used" => "used", // Used capacity
+            "available_capacity" => "avail", // Available capacity
+            "storage_active" => "active", // Maps to sensor state
+            "storage_type" => "type", // Storage backend type
         ];
 
 
@@ -573,7 +613,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x)
+            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x) - UPDATED MAPPINGS
             // ---------------------------------------------------------------------
             [
                 "name" => "Pure Storage FlashArray (OAuth2 REST API 2.x)",
@@ -604,10 +644,9 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageControllersStatusMapping,
                                 ],
-                                // Added missing Volume info endpoint with proper mappings
+                                // Updated Volume info endpoint with new mappings
                                 [
                                     "name" => "Volumes Info",
                                     "path" => "/volumes",
@@ -616,10 +655,9 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "storage",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageVolumesInfoMapping,
                                 ],
-                                // Added missing Network Interfaces endpoint with proper mappings
+                                // Updated Network Interfaces endpoint with new mappings
                                 [
                                     "name" => "Network Interfaces",
                                     "path" => "/network-interfaces",
@@ -628,10 +666,9 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "port",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageNetworkInterfacesMapping,
                                 ],
-                                // Added missing Hosts endpoint
+                                // UPDATED: Hosts endpoint maps to multiple native tables via 'custom'
                                 [
                                     "name" => "Hosts",
                                     "path" => "/hosts",
@@ -640,30 +677,28 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "custom",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageHostsMapping,
                                 ],
-                                // Added missing Array Performance endpoint
+                                // UPDATED: Array Performance now points to rest_api_metrics (Custom)
                                 [
                                     "name" => "Array Performance",
                                     "path" => "/arrays/performance",
                                     "http_method" => "GET",
                                     "poll_interval" => 300,
-                                    "resource_type" => "sensor",
+                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageArrayPerformanceMapping,
                                 ],
+                                // Updated Volume Performance endpoint with new mappings
                                 [
                                     "name" => "Volume Performance",
                                     "path" => "/volumes/performance",
                                     "http_method" => "GET",
                                     "poll_interval" => 300,
-                                    "resource_type" => "sensor",
+                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageVolumePerformanceMapping,
                                 ],
                                 // Added missing Alerts endpoint
@@ -675,7 +710,6 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "custom",
                                     "resource_id_field" => "id",
                                     "resource_name_field" => "code",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageAlertsMapping,
                                 ],
                                 // Added missing Hardware Components endpoint
@@ -687,10 +721,9 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "sensor",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageHardwareComponentsMapping,
                                 ],
-                                // Added missing Drives endpoint
+                                // Updated Drives endpoint with new mappings
                                 [
                                     "name" => "Drives",
                                     "path" => "/drives",
@@ -699,7 +732,6 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "storage",
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
                                     "metric_map" => $pureStorageDrivesMapping,
                                 ],
                             ],
@@ -709,7 +741,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 8. PURE STORAGE FLASHARRAY (API Token Login) - ALL FIXED
+            // 8. PURE STORAGE FLASHARRAY (API Token Login) - UPDATED MAPPINGS
             // ---------------------------------------------------------------------
             [
                 "name" => "Pure Storage FlashArray (API Token Login)",
@@ -762,6 +794,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_name_field" => "name",
                                     "metric_map" => $pureStorageNetworkInterfacesMapping,
                                 ],
+                                // UPDATED: Hosts endpoint maps to multiple native tables via 'custom'
                                 [
                                     "name" => "Hosts",
                                     "path" => "/api/2.26/hosts",
@@ -772,12 +805,13 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_name_field" => "name",
                                     "metric_map" => $pureStorageHostsMapping,
                                 ],
+                                // UPDATED: Array Performance now points to rest_api_metrics (Custom)
                                 [
                                     "name" => "Array Performance",
                                     "path" => "/api/2.26/arrays/performance",
                                     "http_method" => "GET",
                                     "poll_interval" => 300,
-                                    "resource_type" => "sensor",
+                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
                                     "resource_id_field" => "items.0.name",
                                     "resource_name_field" => "items.0.name",
                                     "metric_map" => $pureStorageArrayPerformanceMapping,
@@ -787,7 +821,7 @@ class RestApiTemplateSeeder extends Seeder
                                     "path" => "/api/2.26/volumes/performance",
                                     "http_method" => "GET",
                                     "poll_interval" => 300,
-                                    "resource_type" => "sensor",
+                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
                                     "resource_id_field" => "name",
                                     "resource_name_field" => "name",
                                     "metric_map" => $pureStorageVolumePerformanceMapping,
@@ -1147,6 +1181,59 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_name_field" => "virtualServerName",
                                     // FIXED: Using json_encode()
                                     "metric_map" => $f5VirtualServerStatusMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 17. PROXMOX VE API - NEW TEMPLATE
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Proxmox VE API",
+                "vendor" => "Proxmox",
+                "description" => "Proxmox Virtual Environment (PVE) API endpoints (JSON based). Requires Proxmox Ticket Auth (ID 14).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}:8006/api2/json",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Cluster Status",
+                                    "path" => "/cluster/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor", // Cluster health status
+                                    "resource_id_field" => "name", // Cluster name or a fixed identifier
+                                    "resource_name_field" => "name",
+                                    "metric_map" => $proxmoxClusterStatusMapping,
+                                ],
+                                [
+                                    "name" => "Node Status (Requires Node Name)",
+                                    // NOTE: This endpoint requires a node name. For a single device poll, we assume {device_hostname} refers to a node.
+                                    "path" => "/nodes/{node}/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "device",
+                                    // We can't auto-discover the node name easily from a non-cluster endpoint,
+                                    // so we'll use a placeholder and assume the system can resolve this or a specific node is targeted.
+                                    "resource_id_field" => "node",
+                                    "resource_name_field" => "node",
+                                    "metric_map" => $proxmoxNodeStatusMapping,
+                                ],
+                                [
+                                    "name" => "Node Storage Status (Requires Node and Storage ID)",
+                                    "path" => "/nodes/{node}/storage/{storage}/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "storage",
+                                    "resource_id_field" => "storage",
+                                    "resource_name_field" => "storage",
+                                    "metric_map" => $proxmoxStorageStatusMapping,
                                 ],
                             ],
                         ],
