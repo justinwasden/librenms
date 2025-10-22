@@ -1,3 +1,4 @@
+{{-- resources/views/rest-api/templates/show.blade.php --}}
 @extends('layouts.librenms')
 
 @section('title', $template->name)
@@ -7,23 +8,23 @@
     <div class="row">
         <div class="col-md-12">
             <h2>{{ $template->name }}</h2>
-            
+
             <dl class="dl-horizontal">
                 <dt>Vendor</dt>
                 <dd>{{ $template->vendor }}</dd>
-                
+
                 <dt>Description</dt>
                 <dd>{{ $template->description }}</dd>
-                
+
                 <dt>Endpoints</dt>
                 <dd>{{ $endpoints->count() }}</dd>
-                
+
                 <dt>Devices Using</dt>
                 <dd>{{ $template->devices()->count() }}</dd>
             </dl>
 
             <h3>Endpoints</h3>
-            
+
             <table class="table table-striped">
                 <thead>
                     <tr>
