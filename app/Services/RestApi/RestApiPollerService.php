@@ -343,6 +343,18 @@ class RestApiPollerService
             return;
         }
 
+        // Check if this is a port performance/statistics endpoint
+        if (str_contains($endpoint->path, 'performance') && str_contains($endpoint->path, 'network-interfaces')) {
+            $this->processPortPerformanceData($connection, $endpoint, $mappings, $data);
+            return;
+        }
+
+        // Check if this is the main network-interfaces endpoint (port list with details)
+        if (preg_match('#/network-interfaces$#', $endpoint->path) || preg_match('#/network-interfaces\?#', $endpoint->path)) {
+            $this->processNetworkInterfacesData($connection, $endpoint, $mappings, $data);
+            return;
+        }
+
         // Extract the base array path (e.g., "$.items" from "$.items[*].field")
         $baseArrayPath = null;
         foreach ($mappings as $apiField) {
@@ -456,6 +468,130 @@ class RestApiPollerService
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Special handler for main network-interfaces endpoint
+     * Creates/updates ports with full details (speed, MAC, MTU, etc.)
+     */
+    protected function processNetworkInterfacesData(RestApiConnection $connection, $endpoint, array $mappings, array $data): void
+    {
+        $items = $data['items'] ?? [];
+        if (empty($items)) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $portName = $item['name'] ?? null;
+            if (!$portName) {
+                continue;
+            }
+
+            // Build port data from API response
+            $portData = [
+                'ifDescr' => $portName,
+                'ifName' => $portName,
+            ];
+
+            // Map fields from the API
+            if (isset($item['services'][0])) {
+                $portData['ifAlias'] = $item['services'][0]; // First service as alias
+            }
+
+            if (isset($item['interface_type'])) {
+                $portData['ifType'] = $item['interface_type'] === 'eth' ? 'ethernetCsmacd' : $item['interface_type'];
+            }
+
+            if (isset($item['speed'])) {
+                $portData['ifSpeed'] = $item['speed'];
+                $portData['ifHighSpeed'] = intval($item['speed'] / 1000000); // Convert to Mbps
+            }
+
+            if (isset($item['enabled'])) {
+                // Convert boolean to ifOperStatus/ifAdminStatus
+                $portData['ifOperStatus'] = $item['enabled'] ? 'up' : 'down';
+                $portData['ifAdminStatus'] = $item['enabled'] ? 'up' : 'down';
+                $portData['disabled'] = $item['enabled'] ? 0 : 1;
+            }
+
+            // Ethernet-specific fields
+            if (isset($item['eth'])) {
+                $eth = $item['eth'];
+                if (isset($eth['mac_address'])) {
+                    $portData['ifPhysAddress'] = $eth['mac_address'];
+                }
+                if (isset($eth['mtu'])) {
+                    $portData['ifMtu'] = $eth['mtu'];
+                }
+                if (isset($eth['address'])) {
+                    // Use as ifAlias if not already set
+                    if (!isset($portData['ifAlias']) || empty($portData['ifAlias'])) {
+                        $portData['ifAlias'] = $eth['address'];
+                    }
+                }
+                if (isset($eth['vlan'])) {
+                    $portData['ifVlan'] = $eth['vlan'];
+                }
+            }
+
+            // Update or create the port
+            DB::table('ports')->updateOrInsert(
+                [
+                    'device_id' => $connection->device_id,
+                    'ifDescr' => $portName,
+                ],
+                $portData
+            );
+        }
+    }
+
+    /**
+     * Special handler for port performance/statistics data
+     * Updates ports table with traffic statistics
+     */
+    protected function processPortPerformanceData(RestApiConnection $connection, $endpoint, array $mappings, array $data): void
+    {
+        $items = $data['items'] ?? [];
+        if (empty($items)) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $portName = $item['name'] ?? null;
+            if (!$portName) {
+                continue;
+            }
+
+            // Extract performance metrics from the item
+            $performanceData = [];
+
+            // Map common performance fields
+            if (isset($item['eth'])) {
+                $eth = $item['eth'];
+                $performanceData['ifInOctets'] = $eth['received_bytes_per_sec'] ?? null;
+                $performanceData['ifOutOctets'] = $eth['transmitted_bytes_per_sec'] ?? null;
+                $performanceData['ifInUcastPkts'] = $eth['received_packets_per_sec'] ?? null;
+                $performanceData['ifOutUcastPkts'] = $eth['transmitted_packets_per_sec'] ?? null;
+                $performanceData['ifInErrors'] = $eth['received_errors_per_sec'] ?? null;
+                $performanceData['ifOutErrors'] = $eth['transmitted_errors_per_sec'] ?? null;
+            }
+
+            // Remove nulls
+            $performanceData = array_filter($performanceData, fn($v) => $v !== null);
+
+            if (empty($performanceData)) {
+                continue;
+            }
+
+            // Update the port with performance data
+            DB::table('ports')
+                ->where('device_id', $connection->device_id)
+                ->where(function ($query) use ($portName) {
+                    $query->where('ifDescr', $portName)
+                          ->orWhere('ifName', $portName);
+                })
+                ->update($performanceData);
         }
     }
 
