@@ -177,6 +177,8 @@ class PureStorageMapper implements VendorMapperInterface
     public function getMappingsForEndpoint(string $endpoint): array
     {
         $allMappings = $this->getMappings();
+        Log::debug("PureStorageMapper: getMappingsForEndpoint called with: '{$endpoint}'");
+        Log::debug("PureStorageMapper: Available mappings: " . implode(', ', array_keys($allMappings)));
         
         // Try exact match first
         if (isset($allMappings[$endpoint])) {
@@ -193,7 +195,7 @@ class PureStorageMapper implements VendorMapperInterface
             return $allMappings[$cleanEndpoint];
         }
         
-        Log::warning("PureStorageMapper: No mapping found for endpoint: {$endpoint}");
+        Log::warning("PureStorageMapper: No mapping found for endpoint: {$endpoint} (cleaned: {$cleanEndpoint})");
         return [];
     }
 
@@ -204,12 +206,15 @@ class PureStorageMapper implements VendorMapperInterface
      */
     private function cleanEndpointPath(string $endpoint): string
     {
-        // Match /api/X.X/endpoint -> /endpoint
-        if (preg_match('#^/api/[\d.]+(.*)$#', $endpoint, $matches)) {
-            return $matches[1] ?: '/';
+        // Match /api/X.X/... -> extract the part after version
+        // Handles: /api/2.26/arrays, /api/2.26/volumes/performance, etc.
+        $cleaned = preg_replace('#^/api/[0-9.]+#', '', $endpoint);
+        
+        if ($cleaned !== $endpoint) {
+            Log::debug("PureStorageMapper: Cleaned '{$endpoint}' to '{$cleaned}'");
         }
         
-        return $endpoint;
+        return $cleaned ?: '/';
     }
 
     public function getTargetTableForEndpoint(string $endpoint): string
