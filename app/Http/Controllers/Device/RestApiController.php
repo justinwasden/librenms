@@ -60,21 +60,43 @@ class RestApiController extends Controller
 
 				    if (isset($connData['endpoints']) && is_array($connData['endpoints'])) {
 				        foreach ($connData['endpoints'] as $endpointData) {
-								    // Handle legacy field names
-								    if (isset($endpointData['response_mapping'])) {
-								        // Convert stringified JSON to array if necessary
-								        $map = $endpointData['response_mapping'];
+								    // Handle template_response_mapping (the actual field name in templates)
+								    if (isset($endpointData['template_response_mapping'])) {
+								        // Store directly as template_response_mapping (JSONColumn handles serialization)
+								        $map = $endpointData['template_response_mapping'];
 								        if (is_string($map)) {
 								            $map = json_decode($map, true);
 								        }
-								        $endpointData['metric_map'] = $map;
-								        unset($endpointData['response_mapping']);
+								    } else {
+								        // Fallback for legacy field names
+								        $map = null;
+								        if (isset($endpointData['response_mapping'])) {
+								            $map = $endpointData['response_mapping'];
+								            if (is_string($map)) {
+								                $map = json_decode($map, true);
+								            }
+								        } elseif (isset($endpointData['metric_map'])) {
+								            $map = $endpointData['metric_map'];
+								            if (is_string($map)) {
+								                $map = json_decode($map, true);
+								            }
+								        }
 								    }
 
                     // Ensure resource_type is set for the new endpoint column
                     $endpointData['resource_type'] = $endpointData['resource_type'] ?? $template->resource_type ?? 'unknown';
 
-								    $connection->endpoints()->create($endpointData);
+                    // Create endpoint with correct mapping field
+                    $createData = [
+                        'name' => $endpointData['name'] ?? 'Unnamed',
+                        'path' => $endpointData['path'] ?? '/',
+                        'http_method' => $endpointData['http_method'] ?? $endpointData['method'] ?? 'GET',
+                        'resource_type' => $endpointData['resource_type'],
+                        'template_response_mapping' => $map,
+                        'enabled' => $endpointData['enabled'] ?? true,
+                    ];
+
+								    $connection->endpoints()->create($createData);
 								}
 				    }
 				}
@@ -191,14 +213,24 @@ class RestApiController extends Controller
             $templateEndpoints = $connData['endpoints'] ?? [];
 
             foreach ($templateEndpoints as $templateEp) {
-                // Handle legacy field names
-                if (isset($templateEp['response_mapping'])) {
+                // Handle template_response_mapping (preferred) or legacy field names
+                if (isset($templateEp['template_response_mapping'])) {
+                    $map = $templateEp['template_response_mapping'];
+                    if (is_string($map)) {
+                        $map = json_decode($map, true);
+                    }
+                } elseif (isset($templateEp['response_mapping'])) {
                     $map = $templateEp['response_mapping'];
                     if (is_string($map)) {
                         $map = json_decode($map, true);
                     }
-                    $templateEp['metric_map'] = $map;
-                    unset($templateEp['response_mapping']);
+                } elseif (isset($templateEp['metric_map'])) {
+                    $map = $templateEp['metric_map'];
+                    if (is_string($map)) {
+                        $map = json_decode($map, true);
+                    }
+                } else {
+                    $map = null;
                 }
 
                 // Ensure resource_type is set
@@ -211,9 +243,9 @@ class RestApiController extends Controller
                     // Update existing endpoint (but preserve device-specific base_url in connection)
                     $updated = $existingEndpoint->update([
                         'name' => $templateEp['name'],
-                        'method' => $templateEp['method'] ?? 'GET',
+                        'http_method' => $templateEp['http_method'] ?? $templateEp['method'] ?? 'GET',
                         'resource_type' => $templateEp['resource_type'],
-                        'metric_map' => $templateEp['metric_map'] ?? null,
+                        'template_response_mapping' => $map,
                     ]);
 
                     if ($updated) {
@@ -226,9 +258,9 @@ class RestApiController extends Controller
                     $connection->endpoints()->create([
                         'name' => $templateEp['name'],
                         'path' => $templateEp['path'],
-                        'method' => $templateEp['method'] ?? 'GET',
+                        'http_method' => $templateEp['http_method'] ?? $templateEp['method'] ?? 'GET',
                         'resource_type' => $templateEp['resource_type'],
-                        'metric_map' => $templateEp['metric_map'] ?? null,
+                        'template_response_mapping' => $map,
                     ]);
                     $addedCount++;
                 }
@@ -271,8 +303,8 @@ class RestApiController extends Controller
 		        'name' => 'required|string|max:255',
 		        'path' => 'required|string|max:2048',
 		        'method' => 'required|in:GET,POST,PUT,DELETE',
-		        'resource_type' => 'nullable|string|max:50', // ADDED validation for resource_type
-		        'metric_map_json' => 'required|string', // treat as string, not JSON
+		        'resource_type' => 'nullable|string|max:50',
+		        'metric_map_json' => 'required|string',
 		    ]);
 
 		    // Decode the JSON safely (handles escaped or stringified JSON)
@@ -285,9 +317,9 @@ class RestApiController extends Controller
 		    $endpoint->update([
 		        'name' => $validated['name'],
 		        'path' => $validated['path'],
-		        'method' => $validated['method'],
-		        'resource_type' => $validated['resource_type'] ?? 'unknown', // ADDED update for resource_type
-		        'metric_map' => $decodedMap,
+		        'http_method' => $validated['method'],
+		        'resource_type' => $validated['resource_type'] ?? 'unknown',
+		        'template_response_mapping' => $decodedMap,
 		    ]);
 
 		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'Endpoint updated successfully.');
@@ -300,8 +332,8 @@ class RestApiController extends Controller
 		        'endpoint_name' => 'required|string|max:255',
 		        'endpoint_path' => 'required|string|max:2048',
 		        'endpoint_method' => 'required|in:GET,POST,PUT,DELETE',
-		        'endpoint_resource_type' => 'nullable|string|max:50', // ADDED validation for resource_type
-		        'endpoint_metric_map_json' => 'required|string', // treat as string
+		        'endpoint_resource_type' => 'nullable|string|max:50',
+		        'endpoint_metric_map_json' => 'required|string',
 		    ]);
 
 		    $decodedMap = json_decode(stripslashes($validated['endpoint_metric_map_json']), true);
@@ -313,9 +345,9 @@ class RestApiController extends Controller
 		    $connection->endpoints()->create([
 		        'name' => $validated['endpoint_name'],
 		        'path' => $validated['endpoint_path'],
-		        'method' => $validated['endpoint_method'],
-		        'resource_type' => $validated['endpoint_resource_type'] ?? 'unknown', // ADDED set for resource_type
-		        'metric_map' => $decodedMap,
+		        'http_method' => $validated['endpoint_method'],
+		        'resource_type' => $validated['endpoint_resource_type'] ?? 'unknown',
+		        'template_response_mapping' => $decodedMap,
 		    ]);
 
 		    return redirect()->route('device.edit.rest-api', $device)->with('success', 'New endpoint added successfully.');
