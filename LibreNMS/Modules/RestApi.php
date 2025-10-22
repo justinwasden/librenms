@@ -3,6 +3,7 @@ namespace LibreNMS\Modules;
 
 use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\OS;
+use App\Models\Device;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Module;
 use Log;
@@ -49,11 +50,17 @@ class RestApi implements Module
     return $this->deviceHasApiConnections($device->id);
 }
 
-    public function cleanup(OS $os, DataStorageInterface $datastore): void
-    {
-        // Optional: cleanup module-specific data for the device
-        // Placeholder for now
-    }
+    public function cleanup(Device $device): int
+{
+    $count = 0;
+
+    // Delete all REST API connections and cascade deletes to endpoints/metrics
+    $connections = $device->restApiConnections();
+    $count += $connections->count();
+    $connections->delete();
+
+    return $count;
+}
 
     public function dependencies(): array
     {
