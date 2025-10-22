@@ -26,7 +26,7 @@ class MetricStorageEngine
     /**
      * Store metrics from API response using mapper's field mappings
      * 
-     * This is the new method used by RestApiSimplePoller with vendor mappers
+     * This is the new method used by RestApiPoller with vendor mappers
      * 
      * @param array $response Raw API response
      * @param object $endpoint Endpoint object with path
@@ -36,60 +36,44 @@ class MetricStorageEngine
     {
         $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
         $targetTable = $mapper->getTargetTableForEndpoint($endpoint->path);
-        $items = $response['items'] ?? [$response];
         
-        if (!is_array($items)) {
-            $items = [$items];
+        if (empty($mappings)) {
+            Log::warning("No mappings for endpoint: {$endpoint->path}");
+            return;
         }
 
-        foreach ($items as $item) {
-            $this->storeItemToTable($item, $targetTable, $mappings, $endpoint->path, $mapper);
-        }
-    }
-
-    /**
-     * Store a single API response item to the appropriate LibreNMS table
-     * 
-     * @param array $item Single item from API response
-     * @param string $targetTable Target LibreNMS table name
-     * @param array $fieldMappings Field mappings for this table
-     * @param string $endpoint Endpoint path for logging
-     * @param object $mapper Mapper instance
-     */
-    protected function storeItemToTable(array $item, string $targetTable, array $fieldMappings, string $endpoint, $mapper)
-    {
-        Log::debug("Storing to table: {$targetTable} from endpoint: {$endpoint}");
-
+        // Store based on target table
         switch ($targetTable) {
             case 'devices':
-                $this->storeDeviceItem($item, $fieldMappings, $endpoint);
-                break;
-            case 'storage':
-                $this->storeStorageItem($item, $fieldMappings, $endpoint);
+                $this->storeDeviceFromResponse($response, $mappings, $endpoint->path);
                 break;
             case 'ports':
-                $this->storePortItem($item, $fieldMappings, $endpoint);
+                $this->storePortsFromResponse($response, $mappings, $endpoint->path);
+                break;
+            case 'storage':
+                $this->storeStorageFromResponse($response, $mappings, $endpoint->path);
                 break;
             case 'sensors':
-                $this->storeSensorItem($item, $fieldMappings, $endpoint, $mapper);
+                $this->storeSensorsFromResponse($response, $mappings, $endpoint->path, $mapper);
                 break;
             case 'links':
-                $this->storeLinkItem($item, $fieldMappings, $endpoint);
+                $this->storeLinksFromResponse($response, $mappings, $endpoint->path);
                 break;
             default:
-                Log::warning("Unsupported table: {$targetTable}");
+                Log::warning("Unsupported target table: {$targetTable}");
         }
     }
 
     /**
-     * Store device-level data from item
+     * Store device-level data from response
      */
-    protected function storeDeviceItem(array $item, array $fieldMappings, string $endpoint)
+    protected function storeDeviceFromResponse(array $response, array $mappings, string $endpoint)
     {
         $data = [];
 
-        foreach ($fieldMappings as $librenmsField => $jsonPath) {
-            $value = JsonPathExtractor::extract($item, $jsonPath);
+        foreach ($mappings as $librenmsField => $jsonPath) {
+            // Apply JSONPath to full response
+            $value = JsonPathExtractor::extract($response, $jsonPath);
 
             if ($value === null) {
                 continue;
@@ -105,62 +89,37 @@ class MetricStorageEngine
     }
 
     /**
-     * Store storage/volume data from item
+     * Store ports from response - handles both single items and arrays
      */
-    protected function storeStorageItem(array $item, array $fieldMappings, string $endpoint)
+    protected function storePortsFromResponse(array $response, array $mappings, string $endpoint)
     {
-        $identifier = null;
-        $identifierField = null;
-        $data = ['storage_type' => 'rest-api'];
+        // Check if we have items array
+        $items = $response['items'] ?? [$response];
+        if (!is_array($items)) {
+            $items = [$items];
+        }
 
-        // Extract all fields
-        foreach ($fieldMappings as $librenmsField => $jsonPath) {
-            $value = JsonPathExtractor::extract($item, $jsonPath);
-
-            if ($value === null) {
+        foreach ($items as $item) {
+            if (!is_array($item)) {
                 continue;
             }
 
-            // Check if this is the identifier field (usually 'name')
-            if (in_array($librenmsField, ['storage_descr', 'name', 'id', 'drive_name'])) {
-                if (!$identifier) {
-                    $identifier = $value;
-                    $identifierField = $librenmsField;
-                }
-            }
-
-            // Store numeric fields
-            if (is_numeric($value)) {
-                $data[$librenmsField] = (int)$value;
-            } else {
-                $data[$librenmsField] = $value;
-            }
+            $this->storePortItem($item, $mappings, $endpoint);
         }
-
-        if (!$identifier) {
-            Log::warning("[{$endpoint}] No identifier found for storage item");
-            return;
-        }
-
-        $storage = Storage::updateOrCreate(
-            ['device_id' => $this->device->device_id, $identifierField => $identifier],
-            $data
-        );
-
-        Log::info("Storage '{$identifier}' stored to database");
     }
 
     /**
-     * Store port/interface data from item
+     * Store a single port item
      */
-    protected function storePortItem(array $item, array $fieldMappings, string $endpoint)
+    protected function storePortItem(array $item, array $mappings, string $endpoint)
     {
         $identifier = null;
         $identifierField = null;
         $data = ['port_descr_type' => 'rest-api', 'ifType' => 6];
 
-        foreach ($fieldMappings as $librenmsField => $jsonPath) {
-            $value = JsonPathExtractor::extract($item, $jsonPath);
+        foreach ($mappings as $librenmsField => $jsonPath) {
+            $normalizedPath = JsonPathExtractor::normalizePathForItem($jsonPath);
+            $value = JsonPathExtractor::extract($item, $normalizedPath);
 
             if ($value === null) {
                 continue;
@@ -182,7 +141,7 @@ class MetricStorageEngine
         }
 
         if (!$identifier) {
-            Log::warning("[{$endpoint}] No identifier found for port");
+            Log::debug("[{$endpoint}] No identifier found for port");
             return;
         }
 
@@ -191,70 +150,169 @@ class MetricStorageEngine
             $data
         );
 
-        Log::info("Port '{$identifier}' stored to database");
+        Log::info("Port '{$identifier}' stored");
     }
 
     /**
-     * Store sensor data from item
+     * Store storage items from response
      */
-    protected function storeSensorItem(array $item, array $fieldMappings, string $endpoint, $mapper)
+    protected function storeStorageFromResponse(array $response, array $mappings, string $endpoint)
     {
-        foreach ($fieldMappings as $sensorDescr => $jsonPath) {
-            $value = JsonPathExtractor::extract($item, $jsonPath);
+        $items = $response['items'] ?? [$response];
+        if (!is_array($items)) {
+            $items = [$items];
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $this->storeStorageItem($item, $mappings, $endpoint);
+        }
+    }
+
+    /**
+     * Store a single storage item
+     */
+    protected function storeStorageItem(array $item, array $mappings, string $endpoint)
+    {
+        $identifier = null;
+        $identifierField = null;
+        $data = ['storage_type' => 'rest-api'];
+
+        foreach ($mappings as $librenmsField => $jsonPath) {
+            // Handle static values (not JSONPath)
+            if ($jsonPath === 'pure-volume' || $jsonPath === 'pure-drive' || strpos($jsonPath, 'calculated') === 0) {
+                $data[$librenmsField] = $jsonPath;
+                continue;
+            }
+
+            $normalizedPath = JsonPathExtractor::normalizePathForItem($jsonPath);
+            $value = JsonPathExtractor::extract($item, $normalizedPath);
 
             if ($value === null) {
                 continue;
             }
 
-            if (!is_numeric($value)) {
-                continue;
+            // Check if this is the identifier field
+            if (in_array($librenmsField, ['storage_descr', 'name', 'id'])) {
+                if (!$identifier) {
+                    $identifier = $value;
+                    $identifierField = $librenmsField;
+                }
             }
 
-            // Extract sensor class from mapper or use count as default
-            $sensorClass = $mapper->getSensorClass($endpoint, $sensorDescr) ?? 'count';
-
-            $sensor = Sensor::updateOrCreate(
-                [
-                    'device_id' => $this->device->device_id,
-                    'sensor_class' => $sensorClass,
-                    'sensor_type' => 'rest-api',
-                    'sensor_descr' => $sensorDescr,
-                ],
-                [
-                    'sensor_oid' => "rest-api.{$sensorDescr}",
-                    'poller_type' => 'rest-api',
-                    'sensor_current' => $value,
-                ]
-            );
-
-            Log::debug("Sensor '{$sensorDescr}' = {$value}");
-        }
-    }
-
-    /**
-     * Store link/connection data from item
-     */
-    protected function storeLinkItem(array $item, array $fieldMappings, string $endpoint)
-    {
-        $linkData = [];
-
-        foreach ($fieldMappings as $librenmsField => $jsonPath) {
-            $value = JsonPathExtractor::extract($item, $jsonPath);
-
-            if ($value === null) {
-                continue;
+            if (is_numeric($value)) {
+                $data[$librenmsField] = (int)$value;
+            } else {
+                $data[$librenmsField] = $value;
             }
-
-            $linkData[$librenmsField] = $value;
         }
 
-        if (empty($linkData)) {
-            Log::warning("[{$endpoint}] No link data extracted");
+        if (!$identifier) {
+            Log::debug("[{$endpoint}] No identifier for storage item");
             return;
         }
 
-        // For now, just log link data. Full implementation would store to links table
-        Log::info("Link data extracted: " . json_encode($linkData));
+        $storage = Storage::updateOrCreate(
+            ['device_id' => $this->device->device_id, $identifierField => $identifier],
+            $data
+        );
+
+        Log::info("Storage '{$identifier}' stored");
+    }
+
+    /**
+     * Store sensors from response
+     */
+    protected function storeSensorsFromResponse(array $response, array $mappings, string $endpoint, $mapper)
+    {
+        // For sensors, JSONPath might reference $.items[0] or $.items[*]
+        // We need to handle both array and single item responses
+        $items = $response['items'] ?? [$response];
+        if (!is_array($items)) {
+            $items = [$items];
+        }
+
+        // For each item, extract sensor values
+        foreach ($items as $itemIndex => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            foreach ($mappings as $sensorDescr => $jsonPath) {
+                // Normalize the path to work with individual items
+                $normalizedPath = JsonPathExtractor::normalizePathForItem($jsonPath);
+                $value = JsonPathExtractor::extract($item, $normalizedPath);
+
+                if ($value === null) {
+                    continue;
+                }
+
+                if (!is_numeric($value)) {
+                    continue;
+                }
+
+                // Get sensor class from mapper
+                $sensorClass = $mapper->getSensorClass($endpoint, $sensorDescr) ?? 'count';
+
+                // Create unique sensor ID if handling multiple items
+                $itemCount = count($items);
+                $sensorIndex = md5($this->device->device_id . $sensorDescr . ($itemCount > 1 ? $itemIndex : ''));
+
+                $sensor = Sensor::updateOrCreate(
+                    [
+                        'device_id' => $this->device->device_id,
+                        'sensor_class' => $sensorClass,
+                        'sensor_type' => 'rest-api',
+                        'sensor_descr' => $sensorDescr . ($itemIndex > 0 ? "_{$itemIndex}" : ''),
+                    ],
+                    [
+                        'sensor_oid' => "rest-api.{$sensorDescr}",
+                        'poller_type' => 'rest-api',
+                        'sensor_current' => (float)$value,
+                    ]
+                );
+
+                Log::debug("Sensor '{$sensorDescr}' = {$value}");
+            }
+        }
+    }
+
+    /**
+     * Store links from response
+     */
+    protected function storeLinksFromResponse(array $response, array $mappings, string $endpoint)
+    {
+        $items = $response['items'] ?? [$response];
+        if (!is_array($items)) {
+            $items = [$items];
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $linkData = [];
+            foreach ($mappings as $librenmsField => $jsonPath) {
+                $normalizedPath = JsonPathExtractor::normalizePathForItem($jsonPath);
+                $value = JsonPathExtractor::extract($item, $normalizedPath);
+
+                if ($value === null) {
+                    continue;
+                }
+
+                $linkData[$librenmsField] = $value;
+            }
+
+            if (empty($linkData)) {
+                continue;
+            }
+
+            Log::info("Link data extracted: " . json_encode($linkData));
+        }
     }
 
     /**
@@ -490,12 +548,12 @@ class MetricStorageEngine
         $sensorDescr = $mapping->target_field . ($suffix ? "_{$suffix}" : "");
 
         $sensor = Sensor::updateOrCreate(
-        [
-        'device_id' => $this->device->device_id,
-        'sensor_class' => 'count',
-        'sensor_type' => 'rest-api',
-        'sensor_descr' => $sensorDescr,
-        ],
+            [
+                'device_id' => $this->device->device_id,
+                'sensor_class' => 'count',
+                'sensor_type' => 'rest-api',
+                'sensor_descr' => $sensorDescr,
+            ],
             [
                 'sensor_oid' => 'rest-api.' . $sensorDescr,
                 'poller_type' => 'rest-api',

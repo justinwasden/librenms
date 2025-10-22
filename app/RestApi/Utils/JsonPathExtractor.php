@@ -35,6 +35,29 @@ class JsonPathExtractor
     }
 
     /**
+     * Normalize JSONPath for use with individual items
+     * Converts $.items[0].field to $.field
+     * Converts $.items[*].field to $.field
+     * Leaves other paths (like $.total_provisioned) unchanged
+     * 
+     * @param string $path JSONPath to normalize
+     * @return string Normalized path
+     */
+    public static function normalizePathForItem(string $path): string
+    {
+        // Convert $.items[0].field to $.field
+        $path = preg_replace('/\$\.items\[\d+\]\./', '$.', $path);
+        
+        // Convert $.items[*].field to $.field
+        $path = preg_replace('/\$\.items\[\*\]\./', '$.', $path);
+        
+        // Other paths like $.total_provisioned stay as-is
+        // These work on both the item level and the response level in this context
+        
+        return $path;
+    }
+
+    /**
      * Extract single value
      */
     protected static function extractSingle(array $data, string $path)
