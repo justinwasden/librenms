@@ -637,6 +637,12 @@ class RestApiPollerService
                 continue;
             }
 
+            // Skip zero values for power, voltage, and bias sensors (indicates no transceiver/inactive)
+            $valueNumeric = is_numeric($value) ? (float)$value : 0;
+            if ($valueNumeric == 0 && in_array($sensorType, ['tx_power', 'rx_power', 'voltage', 'tx_bias'])) {
+                continue;
+            }
+
             // Map sensor types to LibreNMS sensor classes
             $sensorClass = match ($sensorType) {
                 'temperature' => 'temperature',
