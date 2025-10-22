@@ -629,6 +629,13 @@ class RestApiPollerService
                         return;
                     }
 
+                    // Skip storage entities with zero or null size (empty drive bays, etc.)
+                    $storageSize = $entityData['storage_size'] ?? $entityData['size'] ?? $entityData['total'] ?? 0;
+                    if (empty($storageSize) || $storageSize <= 0) {
+                        Log::debug("Skipping storage entity with zero size: {$identifier}");
+                        return;
+                    }
+
                     // Filter to only valid storage columns
                     $validColumns = [
                         'storage_mib', 'storage_index', 'storage_type', 'storage_descr', 'storage_size',
