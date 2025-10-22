@@ -138,12 +138,11 @@ class RestApiPollerService
 		{
 		    // 1. Retrieve parameters from the Session Token credential configuration
 		    $params = $connection->credential->getParamsArray();
-				$tokenHeader = $params['token_header'] ?? 'X-Auth-Token'; // <--- FIX 1: Use dynamic response header name
-		    // Retrieve configurable login details (using keys from session-token.blade.php)
+			    // Retrieve configurable login details (using keys from session-token.blade.php)
 		    $loginPath = $params['login_path'] ?? 'login';
 		    $loginMethod = strtoupper($params['login_method'] ?? 'POST');
 		    $sendHeaderName = $params['api_token_header'] ?? 'api-token';         // Header name to SEND the API key
-		    $receiveHeaderName = $params['token_header'] ?? 'x-auth-token';       // Header name to RECEIVE the session token
+		    $receiveHeaderName = $params['token_header'] ?? 'X-Auth-Token';       // Header name to RECEIVE the session token
 		    $apiKey = $params['api_token'] ?? null;                               // The decrypted API key value
 
 		    // 2. Construct the final login URL
@@ -173,10 +172,10 @@ class RestApiPollerService
   		  }
 
 		    // 4. Extract Session Token using the configured response header name
-		    $authToken = $response->header($tokenHeader);
+		    $authToken = $response->header($receiveHeaderName);
 
 		    if (!$authToken) {
-    		    throw new \Exception("No {$tokenHeader} in response headers");
+    		    throw new \Exception("No {$receiveHeaderName} in response headers");
   		  }
 
 		    // Cache the token
@@ -228,10 +227,14 @@ class RestApiPollerService
         if ($connection->credential) {
             $authType = strtolower($connection->credential->authenticationType->name ?? '');
 
-            // Pure Storage: use cached X-Auth-Token from login
+            // Session token auth (e.g., Pure Storage): use cached token from login
             if ($authType === 'api_key' && isset($this->authTokens[$connection->id])) {
+                // Get the configured session token header name from credential params
+                $params = $connection->credential->getParamsArray();
+                $sessionTokenHeader = $params['token_header'] ?? 'X-Auth-Token';
+
                 $request = $request->withHeaders([
-                    'X-Auth-Token' => $this->authTokens[$connection->id],
+                    $sessionTokenHeader => $this->authTokens[$connection->id],
                 ]);
             } else {
                 // Other auth types
