@@ -70,7 +70,7 @@ class RestApiTemplateController extends Controller
     public function destroy(RestApiTemplate $template)
     {
         $template->delete();
-        return redirect()->route('devices.rest-api.templates.index')
+        return redirect()->route('settings.rest-api.templates.index')
                          ->with('success', 'Template deleted successfully.');
     }
 
@@ -115,7 +115,7 @@ class RestApiTemplateController extends Controller
                 $result[$key] = $value;
             }
         }
-        
+
         return $result;
     }
 
@@ -131,7 +131,7 @@ class RestApiTemplateController extends Controller
         if (strpos($string, 'device_attrib') !== false) {
             $attribMatches = [];
             @preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
-            
+
             if (!empty($attribMatches[1])) {
                 foreach ($attribMatches[1] as $index => $attribName) {
                     if (isset($attribMatches[0][$index])) {
@@ -292,8 +292,8 @@ class RestApiTemplateController extends Controller
             $template = RestApiTemplate::findOrFail($templateId);
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
 
-            $templateData = is_array($template->template_data) 
-                ? $template->template_data 
+            $templateData = is_array($template->template_data)
+                ? $template->template_data
                 : json_decode($template->template_data, true);
 
             if (!isset($templateData['connections'][$connIdx])) {
@@ -334,11 +334,11 @@ class RestApiTemplateController extends Controller
             // Try vendor mapper if available for VENDOR-SPECIFIC recommendations only
             $vendorMapperFactory = new \App\RestApi\Vendors\VendorMapperFactory();
             $device = $deviceId ? \App\Models\Device::findOrFail($deviceId) : null;
-            
+
             if ($device && $apiResponse) {
                 $tempEndpoint = new \App\Models\RestApiEndpoint();
                 $tempEndpoint->fill($endpointData);
-                
+
                 try {
                     $vendorMapper = $vendorMapperFactory->getMapper($device, $tempEndpoint);
                     @$vendorRecommendations = $vendorMapper->getRecommendedMappings($apiResponse, $tempEndpoint);
@@ -414,17 +414,17 @@ class RestApiTemplateController extends Controller
     {
         $recommendations = [];
         $resourceType = $endpointData['resource_type'] ?? 'custom';
-        
+
         // Extract all fields from response
         $fields = $this->extractAllFields($apiResponse);
-        
+
         foreach ($fields as $fieldName => $sampleValue) {
             $rec = $this->suggestMapping($fieldName, $sampleValue, $resourceType);
             if ($rec) {
                 $recommendations[] = $rec;
             }
         }
-        
+
         return $recommendations;
     }
 
@@ -434,7 +434,7 @@ class RestApiTemplateController extends Controller
     private function extractAllFields(array $data, string $prefix = ''): array
     {
         $fields = [];
-        
+
         if (isset($data['items']) && is_array($data['items']) && !empty($data['items'])) {
             $firstItem = $data['items'][0];
             if (is_array($firstItem)) {
@@ -443,7 +443,7 @@ class RestApiTemplateController extends Controller
                 }
             }
         }
-        
+
         return $fields;
     }
 
@@ -454,7 +454,7 @@ class RestApiTemplateController extends Controller
     {
         $field = strtolower($fieldName);
         $confidence = 0.5;
-        
+
         // Storage/Capacity metrics
         if (preg_match('/(capacity|size|bytes|used|free)/i', $field)) {
             $table = 'storage';
@@ -474,7 +474,7 @@ class RestApiTemplateController extends Controller
                 $librenmsField = 'storage_used';
                 $confidence = 0.70;
             }
-            
+
             return [
                 'api_field' => $fieldName,
                 'librenms_table' => $table,
@@ -483,7 +483,7 @@ class RestApiTemplateController extends Controller
                 'type' => 'storage'
             ];
         }
-        
+
         // Sensor metrics (temperature, voltage, fan, etc.)
         if (preg_match('/(temp|temperature|celsius|°c|voltage|volt|fan|rpm|power|watt|watts|current|amps)/i', $field)) {
             return [
@@ -494,7 +494,7 @@ class RestApiTemplateController extends Controller
                 'type' => 'sensor'
             ];
         }
-        
+
         // Network interface metrics
         if (preg_match('/(bytes_in|bytes_out|octets_in|octets_out|packets|errors|drops)/i', $field)) {
             $table = 'ports';
@@ -505,7 +505,7 @@ class RestApiTemplateController extends Controller
             } else {
                 $librenmsField = 'ifInOctets';
             }
-            
+
             return [
                 'api_field' => $fieldName,
                 'librenms_table' => $table,
@@ -514,7 +514,7 @@ class RestApiTemplateController extends Controller
                 'type' => 'network'
             ];
         }
-        
+
         // Performance/IOPS metrics
         if (preg_match('/(iops|throughput|latency|response_time|bandwidth)/i', $field)) {
             return [
@@ -525,7 +525,7 @@ class RestApiTemplateController extends Controller
                 'type' => 'performance'
             ];
         }
-        
+
         // Status/State fields
         if (preg_match('/(status|state|health|condition|online|operational)/i', $field)) {
             return [
@@ -536,7 +536,7 @@ class RestApiTemplateController extends Controller
                 'type' => 'status'
             ];
         }
-        
+
         // Name/Description fields
         if (preg_match('/(name|description|descr|title|label)/i', $field)) {
             if ($resourceType === 'storage') {
@@ -549,14 +549,14 @@ class RestApiTemplateController extends Controller
                 ];
             }
         }
-        
+
         return null;
     }
 
     private function getTemplateAuthHeaders(array $connData, $client, $credentialId = null): array
     {
         $credId = $credentialId ?? $connData['credential_id'] ?? null;
-        
+
         if (!$credId) {
             \Log::info('No credential_id in connection data or provided');
             return [];
@@ -564,12 +564,12 @@ class RestApiTemplateController extends Controller
 
         $credential = \App\Models\RestApiCredential::findOrFail($credId);
         $authType = Str::lower($credential->authenticationType->name);
-        
+
         \Log::info("Using authentication type: {$authType}");
 
         if ($authType === 'session token') {
             \Log::info('Session token auth detected - performing login first');
-            
+
             $sessionToken = \App\RestApi\Credentials\CredentialHelper::obtainSessionToken(
                 $credential,
                 $connData['base_url'],
