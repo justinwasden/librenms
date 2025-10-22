@@ -61,7 +61,24 @@ class RestApi implements Module
 
     return $count;
 }
-
+public function dump(Device $device, string $type): ?array
+{
+    return [
+        'rest_api_connections' => $device->restApiConnections()
+            ->with(['credential', 'endpoints'])
+            ->get()
+            ->map(function ($conn) {
+                return [
+                    'name' => $conn->name,
+                    'base_url' => $conn->base_url,
+                    'enabled' => $conn->enabled,
+                    'credential_type' => $conn->credential?->authenticationType?->name,
+                    'endpoints_count' => $conn->endpoints->count(),
+                ];
+            })
+            ->toArray(),
+    ];
+}
     public function dependencies(): array
     {
         return [];
