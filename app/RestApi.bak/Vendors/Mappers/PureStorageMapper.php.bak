@@ -1,0 +1,399 @@
+<?php
+
+namespace App\RestApi\Vendors\Mappers;
+
+use App\RestApi\Vendors\VendorMapperInterface;
+
+class PureStorageMapper implements VendorMapperInterface
+{
+    public function getVendorName(): string
+    {
+        return 'Pure Storage';
+    }
+
+    public function getOsPatterns(): array
+    {
+        return ['Purity//FA*', 'Purity*'];
+    }
+
+    public function getMappings(): array
+    {
+        return [
+            '/arrays' => $this->getArraysConfig(),
+            '/network-interfaces' => $this->getNetworkInterfacesConfig(),
+            '/volumes' => $this->getVolumesConfig(),
+            '/controllers' => $this->getControllersConfig(),
+            '/hardware' => $this->getHardwareConfig(),
+            '/arrays/performance' => $this->getArraysPerformanceConfig(),
+            '/volumes/performance' => $this->getVolumesPerformanceConfig(),
+            '/network-interfaces/performance' => $this->getNetworkInterfacesPerformanceConfig(),
+            '/network-interfaces/port-details' => $this->getPortDetailsConfig(),
+            '/drives' => $this->getDrivesConfig(),
+            '/array-connections' => $this->getArrayConnectionsConfig(),
+            '/subnets' => $this->getSubnetsConfig(),
+            '/space' => $this->getSpaceConfig(),
+        ];
+    }
+
+    public function getMappingsForEndpoint(string $endpoint): array
+    {
+        return $this->getMappings()[$endpoint] ?? [];
+    }
+
+    public function getTargetTableForEndpoint(string $endpoint): string
+    {
+        return match ($endpoint) {
+            '/arrays' => 'devices',
+            '/network-interfaces', '/network-interfaces/performance' => 'ports',
+            '/volumes', '/drives' => 'storage',
+            '/controllers', '/hardware', '/arrays/performance', '/volumes/performance',
+            '/network-interfaces/port-details', '/subnets', '/space' => 'sensors',
+            '/array-connections' => 'links',
+            default => 'sensors',
+        };
+    }
+
+    public function transformValue(string $field, mixed $value): mixed
+    {
+        return $value;
+    }
+
+    public function isValidMapping(string $endpoint, string $field, string $targetTable): bool
+    {
+        $expectedTable = $this->getTargetTableForEndpoint($endpoint);
+        return $targetTable === $expectedTable;
+    }
+
+    public function getDescription(): string
+    {
+        return 'Pure Storage FlashArray REST API Mapper - Handles Purity//FA arrays';
+    }
+
+    public function getSensorClass(string $endpoint, string $sensorDescr): ?string
+    {
+        return match ($endpoint) {
+            '/hardware' => $this->getHardwareSensorClass($sensorDescr),
+            '/controllers' => 'state',
+            '/arrays/performance', '/volumes/performance' => 'gauge',
+            '/network-interfaces/port-details' => $this->getPortDetailsSensorClass($sensorDescr),
+            '/space' => 'gauge',
+            default => null,
+        };
+    }
+
+    public function getSensorDescription(string $endpoint, string $apiField): string
+    {
+        return match ($endpoint) {
+            '/arrays/performance' => $this->getArrayPerformanceDescription($apiField),
+            '/volumes/performance' => $this->getVolumePerformanceDescription($apiField),
+            '/network-interfaces/port-details' => $this->getPortDetailsDescription($apiField),
+            '/space' => $this->getSpaceDescription($apiField),
+            default => $apiField,
+        };
+    }
+
+    // ===== CONFIG BUILDERS =====
+
+    private function getArraysConfig(): array
+    {
+        return [
+            'target_table' => 'devices',
+            'item_identifier' => null,
+            'fields' => [
+                'devices.hostname' => '$.items[0].name',
+                'devices.sysName' => '$.items[0].name',
+                'devices.version' => '$.items[0].version',
+                'devices.os' => '$.items[0].os',
+                'devices.hardware' => '$.items[0].model',
+                'devices.serial' => '$.items[0].id',
+                'devices.location' => '$.items[0].time_zone',
+            ],
+        ];
+    }
+
+    private function getNetworkInterfacesConfig(): array
+    {
+        return [
+            'target_table' => 'ports',
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'ports.ifName' => '$.items[*].name',
+                'ports.ifDescr' => '$.items[*].services[0]',
+                'ports.ifType' => '$.items[*].interface_type',
+                'ports.ifSpeed' => '$.items[*].speed',
+                'ports.ifPhysAddress' => '$.items[*].eth.mac_address',
+                'ports.ifAdminStatus' => '$.items[*].enabled',
+                'ports.ifOperStatus' => '$.items[*].enabled',
+                'ports.ifMtu' => '$.items[*].eth.mtu',
+                'ports.ifAlias' => '$.items[*].eth.address',
+                'ports.ifVlan' => '$.items[*].eth.vlan',
+                'ports.ipv4_address' => '$.items[*].eth.address',
+                'ports.ipv4_netmask' => '$.items[*].eth.netmask',
+            ],
+        ];
+    }
+
+    private function getVolumesConfig(): array
+    {
+        return [
+            'target_table' => 'storage',
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'storage.storage_descr' => '$.items[*].name',
+                'storage.storage_type' => "'pure-volume'",
+                'storage.storage_size' => '$.items[*].space.total_provisioned',
+                'storage.storage_used' => '$.items[*].space.total_physical',
+            ],
+        ];
+    }
+
+    private function getControllersConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',
+            'sensor_prefix' => 'controller',
+            'fields' => [
+                'sensors.controller_status' => '$.items[*].status',
+            ],
+        ];
+    }
+
+    private function getHardwareConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',
+            'sensor_prefix' => 'hardware',
+            'fields' => [
+                'sensors.temperature' => '$.items[*].temperature',
+                'sensors.voltage' => '$.items[*].voltage',
+                'sensors.status' => '$.items[*].status',
+            ],
+        ];
+    }
+
+    private function getArraysPerformanceConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => null,
+            'sensor_prefix' => 'array',
+            'fields' => [
+                'sensors.read_bytes_per_sec' => '$.items[0].read_bytes_per_sec',
+                'sensors.write_bytes_per_sec' => '$.items[0].write_bytes_per_sec',
+                'sensors.reads_per_sec' => '$.items[0].reads_per_sec',
+                'sensors.writes_per_sec' => '$.items[0].writes_per_sec',
+                'sensors.usec_per_read_op' => '$.items[0].usec_per_read_op',
+                'sensors.usec_per_write_op' => '$.items[0].usec_per_write_op',
+                'sensors.queue_usec_per_read_op' => '$.items[0].queue_usec_per_read_op',
+                'sensors.queue_usec_per_write_op' => '$.items[0].queue_usec_per_write_op',
+                'sensors.bytes_per_read' => '$.items[0].bytes_per_read',
+                'sensors.bytes_per_write' => '$.items[0].bytes_per_write',
+            ],
+        ];
+    }
+
+    private function getVolumesPerformanceConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',
+            'sensor_prefix' => 'volume',
+            'fields' => [
+                'sensors.read_bytes_per_sec' => '$.items[*].read_bytes_per_sec',
+                'sensors.write_bytes_per_sec' => '$.items[*].write_bytes_per_sec',
+                'sensors.reads_per_sec' => '$.items[*].reads_per_sec',
+                'sensors.writes_per_sec' => '$.items[*].writes_per_sec',
+                'sensors.usec_per_read_op' => '$.items[*].usec_per_read_op',
+                'sensors.usec_per_write_op' => '$.items[*].usec_per_write_op',
+                'sensors.queue_usec_per_read_op' => '$.items[*].queue_usec_per_read_op',
+                'sensors.queue_usec_per_write_op' => '$.items[*].queue_usec_per_write_op',
+            ],
+        ];
+    }
+
+    private function getNetworkInterfacesPerformanceConfig(): array
+    {
+        return [
+            'target_table' => 'ports',
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'ports.ifInOctets' => '$.items[*].eth.received_bytes_per_sec',
+                'ports.ifOutOctets' => '$.items[*].eth.transmitted_bytes_per_sec',
+                'ports.ifInUcastPkts' => '$.items[*].eth.received_packets_per_sec',
+                'ports.ifOutUcastPkts' => '$.items[*].eth.transmitted_packets_per_sec',
+                'ports.ifInDiscards' => '$.items[*].fc.link_failures_per_sec',
+            ],
+        ];
+    }
+
+    private function getPortDetailsConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',
+            'sensor_prefix' => 'optic',
+            'fields' => [
+                'sensors.temperature' => '$.items[*].temperature[0].measurement',
+                'sensors.voltage' => '$.items[*].voltage[0].measurement',
+                'sensors.tx_bias' => '$.items[*].tx_bias[0].measurement',
+                'sensors.tx_power' => '$.items[*].tx_power[0].measurement',
+                'sensors.rx_power' => '$.items[*].rx_power[0].measurement',
+                'sensors.tx_fault' => '$.items[*].tx_fault[0].flag',
+                'sensors.rx_los' => '$.items[*].rx_los[0].flag',
+            ],
+        ];
+    }
+
+    private function getDrivesConfig(): array
+    {
+        return [
+            'target_table' => 'storage',
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'storage.storage_descr' => '$.items[*].name',
+                'storage.storage_type' => "'pure-drive'",
+                'storage.storage_size' => '$.items[*].capacity',
+            ],
+        ];
+    }
+
+    private function getArrayConnectionsConfig(): array
+    {
+        return [
+            'target_table' => 'links',
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'links.local_port' => '$.items[*].local_port',
+                'links.remote_port' => '$.items[*].remote_port',
+                'links.remote_hostname' => '$.items[*].name',
+                'links.link_transport' => '$.items[*].replication_transport',
+                'links.link_status' => '$.items[*].status',
+            ],
+        ];
+    }
+
+    private function getSubnetsConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',
+            'sensor_prefix' => 'subnet',
+            'fields' => [
+                'sensors.ipv4_network' => '$.items[*].prefix',
+                'sensors.vlan_id' => '$.items[*].vlan',
+                'sensors.vlan_name' => '$.items[*].name',
+            ],
+        ];
+    }
+
+    private function getSpaceConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => null,
+            'sensor_prefix' => 'space',
+            'fields' => [
+                'sensors.total_provisioned' => '$.total_provisioned',
+                'sensors.total_used' => '$.total_used',
+                'sensors.data_reduction' => '$.data_reduction',
+                'sensors.total_reduction' => '$.total_reduction',
+                'sensors.replication' => '$.replication',
+                'sensors.snapshots' => '$.snapshots',
+            ],
+        ];
+    }
+
+    // ===== SENSOR HELPERS =====
+
+    private function getHardwareSensorClass(string $sensorDescr): ?string
+    {
+        if (stripos($sensorDescr, 'temp') !== false) {
+            return 'temperature';
+        }
+        if (stripos($sensorDescr, 'volt') !== false) {
+            return 'voltage';
+        }
+        return 'state';
+    }
+
+    private function getPortDetailsSensorClass(string $sensorDescr): ?string
+    {
+        if (stripos($sensorDescr, 'temp') !== false) {
+            return 'temperature';
+        }
+        if (stripos($sensorDescr, 'volt') !== false) {
+            return 'voltage';
+        }
+        if (stripos($sensorDescr, 'current') !== false || stripos($sensorDescr, 'bias') !== false) {
+            return 'current';
+        }
+        if (stripos($sensorDescr, 'power') !== false) {
+            return 'power';
+        }
+        if (stripos($sensorDescr, 'fault') !== false || stripos($sensorDescr, 'los') !== false) {
+            return 'state';
+        }
+        return null;
+    }
+
+    private function getArrayPerformanceDescription(string $apiField): string
+    {
+        return match ($apiField) {
+            'read_bytes_per_sec' => 'Array Read Throughput',
+            'write_bytes_per_sec' => 'Array Write Throughput',
+            'reads_per_sec' => 'Array Read IOPS',
+            'writes_per_sec' => 'Array Write IOPS',
+            'usec_per_read_op' => 'Array Read Latency',
+            'usec_per_write_op' => 'Array Write Latency',
+            'queue_usec_per_read_op' => 'Array Read Queue Latency',
+            'queue_usec_per_write_op' => 'Array Write Queue Latency',
+            'bytes_per_read' => 'Array Bytes Per Read',
+            'bytes_per_write' => 'Array Bytes Per Write',
+            default => $apiField,
+        };
+    }
+
+    private function getVolumePerformanceDescription(string $apiField): string
+    {
+        return match ($apiField) {
+            'read_bytes_per_sec' => 'Volume Read Throughput',
+            'write_bytes_per_sec' => 'Volume Write Throughput',
+            'reads_per_sec' => 'Volume Read IOPS',
+            'writes_per_sec' => 'Volume Write IOPS',
+            'usec_per_read_op' => 'Volume Read Latency',
+            'usec_per_write_op' => 'Volume Write Latency',
+            'queue_usec_per_read_op' => 'Volume Queue Latency (R)',
+            'queue_usec_per_write_op' => 'Volume Queue Latency (W)',
+            default => $apiField,
+        };
+    }
+
+    private function getPortDetailsDescription(string $apiField): string
+    {
+        return match ($apiField) {
+            'temperature' => 'Optic Temperature',
+            'voltage' => 'Optic Vcc',
+            'tx_bias' => 'TX Bias Current',
+            'tx_power' => 'TX Optical Power',
+            'rx_power' => 'RX Optical Power',
+            'tx_fault' => 'TX Fault',
+            'rx_los' => 'RX Loss of Signal',
+            default => $apiField,
+        };
+    }
+
+    private function getSpaceDescription(string $apiField): string
+    {
+        return match ($apiField) {
+            'total_provisioned' => 'Total Provisioned',
+            'total_used' => 'Total Used',
+            'data_reduction' => 'Data Reduction Ratio',
+            'total_reduction' => 'Total Reduction Ratio',
+            'replication' => 'Replication Usage',
+            'snapshots' => 'Snapshots Usage',
+            default => $apiField,
+        };
+    }
+}

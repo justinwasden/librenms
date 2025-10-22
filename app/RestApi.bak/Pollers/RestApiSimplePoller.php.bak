@@ -3,9 +3,6 @@
 namespace App\RestApi\Pollers;
 
 use App\Models\Device;
-use App\Models\RestApiMapping;
-use App\Models\RestApiDeviceTemplate;
-use App\RestApi\Utils\JsonPathExtractor;
 use App\RestApi\Storage\MetricStorageEngine;
 use App\RestApi\Services\MapperSelectionService;
 use GuzzleHttp\Client;
@@ -14,15 +11,9 @@ use Illuminate\Support\Str;
 use Log;
 
 /**
- * Simple REST API Poller
+ * REST API Simple Poller
  * 
- * Uses static mappings only:
- * 1. Get endpoint mappings from database
- * 2. Fetch API response
- * 3. Extract values using JSONPath
- * 4. Store to database directly
- * 
- * No parsing, no matching, no fallbacks
+ * Polls REST API endpoints and stores metrics using mappers
  */
 class RestApiSimplePoller
 {
@@ -40,16 +31,19 @@ class RestApiSimplePoller
      */
     public function poll()
     {
-        // Get device template configuration
         $deviceTemplate = $this->device->restApiTemplate;
         if (!$deviceTemplate) {
             Log::debug("No REST API template configured for {$this->device->hostname}");
             return;
         }
 
-        // Select appropriate mapper
         $mapperConfig = MapperSelectionService::selectMapper($deviceTemplate);
         $mapper = $mapperConfig['mapper'];
+
+        if (!$mapper) {
+            Log::warning("No mapper found for {$this->device->hostname}");
+            return;
+        }
 
         Log::info("REST API Poller: {$this->device->hostname} using mapper: {$mapperConfig['mapper_name']} (source: {$mapperConfig['source']})");
 
@@ -69,7 +63,6 @@ class RestApiSimplePoller
                 continue;
             }
 
-            // Initialize HTTP client for this connection
             $this->client = new Client([
                 'base_uri' => $conn->base_url,
                 'timeout' => 15,
@@ -90,7 +83,6 @@ class RestApiSimplePoller
     protected function pollEndpoint($connection, $endpoint, $mapper)
     {
         try {
-            // Get mappings from mapper for this endpoint
             $mappings = $mapper->getMappingsForEndpoint($endpoint->path);
 
             if (empty($mappings)) {
@@ -98,12 +90,10 @@ class RestApiSimplePoller
                 return;
             }
 
-            // Fetch API response
             $response = $this->requestEndpoint($connection, $endpoint);
 
             Log::info("Polling {$connection->base_url}{$endpoint->path}");
 
-            // Store metrics using mapper's field mappings
             $engine = new MetricStorageEngine($this->device);
             $engine->storeFromResponse($response, $endpoint, $mapper);
 
@@ -119,7 +109,6 @@ class RestApiSimplePoller
      */
     protected function requestEndpoint($connection, $endpoint): array
     {
-        // Get auth headers
         $headers = $this->getAuthHeaders($connection);
         if (empty($headers)) {
             throw new \Exception("Failed to obtain authentication headers");
@@ -137,7 +126,6 @@ class RestApiSimplePoller
             throw new \Exception("Request failed: " . $e->getMessage());
         }
 
-        // Check for HTML (session expired)
         if (stripos($body, '<!DOCTYPE html>') !== false) {
             Log::warning("Session expired for {$connection->name}, retrying with new token");
             $cacheKey = "rest_token_{$connection->id}";
@@ -190,26 +178,23 @@ class RestApiSimplePoller
     }
 
     /**
-     * Get session token headers (two-stage authentication)
+     * Get session token headers
      */
     protected function getSessionTokenHeaders($connection, array $params): array
     {
         $cacheKey = "rest_token_{$connection->id}";
 
-        // Return cached token if available
         if (isset($this->sessionTokens[$cacheKey])) {
             $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
             return [$tokenHeader => $this->sessionTokens[$cacheKey]];
         }
 
-        // Obtain new session token
         $token = $this->obtainSessionToken($connection, $params);
         if (!$token) {
             Log::error("Failed to obtain session token for {$connection->name}");
             return [];
         }
 
-        // Cache the token
         $this->sessionTokens[$cacheKey] = $token;
 
         $tokenHeader = $params['session_token_header'] ?? 'x-auth-token';
@@ -218,10 +203,6 @@ class RestApiSimplePoller
 
     /**
      * Obtain session token from login endpoint
-     * 
-     * This implements Pure Storage's two-stage authentication:
-     * 1. POST to login endpoint with API token
-     * 2. Extract session token from response header
      */
     protected function obtainSessionToken($connection, array $params): ?string
     {
@@ -243,7 +224,6 @@ class RestApiSimplePoller
                 ],
             ]);
 
-            // Extract session token from response header
             if ($response->hasHeader($sessionTokenHeader)) {
                 $token = $response->getHeader($sessionTokenHeader)[0] ?? null;
                 if ($token) {

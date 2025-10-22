@@ -10,9 +10,9 @@ use App\RestApi\Utils\JsonPathExtractor;
 use Log;
 
 /**
- * Metric Storage Engine - Cleaner implementation
+ * Metric Storage Engine
  * 
- * Works with new mapping format that directly maps database.field to response.path
+ * Stores metrics from API responses into LibreNMS database tables
  */
 class MetricStorageEngine
 {
@@ -25,10 +25,6 @@ class MetricStorageEngine
 
     /**
      * Store metrics from API response using mapper's field mappings
-     * 
-     * @param array $response Raw API response
-     * @param object $endpoint Endpoint object with path
-     * @param object $mapper Mapper instance with field mappings
      */
     public function storeFromResponse(array $response, $endpoint, $mapper)
     {
@@ -48,13 +44,13 @@ class MetricStorageEngine
             return;
         }
 
-        // If no item identifier, treat as single record (devices, array performance, space)
+        // If no item identifier, treat as single record
         if ($itemIdentifier === null) {
             $this->storeSingleRecord($response, $targetTable, $fields, $endpoint->path, $config, $mapper);
             return;
         }
 
-        // Extract items array and group by identifier
+        // Extract items array
         $items = $response['items'] ?? [];
         if (!is_array($items)) {
             $items = [$response];
@@ -65,23 +61,18 @@ class MetricStorageEngine
                 continue;
             }
 
-            // Get the identifier value for this item
             $identifier = JsonPathExtractor::extract($item, $itemIdentifier);
             if (!$identifier) {
                 Log::debug("No identifier found for item in {$endpoint->path}");
                 continue;
             }
 
-            $this->storeGroupedRecord($item, $identifier, $targetTable, $fields, $endpoint->path, $config, $mapper);
+            $this->storeGroupedRecord($item, (string)$identifier, $targetTable, $fields, $endpoint->path, $config, $mapper);
         }
     }
 
-    /**
-     * Store a single record (for endpoints without items array or single device data)
-     */
     protected function storeSingleRecord(array $response, string $targetTable, array $fields, string $endpoint, array $config, $mapper)
     {
-        // Handle response that may or may not have items array
         $item = $response['items'][0] ?? $response;
 
         switch ($targetTable) {
@@ -94,9 +85,6 @@ class MetricStorageEngine
         }
     }
 
-    /**
-     * Store a grouped record (for endpoints with items array)
-     */
     protected function storeGroupedRecord(array $item, string $identifier, string $targetTable, array $fields, string $endpoint, array $config, $mapper)
     {
         switch ($targetTable) {
@@ -115,15 +103,11 @@ class MetricStorageEngine
         }
     }
 
-    /**
-     * Store device record
-     */
     protected function storeDeviceRecord(array $item, array $fields)
     {
         $data = [];
 
         foreach ($fields as $dbField => $jsonPath) {
-            // Parse database field (e.g., "devices.hostname" -> "hostname")
             $fieldName = $this->parseDbField($dbField, 'devices');
             if (!$fieldName) continue;
 
@@ -135,13 +119,10 @@ class MetricStorageEngine
 
         if (!empty($data)) {
             $this->device->update($data);
-            Log::info("Device updated: " . json_encode($data));
+            Log::info("Device updated");
         }
     }
 
-    /**
-     * Store port record
-     */
     protected function storePortRecord(array $item, string $identifier, array $fields)
     {
         $data = [];
@@ -157,11 +138,10 @@ class MetricStorageEngine
         }
 
         if (empty($data)) {
-            Log::debug("No data extracted for port: {$identifier}");
             return;
         }
 
-        $port = Port::updateOrCreate(
+        Port::updateOrCreate(
             ['device_id' => $this->device->device_id, 'ifName' => $identifier],
             $data
         );
@@ -169,9 +149,6 @@ class MetricStorageEngine
         Log::info("Port '{$identifier}' stored");
     }
 
-    /**
-     * Store storage record
-     */
     protected function storeStorageRecord(array $item, string $identifier, array $fields)
     {
         $data = [];
@@ -187,11 +164,10 @@ class MetricStorageEngine
         }
 
         if (empty($data)) {
-            Log::debug("No data extracted for storage: {$identifier}");
             return;
         }
 
-        $storage = Storage::updateOrCreate(
+        Storage::updateOrCreate(
             ['device_id' => $this->device->device_id, 'storage_descr' => $identifier],
             $data
         );
@@ -199,9 +175,6 @@ class MetricStorageEngine
         Log::info("Storage '{$identifier}' stored");
     }
 
-    /**
-     * Store sensor record
-     */
     protected function storeSensorRecord(array $item, ?string $identifier, array $fields, string $endpoint, array $config, $mapper)
     {
         $prefix = $config['sensor_prefix'] ?? 'metric';
@@ -215,15 +188,13 @@ class MetricStorageEngine
                 continue;
             }
 
-            // Build sensor description
             $sensorDescr = $identifier
                 ? "{$prefix}_{$identifier}_{$fieldName}"
                 : "{$prefix}_{$fieldName}";
 
-            // Get sensor class from mapper using the field name
             $sensorClass = $mapper->getSensorClass($endpoint, $fieldName) ?? 'gauge';
 
-            $sensor = Sensor::updateOrCreate(
+            Sensor::updateOrCreate(
                 [
                     'device_id' => $this->device->device_id,
                     'sensor_class' => $sensorClass,
@@ -241,9 +212,6 @@ class MetricStorageEngine
         }
     }
 
-    /**
-     * Store link record
-     */
     protected function storeLinkRecord(array $item, string $identifier, array $fields)
     {
         $data = [];
@@ -259,20 +227,14 @@ class MetricStorageEngine
         }
 
         if (empty($data)) {
-            Log::debug("No data extracted for link: {$identifier}");
             return;
         }
 
-        Log::info("Link data: " . json_encode($data));
+        Log::info("Link data stored");
     }
 
-    /**
-     * Extract value from item using JSONPath
-     * Handles static values in quotes
-     */
     protected function extractValue(array $item, string $jsonPath): mixed
     {
-        // Handle static values (quoted strings)
         if (preg_match("/^'(.+)'$/", $jsonPath, $matches)) {
             return $matches[1];
         }
@@ -280,9 +242,6 @@ class MetricStorageEngine
         return JsonPathExtractor::extract($item, $jsonPath);
     }
 
-    /**
-     * Parse database field from "table.field" format
-     */
     protected function parseDbField(string $dbField, string $expectedTable): ?string
     {
         if (strpos($dbField, '.') === false) {
@@ -292,7 +251,7 @@ class MetricStorageEngine
         list($table, $field) = explode('.', $dbField, 2);
 
         if ($table !== $expectedTable) {
-            return null;  // Skip fields for other tables
+            return null;
         }
 
         return $field;
