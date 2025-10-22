@@ -825,18 +825,33 @@ window.endpointManager = function() {
                     })
                 });
 
-                const data = await res.json();
+                // Read response as text first, then parse as JSON
+                const responseText = await res.text();
+                let data;
+                
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    console.error('Response text:', responseText.substring(0, 500));
+                    throw new Error(`Invalid JSON response from server (HTTP ${res.status}): ${responseText.substring(0, 200)}`);
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${data.message || data.error || 'Unknown error'}`);
+                }
+
                 if (data.success) {
                     this.endpoints.splice(this.selectedEndpointIndex, 1);
                     this.selectedEndpointIndex = null;
                     this.selectedEndpoint = {};
                     alert('Endpoint deleted from template successfully!');
                 } else {
-                    alert('Failed to delete endpoint: ' + (data.message || 'Unknown error'));
+                    throw new Error(data.message || 'Unknown error deleting endpoint');
                 }
             } catch (err) {
-                console.error(err);
-                alert('Failed to delete endpoint. Check console for details.');
+                console.error('deleteEndpoint error:', err);
+                alert('Failed to delete endpoint: ' + err.message);
             }
         },
 
