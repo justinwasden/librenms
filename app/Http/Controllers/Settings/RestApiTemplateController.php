@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\RestApiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\View\View;
 
 class RestApiTemplateController extends Controller
 {
