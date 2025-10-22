@@ -39,16 +39,35 @@
                     @else
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Vendor</th>
-                                        <th>Description</th>
-                                        <th>Connections</th>
-                                        <th>Endpoints</th>
-                                        <th class="text-right">Actions</th>
-                                    </tr>
-                                </thead>
+												<div class="table-responsive">
+												    <table class="table table-striped table-hover">
+												        <thead>
+												            <tr>
+												                <th>
+												                    {{-- Sortable Name Column --}}
+												                    <a href="{{ route('settings.rest-api.templates.index', ['sort_by' => 'name', 'sort_dir' => $sortBy === 'name' && $sortDir === 'asc' ? 'desc' : 'asc']) }}">
+												                        Name
+												                        @if ($sortBy === 'name')
+												                            <i class="fa fa-arrow-{{ $sortDir === 'asc' ? 'up' : 'down' }}"></i>
+												                        @endif
+												                    </a>
+												                </th>
+												                <th>
+												                    {{-- Sortable Vendor Column --}}
+												                    <a href="{{ route('settings.rest-api.templates.index', ['sort_by' => 'vendor', 'sort_dir' => $sortBy === 'vendor' && $sortDir === 'asc' ? 'desc' : 'asc']) }}">
+												                        Vendor
+												                        @if ($sortBy === 'vendor')
+												                            <i class="fa fa-arrow-{{ $sortDir === 'asc' ? 'up' : 'down' }}"></i>
+												                        @endif
+												                    </a>
+												                </th>
+												                <th>Description</th>
+												                <th>Connections</th>
+												                <th>Endpoints</th>
+												                <th class="text-right">Actions</th>
+												            </tr>
+												        </thead>
+												        <tbody>
                                 <tbody>
                                     @foreach($templates as $template)
                                         @php

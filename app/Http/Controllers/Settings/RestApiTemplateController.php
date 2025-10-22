@@ -9,10 +9,24 @@ use Illuminate\Support\Str;
 
 class RestApiTemplateController extends Controller
 {
-    public function index()
+    public function index(Request $request): View
     {
-        $templates = RestApiTemplate::all();
-        return view('settings.rest-api.templates.index', compact('templates'));
+        // 1. Define and validate sorting parameters
+        $validSorts = ['name', 'vendor'];
+        $sortBy = $request->get('sort_by', 'name'); // Default sort by name
+        $sortDir = $request->get('sort_dir', 'asc');  // Default direction asc
+
+        // Sanitize and validate input
+        if (!in_array($sortBy, $validSorts)) {
+            $sortBy = 'name';
+        }
+        $sortDir = strtolower($sortDir) === 'desc' ? 'desc' : 'asc';
+
+        // 2. Apply sorting to the database query
+        $templates = RestApiTemplate::orderBy($sortBy, $sortDir)->get();
+
+        // 3. Pass sorting variables to the view for link generation
+        return view('settings.rest-api.templates.index', compact('templates', 'sortBy', 'sortDir'));
     }
 
     public function create()
