@@ -113,40 +113,45 @@ class PureStorageMapper implements VendorMapperInterface
     public function getSensorClass(string $endpoint, string $sensorDescr): ?string
     {
         // Map Pure Storage metrics to sensor classes
+        // Valid LibreNMS sensor classes: airflow, ber, bitrate, charge, chromatic_dispersion, cooling,
+        // count, current, dbm, delay, eer, fanspeed, frequency, humidity, load, loss, percent, power,
+        // power_consumed, power_factor, pressure, quality_factor, runtime, signal, snr, state,
+        // temperature, tv_signal, voltage, waterflow, signal_loss
+        
         $sensorClasses = [
             '/arrays/performance' => [
-                'Array_Read_Throughput' => 'gauge',
-                'Array_Write_Throughput' => 'gauge',
-                'Array_Read_IOPS' => 'gauge',
-                'Array_Write_IOPS' => 'gauge',
-                'Array_Read_Latency' => 'gauge',
-                'Array_Write_Latency' => 'gauge',
-                'Array_Read_Queue_Latency' => 'gauge',
-                'Array_Write_Queue_Latency' => 'gauge',
-                'Array_Bytes_Per_Read' => 'gauge',
-                'Array_Bytes_Per_Write' => 'gauge',
+                'Array_Read_Throughput' => 'bitrate',      // bytes/sec -> bitrate
+                'Array_Write_Throughput' => 'bitrate',     // bytes/sec -> bitrate
+                'Array_Read_IOPS' => 'count',              // operations/sec
+                'Array_Write_IOPS' => 'count',             // operations/sec
+                'Array_Read_Latency' => 'delay',           // microseconds
+                'Array_Write_Latency' => 'delay',          // microseconds
+                'Array_Read_Queue_Latency' => 'delay',     // microseconds
+                'Array_Write_Queue_Latency' => 'delay',    // microseconds
+                'Array_Bytes_Per_Read' => 'count',         // bytes
+                'Array_Bytes_Per_Write' => 'count',        // bytes
             ],
             '/volumes/performance' => [
-                'Volume_Read_Throughput' => 'gauge',
-                'Volume_Write_Throughput' => 'gauge',
-                'Volume_Read_IOPS' => 'gauge',
-                'Volume_Write_IOPS' => 'gauge',
-                'Volume_Read_Latency' => 'gauge',
-                'Volume_Write_Latency' => 'gauge',
-                'Volume_Queue_Latency_Read' => 'gauge',
-                'Volume_Queue_Latency_Write' => 'gauge',
+                'Volume_Read_Throughput' => 'bitrate',     // bytes/sec -> bitrate
+                'Volume_Write_Throughput' => 'bitrate',    // bytes/sec -> bitrate
+                'Volume_Read_IOPS' => 'count',             // operations/sec
+                'Volume_Write_IOPS' => 'count',            // operations/sec
+                'Volume_Read_Latency' => 'delay',          // microseconds
+                'Volume_Write_Latency' => 'delay',         // microseconds
+                'Volume_Queue_Latency_Read' => 'delay',    // microseconds
+                'Volume_Queue_Latency_Write' => 'delay',   // microseconds
             ],
             '/hardware' => [
                 'Hardware_Temperature' => 'temperature',
-                'Hardware_Voltage' => 'power',
+                'Hardware_Voltage' => 'voltage',
                 'Hardware_Status' => 'state',
             ],
             '/network-interfaces/port-details' => [
                 'Optic_Temperature' => 'temperature',
-                'Optic_Vcc' => 'power',
+                'Optic_Vcc' => 'voltage',
                 'TX_Bias_Current' => 'current',
-                'TX_Optical_Power' => 'power',
-                'RX_Optical_Power' => 'power',
+                'TX_Optical_Power' => 'dbm',
+                'RX_Optical_Power' => 'dbm',
                 'TX_Fault' => 'state',
                 'RX_Loss_of_Signal' => 'state',
             ],
@@ -159,7 +164,7 @@ class PureStorageMapper implements VendorMapperInterface
             return $sensorClasses[$endpoint][$sensorDescr];
         }
 
-        return 'gauge'; // Default
+        return 'count'; // Default to count for unknown metrics
     }
 
     public function getSensorDescription(string $endpoint, string $apiField): string

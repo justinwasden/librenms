@@ -211,8 +211,8 @@ class MetricStorageEngine
                 continue;
             }
 
-            // Extract sensor class from mapper or use gauge as default
-            $sensorClass = $mapper->getSensorClass($endpoint, $sensorDescr) ?? 'gauge';
+            // Extract sensor class from mapper or use count as default
+            $sensorClass = $mapper->getSensorClass($endpoint, $sensorDescr) ?? 'count';
 
             $sensor = Sensor::updateOrCreate(
                 [
@@ -491,12 +491,12 @@ class MetricStorageEngine
         $sensorDescr = $mapping->target_field . ($suffix ? "_{$suffix}" : "");
 
         $sensor = Sensor::updateOrCreate(
-            [
-                'device_id' => $this->device->device_id,
-                'sensor_class' => 'gauge',
-                'sensor_type' => 'rest-api',
-                'sensor_descr' => $sensorDescr,
-            ],
+        [
+        'device_id' => $this->device->device_id,
+        'sensor_class' => 'count',
+        'sensor_type' => 'rest-api',
+        'sensor_descr' => $sensorDescr,
+        ],
             [
                 'sensor_oid' => 'rest-api.' . $sensorDescr,
                 'poller_type' => 'rest-api',
