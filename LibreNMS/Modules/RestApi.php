@@ -16,10 +16,7 @@ class RestApi implements ModuleInterface
     }
 
     /**
-     * Poll a device if it has REST API connections configured.
-     *
-     * @param OS $os
-     * @param DataStorageInterface $datastore
+     * Called by the poller
      */
     public function poll(OS $os, DataStorageInterface $datastore): void
     {
@@ -31,10 +28,55 @@ class RestApi implements ModuleInterface
     }
 
     /**
-     * Check if device has REST API connections
-     *
-     * @param int $deviceId
-     * @return bool
+     * Called by discovery engine to determine if polling should happen
+     */
+    public function shouldPoll(OS $os): bool
+    {
+        return $this->deviceHasApiConnections($os->device_id);
+    }
+
+    /**
+     * Called by discovery engine to determine if discovery should happen
+     */
+    public function shouldDiscover(OS $os): bool
+    {
+        return $this->deviceHasApiConnections($os->device_id);
+    }
+
+    /**
+     * List any module dependencies
+     */
+    public function dependencies(): array
+    {
+        return [];
+    }
+
+    /**
+     * Module name
+     */
+    public function getName(): string
+    {
+        return 'REST API';
+    }
+
+    /**
+     * Module version
+     */
+    public function getVersion(): string
+    {
+        return '1.0';
+    }
+
+    /**
+     * Module author
+     */
+    public function getAuthor(): string
+    {
+        return 'JDub';
+    }
+
+    /**
+     * Check if a device has REST API connections
      */
     protected function deviceHasApiConnections(int $deviceId): bool
     {
