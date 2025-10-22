@@ -282,6 +282,28 @@ class RestApiPollerService
             return;
         }
 
+        // Check for special endpoint handlers that bypass mappings
+        $specialEndpoints = [
+            'port-details',
+            'network-interfaces/port-details',
+            'network-interfaces/performance',
+        ];
+
+        foreach ($specialEndpoints as $specialPath) {
+            if (str_contains($endpoint->path, $specialPath)) {
+                // Use special handler - mappings are ignored
+                $this->processMappings($connection, $endpoint, [], $data);
+                return;
+            }
+        }
+
+        // Regular endpoints: check if mapping to /api/2.26/network-interfaces specifically
+        if (preg_match('#/network-interfaces$#', $endpoint->path) || preg_match('#/api/\d+\.\d+/network-interfaces$#', $endpoint->path)) {
+            // Use special handler for main network interfaces endpoint
+            $this->processMappings($connection, $endpoint, [], $data);
+            return;
+        }
+
         // Get mappings - must be set on endpoint
         $mappings = $endpoint->template_response_mapping;
 
@@ -775,7 +797,9 @@ class RestApiPollerService
 
                     // Skip storage entities with zero or null size (empty drive bays, etc.)
                     $storageSize = $entityData['storage_size'] ?? $entityData['size'] ?? $entityData['total'] ?? 0;
-                    if (empty($storageSize) || $storageSize <= 0) {
+                    // Convert to numeric for proper comparison
+                    $storageSizeNumeric = is_numeric($storageSize) ? (float)$storageSize : 0;
+                    if ($storageSizeNumeric <= 0) {
                         Log::debug("Skipping storage entity with zero size: {$identifier}");
                         return;
                     }
@@ -915,9 +939,10 @@ class RestApiPollerService
                         // Remove nulls
                         $portData = array_filter($portData, fn($v) => $v !== null);
 
-                        // Add any extra fields as port data
+                        // Add any extra fields as port data (but skip non-port fields)
+                        $skipFields = ['entPhysicalClass', 'entPhysicalName', 'sensor_value', 'status'];
                         foreach ($entityData as $key => $value) {
-                            if (!isset($portData[$key]) && $key !== 'entPhysicalClass' && $key !== 'entPhysicalName') {
+                            if (!isset($portData[$key]) && !in_array($key, $skipFields)) {
                                 $portData[$key] = $value;
                             }
                         }
