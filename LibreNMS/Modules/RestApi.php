@@ -34,11 +34,15 @@ class RestApi implements Module
         return $this->deviceHasApiConnections($os->device_id);
     }
 
-    public function discover(OS $os, DataStorageInterface $datastore): void
-    {
-        // Optional: implement discovery logic for REST API devices
-        // For now, just a placeholder
+    public function discover(OS $os): void
+{
+    $deviceId = $os->device_id;
+
+    if ($this->deviceHasApiConnections($deviceId)) {
+        // Optional: call your poller service discovery logic
+        $this->pollerService->discoverDeviceById($deviceId);
     }
+}
 
     public function dataExists(OS $os, DataStorageInterface $datastore): bool
     {
@@ -55,21 +59,6 @@ class RestApi implements Module
     public function dependencies(): array
     {
         return [];
-    }
-
-    public function getName(): string
-    {
-        return 'REST API';
-    }
-
-    public function getVersion(): string
-    {
-        return '1.0';
-    }
-
-    public function getAuthor(): string
-    {
-        return 'JDub';
     }
 
     protected function deviceHasApiConnections(int $deviceId): bool
