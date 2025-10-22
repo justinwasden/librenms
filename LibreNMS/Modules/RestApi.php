@@ -2,12 +2,13 @@
 namespace LibreNMS\Modules;
 
 use App\Services\RestApi\RestApiPollerService;
-use LibreNMS\Devices\Device;
 use LibreNMS\Interfaces\Module as ModuleInterface;
+use LibreNMS\OS;
+use LibreNMS\Interfaces\Data\DataStorageInterface;
 
 class RestApi implements ModuleInterface
 {
-    protected $pollerService;
+    protected RestApiPollerService $pollerService;
 
     public function __construct()
     {
@@ -17,15 +18,24 @@ class RestApi implements ModuleInterface
     /**
      * Poll a device if it has REST API connections configured.
      *
-     * @param Device $device
+     * @param OS $os
+     * @param DataStorageInterface $datastore
      */
-    public function poll(Device $device): void
+    public function poll(OS $os, DataStorageInterface $datastore): void
     {
-        if ($this->deviceHasApiConnections($device->id)) {
-            $this->pollerService->pollDevice($device);
+        $deviceId = $os->device_id;
+
+        if ($this->deviceHasApiConnections($deviceId)) {
+            $this->pollerService->pollDeviceById($deviceId);
         }
     }
 
+    /**
+     * Check if device has REST API connections
+     *
+     * @param int $deviceId
+     * @return bool
+     */
     protected function deviceHasApiConnections(int $deviceId): bool
     {
         return \DB::table('rest_api_connections')
