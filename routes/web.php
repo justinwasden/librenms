@@ -209,7 +209,12 @@ Route::middleware(['auth'])->group(function () {
 
 
         Route::prefix('devices')->name('devices.')->group(function () {
-        // FIX: Explicitly name the resource to override the default and ensure the desired dot-separated name is used.
+            // Global Device REST API routes (for admin device management)
+            Route::prefix('rest-api')->name('rest-api.')->group(function () {
+                Route::get('{device}', [\App\Http\Controllers\DeviceRestApiController::class, 'show'])->name('show');
+                Route::put('{device}', [\App\Http\Controllers\DeviceRestApiController::class, 'update'])->name('update');
+                Route::post('{device}/test', [\App\Http\Controllers\DeviceRestApiController::class, 'test'])->name('test');
+            });
         });
 
 
