@@ -2,20 +2,21 @@
 
 namespace App\Models;
 
-use App\Models\Traits\Encryptable;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RestApiCredentialParam extends Model
 {
-    use HasFactory, Encryptable;
+    protected $fillable = [
+        'credential_id',
+        'key',
+        'value',
+    ];
 
-    protected $fillable = ['credential_id', 'key', 'value'];
+    protected $hidden = ['value']; // Hide sensitive values from API responses
 
-    protected $encryptable = ['value'];
-
-    public function credential()
+    public function credential(): BelongsTo
     {
-        return $this->belongsTo(RestApiCredential::class, 'credential_id');
+        return $this->belongsTo(RestApiCredential::class);
     }
 }
