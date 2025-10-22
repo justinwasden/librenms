@@ -8,22 +8,7 @@ use App\RestApi\Vendors\VendorMapperInterface;
  * PureStorageMapper
  *
  * Vendor mapper for Pure Storage FlashArray REST API 2.26
- * Implements all 160+ field mappings from JAK Mapping document
- *
- * Covers endpoints:
- * - /arrays (device info)
- * - /network-interfaces (ports)
- * - /network-interfaces/performance (port metrics)
- * - /volumes (storage)
- * - /drives (drive inventory)
- * - /arrays/performance (array metrics)
- * - /volumes/performance (volume metrics)
- * - /controllers (controller status)
- * - /hardware (hardware sensors)
- * - /network-interfaces/port-details (transceiver details)
- * - /array-connections (replication links)
- * - /subnets (network config)
- * - /space (array capacity)
+ * Maps API response paths directly to database table.field structure
  */
 class PureStorageMapper implements VendorMapperInterface
 {
@@ -43,7 +28,7 @@ class PureStorageMapper implements VendorMapperInterface
 
     public function getDescription(): string
     {
-        return 'Pure Storage FlashArray REST API 2.26 - 160+ field mappings for complete array monitoring';
+        return 'Pure Storage FlashArray REST API 2.26 - Direct mapping to database fields';
     }
 
     public function getVersion(): string
@@ -51,22 +36,26 @@ class PureStorageMapper implements VendorMapperInterface
         return '2.26.0';
     }
 
+    /**
+     * Get all endpoint configurations
+     * Format: endpoint => array of table configs
+     */
     public function getMappings(): array
     {
         return [
-            '/arrays' => $this->getArrayMappings(),
-            '/network-interfaces' => $this->getNetworkInterfacesMappings(),
-            '/network-interfaces/performance' => $this->getNetworkPerformanceMappings(),
-            '/volumes' => $this->getVolumesMappings(),
-            '/drives' => $this->getDrivesMappings(),
-            '/arrays/performance' => $this->getArrayPerformanceMappings(),
-            '/volumes/performance' => $this->getVolumePerformanceMappings(),
-            '/controllers' => $this->getControllersMappings(),
-            '/hardware' => $this->getHardwareMappings(),
-            '/network-interfaces/port-details' => $this->getPortDetailsMappings(),
-            '/array-connections' => $this->getArrayConnectionsMappings(),
-            '/subnets' => $this->getSubnetsMappings(),
-            '/space' => $this->getSpaceMappings(),
+            '/arrays' => $this->getArrayConfig(),
+            '/network-interfaces' => $this->getNetworkInterfacesConfig(),
+            '/network-interfaces/performance' => $this->getNetworkPerformanceConfig(),
+            '/volumes' => $this->getVolumesConfig(),
+            '/drives' => $this->getDrivesConfig(),
+            '/arrays/performance' => $this->getArrayPerformanceConfig(),
+            '/volumes/performance' => $this->getVolumePerformanceConfig(),
+            '/controllers' => $this->getControllersConfig(),
+            '/hardware' => $this->getHardwareConfig(),
+            '/network-interfaces/port-details' => $this->getPortDetailsConfig(),
+            '/array-connections' => $this->getArrayConnectionsConfig(),
+            '/subnets' => $this->getSubnetsConfig(),
+            '/space' => $this->getSpaceConfig(),
         ];
     }
 
@@ -78,85 +67,61 @@ class PureStorageMapper implements VendorMapperInterface
 
     public function getTargetTableForEndpoint(string $endpoint): string
     {
-        return match ($endpoint) {
-            '/arrays' => 'devices',
-            '/network-interfaces', '/network-interfaces/performance' => 'ports',
-            '/volumes', '/drives' => 'storage',
-            '/arrays/performance', '/volumes/performance', '/controllers', '/hardware', '/network-interfaces/port-details', '/space' => 'sensors',
-            '/array-connections', '/subnets' => 'custom',
-            default => 'custom',
-        };
+        $config = $this->getMappingsForEndpoint($endpoint);
+        return $config['target_table'] ?? 'custom';
     }
 
     public function transformValue(string $field, mixed $value): mixed
     {
-        // Data type conversions
-        if (in_array($field, ['ifSpeed', 'storage_size', 'storage_used', 'capacity'])) {
-            return (int) $value;
-        }
-
-        if (in_array($field, ['data_reduction_ratio', 'total_reduction_ratio', 'thin_provisioning_ratio'])) {
-            return (float) $value;
-        }
-
         return $value;
     }
 
     public function isValidMapping(string $endpoint, string $field, string $targetTable): bool
     {
-        $mappings = $this->getMappingsForEndpoint($endpoint);
-        $targetTableForEndpoint = $this->getTargetTableForEndpoint($endpoint);
-
-        return isset($mappings[$field]) && $targetTableForEndpoint === $targetTable;
+        return true;
     }
 
     public function getSensorClass(string $endpoint, string $sensorDescr): ?string
     {
-        // Map Pure Storage metrics to sensor classes
-        // Valid LibreNMS sensor classes: airflow, ber, bitrate, charge, chromatic_dispersion, cooling,
-        // count, current, dbm, delay, eer, fanspeed, frequency, humidity, load, loss, percent, power,
-        // power_consumed, power_factor, pressure, quality_factor, runtime, signal, snr, state,
-        // temperature, tv_signal, voltage, waterflow, signal_loss
-        
         $sensorClasses = [
             '/arrays/performance' => [
-                'Array_Read_Throughput' => 'bitrate',      // bytes/sec -> bitrate
-                'Array_Write_Throughput' => 'bitrate',     // bytes/sec -> bitrate
-                'Array_Read_IOPS' => 'count',              // operations/sec
-                'Array_Write_IOPS' => 'count',             // operations/sec
-                'Array_Read_Latency' => 'delay',           // microseconds
-                'Array_Write_Latency' => 'delay',          // microseconds
-                'Array_Read_Queue_Latency' => 'delay',     // microseconds
-                'Array_Write_Queue_Latency' => 'delay',    // microseconds
-                'Array_Bytes_Per_Read' => 'count',         // bytes
-                'Array_Bytes_Per_Write' => 'count',        // bytes
+                'read_bytes_per_sec' => 'bitrate',
+                'write_bytes_per_sec' => 'bitrate',
+                'reads_per_sec' => 'count',
+                'writes_per_sec' => 'count',
+                'usec_per_read_op' => 'delay',
+                'usec_per_write_op' => 'delay',
+                'queue_usec_per_read_op' => 'delay',
+                'queue_usec_per_write_op' => 'delay',
+                'bytes_per_read' => 'count',
+                'bytes_per_write' => 'count',
             ],
             '/volumes/performance' => [
-                'Volume_Read_Throughput' => 'bitrate',     // bytes/sec -> bitrate
-                'Volume_Write_Throughput' => 'bitrate',    // bytes/sec -> bitrate
-                'Volume_Read_IOPS' => 'count',             // operations/sec
-                'Volume_Write_IOPS' => 'count',            // operations/sec
-                'Volume_Read_Latency' => 'delay',          // microseconds
-                'Volume_Write_Latency' => 'delay',         // microseconds
-                'Volume_Queue_Latency_Read' => 'delay',    // microseconds
-                'Volume_Queue_Latency_Write' => 'delay',   // microseconds
+                'read_bytes_per_sec' => 'bitrate',
+                'write_bytes_per_sec' => 'bitrate',
+                'reads_per_sec' => 'count',
+                'writes_per_sec' => 'count',
+                'usec_per_read_op' => 'delay',
+                'usec_per_write_op' => 'delay',
+                'queue_usec_per_read_op' => 'delay',
+                'queue_usec_per_write_op' => 'delay',
             ],
             '/hardware' => [
-                'Hardware_Temperature' => 'temperature',
-                'Hardware_Voltage' => 'voltage',
-                'Hardware_Status' => 'state',
+                'temperature' => 'temperature',
+                'voltage' => 'voltage',
+                'status' => 'state',
             ],
             '/network-interfaces/port-details' => [
-                'Optic_Temperature' => 'temperature',
-                'Optic_Vcc' => 'voltage',
-                'TX_Bias_Current' => 'current',
-                'TX_Optical_Power' => 'dbm',
-                'RX_Optical_Power' => 'dbm',
-                'TX_Fault' => 'state',
-                'RX_Loss_of_Signal' => 'state',
+                'temperature' => 'temperature',
+                'voltage' => 'voltage',
+                'tx_bias' => 'current',
+                'tx_power' => 'power',
+                'rx_power' => 'power',
+                'tx_fault' => 'state',
+                'rx_los' => 'state',
             ],
             '/controllers' => [
-                'Controller_Status' => 'state',
+                'status' => 'state',
             ],
         ];
 
@@ -164,182 +129,283 @@ class PureStorageMapper implements VendorMapperInterface
             return $sensorClasses[$endpoint][$sensorDescr];
         }
 
-        return 'count'; // Default to count for unknown metrics
+        return 'gauge';
     }
 
     public function getSensorDescription(string $endpoint, string $apiField): string
     {
-        // Use the field name as-is (it's already formatted nicely in our mappings)
         return $apiField;
     }
-    // ENDPOINT MAPPING DEFINITIONS
+
+    // =====================================================================
+    // ENDPOINT CONFIGURATIONS
     // =====================================================================
 
-    private function getArrayMappings(): array
+    /**
+     * /arrays endpoint - Device information
+     * Response: {'items': [{'name': '...', 'version': '...', ...}]}
+     */
+    private function getArrayConfig(): array
     {
         return [
-            'hostname' => '$.items[0].name',
-            'sysName' => '$.items[0].name',
-            'version' => '$.items[0].version',
-            'hardware' => '$.items[0].model',
-            'os' => '$.items[0].os',
-            'serial' => '$.items[0].id',
-            'location' => '$.items[0].time_zone',
-            'parity' => '$.items[0].parity',
+            'target_table' => 'devices',
+            'item_identifier' => null,  // Single device, use first item
+            'fields' => [
+                'devices.hostname' => '$.items[0].name',
+                'devices.sysName' => '$.items[0].name',
+                'devices.version' => '$.items[0].version',
+                'devices.os' => '$.items[0].os',
+                'devices.hardware' => '$.items[0].model',
+                'devices.serial' => '$.items[0].id',
+            ]
         ];
     }
 
-    private function getNetworkInterfacesMappings(): array
+    /**
+     * /network-interfaces endpoint - Network interface configuration
+     * Response: {'items': [{'name': 'ct0.eth0', ...}, {'name': 'ct0.eth1', ...}]}
+     */
+    private function getNetworkInterfacesConfig(): array
     {
         return [
-            'ifName' => '$.items[*].name',
-            'ifDescr' => '$.items[*].services[0]',
-            'ifType' => '$.items[*].interface_type',
-            'ifSpeed' => '$.items[*].speed',
-            'ifPhysAddress' => '$.items[*].eth.mac_address',
-            'ifAdminStatus' => '$.items[*].enabled',
-            'ifOperStatus' => '$.items[*].enabled',
-            'ifMtu' => '$.items[*].eth.mtu',
-            'ifAlias' => '$.items[*].eth.address',
-            'ifVlan' => '$.items[*].eth.vlan',
-            'ipv4_address' => '$.items[*].eth.address',
-            'ipv4_netmask' => '$.items[*].eth.netmask',
+            'target_table' => 'ports',
+            'item_identifier' => '$.items[*].name',  // Use interface name to group data
+            'fields' => [
+                'ports.ifName' => '$.name',
+                'ports.ifDescr' => '$.services[0]',
+                'ports.ifType' => '$.interface_type',
+                'ports.ifSpeed' => '$.speed',
+                'ports.ifPhysAddress' => '$.eth.mac_address',
+                'ports.ifAdminStatus' => '$.enabled',
+                'ports.ifOperStatus' => '$.enabled',
+                'ports.ifMtu' => '$.eth.mtu',
+                'ports.ifAlias' => '$.eth.address',
+                'ports.ifVlan' => '$.eth.vlan',
+            ]
         ];
     }
 
-    private function getNetworkPerformanceMappings(): array
+    /**
+     * /network-interfaces/performance endpoint - Port performance metrics
+     * Response: {'items': [{'eth': {'received_bytes_per_sec': 123, ...}}, ...]}
+     * These must be linked to ports by interface name
+     */
+    private function getNetworkPerformanceConfig(): array
     {
         return [
-            'ifInOctets' => '$.items[*].eth.received_bytes_per_sec',
-            'ifOutOctets' => '$.items[*].eth.transmitted_bytes_per_sec',
-            'ifInUcastPkts' => '$.items[*].eth.received_packets_per_sec',
-            'ifOutUcastPkts' => '$.items[*].eth.transmitted_packets_per_sec',
-            'ifInErrors' => '$.items[*].eth.rx_errors_per_sec',
-            'ifOutErrors' => '$.items[*].eth.tx_errors_per_sec',
-            'ifInDiscards' => '$.items[*].fc.link_failures_per_sec',
+            'target_table' => 'ports',
+            'item_identifier' => '$.items[*].name',  // Link by interface name
+            'fields' => [
+                'ports.ifInOctets' => '$.eth.received_bytes_per_sec',
+                'ports.ifOutOctets' => '$.eth.transmitted_bytes_per_sec',
+                'ports.ifInUcastPkts' => '$.eth.received_packets_per_sec',
+                'ports.ifOutUcastPkts' => '$.eth.transmitted_packets_per_sec',
+                'ports.ifInErrors' => '$.eth.rx_errors_per_sec',
+                'ports.ifOutErrors' => '$.eth.tx_errors_per_sec',
+            ]
         ];
     }
 
-    private function getVolumesMappings(): array
+    /**
+     * /volumes endpoint - Storage volumes
+     * Response: {'items': [{'name': 'vol1', ...}, {'name': 'vol2', ...}]}
+     */
+    private function getVolumesConfig(): array
     {
         return [
-            'storage_descr' => '$.items[*].name',
-            'storage_type' => 'pure-volume',
-            'storage_size' => '$.items[*].space.total_provisioned',
-            'storage_used' => '$.items[*].space.total_physical',
-            'storage_free' => 'calculated',
-            'storage_perc' => 'calculated',
-            'data_reduction_ratio' => '$.items[*].space.data_reduction',
-            'total_reduction_ratio' => '$.items[*].space.total_reduction',
-            'snapshots_bytes' => '$.items[*].space.snapshots',
-            'thin_provisioning_ratio' => '$.items[*].space.thin_provisioning',
-            'volume_group' => '$.items[*].volume_group.name',
-            'pod_name' => '$.items[*].pod.name',
-            'created_timestamp' => '$.items[*].created',
+            'target_table' => 'storage',
+            'item_identifier' => '$.items[*].name',  // Use volume name
+            'fields' => [
+                'storage.storage_descr' => '$.name',
+                'storage.storage_type' => "'pure-volume'",  // Static value
+                'storage.storage_size' => '$.space.total_provisioned',
+                'storage.storage_used' => '$.space.total_physical',
+                'storage.data_reduction_ratio' => '$.space.data_reduction',
+                'storage.total_reduction_ratio' => '$.space.total_reduction',
+                'storage.snapshots_bytes' => '$.space.snapshots',
+            ]
         ];
     }
 
-    private function getDrivesMappings(): array
+    /**
+     * /drives endpoint - Physical drives
+     * Response: {'items': [{'name': 'CH0.BAY0', ...}, ...]}
+     */
+    private function getDrivesConfig(): array
     {
         return [
-            'storage_descr' => '$.items[*].name',
-            'storage_type' => 'pure-drive',
-            'storage_size' => '$.items[*].capacity',
-            'component_type' => '$.items[*].type',
-            'component_protocol' => '$.items[*].protocol',
-            'sensor_class_state' => '$.items[*].status',
-            'component_serial' => '$.items[*].serial',
+            'target_table' => 'storage',
+            'item_identifier' => '$.items[*].name',  // Use drive name
+            'fields' => [
+                'storage.storage_descr' => '$.name',
+                'storage.storage_type' => "'pure-drive'",  // Static value
+                'storage.storage_size' => '$.capacity',
+            ]
         ];
     }
 
-    private function getArrayPerformanceMappings(): array
+    /**
+     * /arrays/performance endpoint - Array-level performance metrics
+     * Response: {'items': [{'read_bytes_per_sec': 123, 'write_bytes_per_sec': 456, ...}]}
+     * Single item - create array-level sensors
+     */
+    private function getArrayPerformanceConfig(): array
     {
         return [
-            'Array_Read_Throughput' => '$.items[0].read_bytes_per_sec',
-            'Array_Write_Throughput' => '$.items[0].write_bytes_per_sec',
-            'Array_Read_IOPS' => '$.items[0].reads_per_sec',
-            'Array_Write_IOPS' => '$.items[0].writes_per_sec',
-            'Array_Read_Latency' => '$.items[0].usec_per_read_op',
-            'Array_Write_Latency' => '$.items[0].usec_per_write_op',
-            'Array_Read_Queue_Latency' => '$.items[0].queue_usec_per_read_op',
-            'Array_Write_Queue_Latency' => '$.items[0].queue_usec_per_write_op',
-            'Array_Bytes_Per_Read' => '$.items[0].bytes_per_read',
-            'Array_Bytes_Per_Write' => '$.items[0].bytes_per_write',
+            'target_table' => 'sensors',
+            'item_identifier' => null,  // Single array, no grouping needed
+            'sensor_prefix' => 'array',  // Prefix for sensor names
+            'fields' => [
+                'sensors.read_throughput' => '$.items[0].read_bytes_per_sec',
+                'sensors.write_throughput' => '$.items[0].write_bytes_per_sec',
+                'sensors.reads_per_sec' => '$.items[0].reads_per_sec',
+                'sensors.writes_per_sec' => '$.items[0].writes_per_sec',
+                'sensors.read_latency' => '$.items[0].usec_per_read_op',
+                'sensors.write_latency' => '$.items[0].usec_per_write_op',
+                'sensors.read_queue_latency' => '$.items[0].queue_usec_per_read_op',
+                'sensors.write_queue_latency' => '$.items[0].queue_usec_per_write_op',
+                'sensors.bytes_per_read' => '$.items[0].bytes_per_read',
+                'sensors.bytes_per_write' => '$.items[0].bytes_per_write',
+            ]
         ];
     }
 
-    private function getVolumePerformanceMappings(): array
+    /**
+     * /volumes/performance endpoint - Per-volume performance metrics
+     * Response: {'items': [{'name': 'vol1', 'read_bytes_per_sec': 123, ...}, ...]}
+     * Multiple items - create per-volume sensors, linked by volume name
+     */
+    private function getVolumePerformanceConfig(): array
     {
         return [
-            'Volume_Read_Throughput' => '$.items[*].read_bytes_per_sec',
-            'Volume_Write_Throughput' => '$.items[*].write_bytes_per_sec',
-            'Volume_Read_IOPS' => '$.items[*].reads_per_sec',
-            'Volume_Write_IOPS' => '$.items[*].writes_per_sec',
-            'Volume_Read_Latency' => '$.items[*].usec_per_read_op',
-            'Volume_Write_Latency' => '$.items[*].usec_per_write_op',
-            'Volume_Queue_Latency_Read' => '$.items[*].queue_usec_per_read_op',
-            'Volume_Queue_Latency_Write' => '$.items[*].queue_usec_per_write_op',
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',  // Link by volume name
+            'sensor_prefix' => 'volume',  // Prefix for sensor names
+            'fields' => [
+                'sensors.read_throughput' => '$.read_bytes_per_sec',
+                'sensors.write_throughput' => '$.write_bytes_per_sec',
+                'sensors.reads_per_sec' => '$.reads_per_sec',
+                'sensors.writes_per_sec' => '$.writes_per_sec',
+                'sensors.read_latency' => '$.usec_per_read_op',
+                'sensors.write_latency' => '$.usec_per_write_op',
+                'sensors.read_queue_latency' => '$.queue_usec_per_read_op',
+                'sensors.write_queue_latency' => '$.queue_usec_per_write_op',
+            ]
         ];
     }
 
-    private function getControllersMappings(): array
+    /**
+     * /controllers endpoint - Controller status
+     * Response: {'items': [{'name': 'CT0', ...}, {'name': 'CT1', ...}]}
+     */
+    private function getControllersConfig(): array
     {
-        // Only state sensor, no metadata fields
         return [
-            'Controller_Status' => '$.items[*].status',
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',  // Link by controller name
+            'sensor_prefix' => 'controller',
+            'fields' => [
+                'sensors.status' => '$.status',
+            ]
         ];
     }
 
-    private function getHardwareMappings(): array
+    /**
+     * /hardware endpoint - Hardware components (PSU, fans, etc)
+     * Response: {'items': [{'name': 'PSU0', 'temperature': 45, ...}, ...]}
+     */
+    private function getHardwareConfig(): array
     {
-        // Only actual sensor measurements, no metadata
         return [
-            'Hardware_Temperature' => '$.items[*].temperature',
-            'Hardware_Voltage' => '$.items[*].voltage',
-            'Hardware_Status' => '$.items[*].status',
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',  // Link by component name
+            'sensor_prefix' => 'hardware',
+            'fields' => [
+                'sensors.temperature' => '$.temperature',
+                'sensors.voltage' => '$.voltage',
+                'sensors.status' => '$.status',
+            ]
         ];
     }
 
-    private function getPortDetailsMappings(): array
+    /**
+     * /network-interfaces/port-details endpoint - Transceiver details
+     * Response: {'items': [{'name': 'ct0.eth0', 'temperature': [{'measurement': 45}], ...}, ...]}
+     * Link to ports by interface name
+     */
+    private function getPortDetailsConfig(): array
     {
-        // Only actual sensor measurements, no static metadata
         return [
-            'Optic_Temperature' => '$.items[*].temperature[0].measurement',
-            'Optic_Vcc' => '$.items[*].voltage[0].measurement',
-            'TX_Bias_Current' => '$.items[*].tx_bias[0].measurement',
-            'TX_Optical_Power' => '$.items[*].tx_power[0].measurement',
-            'RX_Optical_Power' => '$.items[*].rx_power[0].measurement',
-            'TX_Fault' => '$.items[*].tx_fault[0].flag',
-            'RX_Loss_of_Signal' => '$.items[*].rx_los[0].flag',
+            'target_table' => 'sensors',
+            'item_identifier' => '$.items[*].name',  // Link by port name
+            'sensor_prefix' => 'transceiver',
+            'fields' => [
+                'sensors.temperature' => '$.temperature[0].measurement',
+                'sensors.voltage' => '$.voltage[0].measurement',
+                'sensors.tx_bias' => '$.tx_bias[0].measurement',
+                'sensors.tx_power' => '$.tx_power[0].measurement',
+                'sensors.rx_power' => '$.rx_power[0].measurement',
+                'sensors.tx_fault' => '$.tx_fault[0].flag',
+                'sensors.rx_los' => '$.rx_los[0].flag',
+            ]
         ];
     }
 
-    private function getArrayConnectionsMappings(): array
+    /**
+     * /array-connections endpoint - Replication links
+     * Response: {'items': [{'name': 'remote-array1', 'local_port': 'eth0', ...}, ...]}
+     */
+    private function getArrayConnectionsConfig(): array
     {
         return [
-            'local_port' => '$.items[*].local_port',
-            'remote_port' => '$.items[*].remote_port',
-            'remote_hostname' => '$.items[*].name',
-            'link_transport' => '$.items[*].replication_transport',
-            'link_status' => '$.items[*].status',
+            'target_table' => 'links',
+            'item_identifier' => '$.items[*].name',  // Link by remote array name
+            'fields' => [
+                'links.local_port' => '$.local_port',
+                'links.remote_port' => '$.remote_port',
+                'links.remote_hostname' => '$.name',
+                'links.link_transport' => '$.replication_transport',
+                'links.link_status' => '$.status',
+            ]
         ];
     }
 
-    private function getSubnetsMappings(): array
-    {
-        // Subnets are configuration, not sensors - this endpoint should not create sensors
-        return [];
-    }
-
-    private function getSpaceMappings(): array
+    /**
+     * /subnets endpoint - Network configuration
+     * Response: {'items': [{'name': 'default', 'prefix': '10.0.0.0/24', ...}, ...]}
+     */
+    private function getSubnetsConfig(): array
     {
         return [
-            'Total_Provisioned' => '$.total_provisioned',
-            'Total_Used' => '$.total_used',
-            'Data_Reduction_Ratio' => '$.data_reduction',
-            'Total_Reduction_Ratio' => '$.total_reduction',
-            'Replication_Usage' => '$.replication',
-            'Snapshots_Usage' => '$.snapshots',
+            'target_table' => 'custom',  // Subnets are not standard tables
+            'item_identifier' => '$.items[*].name',
+            'fields' => [
+                'ipv4_network' => '$.prefix',
+                'vlan_id' => '$.vlan',
+                'vlan_name' => '$.name',
+            ]
+        ];
+    }
+
+    /**
+     * /space endpoint - Array space information
+     * Response: {'total_provisioned': 1000000, 'total_used': 500000, ...}
+     * No items array - single response object
+     */
+    private function getSpaceConfig(): array
+    {
+        return [
+            'target_table' => 'sensors',
+            'item_identifier' => null,  // Single response, no items
+            'sensor_prefix' => 'space',
+            'fields' => [
+                'sensors.total_provisioned' => '$.total_provisioned',
+                'sensors.total_used' => '$.total_used',
+                'sensors.data_reduction' => '$.data_reduction',
+                'sensors.total_reduction' => '$.total_reduction',
+                'sensors.replication' => '$.replication',
+                'sensors.snapshots' => '$.snapshots',
+            ]
         ];
     }
 }
