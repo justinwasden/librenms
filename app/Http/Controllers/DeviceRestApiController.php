@@ -3,106 +3,50 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
-use App\Models\RestApiTemplate;
-use App\Models\RestApiCredential;
-use App\Models\RestApiAuthenticationType;
-use App\Models\RestApiDeviceTemplate;
-use App\RestApi\Services\MapperSelectionService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
+/**
+ * Global Device REST API Controller
+ * Handles device-level REST API configuration at the admin level
+ * (Note: Most device REST API management is now at device.edit.rest-api)
+ */
 class DeviceRestApiController extends Controller
 {
-    public function edit(Device $device)
+    /**
+     * Show device REST API configuration
+     */
+    public function show(Device $device)
     {
-        $deviceTemplate = $device->restApiTemplate;
-        $templates = RestApiTemplate::all();
-        $credentials = RestApiCredential::where('device_id', $device->device_id)->orWhereNull('device_id')->get();
-        $authTypes = RestApiAuthenticationType::all();
+        Gate::authorize('admin');
         
-        // Get vendor and custom mappings
-        $vendorMappings = [
-            'pure_storage' => 'Pure Storage',
-            'cisco' => 'Cisco',
-            'aruba' => 'Aruba',
-        ];
-        
-        $customMappings = [];
-        $currentMapping = null;
-
-        return view('devices.rest-api-settings', [
-            'device' => $device,
-            'deviceTemplate' => $deviceTemplate,
-            'templates' => $templates,
-            'credentials' => $credentials,
-            'authTypes' => $authTypes,
-            'availableMappers' => MapperSelectionService::getAvailableMappers(),
-            'vendorMappings' => $vendorMappings,
-            'customMappings' => $customMappings,
-            'currentMapping' => $currentMapping,
-        ]);
+        // Redirect to the device-level REST API edit page
+        return redirect()->route('device.edit.rest-api', $device);
     }
 
-    public function update(Device $device, Request $request)
+    /**
+     * Update device REST API configuration
+     */
+    public function update(Request $request, Device $device)
     {
-        $validated = $request->validate([
-            'template_id' => 'required|exists:rest_api_templates,id',
-            'mapper_name' => 'nullable|string',
-            'credential_id' => 'nullable|exists:rest_api_credentials,id',
-        ]);
-
-        $deviceTemplate = $device->restApiTemplate ?? new RestApiDeviceTemplate();
-        $deviceTemplate->device_id = $device->device_id;
-        $deviceTemplate->template_id = $validated['template_id'];
-        $deviceTemplate->mapper_name = $validated['mapper_name'];
+        Gate::authorize('admin');
         
-        // Set mapper source
-        if ($validated['mapper_name']) {
-            $deviceTemplate->mapper_source = 'user_selected';
-        } else {
-            $deviceTemplate->mapper_source = 'auto_detected';
-        }
-
-        $deviceTemplate->save();
-
-        return redirect()
-            ->route('devices.show', $device)
-            ->with('success', 'REST API configuration saved!');
+        // This is a placeholder - most updates are handled at the device level
+        // via the Device\RestApiController
+        return redirect()->route('device.edit.rest-api', $device)->with('info', 'Use the device-level REST API settings to configure.');
     }
 
-    public function test(Device $device, Request $request)
+    /**
+     * Test device REST API connection
+     */
+    public function test(Request $request, Device $device)
     {
-        $validated = $request->validate([
-            'mapper_name' => 'nullable|string',
-            'credential_id' => 'nullable|exists:rest_api_credentials,id',
-            'template_id' => 'required|exists:rest_api_templates,id',
-        ]);
-
-        try {
-            $template = RestApiTemplate::find($validated['template_id']);
-            $credential = RestApiCredential::find($validated['credential_id']);
-
-            if (!$template || !$credential) {
-                return response()->json(['message' => 'Invalid template or credential'], 400);
-            }
-
-            // Get first endpoint from template
-            $endpoints = $template->endpoints()->limit(1)->get();
-            if ($endpoints->isEmpty()) {
-                return response()->json(['message' => 'No endpoints in template'], 400);
-            }
-
-            $endpoint = $endpoints->first();
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Connection successful',
-                'endpoint' => $endpoint->path,
-                'mapper' => $validated['mapper_name'],
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 400);
-        }
+        Gate::authorize('admin');
+        
+        // TODO: Implement REST API connection testing
+        return response()->json([
+            'status' => 'error',
+            'message' => 'REST API testing not yet implemented at global level. Use device-level settings.'
+        ], 501);
     }
 }
