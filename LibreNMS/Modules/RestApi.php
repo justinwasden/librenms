@@ -1,3 +1,6 @@
+<?php
+namespace LibreNMS\Modules;
+
 use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\OS;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
