@@ -526,6 +526,10 @@ class RestApiPoller
 
     /**
      * Determine sensor class for RRD graphing
+     * Valid values: airflow, ber, bitrate, charge, chromatic_dispersion, cooling,
+     * count, current, dbm, delay, eer, fanspeed, frequency, humidity, load, loss, percent, power,
+     * power_consumed, power_factor, pressure, quality_factor, runtime, signal, snr, state,
+     * temperature, tv_signal, voltage, waterflow, signal_loss
      */
     private function determineSensorClass(string $field): string
     {
@@ -542,9 +546,11 @@ class RestApiPoller
         } elseif (strpos($field, 'latency') !== false) {
             return 'delay';
         } elseif (strpos($field, 'iops') !== false || strpos($field, 'operations') !== false) {
-            return 'counter';
+            return 'count';
+        } elseif (strpos($field, 'throughput') !== false || strpos($field, 'bytes_per_sec') !== false) {
+            return 'bitrate';
         }
 
-        return 'gauge';
+        return 'count';
     }
 }
