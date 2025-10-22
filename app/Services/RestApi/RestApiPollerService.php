@@ -151,9 +151,9 @@ class RestApiPollerService
 
         // Send login request with X-API-Token
        $response = $request->withHeaders([
-				    $headerName => $apiKey,
-				    'Content-Type' => 'application/json', // <--- ADD THIS CRITICAL HEADER
-				])->post($loginUrl);
+    $headerName => $apiKey,
+    'Content-Type' => 'application/json',
+])->post($loginUrl, []);
 
         if (!$response->successful()) {
             throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
