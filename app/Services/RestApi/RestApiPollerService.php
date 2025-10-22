@@ -352,13 +352,15 @@ class RestApiPollerService
     /**
      * Parse table.field notation
      * Examples: "devices.hostname", "storage.storage_descr", "ports.ifName"
+     * If no table prefix is provided, defaults to 'metrics' table (rest_api_metrics)
      */
     private function parseTableField(string $tableField): array
     {
         $parts = explode('.', $tableField, 2);
 
         if (count($parts) !== 2) {
-            throw new \Exception("Invalid table.field format: $tableField (must be 'table.field')");
+            // No table prefix - treat as a metric key and use 'metrics' as the table
+            return ['metrics', $tableField];
         }
 
         return [$parts[0], $parts[1]];
@@ -375,40 +377,66 @@ class RestApiPollerService
             $value = (string) $value;
         }
 
-        switch ($table) {
-            case 'devices':
-                DB::table('devices')->where('device_id', $deviceId)->update([$column => $value]);
-                break;
+        try {
+            switch ($table) {
+                case 'devices':
+                    DB::table('devices')->where('device_id', $deviceId)->update([$column => $value]);
+                    break;
 
-            case 'storage':
-                DB::table('storage')->updateOrInsert(
-                    ['device_id' => $deviceId, 'storage_descr' => 'REST Import'],
-                    [$column => $value]
-                );
-                break;
+                case 'storage':
+                    DB::table('storage')->updateOrInsert(
+                        ['device_id' => $deviceId, 'storage_descr' => 'REST Import'],
+                        [$column => $value]
+                    );
+                    break;
 
-            case 'ports':
-                DB::table('ports')->updateOrInsert(
-                    ['device_id' => $deviceId, 'ifDescr' => 'REST Interface'],
-                    [$column => $value]
-                );
-                break;
+                case 'ports':
+                    DB::table('ports')->updateOrInsert(
+                        ['device_id' => $deviceId, 'ifDescr' => 'REST Interface'],
+                        [$column => $value]
+                    );
+                    break;
 
-            case 'entPhysical':
-                DB::table('entPhysical')->updateOrInsert(
-                    ['device_id' => $deviceId, 'entPhysicalName' => 'REST Component'],
-                    [$column => $value]
-                );
-                break;
+                case 'entPhysical':
+                    DB::table('entPhysical')->updateOrInsert(
+                        ['device_id' => $deviceId, 'entPhysicalName' => 'REST Component'],
+                        [$column => $value]
+                    );
+                    break;
 
-            case 'sensors':
-                DB::table('sensors')->updateOrInsert(
-                    ['device_id' => $deviceId, 'sensor_descr' => 'REST Sensor'],
-                    [$column => $value]
-                );
-                break;
+                case 'sensors':
+                    DB::table('sensors')->updateOrInsert(
+                        ['device_id' => $deviceId, 'sensor_descr' => 'REST Sensor'],
+                        [$column => $value]
+                    );
+                    break;
 
-            default:
+                case 'metrics':
+                default:
+                    // Default to rest_api_metrics table for custom metrics
+                    RestApiMetric::updateOrCreate(
+                        [
+                            'device_id' => $deviceId,
+                            'metric_key' => $column,
+                            'endpoint_name' => $table,
+                        ],
+                        [
+                            'metric_value' => (string) $value,
+                            'last_updated' => now(),
+                        ]
+                    );
+            }
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Log database errors (e.g., column not found) but don't fail the entire poll
+            if (str_contains($e->getMessage(), 'Column not found') || str_contains($e->getMessage(), 'Unknown column')) {
+                Log::warning("Column '{$column}' does not exist in table '{$table}', storing as metric instead", [
+                    'device_id' => $deviceId,
+                    'table' => $table,
+                    'column' => $column,
+                    'value' => $value,
+                ]);
+
+                // Fallback to metrics table
                 RestApiMetric::updateOrCreate(
                     [
                         'device_id' => $deviceId,
@@ -420,6 +448,9 @@ class RestApiPollerService
                         'last_updated' => now(),
                     ]
                 );
+            } else {
+                throw $e;
+            }
         }
     }
 
