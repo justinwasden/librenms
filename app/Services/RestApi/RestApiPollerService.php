@@ -284,15 +284,97 @@ class RestApiPollerService
             return;
         }
 
-        foreach ($mappings as $tableField => $apiField) {
-            try {
-                $this->processMapping($connection, $endpoint, $tableField, $apiField, $data);
-            } catch (\Throwable $e) {
-                Log::warning("Failed to process mapping {$tableField} <= {$apiField} for {$endpoint->path}: {$e->getMessage()}", [
-                    'device_id' => $connection->device_id,
-                    'table_field' => $tableField,
-                    'api_field' => $apiField,
-                ]);
+        // Process mappings by grouping them into complete entities
+        $this->processMappings($connection, $endpoint, $mappings, $data);
+    }
+
+    /**
+     * Process all mappings for an endpoint
+     * Groups mappings by array items to preserve entity relationships
+     */
+    protected function processMappings(RestApiConnection $connection, $endpoint, array $mappings, array $data): void
+    {
+        // Check if we're dealing with array data ($.items[*].field pattern)
+        $hasArrayMappings = false;
+        foreach ($mappings as $apiField) {
+            if (str_contains($apiField, '[*]')) {
+                $hasArrayMappings = true;
+                break;
+            }
+        }
+
+        if ($hasArrayMappings) {
+            // Process as array of entities
+            $this->processArrayMappings($connection, $endpoint, $mappings, $data);
+        } else {
+            // Process as single entity (legacy behavior)
+            foreach ($mappings as $tableField => $apiField) {
+                try {
+                    $this->processMapping($connection, $endpoint, $tableField, $apiField, $data);
+                } catch (\Throwable $e) {
+                    Log::warning("Failed to process mapping {$tableField} <= {$apiField} for {$endpoint->path}: {$e->getMessage()}", [
+                        'device_id' => $connection->device_id,
+                        'table_field' => $tableField,
+                        'api_field' => $apiField,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Process array-based mappings where each item is a complete entity
+     * Example: volumes, ports, hardware components
+     */
+    protected function processArrayMappings(RestApiConnection $connection, $endpoint, array $mappings, array $data): void
+    {
+        // Extract the base array path (e.g., "$.items" from "$.items[*].field")
+        $baseArrayPath = null;
+        foreach ($mappings as $apiField) {
+            if (preg_match('/^(\$\.[\w.]+)\[\*\]/', $apiField, $matches)) {
+                $baseArrayPath = $matches[1];
+                break;
+            }
+        }
+
+        if (!$baseArrayPath) {
+            return;
+        }
+
+        // Get the array of items
+        $items = $this->extractJsonPath($data, $baseArrayPath);
+        if (!is_array($items) || empty($items)) {
+            return;
+        }
+
+        // Process each item as a complete entity
+        foreach ($items as $item) {
+            $entityData = [];
+            $targetTable = null;
+
+            // Extract all mapped fields for this item
+            foreach ($mappings as $tableField => $apiField) {
+                // Convert array pattern to single item pattern
+                // "$.items[*].name" -> "$.name"
+                $itemFieldPath = preg_replace('/^\$\.[\w.]+\[\*\]\./', '$.', $apiField);
+
+                $value = $this->extractJsonPath($item, $itemFieldPath);
+                if ($value === null) {
+                    continue;
+                }
+
+                list($table, $field) = $this->parseTableField($tableField);
+
+                if ($targetTable === null) {
+                    $targetTable = $table;
+                }
+
+                $entityData[$field] = $value;
+            }
+
+            // Apply the complete entity
+            if (!empty($entityData) && $targetTable) {
+                $this->applyEntity($connection->device_id, $targetTable, $entityData, $endpoint);
             }
         }
     }
@@ -364,6 +446,147 @@ class RestApiPollerService
         }
 
         return [$parts[0], $parts[1]];
+    }
+
+    /**
+     * Apply a complete entity (row) with all its fields
+     * Uses intelligent matching based on entity identifiers
+     */
+    protected function applyEntity(int $deviceId, string $table, array $entityData, $endpoint): void
+    {
+        try {
+            switch ($table) {
+                case 'devices':
+                    // Update the device record
+                    DB::table('devices')->where('device_id', $deviceId)->update($entityData);
+                    break;
+
+                case 'storage':
+                    // Use 'name' field as the unique identifier for storage volumes
+                    $identifier = $entityData['storage_descr'] ?? $entityData['name'] ?? null;
+                    if (!$identifier) {
+                        Log::warning("No identifier found for storage entity", ['entity_data' => $entityData]);
+                        return;
+                    }
+
+                    DB::table('storage')->updateOrInsert(
+                        [
+                            'device_id' => $deviceId,
+                            'storage_descr' => $identifier,
+                        ],
+                        array_merge($entityData, ['storage_descr' => $identifier])
+                    );
+                    break;
+
+                case 'ports':
+                    // Use 'name' or 'ifName' as the unique identifier for ports
+                    $identifier = $entityData['ifName'] ?? $entityData['name'] ?? $entityData['ifDescr'] ?? null;
+                    if (!$identifier) {
+                        Log::warning("No identifier found for port entity", ['entity_data' => $entityData]);
+                        return;
+                    }
+
+                    // Set ifDescr if not provided
+                    if (!isset($entityData['ifDescr'])) {
+                        $entityData['ifDescr'] = $identifier;
+                    }
+
+                    DB::table('ports')->updateOrInsert(
+                        [
+                            'device_id' => $deviceId,
+                            'ifDescr' => $entityData['ifDescr'],
+                        ],
+                        $entityData
+                    );
+                    break;
+
+                case 'entPhysical':
+                case 'hardware':
+                    // Use 'name' as the unique identifier for hardware components
+                    $identifier = $entityData['entPhysicalName'] ?? $entityData['name'] ?? null;
+                    if (!$identifier) {
+                        Log::warning("No identifier found for entPhysical entity", ['entity_data' => $entityData]);
+                        return;
+                    }
+
+                    DB::table('entPhysical')->updateOrInsert(
+                        [
+                            'device_id' => $deviceId,
+                            'entPhysicalName' => $identifier,
+                        ],
+                        array_merge($entityData, ['entPhysicalName' => $identifier])
+                    );
+                    break;
+
+                case 'sensors':
+                    // Use 'name' or 'sensor_descr' as the unique identifier
+                    $identifier = $entityData['sensor_descr'] ?? $entityData['name'] ?? null;
+                    if (!$identifier) {
+                        Log::warning("No identifier found for sensor entity", ['entity_data' => $entityData]);
+                        return;
+                    }
+
+                    DB::table('sensors')->updateOrInsert(
+                        [
+                            'device_id' => $deviceId,
+                            'sensor_descr' => $identifier,
+                        ],
+                        array_merge($entityData, ['sensor_descr' => $identifier])
+                    );
+                    break;
+
+                case 'metrics':
+                default:
+                    // Store as custom metrics - each field becomes a separate metric
+                    foreach ($entityData as $key => $value) {
+                        RestApiMetric::updateOrCreate(
+                            [
+                                'device_id' => $deviceId,
+                                'metric_key' => $key,
+                                'endpoint_name' => $endpoint->path,
+                            ],
+                            [
+                                'metric_value' => (string) $value,
+                                'last_updated' => now(),
+                            ]
+                        );
+                    }
+            }
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Log database errors but don't fail the entire poll
+            if (str_contains($e->getMessage(), 'Column not found') || str_contains($e->getMessage(), 'Unknown column')) {
+                Log::warning("Database schema mismatch for table '{$table}', storing as metrics instead", [
+                    'device_id' => $deviceId,
+                    'table' => $table,
+                    'entity_data' => $entityData,
+                    'error' => $e->getMessage(),
+                ]);
+
+                // Fallback to metrics
+                foreach ($entityData as $key => $value) {
+                    try {
+                        RestApiMetric::updateOrCreate(
+                            [
+                                'device_id' => $deviceId,
+                                'metric_key' => $key,
+                                'endpoint_name' => $endpoint->path,
+                            ],
+                            [
+                                'metric_value' => (string) $value,
+                                'last_updated' => now(),
+                            ]
+                        );
+                    } catch (\Throwable $fallbackError) {
+                        Log::error("Failed to store metric as fallback", [
+                            'key' => $key,
+                            'error' => $fallbackError->getMessage(),
+                        ]);
+                    }
+                }
+            } else {
+                throw $e;
+            }
+        }
     }
 
     protected function applyValue($deviceId, $table, $column, $value): void
