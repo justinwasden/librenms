@@ -31,12 +31,13 @@ class RestApi implements Module
      * Poll device metrics
      */
     public function poll(OS $os, DataStorageInterface $datastore): void
-    {
-        $device = $os->getDevice();
-        if ($this->deviceHasApiConnections($device->id)) {
-            $this->pollerService->pollDeviceById($device->id);
-        }
+{
+    $device = $os->getDevice();
+    Log::info("REST API poll running for device {$device->hostname}");
+    if ($this->deviceHasApiConnections($device->id)) {
+        $this->pollerService->pollDeviceById($device->id);
     }
+}
 
     /**
      * Should we poll this device?
