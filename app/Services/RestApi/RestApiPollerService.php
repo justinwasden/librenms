@@ -32,7 +32,7 @@ class RestApiPollerService
         if (preg_match('/^(\w+)\[\*\]\.(.+)$/', $path, $matches)) {
             $arrayField = $matches[1];
             $subPath = $matches[2];
-            
+
             if (!isset($data[$arrayField]) || !is_array($data[$arrayField])) {
                 return null;
             }
@@ -44,7 +44,7 @@ class RestApiPollerService
                     $results[] = $value;
                 }
             }
-            
+
             return !empty($results) ? $results : null;
         }
 
@@ -59,11 +59,11 @@ class RestApiPollerService
             }
 
             $value = $data[$arrayField][$index];
-            
+
             if ($subPath) {
                 return $this->extractJsonPath($value, '.' . $subPath);
             }
-            
+
             return $value;
         }
 
@@ -94,7 +94,7 @@ class RestApiPollerService
                     }
                 }
             });
-        
+
         // Clear cached tokens after polling
         $this->authTokens = [];
     }
@@ -134,7 +134,7 @@ class RestApiPollerService
     protected function pureStorageLogin(RestApiConnection $connection): void
     {
         $loginUrl = rtrim($connection->base_url, '/') . '/login';
-        
+
         $request = Http::withOptions([
             'verify' => !$connection->disable_ssl_verify,
             'timeout' => 30,
@@ -150,9 +150,10 @@ class RestApiPollerService
         }
 
         // Send login request with X-API-Token
-        $response = $request->withHeaders([
-            $headerName => $apiKey,
-        ])->post($loginUrl);
+       $response = $request->withHeaders([
+				    $headerName => $apiKey,
+				    'Content-Type' => 'application/json', // <--- ADD THIS CRITICAL HEADER
+				])->post($loginUrl);
 
         if (!$response->successful()) {
             throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
@@ -187,7 +188,7 @@ class RestApiPollerService
         // Apply credentials/auth headers
         if ($connection->credential) {
             $authType = strtolower($connection->credential->authenticationType->name ?? '');
-            
+
             // Pure Storage: use cached X-Auth-Token from login
             if ($authType === 'api_key' && isset($this->authTokens[$connection->id])) {
                 $request = $request->withHeaders([
@@ -301,7 +302,7 @@ class RestApiPollerService
     private function parseTableField(string $tableField): array
     {
         $parts = explode('.', $tableField, 2);
-        
+
         if (count($parts) !== 2) {
             throw new \Exception("Invalid table.field format: $tableField (must be 'table.field')");
         }
