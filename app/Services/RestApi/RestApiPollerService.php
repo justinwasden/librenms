@@ -143,80 +143,27 @@ class RestApiPollerService
             return;
         }
 
-        // Get mappings from template_response_mapping or database mappings
-        $mappings = $this->getMappingsForEndpoint($endpoint);
+        // Get mappings - must be set on endpoint
+        $mappings = $endpoint->template_response_mapping;
 
-        if (empty($mappings)) {
-            Log::warning("No mappings found for endpoint {$endpoint->path}", [
+        if (empty($mappings) || !is_array($mappings)) {
+            Log::warning("No template_response_mapping for endpoint {$endpoint->path}", [
                 'device_id' => $connection->device_id,
                 'endpoint_id' => $endpoint->id,
             ]);
             return;
         }
 
-        foreach ($mappings as $mapping) {
+        foreach ($mappings as $tableField => $apiField) {
             try {
-                $this->processMapping($connection, $endpoint, $mapping, $data);
+                $this->processMapping($connection, $endpoint, $tableField, $apiField, $data);
             } catch (\Throwable $e) {
-                Log::warning("Failed to process mapping for {$endpoint->path}: {$e->getMessage()}", [
-                    'mapping' => $mapping,
-                    'error' => (string) $e,
+                Log::warning("Failed to process mapping {$tableField} <= {$apiField} for {$endpoint->path}: {$e->getMessage()}", [
+                    'device_id' => $connection->device_id,
+                    'table_field' => $tableField,
+                    'api_field' => $apiField,
                 ]);
             }
-        }
-    }
-
-    /**
-     * Get mappings for an endpoint, preferring template_response_mapping over database
-     */
-    protected function getMappingsForEndpoint($endpoint): array
-    {
-        if (!empty($endpoint->template_response_mapping) && is_array($endpoint->template_response_mapping)) {
-            $mappings = [];
-            foreach ($endpoint->template_response_mapping as $librenmsField => $apiField) {
-                $mappings[] = [
-                    'api_field' => $apiField,
-                    'librenms_field' => $librenmsField,
-                    'librenms_table' => 'generic', // Will be resolved from field name
-                ];
-            }
-            return $mappings;
-        }
-
-        // Fall back to database mappings
-        return $endpoint->mappings()
-            ->where('enabled', true)
-            ->get()
-            ->toArray();
-    }
-
-    /**
-     * Process a single mapping - extract value and store it
-     */
-    protected function processMapping(RestApiConnection $connection, $endpoint, array $mapping, array $data): void
-    {
-        $apiField = $mapping['api_field'] ?? null;
-        $librenmsField = $mapping['librenms_field'] ?? null;
-        $librenmsTable = $mapping['librenms_table'] ?? 'generic';
-
-        if (!$apiField || !$librenmsField) {
-            return;
-        }
-
-        // Extract value using JSONPath
-        $value = $this->extractJsonPath($data, $apiField);
-
-        if ($value === null || (is_array($value) && empty($value))) {
-            return;
-        }
-
-        // If value is an array, process each item
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                $this->applyValue($connection->device_id, $librenmsTable, $librenmsField, $item);
-            }
-        } else {
-            $this->applyValue($connection->device_id, $librenmsTable, $librenmsField, $value);
         }
     }
 
@@ -243,6 +190,48 @@ class RestApiPollerService
             'custom' => $request->withHeaders($params),
             default => $request,
         };
+    }
+
+    /**
+     * Process a single mapping
+     * tableField format: "table.field" or "table.field[index]"
+     * apiField format: "$.path.to.field" or "$.items[*].field"
+     */
+    protected function processMapping(RestApiConnection $connection, $endpoint, string $tableField, string $apiField, array $data): void
+    {
+        // Extract value from API response using JSONPath
+        $value = $this->extractJsonPath($data, $apiField);
+
+        if ($value === null || (is_array($value) && empty($value))) {
+            return;
+        }
+
+        // Parse table.field notation
+        list($table, $field) = $this->parseTableField($tableField);
+
+        // If value is an array (from wildcard extraction), process each item
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $this->applyValue($connection->device_id, $table, $field, $item);
+            }
+        } else {
+            $this->applyValue($connection->device_id, $table, $field, $value);
+        }
+    }
+
+    /**
+     * Parse table.field notation
+     * Examples: "devices.hostname", "storage.storage_descr", "ports.ifName"
+     */
+    private function parseTableField(string $tableField): array
+    {
+        $parts = explode('.', $tableField, 2);
+        
+        if (count($parts) !== 2) {
+            throw new \Exception("Invalid table.field format: $tableField (must be 'table.field')");
+        }
+
+        return [$parts[0], $parts[1]];
     }
 
     protected function applyValue($deviceId, $table, $column, $value): void
