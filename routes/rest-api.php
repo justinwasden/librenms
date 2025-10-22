@@ -15,6 +15,16 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('devices/{device}/rest-api/test', [DeviceRestApiController::class, 'test'])
         ->name('devices.rest-api.test');
 
+    // REST API Templates/Endpoints - provide fallback for missing route
+    Route::get('devices/{device}/rest-api/templates', [DeviceRestApiController::class, 'edit'])
+        ->name('devices.rest-api.templates.index');
+    
+    Route::get('devices/{device}/rest-api/templates/{endpoint}', [DeviceRestApiController::class, 'edit'])
+        ->name('devices.rest-api.templates.show');
+    
+    Route::put('devices/{device}/rest-api/templates/{endpoint}', [DeviceRestApiController::class, 'update'])
+        ->name('devices.rest-api.templates.update');
+
     // API Endpoints for AJAX
     Route::prefix('api/rest-api')->group(function () {
         Route::get('mappers', function () {
