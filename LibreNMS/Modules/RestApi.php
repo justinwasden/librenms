@@ -1,119 +1,39 @@
 <?php
+
 /**
  * RestApi.php
  *
- * REST API Discovery and Polling Module for LibreNMS v25+
+ * LibreNMS REST API Poller Module
  *
- * Fully implements Module interface and integrates with RestApiPollerService.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 namespace LibreNMS\Modules;
 
-use App\Models\Device;
+use App\Models\Device as DeviceModel;
+use App\Models\RestApiDeviceTemplate;
 use App\Services\RestApi\RestApiPollerService;
-use LibreNMS\Polling\ModuleStatus;
+use Illuminate\Support\Facades\Log;
+use LibreNMS\Interfaces\Module;
 use LibreNMS\OS;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
-use LibreNMS\Interfaces\Module;
-use Log;
+use LibreNMS\Polling\ModuleStatus;
 
 class RestApi implements Module
 {
-    protected RestApiPollerService $pollerService;
-
-    public function __construct()
-    {
-        // Inject your poller service via Laravel's container
-        $this->pollerService = app(RestApiPollerService::class);
-    }
-
     /**
-     * Poll device metrics
-     */
-    public function poll(OS $os, DataStorageInterface $datastore): void
-{
-    $device = $os->getDevice();
-    Log::info("REST API poll running for device {$device->hostname}");
-    if ($this->deviceHasApiConnections($device->id)) {
-        $this->pollerService->pollDeviceById($device->id);
-    }
-}
-
-    /**
-     * Should we poll this device?
-     */
-    public function shouldPoll(OS $os, ModuleStatus $status): bool
-    {
-        $device = $os->getDevice();
-        return $this->deviceHasApiConnections($device->id);
-    }
-
-    /**
-     * Should we run discovery for this device?
-     */
-    public function shouldDiscover(OS $os, ModuleStatus $status): bool
-    {
-        $device = $os->getDevice();
-        return $this->deviceHasApiConnections($device->id);
-    }
-
-    /**
-     * Discover the device
-     */
-    public function discover(OS $os): void
-    {
-        $device = $os->getDevice();
-        if ($this->deviceHasApiConnections($device->id)) {
-            $this->pollerService->discoverDeviceById($device->id);
-        }
-    }
-
-    /**
-     * Check if data exists for this module
-     */
-    public function dataExists(Device $device): bool
-    {
-        return $this->deviceHasApiConnections($device->id);
-    }
-
-    /**
-     * Cleanup module data
-     */
-    public function cleanup(Device $device): int
-    {
-        $count = 0;
-
-        $connections = $device->restApiConnections();
-        $count += $connections->count();
-        $connections->delete();
-
-        return $count;
-    }
-
-    /**
-     * Dump current module data
-     */
-    public function dump(Device $device, string $type): ?array
-    {
-        return [
-            'rest_api_connections' => $device->restApiConnections()
-                ->with(['credential', 'endpoints'])
-                ->get()
-                ->map(function ($conn) {
-                    return [
-                        'name' => $conn->name,
-                        'base_url' => $conn->base_url,
-                        'enabled' => $conn->enabled,
-                        'credential_type' => $conn->credential?->authenticationType?->name,
-                        'endpoints_count' => $conn->endpoints->count(),
-                    ];
-                })
-                ->toArray(),
-        ];
-    }
-
-    /**
-     * Return module dependencies
+     * An array of all modules this module depends on
      */
     public function dependencies(): array
     {
@@ -121,40 +41,93 @@ class RestApi implements Module
     }
 
     /**
-     * Return module name
+     * Should discovery run for this device?
      */
-    public function getName(): string
+    public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
-        return 'REST API';
+        $device = $os->getDevice();
+        $deviceModel = DeviceModel::find($device->device_id);
+        
+        if (!$deviceModel) {
+            return false;
+        }
+
+        $hasTemplate = RestApiDeviceTemplate::where('device_id', $deviceModel->device_id)->exists();
+        
+        return $hasTemplate && $status->isEnabled();
     }
 
     /**
-     * Return module version
+     * Should polling run for this device?
      */
-    public function getVersion(): string
+    public function shouldPoll(OS $os, ModuleStatus $status): bool
     {
-        return '1.0';
+        $device = $os->getDevice();
+        $deviceModel = DeviceModel::find($device->device_id);
+        
+        if (!$deviceModel) {
+            return false;
+        }
+
+        $hasTemplate = RestApiDeviceTemplate::where('device_id', $deviceModel->device_id)->exists();
+        
+        return $hasTemplate && $status->isEnabled();
     }
 
     /**
-     * Return module author
+     * Discover this module
      */
-    public function getAuthor(): string
+    public function discover(OS $os): void
     {
-        return 'JDub';
+        // REST API discovery would go here if needed
+        // For now, nothing specific to discover
     }
 
     /**
-     * Check if the device has API connections
+     * Poll data for this module
      */
-    protected function deviceHasApiConnections(?int $deviceId): bool
-		{
-		    if (!$deviceId) {
-		        return false; // safely skip
-		    }
+    public function poll(OS $os, DataStorageInterface $datastore): void
+    {
+        $device = $os->getDevice();
+        $deviceModel = DeviceModel::find($device->device_id);
+        
+        if (!$deviceModel) {
+            return;
+        }
 
-		    return \DB::table('rest_api_connections')
-		        ->where('device_id', $deviceId)
-		        ->exists();
-		}
+        try {
+            RestApiPollerService::pollViaLibreNMS($deviceModel);
+        } catch (\Throwable $e) {
+            Log::error("Error polling REST API", [
+                'device_id' => $deviceModel->device_id,
+                'device' => $deviceModel->hostname,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Check if data exists for this module
+     */
+    public function dataExists(DeviceModel $device): bool
+    {
+        return RestApiDeviceTemplate::where('device_id', $device->device_id)->exists();
+    }
+
+    /**
+     * Remove all DB data for this module
+     */
+    public function cleanup(DeviceModel $device): int
+    {
+        // Nothing to clean up for REST API
+        return 0;
+    }
+
+    /**
+     * Dump current module data for the given device for tests
+     */
+    public function dump(DeviceModel $device, string $type): ?array
+    {
+        return null; // Testing not implemented
+    }
 }
