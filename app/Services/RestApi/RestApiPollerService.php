@@ -557,10 +557,24 @@ class RestApiPollerService
                         return;
                     }
 
-                    // Set ifDescr if not provided
+                    // Set required LibreNMS port fields with sensible defaults
                     if (!isset($entityData['ifDescr'])) {
                         $entityData['ifDescr'] = $identifier;
                     }
+                    if (!isset($entityData['ifName'])) {
+                        $entityData['ifName'] = $identifier;
+                    }
+                    if (!isset($entityData['ifType'])) {
+                        $entityData['ifType'] = 'ethernetCsmacd';
+                    }
+                    if (!isset($entityData['ifOperStatus'])) {
+                        $entityData['ifOperStatus'] = 'up'; // Default to up for REST-discovered ports
+                    }
+                    if (!isset($entityData['ifAdminStatus'])) {
+                        $entityData['ifAdminStatus'] = 'up';
+                    }
+                    // Don't mark REST API ports as disabled - they were actively discovered
+                    $entityData['disabled'] = 0;
 
                     // Filter to only valid ports columns - commonly used ones
                     $validColumns = [
@@ -606,6 +620,34 @@ class RestApiPollerService
                     $identifier = $entityData['entPhysicalName'] ?? $entityData['name'] ?? null;
                     if (!$identifier) {
                         Log::warning("No identifier found for entPhysical entity", ['entity_data' => $entityData]);
+                        return;
+                    }
+
+                    // SMART ROUTING: If this is an ethernet port, route to ports table instead
+                    $class = $entityData['entPhysicalClass'] ?? null;
+                    if (in_array($class, ['eth_port', 'port', 'ethernet'])) {
+                        // Convert to ports format and route to ports table
+                        $portData = [
+                            'ifDescr' => $identifier,
+                            'ifName' => $identifier,
+                            'ifAlias' => $entityData['entPhysicalDescr'] ?? null,
+                            'ifType' => 'ethernetCsmacd',
+                            'ifOperStatus' => $this->mapStatusToIfOperStatus($entityData['status'] ?? $entityData['sensor_value'] ?? 'unknown'),
+                            'ifAdminStatus' => 'up',
+                        ];
+
+                        // Remove nulls
+                        $portData = array_filter($portData, fn($v) => $v !== null);
+
+                        // Add any extra fields as port data
+                        foreach ($entityData as $key => $value) {
+                            if (!isset($portData[$key]) && $key !== 'entPhysicalClass' && $key !== 'entPhysicalName') {
+                                $portData[$key] = $value;
+                            }
+                        }
+
+                        // Recursively call with ports table
+                        $this->applyEntity($deviceId, 'ports', $portData, $endpoint);
                         return;
                     }
 
@@ -836,6 +878,20 @@ class RestApiPollerService
                 throw $e;
             }
         }
+    }
+
+    /**
+     * Map API status values to LibreNMS ifOperStatus
+     */
+    protected function mapStatusToIfOperStatus(string $status): string
+    {
+        return match (strtolower($status)) {
+            'up', 'ok', 'healthy', 'active', 'online', 'ready' => 'up',
+            'down', 'failed', 'error', 'offline' => 'down',
+            'disabled', 'not_installed', 'unused' => 'lowerLayerDown',
+            'testing', 'initializing' => 'testing',
+            default => 'unknown',
+        };
     }
 
     /**
