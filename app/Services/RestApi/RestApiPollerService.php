@@ -102,12 +102,12 @@ class RestApiPollerService
 
     public function pollDeviceConnection(RestApiConnection $connection): void
     {
-        // For Pure Storage: authenticate and get session token
-        if ($connection->credential && strtolower($connection->credential->authenticationType->name ?? '') === 'api_key') {
+        // For Session Token authentication (e.g., Pure Storage): authenticate and get session token
+        if ($connection->credential && strtolower($connection->credential->authenticationType->name ?? '') === 'session token') {
             try {
-                $this->pureStorageLogin($connection);
+                $this->sessionTokenLogin($connection);
             } catch (\Throwable $e) {
-                Log::error("Pure Storage login failed for {$connection->device->hostname}: {$e->getMessage()}", [
+                Log::error("Session token login failed for {$connection->device->hostname}: {$e->getMessage()}", [
                     'device_id' => $connection->device_id,
                     'error' => (string) $e,
                 ]);
@@ -134,7 +134,7 @@ class RestApiPollerService
      */
     // In RestApiPollerService.php
 
-		protected function pureStorageLogin(RestApiConnection $connection): void
+		protected function sessionTokenLogin(RestApiConnection $connection): void
 		{
 		    // 1. Retrieve parameters from the Session Token credential configuration
 		    $params = $connection->credential->getParamsArray();
@@ -228,16 +228,28 @@ class RestApiPollerService
             $authType = strtolower($connection->credential->authenticationType->name ?? '');
 
             // Session token auth (e.g., Pure Storage): use cached token from login
-            if ($authType === 'api_key' && isset($this->authTokens[$connection->id])) {
+            if ($authType === 'session token' && isset($this->authTokens[$connection->id])) {
                 // Get the configured session token header name from credential params
                 $params = $connection->credential->getParamsArray();
                 $sessionTokenHeader = $params['token_header'] ?? 'X-Auth-Token';
+
+                Log::debug("Using cached session token for {$connection->device->hostname}", [
+                    'connection_id' => $connection->id,
+                    'header_name' => $sessionTokenHeader,
+                    'token_preview' => substr($this->authTokens[$connection->id], 0, 20) . '...',
+                    'endpoint' => $endpoint->path,
+                ]);
 
                 $request = $request->withHeaders([
                     $sessionTokenHeader => $this->authTokens[$connection->id],
                 ]);
             } else {
                 // Other auth types
+                Log::debug("Using non-session-token auth for {$connection->device->hostname}", [
+                    'auth_type' => $authType,
+                    'has_cached_token' => isset($this->authTokens[$connection->id]),
+                    'endpoint' => $endpoint->path,
+                ]);
                 $request = $this->applyAuthentication($request, $connection->credential);
             }
         }
