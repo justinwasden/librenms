@@ -469,12 +469,40 @@ class RestApiPollerService
                         return;
                     }
 
+                    // Filter to only valid storage columns
+                    $validColumns = [
+                        'storage_mib', 'storage_index', 'storage_type', 'storage_descr', 'storage_size',
+                        'storage_units', 'storage_used', 'storage_free', 'storage_perc', 'storage_perc_warn',
+                        'storage_deleted'
+                    ];
+
+                    $filteredData = array_intersect_key($entityData, array_flip($validColumns));
+                    $filteredData['storage_descr'] = $identifier;
+
+                    // Store non-standard fields as metrics
+                    $extraFields = array_diff_key($entityData, array_flip($validColumns));
+                    if (!empty($extraFields)) {
+                        foreach ($extraFields as $key => $value) {
+                            RestApiMetric::updateOrCreate(
+                                [
+                                    'device_id' => $deviceId,
+                                    'metric_key' => $identifier . '.' . $key,
+                                    'endpoint_name' => $endpoint->path,
+                                ],
+                                [
+                                    'metric_value' => (string) $value,
+                                    'last_updated' => now(),
+                                ]
+                            );
+                        }
+                    }
+
                     DB::table('storage')->updateOrInsert(
                         [
                             'device_id' => $deviceId,
                             'storage_descr' => $identifier,
                         ],
-                        array_merge($entityData, ['storage_descr' => $identifier])
+                        $filteredData
                     );
                     break;
 
@@ -491,12 +519,41 @@ class RestApiPollerService
                         $entityData['ifDescr'] = $identifier;
                     }
 
+                    // Filter to only valid ports columns - commonly used ones
+                    $validColumns = [
+                        'ifIndex', 'ifName', 'ifDescr', 'ifAlias', 'ifType', 'ifOperStatus', 'ifAdminStatus',
+                        'ifSpeed', 'ifHighSpeed', 'ifMtu', 'ifPhysAddress', 'ifLastChange', 'ifVlan', 'ifTrunk',
+                        'disabled', 'deleted', 'ignore', 'pagpOperationMode', 'pagpPortState', 'pagpPartnerDeviceId',
+                        'pagpPartnerLearnMethod', 'pagpPartnerIfIndex', 'pagpPartnerGroupIfIndex', 'pagpPartnerDeviceName',
+                        'pagpEthcOperationMode', 'pagpDeviceId', 'pagpGroupIfIndex'
+                    ];
+
+                    $filteredData = array_intersect_key($entityData, array_flip($validColumns));
+
+                    // Store non-standard fields as metrics
+                    $extraFields = array_diff_key($entityData, array_flip($validColumns));
+                    if (!empty($extraFields)) {
+                        foreach ($extraFields as $key => $value) {
+                            RestApiMetric::updateOrCreate(
+                                [
+                                    'device_id' => $deviceId,
+                                    'metric_key' => $identifier . '.' . $key,
+                                    'endpoint_name' => $endpoint->path,
+                                ],
+                                [
+                                    'metric_value' => (string) $value,
+                                    'last_updated' => now(),
+                                ]
+                            );
+                        }
+                    }
+
                     DB::table('ports')->updateOrInsert(
                         [
                             'device_id' => $deviceId,
-                            'ifDescr' => $entityData['ifDescr'],
+                            'ifDescr' => $filteredData['ifDescr'],
                         ],
-                        $entityData
+                        $filteredData
                     );
                     break;
 
@@ -509,12 +566,42 @@ class RestApiPollerService
                         return;
                     }
 
+                    // Filter to only valid entPhysical columns
+                    $validColumns = [
+                        'entPhysicalIndex', 'entPhysicalDescr', 'entPhysicalClass', 'entPhysicalName',
+                        'entPhysicalHardwareRev', 'entPhysicalFirmwareRev', 'entPhysicalSoftwareRev',
+                        'entPhysicalAlias', 'entPhysicalAssetID', 'entPhysicalIsFRU', 'entPhysicalModelName',
+                        'entPhysicalVendorType', 'entPhysicalSerialNum', 'entPhysicalContainedIn',
+                        'entPhysicalParentRelPos', 'entPhysicalMfgName', 'ifIndex'
+                    ];
+
+                    $filteredData = array_intersect_key($entityData, array_flip($validColumns));
+                    $filteredData['entPhysicalName'] = $identifier;
+
+                    // Store non-standard fields (like sensor_value, status) as metrics
+                    $extraFields = array_diff_key($entityData, array_flip($validColumns));
+                    if (!empty($extraFields)) {
+                        foreach ($extraFields as $key => $value) {
+                            RestApiMetric::updateOrCreate(
+                                [
+                                    'device_id' => $deviceId,
+                                    'metric_key' => $identifier . '.' . $key, // e.g., "CT0.PWR1.sensor_value"
+                                    'endpoint_name' => $endpoint->path,
+                                ],
+                                [
+                                    'metric_value' => (string) $value,
+                                    'last_updated' => now(),
+                                ]
+                            );
+                        }
+                    }
+
                     DB::table('entPhysical')->updateOrInsert(
                         [
                             'device_id' => $deviceId,
                             'entPhysicalName' => $identifier,
                         ],
-                        array_merge($entityData, ['entPhysicalName' => $identifier])
+                        $filteredData
                     );
                     break;
 
@@ -526,12 +613,43 @@ class RestApiPollerService
                         return;
                     }
 
+                    // Filter to only valid sensors columns
+                    $validColumns = [
+                        'sensor_deleted', 'sensor_class', 'poller_type', 'sensor_oid', 'sensor_index',
+                        'sensor_type', 'sensor_descr', 'group', 'sensor_divisor', 'sensor_multiplier',
+                        'sensor_current', 'sensor_limit', 'sensor_limit_warn', 'sensor_limit_low',
+                        'sensor_limit_low_warn', 'sensor_alert', 'sensor_custom', 'entPhysicalIndex',
+                        'entPhysicalIndex_measured', 'sensor_prev', 'user_func', 'state_name',
+                        'sensor_info', 'lastupdate', 'sensor_polled'
+                    ];
+
+                    $filteredData = array_intersect_key($entityData, array_flip($validColumns));
+                    $filteredData['sensor_descr'] = $identifier;
+
+                    // Store non-standard fields as metrics
+                    $extraFields = array_diff_key($entityData, array_flip($validColumns));
+                    if (!empty($extraFields)) {
+                        foreach ($extraFields as $key => $value) {
+                            RestApiMetric::updateOrCreate(
+                                [
+                                    'device_id' => $deviceId,
+                                    'metric_key' => $identifier . '.' . $key,
+                                    'endpoint_name' => $endpoint->path,
+                                ],
+                                [
+                                    'metric_value' => (string) $value,
+                                    'last_updated' => now(),
+                                ]
+                            );
+                        }
+                    }
+
                     DB::table('sensors')->updateOrInsert(
                         [
                             'device_id' => $deviceId,
                             'sensor_descr' => $identifier,
                         ],
-                        array_merge($entityData, ['sensor_descr' => $identifier])
+                        $filteredData
                     );
                     break;
 
