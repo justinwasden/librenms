@@ -131,64 +131,61 @@ class RestApiPollerService
      * Pure Storage requires POST /login with X-API-Token to get X-Auth-Token
      * This exchanges the API token for a session token
      */
-    protected function pureStorageLogin(RestApiConnection $connection): void
-{
-    // Retrieve all parameters (now decrypted)
-    $params = $connection->credential->getParamsArray();
+    // In RestApiPollerService.php
 
-    // 1. Retrieve Configured Login Path and Method
-    $loginPath = $params['login_path'] ?? 'login';
-    $loginMethod = strtoupper($params['login_method'] ?? 'POST'); // Default to POST
+		protected function pureStorageLogin(RestApiConnection $connection): void
+		{
+		    // 1. Retrieve parameters from the Session Token credential configuration
+		    $params = $connection->credential->getParamsArray();
 
-    // 2. Construct the final URL using the configured path parameter
-    // We use ltrim and rtrim to safely combine the base URL and the path parameter.
-    $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/'); // <-- CORRECT URL CONSTRUCTION
+		    // Retrieve configurable login details (using keys from session-token.blade.php)
+		    $loginPath = $params['login_path'] ?? 'login';
+		    $loginMethod = strtoupper($params['login_method'] ?? 'POST');
+		    $sendHeaderName = $params['api_token_header'] ?? 'api-token';         // Header name to SEND the API key
+		    $receiveHeaderName = $params['token_header'] ?? 'x-auth-token';       // Header name to RECEIVE the session token
+		    $apiKey = $params['api_token'] ?? null;                               // The decrypted API key value
 
-    $request = Http::withOptions([
-        'verify' => !$connection->disable_ssl_verify,
-        'timeout' => 30,
-    ]);
+		    // 2. Construct the final login URL
+		    // Safely combines the base_url with the configurable login_path
+		    $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
 
-    // Get API key from credential
-    $apiKey = $params['api_token'] ?? null;
-    // Use the credential's configured header name
-    $headerName = $params['api_token_header'] ?? 'X-API-Token';
-    $tokenHeader = $params['token_header'] ?? 'X-Auth-Token'; // Session token response header
+		    $request = Http::withOptions([
+		        'verify' => !$connection->disable_ssl_verify,
+		        'timeout' => 30,
+		    ]);
 
-    if (!$apiKey) {
-        throw new \Exception("No API key found in credential");
-    }
+		    if (!$apiKey) {
+		        throw new \Exception("No API key found in credential");
+		    }
 
-    // Prepare the request with the API Key and Content-Type header
-    $request = $request->withHeaders([
-        $headerName => $apiKey,
-        'Content-Type' => 'application/json',
-    ]);
+		    // 3. Send login request with the CORRECT header name and Content-Type
+		    $request = $request->withHeaders([
+		        $sendHeaderName => $apiKey,
+		        'Content-Type' => 'application/json',
+		    ]);
 
-    // 3. Execute the request using the configured method (e.g., POST)
-    // We pass an empty array [] to ensure an explicit empty payload body for the API.
-    $response = $request->{$loginMethod}($loginUrl, []);
+		    // Use the configured method (POST/GET) and explicitly send an empty payload
+		    $response = $request->{$loginMethod}($loginUrl, []);
 
-    // Check for success (e.g., HTTP 200 or 204)
-    if (!$response->successful()) {
-        throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
-    }
+		    if (!$response->successful()) {
+		        throw new \Exception("Pure Storage login failed: HTTP {$response->status()} - {$response->body()}");
+		    }
 
-    // 4. Extract Session Token (This logic remains the same)
-    $authToken = $response->header($tokenHeader);
+		    // 4. Extract Session Token using the configured response header name
+		    $authToken = $response->header($receiveHeaderName);
 
-    if (!$authToken) {
-        throw new \Exception("No {$tokenHeader} in response headers");
-    }
+		    if (!$authToken) {
+		        throw new \Exception("No {$receiveHeaderName} in response headers");
+		    }
 
-    // Cache the token
-    $this->authTokens[$connection->id] = $authToken;
+		    // Cache the token
+		    $this->authTokens[$connection->id] = $authToken;
 
-    Log::info("Pure Storage login successful for connection {$connection->id}", [
-        'device_id' => $connection->device_id,
-        'login_url' => $loginUrl,
-    ]);
-}
+		    Log::info("Pure Storage login successful for connection {$connection->id}", [
+		        'device_id' => $connection->device_id,
+		        'login_url' => $loginUrl,
+		    ]);
+		}
 
     protected function processEndpoint(RestApiConnection $connection, $endpoint): void
     {
