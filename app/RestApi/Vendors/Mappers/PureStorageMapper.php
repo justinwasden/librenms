@@ -62,7 +62,28 @@ class PureStorageMapper implements VendorMapperInterface
     public function getMappingsForEndpoint(string $endpoint): array
     {
         $allMappings = $this->getMappings();
-        return $allMappings[$endpoint] ?? [];
+        
+        // Try exact match first
+        if (isset($allMappings[$endpoint])) {
+            return $allMappings[$endpoint];
+        }
+        
+        // Extract just the endpoint path without API version prefix
+        // /api/2.26/arrays -> /arrays
+        // /api/2.26/network-interfaces -> /network-interfaces
+        $cleanEndpoint = preg_replace('#^/api/\d+(\.\d+)*/(.*)$#', '/$2', $endpoint);
+        
+        if (isset($allMappings[$cleanEndpoint])) {
+            return $allMappings[$cleanEndpoint];
+        }
+        
+        // Try with /api prefix removed
+        $cleanEndpoint = preg_replace('#^/api/[^/]+#', '', $endpoint);
+        if (!empty($cleanEndpoint) && isset($allMappings[$cleanEndpoint])) {
+            return $allMappings[$cleanEndpoint];
+        }
+        
+        return [];
     }
 
     public function getTargetTableForEndpoint(string $endpoint): string
