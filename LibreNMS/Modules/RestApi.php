@@ -7,6 +7,7 @@ use App\Models\Device;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Module;
 use Log;
+namespace App\Services\RestApi;
 
 class RestApi implements Module
 {
