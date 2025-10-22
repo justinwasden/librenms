@@ -257,6 +257,15 @@ class RestApiPollerService
         $response = $request->get($url);
 
         if (!$response->successful()) {
+            // Log 404s as info (endpoint may not be available on all devices)
+            if ($response->status() === 404) {
+                Log::info("Endpoint not available (404): {$endpoint->path}", [
+                    'device_id' => $connection->device_id,
+                    'url' => $url,
+                ]);
+                return; // Skip this endpoint gracefully
+            }
+
             throw new \Exception("HTTP {$response->status()} from {$url}");
         }
 
@@ -457,8 +466,42 @@ class RestApiPollerService
         try {
             switch ($table) {
                 case 'devices':
+                    // Filter to only valid devices columns
+                    $validColumns = [
+                        'hostname', 'sysName', 'ip', 'community', 'authlevel', 'authname', 'authpass',
+                        'authalgo', 'cryptopass', 'cryptoalgo', 'snmpver', 'port', 'transport', 'timeout',
+                        'retries', 'snmp_disable', 'bgpLocalAs', 'sysObjectID', 'sysDescr', 'sysContact',
+                        'version', 'hardware', 'features', 'location_id', 'os', 'status', 'status_reason',
+                        'ignore', 'disabled', 'uptime', 'agent_uptime', 'last_polled', 'last_poll_attempted',
+                        'last_polled_timetaken', 'last_discovered_timetaken', 'last_discovered', 'last_ping',
+                        'last_ping_timetaken', 'purpose', 'type', 'serial', 'icon', 'poller_group',
+                        'override_sysLocation', 'notes', 'port_association_mode', 'max_depth'
+                    ];
+
+                    $filteredData = array_intersect_key($entityData, array_flip($validColumns));
+
+                    // Store non-standard fields as metrics
+                    $extraFields = array_diff_key($entityData, array_flip($validColumns));
+                    if (!empty($extraFields)) {
+                        foreach ($extraFields as $key => $value) {
+                            RestApiMetric::updateOrCreate(
+                                [
+                                    'device_id' => $deviceId,
+                                    'metric_key' => 'device.' . $key,
+                                    'endpoint_name' => $endpoint->path,
+                                ],
+                                [
+                                    'metric_value' => (string) $value,
+                                    'last_updated' => now(),
+                                ]
+                            );
+                        }
+                    }
+
                     // Update the device record
-                    DB::table('devices')->where('device_id', $deviceId)->update($entityData);
+                    if (!empty($filteredData)) {
+                        DB::table('devices')->where('device_id', $deviceId)->update($filteredData);
+                    }
                     break;
 
                 case 'storage':
