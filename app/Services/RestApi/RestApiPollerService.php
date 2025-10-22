@@ -337,6 +337,12 @@ class RestApiPollerService
      */
     protected function processArrayMappings(RestApiConnection $connection, $endpoint, array $mappings, array $data): void
     {
+        // Check if this is the transceiver/port-details endpoint
+        if (str_contains($endpoint->path, 'port-details') || str_contains($endpoint->path, 'network-interfaces/port-details')) {
+            $this->processTransceiverData($connection, $endpoint, $data);
+            return;
+        }
+
         // Extract the base array path (e.g., "$.items" from "$.items[*].field")
         $baseArrayPath = null;
         foreach ($mappings as $apiField) {
@@ -385,6 +391,117 @@ class RestApiPollerService
             if (!empty($entityData) && $targetTable) {
                 $this->applyEntity($connection->device_id, $targetTable, $entityData, $endpoint);
             }
+        }
+    }
+
+    /**
+     * Special handler for transceiver/DOM data from port-details endpoint
+     * Creates sensors for temperature, voltage, tx_power, rx_power, tx_bias
+     */
+    protected function processTransceiverData(RestApiConnection $connection, $endpoint, array $data): void
+    {
+        $items = $data['items'] ?? [];
+        if (empty($items)) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $portName = $item['name'] ?? null;
+            if (!$portName) {
+                continue;
+            }
+
+            // Find the port in the database to get port_id
+            $port = DB::table('ports')
+                ->where('device_id', $connection->device_id)
+                ->where(function ($query) use ($portName) {
+                    $query->where('ifDescr', $portName)
+                          ->orWhere('ifName', $portName);
+                })
+                ->first();
+
+            if (!$port) {
+                Log::debug("Port not found for transceiver data: {$portName}");
+                continue;
+            }
+
+            // Process each sensor type
+            $this->processTransceiverSensors($connection->device_id, $port, $portName, 'temperature', $item['temperature'] ?? []);
+            $this->processTransceiverSensors($connection->device_id, $port, $portName, 'voltage', $item['voltage'] ?? []);
+            $this->processTransceiverSensors($connection->device_id, $port, $portName, 'tx_bias', $item['tx_bias'] ?? []);
+            $this->processTransceiverSensors($connection->device_id, $port, $portName, 'tx_power', $item['tx_power'] ?? []);
+            $this->processTransceiverSensors($connection->device_id, $port, $portName, 'rx_power', $item['rx_power'] ?? []);
+
+            // Store static transceiver info as metrics
+            if (isset($item['static'])) {
+                $static = $item['static'];
+                $staticFields = [
+                    'vendor_name', 'vendor_part_number', 'vendor_serial_number',
+                    'connector_type', 'wavelength', 'link_length'
+                ];
+
+                foreach ($staticFields as $field) {
+                    if (isset($static[$field])) {
+                        RestApiMetric::updateOrCreate(
+                            [
+                                'device_id' => $connection->device_id,
+                                'metric_key' => $portName . '.transceiver.' . $field,
+                                'endpoint_name' => $endpoint->path,
+                            ],
+                            [
+                                'metric_value' => (string) $static[$field],
+                                'last_updated' => now(),
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Process individual transceiver sensor measurements
+     */
+    protected function processTransceiverSensors(int $deviceId, $port, string $portName, string $sensorType, array $measurements): void
+    {
+        foreach ($measurements as $measurement) {
+            $channel = $measurement['channel'] ?? 0;
+            $value = $measurement['measurement'] ?? null;
+            $status = $measurement['status'] ?? 'unknown';
+
+            if ($value === null) {
+                continue;
+            }
+
+            // Map sensor types to LibreNMS sensor classes
+            $sensorClass = match ($sensorType) {
+                'temperature' => 'temperature',
+                'voltage' => 'voltage',
+                'tx_power', 'rx_power' => 'dbm',
+                'tx_bias' => 'current',
+                default => 'count',
+            };
+
+            $sensorDescr = $portName . ' ' . strtoupper(str_replace('_', ' ', $sensorType));
+            if (count($measurements) > 1) {
+                $sensorDescr .= " Ch{$channel}";
+            }
+
+            // Create or update sensor
+            DB::table('sensors')->updateOrInsert(
+                [
+                    'device_id' => $deviceId,
+                    'sensor_class' => $sensorClass,
+                    'sensor_type' => 'rest-api',
+                    'sensor_descr' => $sensorDescr,
+                ],
+                [
+                    'sensor_index' => $port->port_id . $channel,
+                    'sensor_current' => $value,
+                    'entPhysicalIndex' => $port->port_id,
+                    'lastupdate' => now(),
+                ]
+            );
         }
     }
 
@@ -573,8 +690,11 @@ class RestApiPollerService
                     if (!isset($entityData['ifAdminStatus'])) {
                         $entityData['ifAdminStatus'] = 'up';
                     }
-                    // Don't mark REST API ports as disabled - they were actively discovered
-                    $entityData['disabled'] = 0;
+                    // Set disabled flag based on operational status (if not already set)
+                    if (!isset($entityData['disabled'])) {
+                        $operStatus = $entityData['ifOperStatus'] ?? 'up';
+                        $entityData['disabled'] = in_array($operStatus, ['down', 'lowerLayerDown', 'notPresent']) ? 1 : 0;
+                    }
 
                     // Filter to only valid ports columns - commonly used ones
                     $validColumns = [
@@ -627,13 +747,18 @@ class RestApiPollerService
                     $class = $entityData['entPhysicalClass'] ?? null;
                     if (in_array($class, ['eth_port', 'port', 'ethernet'])) {
                         // Convert to ports format and route to ports table
+                        $status = $entityData['status'] ?? $entityData['sensor_value'] ?? 'up';
+                        $operStatus = $this->mapStatusToIfOperStatus($status);
+
                         $portData = [
                             'ifDescr' => $identifier,
                             'ifName' => $identifier,
                             'ifAlias' => $entityData['entPhysicalDescr'] ?? null,
                             'ifType' => 'ethernetCsmacd',
-                            'ifOperStatus' => $this->mapStatusToIfOperStatus($entityData['status'] ?? $entityData['sensor_value'] ?? 'unknown'),
+                            'ifOperStatus' => $operStatus,
                             'ifAdminStatus' => 'up',
+                            // Set disabled flag based on operational status
+                            'disabled' => in_array($operStatus, ['down', 'lowerLayerDown', 'notPresent']) ? 1 : 0,
                         ];
 
                         // Remove nulls
