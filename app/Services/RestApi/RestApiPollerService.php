@@ -187,9 +187,35 @@ class RestApiPollerService
 		    ]);
 		}
 
-    protected function processEndpoint(RestApiConnection $connection, $endpoint): void
-    {
-        $url = rtrim($connection->base_url, '/') . $endpoint->path;
+		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
+		{
+		    $baseUrl = rtrim($connection->base_url, '/');
+		    $endpointPath = ltrim($endpoint->path, '/');
+
+		    // Check if the Base URL contains the API version string
+		    $apiUrlSegment = '/api/2.26/';
+
+		    $url = $baseUrl;
+
+        if (Str::startsWith($endpointPath, 'api/')) {
+
+        	$basePathSegment = parse_url($baseUrl, PHP_URL_PATH);
+
+        	if ($basePathSegment && Str::endsWith($basePathSegment, '/2.26')) {
+						$url = Str::before($baseUrl, $basePathSegment) . '/' . $endpointPath;
+					} else {
+
+						$url = $baseUrl . '/' . $endpointPath;
+        	}
+			} elseif (!Str::contains($baseUrl, $apiUrlSegment) && !Str::contains($endpointPath, $apiUrlSegment)) {
+			        // Case 2: Neither Base URL nor Endpoint Path contains the version (e.g., Base=https://172.16.7.5, Path=/arrays)
+			        // We assume the version is necessary and missing.
+			        $url = $baseUrl . '/api/2.26/' . $endpointPath; // <--- This assumes version 2.26 is required
+
+			    } else {
+			        // Case 3: Standard combination (Base URL contains version, Path does not)
+			        $url = $baseUrl . '/' . $endpointPath;
+			    }
 
         // Build HTTP request with authentication
         $request = Http::withOptions([
