@@ -74,7 +74,7 @@ Route::get('graph/{path?}', GraphController::class)
 Route::middleware(['auth'])->group(function () {
     // REST API Template Preview endpoint - CSRF protected
     Route::post('/api/rest-api/template-preview', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getTemplatePreview'])->name('api.rest-api.template-preview');
-    
+
     // Device and Credentials list endpoints for selector modal - CSRF protected
     Route::get('/api/rest-api/devices', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getDevicesList'])->name('api.rest-api.devices');
     Route::get('/api/rest-api/credentials', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'getCredentialsList'])->name('api.rest-api.credentials');
@@ -211,6 +211,8 @@ Route::middleware(['auth'])->group(function () {
         Route::prefix('devices')->name('devices.')->group(function () {
             // Global Device REST API routes (for admin device management)
             Route::prefix('rest-api')->name('rest-api.')->group(function () {
+            	  Route::get('/compatible-fields', [RestApiMappingController::class, 'compatibleFields'])->name('rest-api.compatible-fields');
+    						Route::get('/check-compatibility', [RestApiMappingController::class, 'checkCompatibility'])->name('rest-api.check-compatibility');
                 Route::get('{device}', [\App\Http\Controllers\DeviceRestApiController::class, 'show'])->name('show');
                 Route::put('{device}', [\App\Http\Controllers\DeviceRestApiController::class, 'update'])->name('update');
                 Route::post('{device}/test', [\App\Http\Controllers\DeviceRestApiController::class, 'test'])->name('test');
