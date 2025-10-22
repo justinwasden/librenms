@@ -805,7 +805,15 @@ window.endpointManager = function() {
                 }
             } catch (err) {
                 console.error('saveEndpointChanges error:', err);
-                alert('Failed to save endpoint: ' + err.message);
+                // Show validation errors if available
+                if (this.validationErrors && Object.keys(this.validationErrors).length > 0) {
+                    const errorList = Object.entries(this.validationErrors)
+                        .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+                        .join('\n');
+                    alert('Validation errors:\n' + errorList);
+                } else {
+                    alert('Failed to save endpoint: ' + err.message);
+                }
             }
         },
 
