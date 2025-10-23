@@ -512,6 +512,7 @@ class RestApiPollerService
             $portData = [
                 'ifDescr' => $portName,
                 'ifName' => $portName,
+                'port_descr_type' => 'rest-api', // Mark as REST API port to prevent SNMP discovery from deleting it
             ];
 
             // Map fields from the API
@@ -558,7 +559,7 @@ class RestApiPollerService
             $validColumns = [
                 'ifIndex', 'ifName', 'ifDescr', 'ifAlias', 'ifType', 'ifOperStatus', 'ifAdminStatus',
                 'ifSpeed', 'ifMtu', 'ifPhysAddress', 'ifLastChange', 'ifVlan', 'ifTrunk',
-                'disabled', 'deleted', 'ignore'
+                'disabled', 'deleted', 'ignore', 'port_descr_type'
             ];
 
             $portData = array_intersect_key($portData, array_flip($validColumns));
@@ -874,12 +875,16 @@ class RestApiPollerService
                         $operStatus = $entityData['ifOperStatus'] ?? 'up';
                         $entityData['disabled'] = in_array($operStatus, ['down', 'lowerLayerDown', 'notPresent']) ? 1 : 0;
                     }
+                    // CRITICAL: Mark as REST API port to prevent SNMP discovery from deleting it
+                    if (!isset($entityData['port_descr_type'])) {
+                        $entityData['port_descr_type'] = 'rest-api';
+                    }
 
                     // Filter to only valid ports columns - commonly used ones
                     $validColumns = [
                         'ifIndex', 'ifName', 'ifDescr', 'ifAlias', 'ifType', 'ifOperStatus', 'ifAdminStatus',
                         'ifSpeed', 'ifHighSpeed', 'ifMtu', 'ifPhysAddress', 'ifLastChange', 'ifVlan', 'ifTrunk',
-                        'disabled', 'deleted', 'ignore', 'pagpOperationMode', 'pagpPortState', 'pagpPartnerDeviceId',
+                        'disabled', 'deleted', 'ignore', 'port_descr_type', 'pagpOperationMode', 'pagpPortState', 'pagpPartnerDeviceId',
                         'pagpPartnerLearnMethod', 'pagpPartnerIfIndex', 'pagpPartnerGroupIfIndex', 'pagpPartnerDeviceName',
                         'pagpEthcOperationMode', 'pagpDeviceId', 'pagpGroupIfIndex'
                     ];
