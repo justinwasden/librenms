@@ -206,30 +206,17 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
                 continue;
             }
 
-            // Process each sensor type
+            // Store static transceiver info in transceivers table
+            if (isset($item['static'])) {
+                $this->createTransceiverRecord($connection->device_id, $port, $item['static']);
+            }
+
+            // Process dynamic sensor measurements
             $this->processTransceiverSensors($connection->device_id, $port, $portName, 'temperature', $item['temperature'] ?? []);
             $this->processTransceiverSensors($connection->device_id, $port, $portName, 'voltage', $item['voltage'] ?? []);
             $this->processTransceiverSensors($connection->device_id, $port, $portName, 'tx_bias', $item['tx_bias'] ?? []);
             $this->processTransceiverSensors($connection->device_id, $port, $portName, 'tx_power', $item['tx_power'] ?? []);
             $this->processTransceiverSensors($connection->device_id, $port, $portName, 'rx_power', $item['rx_power'] ?? []);
-
-            // Store static transceiver info as metrics
-            if (isset($item['static'])) {
-                $static = $item['static'];
-                $staticFields = [
-                    'vendor_name', 'vendor_part_number', 'vendor_serial_number',
-                    'connector_type', 'wavelength', 'link_length'
-                ];
-
-                foreach ($staticFields as $field) {
-                    if (isset($static[$field])) {
-                        $entityData = [
-                            $portName . '.transceiver.' . $field => (string) $static[$field],
-                        ];
-                        DataPersistence::applyEntity($connection->device_id, 'metrics', $entityData, $endpoint);
-                    }
-                }
-            }
         }
     }
 
@@ -337,5 +324,47 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
                 ]
             );
         }
+    }
+
+    /**
+     * Create or update transceiver record in transceivers table
+     * Maps PureStorage static transceiver data to LibreNMS transceiver fields
+     */
+    protected function createTransceiverRecord(int $deviceId, $port, array $static): void
+    {
+        // Map PureStorage fields to LibreNMS transceiver table fields
+        $transceiverData = [
+            'device_id' => $deviceId,
+            'port_id' => $port->port_id,
+            'index' => (string) $port->port_id, // Use port_id as index
+            'entity_physical_index' => $port->port_id,
+            'vendor' => $static['vendor_name'] ?? null,
+            'model' => $static['vendor_part_number'] ?? null,
+            'serial' => $static['vendor_serial_number'] ?? null,
+            'connector' => $static['connector_type'] ?? null,
+            'wavelength' => isset($static['wavelength']) ? (int) $static['wavelength'] : null,
+            'distance' => isset($static['link_length']) ? (int) $static['link_length'] : null,
+            'type' => $static['type'] ?? null, // e.g., SFP, SFP+, QSFP, etc.
+            'ddm' => 1, // PureStorage provides DOM/DDM data
+            'updated_at' => now(),
+        ];
+
+        // Remove null values
+        $transceiverData = array_filter($transceiverData, fn($v) => $v !== null);
+
+        // Create or update transceiver record
+        DB::table('transceivers')->updateOrInsert(
+            [
+                'device_id' => $deviceId,
+                'port_id' => $port->port_id,
+            ],
+            $transceiverData
+        );
+
+        Log::debug("Created/updated transceiver record for port {$port->ifName}", [
+            'device_id' => $deviceId,
+            'port_id' => $port->port_id,
+            'vendor' => $transceiverData['vendor'] ?? 'unknown',
+        ]);
     }
 }
