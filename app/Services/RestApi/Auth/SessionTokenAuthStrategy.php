@@ -25,7 +25,7 @@ class SessionTokenAuthStrategy implements AuthStrategyInterface
             Cache::put($cacheKey, $token, $ttl);
         }
 
-        $header = $credential->getParamValue('token_header', 'x-auth-token');
+        $header = $credential->getParamValue('token_header', 'X-Auth-Token');
 
         return Http::withOptions([
             'verify' => !$connection->disable_ssl_verify,
@@ -62,7 +62,7 @@ class SessionTokenAuthStrategy implements AuthStrategyInterface
             return null;
         }
 
-        $headerName = $credential->getParamValue('token_header', 'x-auth-token');
+        $headerName = $credential->getParamValue('token_header', 'X-Auth-Token');
         $token = $resp->header($headerName);
         if (!$token) {
             Log::error("PureStorage login missing session token header", ['expected' => $headerName]);
