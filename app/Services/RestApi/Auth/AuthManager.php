@@ -22,7 +22,7 @@ class AuthManager
         $this->strategies['custom'] = new CustomHeaderAuthStrategy();
 
         // NEW: register Proxmox API Token without disrupting others
-        $this->strategies['proxmox-api-token'] = new ProxmoxApiTokenAuthStrategy();
+        $this->strategies['proxmox api token'] = new ProxmoxApiTokenAuthStrategy();
     }
 
     public function getRequest(RestApiConnection $connection, ?RestApiCredential $credential, string $httpMethod)
