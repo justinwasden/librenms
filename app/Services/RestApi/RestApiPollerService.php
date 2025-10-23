@@ -125,7 +125,7 @@ class RestApiPollerService
         // Resolve Proxmox placeholders if present
         $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
         $baseUrl = rtrim($connection->base_url, '/');
-        $url = $baseUrl . '/api2/json/' . ltrim($resolvedPath, '/');
+        $url = $baseUrl . '/' . ltrim($resolvedPath, '/');
 
         // Determine HTTP method (prefer http_method, fallback to method)
         $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');
