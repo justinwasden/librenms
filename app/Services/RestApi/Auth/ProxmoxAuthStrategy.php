@@ -22,7 +22,7 @@ class ProxmoxAuthStrategy implements AuthStrategyInterface
         if (!$session || !$this->isSessionValid($session)) {
             $session = $this->login($connection, $credential);
             if (!$session) {
-                throw new \\Exception("Proxmox login failed: no session");
+                throw new \Exception("Proxmox login failed: no session");
             }
             $ttl = (int)($credential->getParamValue('session_ttl', 3600));
             Cache::put($cacheKey, $session, $ttl);
@@ -31,7 +31,7 @@ class ProxmoxAuthStrategy implements AuthStrategyInterface
         $ticket = $session['ticket'] ?? null;
         $csrf = $session['csrf'] ?? null;
         if (!$ticket) {
-            throw new \\Exception("Proxmox session missing PVEAuthCookie ticket");
+            throw new \Exception("Proxmox session missing PVEAuthCookie ticket");
         }
 
         $options = [
@@ -65,7 +65,7 @@ class ProxmoxAuthStrategy implements AuthStrategyInterface
         $realm = $credential->getParamValue('realm', 'pam');
 
         if (!$username || !$password) {
-            throw new \\Exception("Proxmox credentials missing username or password");
+            throw new \Exception("Proxmox credentials missing username or password");
         }
 
         $fullUser = "{$username}@{$realm}";

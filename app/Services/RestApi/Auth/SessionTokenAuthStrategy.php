@@ -19,7 +19,7 @@ class SessionTokenAuthStrategy implements AuthStrategyInterface
         if (!$token) {
             $token = $this->login($connection, $credential);
             if (!$token) {
-                throw new \\Exception("PureStorage login failed: no session token");
+                throw new \Exception("PureStorage login failed: no session token");
             }
             $ttl = (int)($credential->getParamValue('session_ttl', 3600));
             Cache::put($cacheKey, $token, $ttl);
@@ -42,7 +42,7 @@ class SessionTokenAuthStrategy implements AuthStrategyInterface
         $apiKey = $credential->getParamValue('api_token');
 
         if (!$apiKey) {
-            throw new \\Exception("PureStorage session login missing api_token");
+            throw new \Exception("PureStorage session login missing api_token");
         }
 
         $url = $baseUrl . '/' . ltrim($loginPath, '/');
