@@ -409,6 +409,12 @@ class DataPersistence
         $filteredData = array_intersect_key($entityData, array_flip($validColumns));
         $filteredData['entPhysicalName'] = $identifier;
 
+        // CRITICAL: Set default hierarchy fields to prevent infinite recursion on inventory page
+        // If not provided, set entPhysicalContainedIn to 0 (root level)
+        if (!isset($filteredData['entPhysicalContainedIn'])) {
+            $filteredData['entPhysicalContainedIn'] = 0;
+        }
+
         // Store extra fields as metrics
         $extraFields = array_diff_key($entityData, array_flip($validColumns));
         if (!empty($extraFields)) {
@@ -427,13 +433,24 @@ class DataPersistence
             }
         }
 
-        DB::table('entPhysical')->updateOrInsert(
-            [
+        // Get or create entPhysical record
+        $existing = DB::table('entPhysical')
+            ->where('device_id', $deviceId)
+            ->where('entPhysicalName', $identifier)
+            ->first();
+
+        if ($existing) {
+            // Update existing record
+            DB::table('entPhysical')
+                ->where('device_id', $deviceId)
+                ->where('entPhysicalName', $identifier)
+                ->update($filteredData);
+        } else {
+            // Insert new record - let entPhysicalIndex auto-increment
+            DB::table('entPhysical')->insert(array_merge([
                 'device_id' => $deviceId,
-                'entPhysicalName' => $identifier,
-            ],
-            $filteredData
-        );
+            ], $filteredData));
+        }
     }
 
     /**
