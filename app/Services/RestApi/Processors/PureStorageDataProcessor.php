@@ -166,6 +166,17 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
             // Use DataPersistence to store the port
             DataPersistence::applyEntity($connection->device_id, 'ports', $portData, $endpoint);
 
+            // Process IP address if available
+            if (isset($item['eth']['address']) && !empty($item['eth']['address'])) {
+                $this->processIpAddress(
+                    $connection->device_id,
+                    $portName,
+                    $item['eth']['address'],
+                    $item['eth']['netmask'] ?? null,
+                    $item['eth']['gateway'] ?? null
+                );
+            }
+
             Log::debug("Processed PureStorage network interface: {$portName}", [
                 'device_id' => $connection->device_id,
                 'port_data' => $portData,
@@ -366,5 +377,65 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
             'port_id' => $port->port_id,
             'vendor' => $transceiverData['vendor'] ?? 'unknown',
         ]);
+    }
+
+    /**
+     * Process IP address and store in ipv4_addresses table
+     */
+    protected function processIpAddress(int $deviceId, string $portName, string $address, ?string $netmask, ?string $gateway): void
+    {
+        // Find the port in the database
+        $port = DB::table('ports')
+            ->where('device_id', $deviceId)
+            ->where(function ($query) use ($portName) {
+                $query->where('ifDescr', $portName)
+                      ->orWhere('ifName', $portName);
+            })
+            ->first();
+
+        if (!$port) {
+            Log::warning("Port not found for IP address: {$portName}", [
+                'device_id' => $deviceId,
+                'ip_address' => $address,
+            ]);
+            return;
+        }
+
+        // Calculate prefix length from netmask if provided
+        $cidr = 24; // Default
+        if ($netmask) {
+            $cidr = $this->netmaskToCidr($netmask);
+        }
+
+        // Create or update IPv4 address record
+        DB::table('ipv4_addresses')->updateOrInsert(
+            [
+                'port_id' => $port->port_id,
+                'ipv4_address' => $address,
+            ],
+            [
+                'ipv4_prefixlen' => $cidr,
+                'ipv4_network_id' => null, // Could be populated if we have network discovery
+                'context_name' => '',
+            ]
+        );
+
+        Log::debug("Created/updated IP address for port {$portName}", [
+            'device_id' => $deviceId,
+            'port_id' => $port->port_id,
+            'ip_address' => $address,
+            'netmask' => $netmask,
+            'cidr' => $cidr,
+        ]);
+    }
+
+    /**
+     * Convert netmask to CIDR prefix length
+     */
+    protected function netmaskToCidr(string $netmask): int
+    {
+        $long = ip2long($netmask);
+        $base = ip2long('255.255.255.255');
+        return 32 - log(($long ^ $base) + 1, 2);
     }
 }
