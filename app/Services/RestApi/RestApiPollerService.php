@@ -107,18 +107,6 @@ class RestApiPollerService
     public function pollDeviceConnection(RestApiConnection $connection): void
     {
  				// For Session Token authentication (e.g., Pure Storage): authenticate and get session token
-        if ($connection->credential && strtolower($connection->credential->authenticationType->name ?? '') === 'session token') {
-            try {
-                $this->sessionTokenLogin($connection); 
-            } catch (\Throwable $e) {
-                Log::error("Session token login failed for {$connection->device->hostname}: {$e->getMessage()}", [
-                    'device_id' => $connection->device_id,
-                    'error' => (string) $e,
-                ]);
-                return;
-            }
-        }
-
         foreach ($connection->endpoints()->where('enabled', true)->get() as $endpoint) {
             try {
                 $this->processEndpoint($connection, $endpoint);
