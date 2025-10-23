@@ -282,65 +282,39 @@ class RestApiPollerService
             return;
         }
 
-        // NEW: Use processor chain to handle endpoint data
-        $this->processWithProcessorChain($connection, $endpoint, $data);
-    }
-
-    /**
-     * Process endpoint data using the vendor processor chain
-     * Tries each registered processor in priority order
-     */
-    protected function processWithProcessorChain(RestApiConnection $connection, $endpoint, array $data): void
-    {
-        // Get registered processors in priority order
-        $processors = $this->getProcessors();
-
-        // Try each processor until one can handle it
-        foreach ($processors as $processor) {
-            if ($processor->canProcess($endpoint)) {
-                Log::debug("Processing endpoint with {$processor->getVendorName()} processor", [
-                    'device_id' => $connection->device_id,
-                    'endpoint' => $endpoint->path,
-                    'processor' => get_class($processor),
-                ]);
-
-                $processor->process($connection, $endpoint, $data);
-                return; // First matching processor wins
-            }
+        // Check for special endpoint handlers that bypass mappings
+        if (str_contains($endpoint->path, 'port-details')) {
+            // Transceiver/DOM data endpoint
+            $this->processTransceiverData($connection, $endpoint, $data);
+            return;
         }
 
-        // This should never happen because GenericDataProcessor always returns true
-        Log::warning("No processor found for endpoint (this should not happen!)", [
-            'device_id' => $connection->device_id,
-            'endpoint' => $endpoint->path,
-        ]);
-    }
-
-    /**
-     * Get registered data processors in priority order (lowest priority value = highest priority)
-     *
-     * TODO: Load from database registry table in the future
-     * For now, hardcode the available processors
-     */
-    protected function getProcessors(): array
-    {
-        static $processors = null;
-
-        if ($processors === null) {
-            $processors = [
-                new \App\Services\RestApi\Processors\PureStorageDataProcessor(),
-                // Add more vendor processors here as they're created:
-                // new \App\Services\RestApi\Processors\FortiGateDataProcessor(),
-                // new \App\Services\RestApi\Processors\CiscoDataProcessor(),
-                // etc...
-                new \App\Services\RestApi\Processors\GenericDataProcessor(), // Always last
-            ];
-
-            // Sort by priority (lower = higher priority)
-            usort($processors, fn($a, $b) => $a->getPriority() <=> $b->getPriority());
+        if (str_contains($endpoint->path, 'performance') && str_contains($endpoint->path, 'network-interfaces')) {
+            // Port performance/statistics endpoint
+            $this->processPortPerformanceData($connection, $endpoint, [], $data);
+            return;
         }
 
-        return $processors;
+        // Regular endpoints: check if mapping to /api/2.26/network-interfaces specifically
+        if (preg_match('#/network-interfaces$#', $endpoint->path) || preg_match('#/api/\d+\.\d+/network-interfaces$#', $endpoint->path)) {
+            // Use special handler for main network interfaces endpoint
+            $this->processNetworkInterfacesData($connection, $endpoint, [], $data);
+            return;
+        }
+
+        // Get mappings - must be set on endpoint
+        $mappings = $endpoint->template_response_mapping;
+
+        if (empty($mappings) || !is_array($mappings)) {
+            Log::warning("No template_response_mapping for endpoint {$endpoint->path}", [
+                'device_id' => $connection->device_id,
+                'endpoint_id' => $endpoint->id,
+            ]);
+            return;
+        }
+
+        // Process mappings by grouping them into complete entities
+        $this->processMappings($connection, $endpoint, $mappings, $data);
     }
 
     /**
