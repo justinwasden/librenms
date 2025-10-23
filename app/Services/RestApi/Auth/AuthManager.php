@@ -12,22 +12,24 @@ class AuthManager
 
     public function __construct()
     {
-        // Register strategies
+        // Keep existing registrations
         $this->strategies['basic'] = new BasicAuthStrategy();
         $this->strategies['bearer'] = new BearerAuthStrategy();
         $this->strategies['api_key'] = new ApiKeyAuthStrategy();
-        $this->strategies['session token'] = new SessionTokenAuthStrategy();
+        $this->strategies['session token'] = new SessionTokenAuthStrategy(); // Pure Storage
         $this->strategies['proxmox'] = new ProxmoxAuthStrategy();
-        // 'oauth2' could reuse Bearer or a dedicated strategy
-        $this->strategies['oauth2'] = new BearerAuthStrategy();
+        $this->strategies['oauth2'] = new BearerAuthStrategy(); // or a dedicated OAuth2 strategy
         $this->strategies['custom'] = new CustomHeaderAuthStrategy();
+
+        // NEW: register Proxmox API Token without disrupting others
+        $this->strategies['proxmox-api-token'] = new ProxmoxApiTokenAuthStrategy();
     }
 
     public function getRequest(RestApiConnection $connection, ?RestApiCredential $credential, string $httpMethod)
     {
         $default = Http::withOptions([
             'verify' => !$connection->disable_ssl_verify,
-            'timeout' => 30
+            'timeout' => 30,
         ]);
 
         if (!$credential || !$credential->authenticationType) {

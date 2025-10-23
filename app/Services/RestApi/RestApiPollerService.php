@@ -10,8 +10,12 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+
 class RestApiPollerService
 {
+
+	  use ProxmoxPlaceholderResolver;
+
     private $authTokens = [];  // Cache auth tokens per connection
 
     /**
@@ -185,67 +189,64 @@ class RestApiPollerService
 		}
 
 		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
-		{
-		    // Normalize URL
-		    $baseUrl = rtrim($connection->base_url, '/');
-		    $endpointPath = ltrim($endpoint->path, '/');
-		    $url = $baseUrl . '/' . $endpointPath;
+    {
+        // Resolve Proxmox placeholders if present
+        $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
+        $baseUrl = rtrim($connection->base_url, '/');
+        $url = $baseUrl . '/api2/json/' . ltrim($resolvedPath, '/');
 
-		    // Determine HTTP method (default GET)
-		    $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');
+        // Determine HTTP method (prefer http_method, fallback to method)
+        $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');
 
-		    // Build HTTP request with centralized auth
-		    $authManager = new \App\Services\RestApi\Auth\AuthManager();
-		    $request = $authManager->getRequest($connection, $connection->credential, $httpMethod);
+        // Centralized auth
+        $authManager = new AuthManager();
+        $request = $authManager->getRequest($connection, $connection->credential, $httpMethod);
 
-		    // Execute request by method
-		    switch ($httpMethod) {
-		        case 'POST':
-		            $response = $request->post($url, []);
-		            break;
-		        case 'PUT':
-		            $response = $request->put($url, []);
-		            break;
-		        case 'DELETE':
-		            $response = $request->delete($url);
-		            break;
-		        case 'PATCH':
-		            $response = $request->patch($url, []);
-		            break;
-		        case 'GET':
-		        default:
-		            $response = $request->get($url);
-		            break;
-		    }
+        // Execute request based on method
+        switch ($httpMethod) {
+            case 'POST':
+                $response = $request->post($url, []);
+                break;
+            case 'PUT':
+                $response = $request->put($url, []);
+                break;
+            case 'DELETE':
+                $response = $request->delete($url);
+                break;
+            case 'PATCH':
+                $response = $request->patch($url, []);
+                break;
+            case 'GET':
+            default:
+                $response = $request->get($url);
+                break;
+        }
 
-		    // Handle HTTP errors
-		    if (!$response->successful()) {
-		        if ($response->status() === 404) {
-		            \Log::info("Endpoint not available (404): {$endpoint->path}", [
-		                'device_id' => $connection->device_id,
-		                'url' => $url,
-		            ]);
-		            return;
-		        }
+        if (!$response->successful()) {
+            if ($response->status() === 404) {
+                Log::info("Endpoint not available (404): {$endpoint->path}", [
+                    'device_id' => $connection->device_id,
+                    'url' => $url,
+                ]);
+                return;
+            }
+            throw new \Exception("HTTP {$response->status()} from {$url}");
+        }
 
-		        throw new \Exception("HTTP {$response->status()} from {$url}");
-		    }
+        $data = $response->json();
+        if ($data === null) {
+            Log::warning("API response was null/empty for {$endpoint->path}", [
+                'device_id' => $connection->device_id,
+                'endpoint' => $endpoint->path,
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 200),
+            ]);
+            return;
+        }
 
-		    // Decode JSON
-		    $data = $response->json();
-		    if ($data === null) {
-		        \Log::warning("API response was null/empty for {$endpoint->path}", [
-		            'device_id' => $connection->device_id,
-		            'endpoint' => $endpoint->path,
-		            'status' => $response->status(),
-		            'body' => substr($response->body(), 0, 200),
-		        ]);
-		        return;
-		    }
-
-		    // Process via vendor processor chain
-		    $this->processWithProcessorChain($connection, $endpoint, $data);
-		}
+        $this->processWithProcessorChain($connection, $endpoint, $data);
+    }
+}
 
     /**
      * Process endpoint data using the vendor processor chain
