@@ -10,33 +10,32 @@ return new class extends Migration
     {
         // Ensure table exists before inserting
         if (Schema::hasTable(('rest_api_authentication_types')) {
-            return;
-        }
 
-        // Insert 'proxmox' if not present
-        $existsProxmox = Schema::hasTable('rest_api_authentication_types')
-            ->where('name', 'proxmox')
-            ->exists();
+		        // Insert 'proxmox' if not present
+		        $existsProxmox = Schema::hasTable('rest_api_authentication_types')
+		            ->where('name', 'proxmox')
+		            ->exists();
 
-        if (!$existsProxmox) {
-            Schema::table('rest_api_authentication_types')->insert([
-                'name' => 'proxmox',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+		        if (!$existsProxmox) {
+		            Schema::table('rest_api_authentication_types')->insert([
+		                'name' => 'proxmox',
+		                'created_at' => now(),
+		                'updated_at' => now(),
+		            ]);
+		        }
 
-        // Insert 'proxmox-api-token' if not present (optional)
-        $existsProxmoxApiToken = Schema::table('rest_api_authentication_types')
-            ->where('name', 'proxmox-api-token')
-            ->exists();
+		        // Insert 'proxmox-api-token' if not present (optional)
+		        $existsProxmoxApiToken = Schema::table('rest_api_authentication_types')
+		            ->where('name', 'proxmox-api-token')
+		            ->exists();
 
-        if (!$existsProxmoxApiToken) {
-            Schema::table('rest_api_authentication_types')->insert([
-                'name' => 'proxmox-api-token',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+		        if (!$existsProxmoxApiToken) {
+		            Schema::table('rest_api_authentication_types')->insert([
+		                'name' => 'proxmox-api-token',
+		                'created_at' => now(),
+		                'updated_at' => now(),
+		            ]);
+		        }
         }
     }
 
