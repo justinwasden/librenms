@@ -18,6 +18,5 @@ class DatabaseSeeder extends Seeder
         $this->call(RolesSeeder::class);
         $this->call(RestApiAuthenticationTypeSeeder::class);
         $this->call(RestApiTemplateSeeder::class);
-        $this->call(PureStorageMappingsSeeder::class);
     }
 }

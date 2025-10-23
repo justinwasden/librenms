@@ -13,270 +13,7 @@ class RestApiTemplateSeeder extends Seeder
     public function run(): void
     {
         // Define common metric mapping arrays.
-        // NOTE: Metric names changed to match LibreNMS database fields (e.g., "storage_size", "ifDescr", "state").
-
-        // --- UPDATED PURE STORAGE MAPPINGS based on new request data ---
-        $pureStorageArrayInfoMapping = [
-            "devices.hostname" => "items.0.name",
-            "devices.sysName" => "items.0.name",
-            "devices.version" => "items.0.version",
-            "devices.os" => "items.0.os",
-            "devices.hardware" => "items.0.model",
-            "devices.serial" => "items.0.id",
-            "devices.location" => "items.0.time_zone",
-            "total_capacity" => "capacity",
-            "data_reduction" => "data_reduction",
-            "snapshots" => "snapshots",
-            "thin_provisioning" => "thin_provisioning",
-            "total_physical" => "total_physical",
-            "total_used" => "total_used",
-            "total_provisioned" => "total_provisioned",
-            "total_reduction" => "total_reduction",
-            "used_provisioned" => "used_provisioned",
-            "name" => "name",
-        ];
-
-        $pureStorageVolumesInfoMapping = [
-            "storage.storage_descr" => "name",
-            "storage.storage_size" => "space.total_provisioned",
-            "storage.storage_used" => "space.total_physical",
-            "storage.storage_shared" => "space.snapshots",
-            "storage.block_size" => "block_size",
-            "storage.serial" => "serial",
-        ];
-
-        $pureStorageControllersStatusMapping = [
-            // Mapped to entPhysical attributes as components/sensors
-            "entPhysical.entPhysicalName" => "name",
-            "entPhysical.entPhysicalModelName" => "model",
-            "entPhysical.entPhysicalFirmwareRev" => "version",
-            "entPhysical.entPhysicalSerialNum" => "serial",
-            "status" => "status",
-            "mode" => "mode",
-        ];
-
-        // *** MAPPING CHANGED TO rest_api_metrics (Custom) ***
-        $pureStorageArrayPerformanceMapping = [
-            "rest_api_metrics.array_name" => "items.0.name",
-            "rest_api_metrics.read_bytes_per_sec" => "items.0.read_bytes_per_sec",
-            "rest_api_metrics.write_bytes_per_sec" => "items.0.write_bytes_per_sec",
-            "rest_api_metrics.usec_per_read_op" => "items.0.usec_per_read_op",
-            "rest_api_metrics.usec_per_write_op" => "items.0.usec_per_write_op",
-            "rest_api_metrics.reads_per_sec" => "items.0.reads_per_sec",
-            "rest_api_metrics.writes_per_sec" => "items.0.writes_per_sec",
-            "rest_api_metrics.queue_usec_per_read_op" => "items.0.queue_usec_per_read_op",
-            "rest_api_metrics.queue_usec_per_write_op" => "items.0.queue_usec_per_write_op",
-            "rest_api_metrics.bytes_per_read" => "items.0.bytes_per_read",
-            "rest_api_metrics.bytes_per_write" => "items.0.bytes_per_write",
-        ];
-
-        $pureStorageVolumePerformanceMapping = [
-            // These already mapped to a custom `rest_api_metrics` structure
-            "rest_api_metrics.volume_name" => "name",
-            "rest_api_metrics.reads_per_sec" => "reads_per_sec",
-            "rest_api_metrics.writes_per_sec" => "writes_per_sec",
-            "rest_api_metrics.usec_per_read_op" => "usec_per_read_op",
-            "rest_api_metrics.usec_per_write_op" => "usec_per_write_op",
-            "rest_api_metrics.read_bytes_per_sec" => "read_bytes_per_sec",
-            "rest_api_metrics.write_bytes_per_sec" => "write_bytes_per_sec",
-            "rest_api_metrics.queue_usec_per_read_op" => "queue_usec_per_read_op",
-            "rest_api_metrics.queue_usec_per_write_op" => "queue_usec_per_write_op",
-            "rest_api_metrics.bytes_per_read" => "bytes_per_read",
-            "rest_api_metrics.bytes_per_write" => "bytes_per_write",
-        ];
-
-        $pureStorageAlertsMapping = [
-            // Alerts typically map to the eventlog/alerts table structure, not component metrics
-            "alert_id" => "id",
-            "alert_state" => "state",
-            "alert_code" => "code",
-            "alert_severity" => "severity",
-            "alert_created" => "created",
-            "alert_updated" => "updated",
-            "alert_issue" => "issue",
-            "alert_knowledge_base_url" => "knowledge_base_url",
-            "alert_summary" => "summary",
-        ];
-
-        $pureStorageHardwareComponentsMapping = [
-            "entPhysical.entPhysicalName" => "name",
-            "entPhysical.entPhysicalClass" => "type",
-            "entPhysical.entPhysicalModelName" => "model",
-            "entPhysical.entPhysicalSerialNum" => "serial",
-            "state" => "status", // Status mapped to generic "state" field
-            "temperature" => "temperature", // Maps to standard sensor value
-            "voltage" => "voltage", // Maps to standard sensor value
-        ];
-
-        $pureStorageDrivesMapping = [
-            "storage.storage_descr" => "name",
-            "storage.storage_type" => "type",
-            "storage.storage_size" => "capacity",
-            "storage.serial" => "serial",
-        ];
-
-        $pureStorageNetworkInterfacesMapping = [
-            "ports.ifName" => "name",
-            "ports.ifDescr" => "services.0",
-            "ports.ifType" => "interface_type",
-            "ports.ifSpeed" => "speed",
-            "ports.ifPhysAddress" => "eth.mac_address",
-            "ports.ifAdminStatus" => "enabled",
-            "ports.ifOperStatus" => "enabled",
-            "ports.ifMtu" => "eth.mtu",
-            "ports.ifAlias" => "eth.address",
-        ];
-
-        // *** UPDATED pureStorageHostsMapping for native tables ***
-        $pureStorageHostsMapping = [
-            // Map core Host Name/Personality (OS) to devices table (assuming host is modeled as a device)
-            "devices.hostname" => "name",
-            "devices.os" => "personality",
-
-            // Map connection/status data to devices_attribs
-            "devices_attribs.connection_count" => "connection_count",
-            "devices_attribs.host_group" => "host_group.name",
-            "devices_attribs.conn_status" => "port_connectivity.status",
-            "devices_attribs.conn_details" => "port_connectivity.details",
-
-            // Map storage data to the Storage table (using arbitrary index/type for unique entry)
-            // Note: This requires complex handling in LibreNMS poller to link correctly, but maps the data.
-            "storage.storage_descr" => "name", // Use host name as storage descr
-            "storage.storage_type" => "personality", // Use personality as storage type
-            "storage.storage_size" => "space.total_provisioned",
-            "storage.storage_used" => "space.total_physical",
-        ];
-        // --- END UPDATED PURE STORAGE MAPPINGS ---
-
-        // Define mapping arrays for TrueNAS SCALE
-        $trueNasSystemInfoMapping = [
-            "hostname" => "hostname",
-            "version" => "version",
-            "uptime_seconds" => "uptime_seconds",
-            "system_product" => "system_product",
-        ];
-
-        $trueNasPoolStatusMapping = [
-            // Assuming this endpoint returns an array of pools.
-            "pool_name" => "name",
-            "state" => "status", // Maps pool status to generic sensor state field (e.g., ONLINE, DEGRADED)
-            "pool_health" => "healthy", // Maps health boolean to a custom metric (e.g., True/False)
-        ];
-
-        $trueNasDatasetUsageMapping = [
-            // TrueNAS dataset properties are usually nested under "available" and "used" fields with a "value" key.
-            "storage_descr" => "id", // Dataset path/name (e.g., pool/dataset)
-            "storage_used" => "used.value", // Used bytes
-            "available_capacity" => "available.value", // Available bytes
-            "compression_ratio" => "compressionratio.value",
-        ];
-
-        // Define mapping arrays for Cisco Meraki
-        $merakiOrganizationDeviceStatusMapping = [
-            // Meraki is typically polled per device. This is a list.
-            "device_name" => "name",
-            "serial" => "serial",
-            "model" => "model",
-            "mac_address" => "mac",
-            "device_status" => "status", // Mapped to a state field
-            "last_seen" => "lastSeen",
-        ];
-
-        $merakiNetworkUplinkPerformanceMapping = [
-            // This endpoint is for a network, yielding overall performance stats.
-            "wan1_loss_avg" => "timeseries.0.uplinks.0.loss.average",
-            "wan1_latency_avg" => "timeseries.0.uplinks.0.latency.average",
-            "wan2_loss_avg" => "timeseries.0.uplinks.1.loss.average",
-            "wan2_latency_avg" => "timeseries.0.uplinks.1.latency.average",
-        ];
-
-        // Define mapping arrays for Cisco ISE
-        $ciscoIseSystemInfoMapping = [
-            "ise_version" => "InternalVersion",
-            "ise_name" => "Name",
-            "ise_uptime" => "Uptime",
-            "ise_system_status" => "SystemStatus",
-        ];
-
-        $ciscoIseSessionCountMapping = [
-            "session_count" => "sessionCount",
-            "active_sessions" => "activeSessionCount",
-            "session_updates" => "sessionUpdateCount",
-        ];
-
-        // Define mapping arrays for VeloCloud
-        $veloCloudEdgeStatusMapping = [
-            "edge_name" => "name",
-            "edge_serial" => "serialNumber",
-            "edge_state" => "state", // E.g., "CONNECTED", "DISCONNECTED"
-            "edge_model" => "modelNumber",
-        ];
-
-        $veloCloudLinkPerformanceMapping = [
-            "link_name" => "displayName",
-            "link_health_score" => "healthScore",
-            "link_loss" => "linkQuality.loss",
-            "link_latency" => "linkQuality.latency",
-            "link_jitter" => "linkQuality.jitter",
-        ];
-
-        // Define mapping arrays for Juniper MIST
-        $juniperMistDeviceStatusMapping = [
-            "device_mac" => "mac",
-            "device_model" => "model",
-            "device_type" => "type", // e.g., "ap", "gateway", "switch"
-            "state" => "status", // e.g., "connected", "disconnected"
-            "last_seen" => "last_seen",
-        ];
-
-        $juniperMistSiteDeviceCountMapping = [
-            // Returns statistics for a specific site (requires site_id)
-            "device_count" => "count",
-            "ap_connected" => "status_connected_aps",
-            "switch_connected" => "status_connected_sws",
-            "gateway_connected" => "status_connected_sris",
-        ];
-
-        // Define mapping arrays for Generic Cloud Gateway/Load Balancer
-        $cloudGatewayHealthMapping = [
-            "gateway_name" => "resourceName",
-            "state" => "healthStatus", // Mapped to generic state (e.g., "Healthy", "Degraded")
-            "active_connections" => "metrics.currentConnections",
-            "throughput_in_bytes" => "metrics.bytesInPerSecond",
-            "throughput_out_bytes" => "metrics.bytesOutPerSecond",
-        ];
-
-        // Define mapping arrays for VMware vCenter/ESXi
-        $vmwareSystemHealthMapping = [
-            "health_overall" => "overall.status",
-            "cpu_usage_mhz" => "cpu.usageMhz",
-            "mem_usage_mb" => "memory.usageMB",
-            "total_mem_mb" => "memory.totalMB",
-        ];
-
-        $vmwareDatastoreMapping = [
-            "storage_descr" => "name",
-            "storage_size" => "capacity",
-            "available_capacity" => "freeSpace",
-        ];
-
-        // Define mapping arrays for F5 BIG-IP
-        $f5GlobalStatsMapping = [
-            "cpu_usage_avg" => "system.cpuInfo.oneMinAvg",
-            "mem_used" => "system.memoryInfo.memoryUsed",
-            "mem_total" => "system.memoryInfo.memoryTotal",
-            "http_requests_per_sec" => "global.clientSideTraffic.currentConnections",
-        ];
-
-        $f5VirtualServerStatusMapping = [
-            "vs_name" => "virtualServerName",
-            "vs_status" => "status.availabilityState", // Mapped to sensor state
-            "vs_connections" => "stats.currentConnections",
-        ];
-
-
-        // Define mapping arrays for the networking templates (1-5)
-        // to be encoded below.
+        // NOTE: Metric names matched LibreNMS database fields (e.g., "storage_size", "ifDescr", "state").
 
         $arubaSystemInfoMapping = [
             "hostname" => "hostname",
@@ -302,6 +39,35 @@ class RestApiTemplateSeeder extends Seeder
             "used_memory" => "memory-statistics.used-memory",
             "free_memory" => "memory-statistics.free-memory",
         ];
+
+        // Define mapping arrays for Cisco ISE
+        $ciscoIseSystemInfoMapping = [
+            "ise_version" => "InternalVersion",
+            "ise_name" => "Name",
+            "ise_uptime" => "Uptime",
+            "ise_system_status" => "SystemStatus",
+        ];
+
+        $ciscoIseSessionCountMapping = [
+            "session_count" => "sessionCount",
+            "active_sessions" => "activeSessionCount",
+            "session_updates" => "sessionUpdateCount",
+        ];
+
+        // Define mapping arrays for F5 BIG-IP
+        $f5GlobalStatsMapping = [
+            "cpu_usage_avg" => "system.cpuInfo.oneMinAvg",
+            "mem_used" => "system.memoryInfo.memoryUsed",
+            "mem_total" => "system.memoryInfo.memoryTotal",
+            "http_requests_per_sec" => "global.clientSideTraffic.currentConnections",
+        ];
+
+        $f5VirtualServerStatusMapping = [
+            "vs_name" => "virtualServerName",
+            "vs_status" => "status.availabilityState", // Mapped to sensor state
+            "vs_connections" => "stats.currentConnections",
+        ];
+
 
         $fortinetSystemStatusMapping = [
             "hostname" => "results.hostname",
@@ -335,6 +101,23 @@ class RestApiTemplateSeeder extends Seeder
             "log_disk_total_bytes" => "results.total_bytes",
         ];
 
+        // Define mapping arrays for Juniper MIST
+        $juniperMistDeviceStatusMapping = [
+            "device_mac" => "mac",
+            "device_model" => "model",
+            "device_type" => "type", // e.g., "ap", "gateway", "switch"
+            "state" => "status", // e.g., "connected", "disconnected"
+            "last_seen" => "last_seen",
+        ];
+
+        $juniperMistSiteDeviceCountMapping = [
+            // Returns statistics for a specific site (requires site_id)
+            "device_count" => "count",
+            "ap_connected" => "status_connected_aps",
+            "switch_connected" => "status_connected_sws",
+            "gateway_connected" => "status_connected_sris",
+        ];
+
         $juniperSystemUptimeMapping = [
             "uptime_seconds" => "system-uptime-information.up-time.seconds",
         ];
@@ -342,6 +125,25 @@ class RestApiTemplateSeeder extends Seeder
         $juniperInterfaceStatsMapping = [
             "ge-0/0/0_rx_bytes" => "interface-statistics.physical-interface.0.input-bytes",
             "ge-0/0/0_tx_bytes" => "interface-statistics.physical-interface.0.output-bytes",
+        ];
+
+        // Define mapping arrays for Cisco Meraki
+        $merakiOrganizationDeviceStatusMapping = [
+            // Meraki is typically polled per device. This is a list.
+            "device_name" => "name",
+            "serial" => "serial",
+            "model" => "model",
+            "mac_address" => "mac",
+            "device_status" => "status", // Mapped to a state field
+            "last_seen" => "lastSeen",
+        ];
+
+        $merakiNetworkUplinkPerformanceMapping = [
+            // This endpoint is for a network, yielding overall performance stats.
+            "wan1_loss_avg" => "timeseries.0.uplinks.0.loss.average",
+            "wan1_latency_avg" => "timeseries.0.uplinks.0.latency.average",
+            "wan2_loss_avg" => "timeseries.0.uplinks.1.loss.average",
+            "wan2_latency_avg" => "timeseries.0.uplinks.1.latency.average",
         ];
 
         $paloAltoSystemInfoMapping = [
@@ -417,6 +219,187 @@ class RestApiTemplateSeeder extends Seeder
             "ports.ifOperStatus" => "active", // Maps boolean to status
         ];
 
+			  $pureStorageArrayInfoMapping = [
+            "devices.hostname" => "items.0.name",
+            "devices.sysName" => "items.0.name",
+            "devices.version" => "items.0.version",
+            "devices.os" => "items.0.os",
+            "devices.hardware" => "items.0.model",
+            "devices.serial" => "items.0.id",
+            "devices.location" => "items.0.time_zone",
+            "total_capacity" => "capacity",
+            "data_reduction" => "data_reduction",
+            "snapshots" => "snapshots",
+            "thin_provisioning" => "thin_provisioning",
+            "total_physical" => "total_physical",
+            "total_used" => "total_used",
+            "total_provisioned" => "total_provisioned",
+            "total_reduction" => "total_reduction",
+            "used_provisioned" => "used_provisioned",
+            "name" => "name",
+        ];
+
+        $pureStorageVolumesInfoMapping = [
+            "storage.storage_descr" => "name",
+            "storage.storage_size" => "space.total_provisioned",
+            "storage.storage_used" => "space.total_physical",
+            "storage.storage_shared" => "space.snapshots",
+            "storage.block_size" => "block_size",
+            "storage.serial" => "serial",
+        ];
+
+        $pureStorageControllersStatusMapping = [
+
+            "entPhysical.entPhysicalName" => "name",
+            "entPhysical.entPhysicalModelName" => "model",
+            "entPhysical.entPhysicalFirmwareRev" => "version",
+            "entPhysical.entPhysicalSerialNum" => "serial",
+            "status" => "status",
+            "mode" => "mode",
+        ];
+
+
+        $pureStorageArrayPerformanceMapping = [
+            "rest_api_metrics.array_name" => "items.0.name",
+            "rest_api_metrics.read_bytes_per_sec" => "items.0.read_bytes_per_sec",
+            "rest_api_metrics.write_bytes_per_sec" => "items.0.write_bytes_per_sec",
+            "rest_api_metrics.usec_per_read_op" => "items.0.usec_per_read_op",
+            "rest_api_metrics.usec_per_write_op" => "items.0.usec_per_write_op",
+            "rest_api_metrics.reads_per_sec" => "items.0.reads_per_sec",
+            "rest_api_metrics.writes_per_sec" => "items.0.writes_per_sec",
+            "rest_api_metrics.queue_usec_per_read_op" => "items.0.queue_usec_per_read_op",
+            "rest_api_metrics.queue_usec_per_write_op" => "items.0.queue_usec_per_write_op",
+            "rest_api_metrics.bytes_per_read" => "items.0.bytes_per_read",
+            "rest_api_metrics.bytes_per_write" => "items.0.bytes_per_write",
+        ];
+
+        $pureStorageVolumePerformanceMapping = [
+
+            "rest_api_metrics.volume_name" => "name",
+            "rest_api_metrics.reads_per_sec" => "reads_per_sec",
+            "rest_api_metrics.writes_per_sec" => "writes_per_sec",
+            "rest_api_metrics.usec_per_read_op" => "usec_per_read_op",
+            "rest_api_metrics.usec_per_write_op" => "usec_per_write_op",
+            "rest_api_metrics.read_bytes_per_sec" => "read_bytes_per_sec",
+            "rest_api_metrics.write_bytes_per_sec" => "write_bytes_per_sec",
+            "rest_api_metrics.queue_usec_per_read_op" => "queue_usec_per_read_op",
+            "rest_api_metrics.queue_usec_per_write_op" => "queue_usec_per_write_op",
+            "rest_api_metrics.bytes_per_read" => "bytes_per_read",
+            "rest_api_metrics.bytes_per_write" => "bytes_per_write",
+        ];
+
+        $pureStorageAlertsMapping = [
+            "alert_id" => "id",
+            "alert_state" => "state",
+            "alert_code" => "code",
+            "alert_severity" => "severity",
+            "alert_created" => "created",
+            "alert_updated" => "updated",
+            "alert_issue" => "issue",
+            "alert_knowledge_base_url" => "knowledge_base_url",
+            "alert_summary" => "summary",
+        ];
+
+        $pureStorageHardwareComponentsMapping = [
+            "entPhysical.entPhysicalName" => "name",
+            "entPhysical.entPhysicalClass" => "type",
+            "entPhysical.entPhysicalModelName" => "model",
+            "entPhysical.entPhysicalSerialNum" => "serial",
+            "state" => "status", // Status mapped to generic "state" field
+            "temperature" => "temperature", // Maps to standard sensor value
+            "voltage" => "voltage", // Maps to standard sensor value
+        ];
+
+        $pureStorageDrivesMapping = [
+            "storage.storage_descr" => "name",
+            "storage.storage_type" => "type",
+            "storage.storage_size" => "capacity",
+            "storage.serial" => "serial",
+        ];
+
+        $pureStorageNetworkInterfacesMapping = [
+            "ports.ifName" => "name",
+            "ports.ifDescr" => "services.0",
+            "ports.ifType" => "interface_type",
+            "ports.ifSpeed" => "speed",
+            "ports.ifPhysAddress" => "eth.mac_address",
+            "ports.ifAdminStatus" => "enabled",
+            "ports.ifOperStatus" => "enabled",
+            "ports.ifMtu" => "eth.mtu",
+            "ports.ifAlias" => "eth.address",
+        ];
+
+        $pureStorageHostsMapping = [
+            "devices.hostname" => "name",
+            "devices.os" => "personality",
+
+
+            "devices_attribs.connection_count" => "connection_count",
+            "devices_attribs.host_group" => "host_group.name",
+            "devices_attribs.conn_status" => "port_connectivity.status",
+            "devices_attribs.conn_details" => "port_connectivity.details",
+
+
+            "storage.storage_descr" => "name", // Use host name as storage descr
+            "storage.storage_type" => "personality", // Use personality as storage type
+            "storage.storage_size" => "space.total_provisioned",
+            "storage.storage_used" => "space.total_physical",
+        ];
+
+
+        // Define mapping arrays for TrueNAS SCALE
+        $trueNasSystemInfoMapping = [
+            "hostname" => "hostname",
+            "version" => "version",
+            "uptime_seconds" => "uptime_seconds",
+            "system_product" => "system_product",
+        ];
+
+        $trueNasPoolStatusMapping = [
+            "pool_name" => "name",
+            "state" => "status", // Maps pool status to generic sensor state field (e.g., ONLINE, DEGRADED)
+            "pool_health" => "healthy", // Maps health boolean to a custom metric (e.g., True/False)
+        ];
+
+        $trueNasDatasetUsageMapping = [
+            // TrueNAS dataset properties are usually nested under "available" and "used" fields with a "value" key.
+            "storage_descr" => "id", // Dataset path/name (e.g., pool/dataset)
+            "storage_used" => "used.value", // Used bytes
+            "available_capacity" => "available.value", // Available bytes
+            "compression_ratio" => "compressionratio.value",
+        ];
+
+        // Define mapping arrays for VeloCloud
+        $veloCloudEdgeStatusMapping = [
+            "edge_name" => "name",
+            "edge_serial" => "serialNumber",
+            "edge_state" => "state", // E.g., "CONNECTED", "DISCONNECTED"
+            "edge_model" => "modelNumber",
+        ];
+
+        $veloCloudLinkPerformanceMapping = [
+            "link_name" => "displayName",
+            "link_health_score" => "healthScore",
+            "link_loss" => "linkQuality.loss",
+            "link_latency" => "linkQuality.latency",
+            "link_jitter" => "linkQuality.jitter",
+        ];
+
+
+        // Define mapping arrays for VMware vCenter/ESXi
+        $vmwareSystemHealthMapping = [
+            "health_overall" => "overall.status",
+            "cpu_usage_mhz" => "cpu.usageMhz",
+            "mem_usage_mb" => "memory.usageMB",
+            "total_mem_mb" => "memory.totalMB",
+        ];
+
+        $vmwareDatastoreMapping = [
+            "storage_descr" => "name",
+            "storage_size" => "capacity",
+            "available_capacity" => "freeSpace",
+        ];
+
 
         // Define all templates
         $templates = [
@@ -485,6 +468,84 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_type" => "mempool",
                                     // FIXED: Using json_encode()
                                     "metric_map" => $ciscoMemoryStatsMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 9. CISCO ISE (Identity Services Engine)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Cisco ISE (Identity Services Engine)",
+                "vendor" => "Cisco",
+                "description" => "Common ERS/Monitoring API endpoints for Cisco ISE (JSON based). Requires Basic Auth (ID 2).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "System Info",
+                                    "path" => "/ers/config/node/version",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $ciscoIseSystemInfoMapping,
+                                ],
+                                [
+                                    "name" => "Live Session Count",
+                                    "path" => "/admin/api/mnt/Session/Count",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $ciscoIseSessionCountMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
+            // 16. F5 BIG-IP (iControl REST)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "F5 BIG-IP (iControl REST)",
+                "vendor" => "F5 Networks",
+                "description" => "Common iControl REST API endpoints for F5 BIG-IP (JSON based). Requires Basic Auth (ID 2).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://{device_hostname}/mgmt/tm/ltm",
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Global System Performance",
+                                    "path" => "/global/stats",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $f5GlobalStatsMapping,
+                                ],
+                                [
+                                    "name" => "Virtual Server Status",
+                                    "path" => "/virtual",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom",
+                                    "resource_id_field" => "virtualServerName",
+                                    "resource_name_field" => "virtualServerName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $f5VirtualServerStatusMapping,
                                 ],
                             ],
                         ],
@@ -594,6 +655,90 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
+            // 11. JUNIPER MIST (API Token Auth)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Juniper MIST",
+                "vendor" => "Juniper Networks",
+                "description" => "Juniper MIST Cloud API endpoints (JSON based). Requires API Token Auth (Bearer token in header).",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://api.mist.com/api/v1", // Fixed base URL for MIST API
+                            "rate_limit" => 60,
+                            "endpoints" => [
+                                [
+                                    "name" => "Site Device Count",
+                                    "path" => "/sites/{siteId}/stats/devices", // Requires Site ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device", // Can be mapped to the site
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $juniperMistSiteDeviceCountMapping,
+                                ],
+                                [
+                                    "name" => "Inventory Status",
+                                    "path" => "/orgs/{orgId}/inventory", // Requires Organization ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "mac",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $juniperMistDeviceStatusMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+
+
+            // ---------------------------------------------------------------------
+            // 8. MERAKI DASHBOARD (API Key Auth)
+            // ---------------------------------------------------------------------
+            [
+                "name" => "Cisco Meraki Dashboard",
+                "vendor" => "Cisco",
+                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the X-Cisco-Meraki-API-Key header.",
+                "template_data" => [
+                    "connections" => [
+                        [
+                            "name" => "Primary Connection",
+                            "base_url" => "https://api.meraki.com/api/v1", // Meraki API uses a fixed base URL
+                            "rate_limit" => 100,
+                            "endpoints" => [
+                                [
+                                    "name" => "Organization Device Status",
+                                    "path" => "/organizations/{organizationId}/deviceStatuses", // Requires Organization ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "serial",
+                                    "resource_name_field" => "name",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $merakiOrganizationDeviceStatusMapping,
+                                ],
+                                [
+                                    "name" => "Network Uplink Performance",
+                                    "path" => "/networks/{networkId}/appliancePerformance?timespan=3600", // Requires Network ID from config
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "sensor",
+                                    "resource_id_field" => "networkId",
+                                    "resource_name_field" => "networkName",
+                                    // FIXED: Using json_encode()
+                                    "metric_map" => $merakiNetworkUplinkPerformanceMapping,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+
+            // ---------------------------------------------------------------------
             // 5. PALO ALTO PAN-OS
             // ---------------------------------------------------------------------
             [
@@ -641,126 +786,98 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 6. PURE STORAGE FLASHARRAY (OAuth2 REST API 2.x) - UPDATED MAPPINGS
+            // 17. PROXMOX VE API - NEW TEMPLATE
             // ---------------------------------------------------------------------
             [
-                "name" => "Pure Storage FlashArray (OAuth2 REST API 2.x)",
-                "vendor" => "Pure Storage",
-                "description" => "Complete Pure Storage FlashArray REST API 2.x template. Requires OAuth2 Password Flow (ID 13).",
+                "name" => "Proxmox VE API",
+                "vendor" => "Proxmox",
+                "description" => "Proxmox Virtual Environment (PVE) API endpoints (JSON based). Requires Proxmox Ticket Auth (ID 14).",
                 "template_data" => [
                     "connections" => [
                         [
                             "name" => "Primary Connection",
-                            "base_url" => "https://{device_hostname}/api/2.26",
+                            "base_url" => "https://{device_hostname}:8006/api2/json",
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
-                                    "name" => "Array Info",
-                                    "path" => "/arrays",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "device",
-                                    "resource_id_field" => "items.0.name",
-                                    "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageArrayInfoMapping,
-                                ],
-                                [
-                                    "name" => "Controllers Status",
-                                    "path" => "/controllers",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
+                                    "name" => "Cluster Status",
+                                    "path" => "/cluster/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
                                     "resource_type" => "sensor",
-                                    "resource_id_field" => "items.0.name",
-                                    "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageControllersStatusMapping,
+                                    "resource_id_field" => "id", // Cluster ID or 'name' if available
+                                    "resource_name_field" => "name",
+                                    "metric_map" => $proxmoxClusterStatusMapping,
                                 ],
-                                // Updated Volume info endpoint with new mappings
                                 [
-                                    "name" => "Volumes Info",
-                                    "path" => "/volumes",
-                                    "http_method" => "GET",
+                                    "name" => "Node List (For Discovery)",
+                                    "path" => "/nodes",
+                                    "method" => "GET",
+                                    "poll_interval" => 3600,
+                                    "resource_type" => "custom", // Used primarily for discovering nodes
+                                    "resource_id_field" => "node",
+                                    "resource_name_field" => "node",
+                                    "metric_map" => [
+                                        "node_status" => "status",
+                                        "node_name" => "node",
+                                    ],
+                                ],
+                                [
+                                    "name" => "Node Status (Device/System Metrics)",
+                                    // Requires a node name, e.g., /nodes/pve1/status. Assumes {node} is resolved.
+                                    "path" => "/nodes/{node}/status",
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "device",
+                                    "resource_id_field" => "node",
+                                    "resource_name_field" => "node",
+                                    "metric_map" => $proxmoxNodeStatusMapping,
+                                ],
+                                [
+                                    "name" => "Node Storage Status (All Storage on Node)",
+                                    // Requires a node name. E.g., /nodes/pve1/storage
+                                    "path" => "/nodes/{node}/storage",
+                                    "method" => "GET",
                                     "poll_interval" => 300,
                                     "resource_type" => "storage",
-                                    "resource_id_field" => "name",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageVolumesInfoMapping,
+                                    "resource_id_field" => "storage",
+                                    "resource_name_field" => "storage",
+                                    "metric_map" => $proxmoxStorageStatusMapping,
                                 ],
-                                // Updated Network Interfaces endpoint with new mappings
                                 [
-                                    "name" => "Network Interfaces",
-                                    "path" => "/network-interfaces",
-                                    "http_method" => "GET",
+                                    "name" => "Node Network Interfaces",
+                                    // Requires a node name. E.g., /nodes/pve1/network
+                                    "path" => "/nodes/{node}/network",
+                                    "method" => "GET",
                                     "poll_interval" => 300,
                                     "resource_type" => "port",
-                                    "resource_id_field" => "name",
+                                    "resource_id_field" => "iface",
+                                    "resource_name_field" => "iface",
+                                    "metric_map" => $proxmoxNetworkInterfaceMapping,
+                                ],
+                                [
+                                    "name" => "VM and Container Status",
+                                    // Requires a node name. E.g., /nodes/pve1/qemu/100/status/current
+                                    // Using the top-level endpoint that lists all guests for simpler polling
+                                    "path" => "/nodes/{node}/qemu", // Qemu VMs
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom", // Virtual guests are custom resources
+                                    "resource_id_field" => "vmid",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageNetworkInterfacesMapping,
+                                    "metric_map" => $proxmoxVmsAndCtsMapping,
                                 ],
-                                // UPDATED: Hosts endpoint maps to multiple native tables via 'custom'
                                 [
-                                    "name" => "Hosts",
-                                    "path" => "/hosts",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "custom",
-                                    "resource_id_field" => "name",
+                                    "name" => "LXC Container Status",
+                                    // Requires a node name. E.g., /nodes/pve1/lxc/101/status/current
+                                    // Using the top-level endpoint that lists all guests for simpler polling
+                                    "path" => "/nodes/{node}/lxc", // LXC Containers
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom", // Virtual guests are custom resources
+                                    "resource_id_field" => "vmid",
                                     "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageHostsMapping,
-                                ],
-                                // UPDATED: Array Performance now points to rest_api_metrics (Custom)
-                                [
-                                    "name" => "Array Performance",
-                                    "path" => "/arrays/performance",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
-                                    "resource_id_field" => "items.0.name",
-                                    "resource_name_field" => "items.0.name",
-                                    "metric_map" => $pureStorageArrayPerformanceMapping,
-                                ],
-                                // Updated Volume Performance endpoint with new mappings
-                                [
-                                    "name" => "Volume Performance",
-                                    "path" => "/volumes/performance",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "custom", // Changed to custom for rest_api_metrics
-                                    "resource_id_field" => "name",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageVolumePerformanceMapping,
-                                ],
-                                // Added missing Alerts endpoint
-                                [
-                                    "name" => "Alerts",
-                                    "path" => "/alerts",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "custom",
-                                    "resource_id_field" => "id",
-                                    "resource_name_field" => "code",
-                                    "metric_map" => $pureStorageAlertsMapping,
-                                ],
-                                // Added missing Hardware Components endpoint
-                                [
-                                    "name" => "Hardware Components",
-                                    "path" => "/hardware",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 600,
-                                    "resource_type" => "sensor",
-                                    "resource_id_field" => "name",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageHardwareComponentsMapping,
-                                ],
-                                // Updated Drives endpoint with new mappings
-                                [
-                                    "name" => "Drives",
-                                    "path" => "/drives",
-                                    "http_method" => "GET",
-                                    "poll_interval" => 600,
-                                    "resource_type" => "storage",
-                                    "resource_id_field" => "name",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $pureStorageDrivesMapping,
+                                    "metric_map" => $proxmoxVmsAndCtsMapping,
                                 ],
                             ],
                         ],
@@ -769,7 +886,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 8. PURE STORAGE FLASHARRAY (API Token Login) - UPDATED MAPPINGS
+            // 6. PURE STORAGE FLASHARRAY (Local Appliance API Token)
             // ---------------------------------------------------------------------
             [
                 "name" => "Pure Storage FlashArray (API Token Login)",
@@ -890,8 +1007,9 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
+
             // ---------------------------------------------------------------------
-            // 9. TRUENAS SCALE REST API
+            // 7. TRUENAS SCALE REST API
             // ---------------------------------------------------------------------
             [
                 "name" => "TrueNAS SCALE REST API",
@@ -942,87 +1060,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 10. CISCO MERAKI DASHBOARD (API Key Auth)
-            // ---------------------------------------------------------------------
-            [
-                "name" => "Cisco Meraki Dashboard",
-                "vendor" => "Cisco",
-                "description" => "Cisco Meraki Dashboard API v1 endpoints (JSON based). Requires API Key Auth (ID 4) passed in the X-Cisco-Meraki-API-Key header.",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://api.meraki.com/api/v1", // Meraki API uses a fixed base URL
-                            "rate_limit" => 100,
-                            "endpoints" => [
-                                [
-                                    "name" => "Organization Device Status",
-                                    "path" => "/organizations/{organizationId}/deviceStatuses", // Requires Organization ID from config
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "device",
-                                    "resource_id_field" => "serial",
-                                    "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $merakiOrganizationDeviceStatusMapping,
-                                ],
-                                [
-                                    "name" => "Network Uplink Performance",
-                                    "path" => "/networks/{networkId}/appliancePerformance?timespan=3600", // Requires Network ID from config
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "sensor",
-                                    "resource_id_field" => "networkId",
-                                    "resource_name_field" => "networkName",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $merakiNetworkUplinkPerformanceMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            // ---------------------------------------------------------------------
-            // 11. CISCO ISE (Identity Services Engine)
-            // ---------------------------------------------------------------------
-            [
-                "name" => "Cisco ISE (Identity Services Engine)",
-                "vendor" => "Cisco",
-                "description" => "Common ERS/Monitoring API endpoints for Cisco ISE (JSON based). Requires Basic Auth (ID 2).",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://{device_hostname}",
-                            "rate_limit" => 60,
-                            "endpoints" => [
-                                [
-                                    "name" => "System Info",
-                                    "path" => "/ers/config/node/version",
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "device",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $ciscoIseSystemInfoMapping,
-                                ],
-                                [
-                                    "name" => "Live Session Count",
-                                    "path" => "/admin/api/mnt/Session/Count",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "custom",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $ciscoIseSessionCountMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            // ---------------------------------------------------------------------
-            // 12. VELOCLOUD SD-WAN (Broadcom)
+            // 10. VELOCLOUD SD-WAN (Broadcom)
             // ---------------------------------------------------------------------
             [
                 "name" => "VeloCloud SD-WAN Orchestrator",
@@ -1056,77 +1094,6 @@ class RestApiTemplateSeeder extends Seeder
                                     "resource_name_field" => "displayName",
                                     // FIXED: Using json_encode()
                                     "metric_map" => $veloCloudLinkPerformanceMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            // ---------------------------------------------------------------------
-            // 13. JUNIPER MIST (API Token Auth)
-            // ---------------------------------------------------------------------
-            [
-                "name" => "Juniper MIST",
-                "vendor" => "Juniper Networks",
-                "description" => "Juniper MIST Cloud API endpoints (JSON based). Requires API Token Auth (Bearer token in header).",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://api.mist.com/api/v1", // Fixed base URL for MIST API
-                            "rate_limit" => 60,
-                            "endpoints" => [
-                                [
-                                    "name" => "Site Device Count",
-                                    "path" => "/sites/{siteId}/stats/devices", // Requires Site ID from config
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "device", // Can be mapped to the site
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $juniperMistSiteDeviceCountMapping,
-                                ],
-                                [
-                                    "name" => "Inventory Status",
-                                    "path" => "/orgs/{orgId}/inventory", // Requires Organization ID from config
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "device",
-                                    "resource_id_field" => "mac",
-                                    "resource_name_field" => "name",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $juniperMistDeviceStatusMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            // ---------------------------------------------------------------------
-            // 14. CLOUD LOAD BALANCER / GATEWAY (Generic)
-            // ---------------------------------------------------------------------
-            [
-                "name" => "Cloud Load Balancer (Generic)",
-                "vendor" => "Cloud Provider",
-                "description" => "A generic template for polling Cloud Load Balancer or Network Gateway metrics (JSON based). Requires OAuth 2.0 or dedicated Access Key Auth.",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://{device_hostname}/api/v1",
-                            "rate_limit" => 60,
-                            "endpoints" => [
-                                [
-                                    "name" => "Resource Health and Performance",
-                                    "path" => "/loadbalancers/{resourceId}/metrics/latest",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "device",
-                                    "resource_id_field" => "resourceName",
-                                    "resource_name_field" => "resourceName",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $cloudGatewayHealthMapping,
                                 ],
                             ],
                         ],
@@ -1176,145 +1143,7 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 16. F5 BIG-IP (iControl REST)
-            // ---------------------------------------------------------------------
-            [
-                "name" => "F5 BIG-IP (iControl REST)",
-                "vendor" => "F5 Networks",
-                "description" => "Common iControl REST API endpoints for F5 BIG-IP (JSON based). Requires Basic Auth (ID 2).",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://{device_hostname}/mgmt/tm/ltm",
-                            "rate_limit" => 60,
-                            "endpoints" => [
-                                [
-                                    "name" => "Global System Performance",
-                                    "path" => "/global/stats",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "sensor",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $f5GlobalStatsMapping,
-                                ],
-                                [
-                                    "name" => "Virtual Server Status",
-                                    "path" => "/virtual",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "custom",
-                                    "resource_id_field" => "virtualServerName",
-                                    "resource_name_field" => "virtualServerName",
-                                    // FIXED: Using json_encode()
-                                    "metric_map" => $f5VirtualServerStatusMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
 
-            // ---------------------------------------------------------------------
-            // 17. PROXMOX VE API - NEW TEMPLATE
-            // ---------------------------------------------------------------------
-            [
-                "name" => "Proxmox VE API",
-                "vendor" => "Proxmox",
-                "description" => "Proxmox Virtual Environment (PVE) API endpoints (JSON based). Requires Proxmox Ticket Auth (ID 14).",
-                "template_data" => [
-                    "connections" => [
-                        [
-                            "name" => "Primary Connection",
-                            "base_url" => "https://{device_hostname}:8006/api2/json",
-                            "rate_limit" => 60,
-                            "endpoints" => [
-                                [
-                                    "name" => "Cluster Status",
-                                    "path" => "/cluster/status",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "sensor",
-                                    "resource_id_field" => "id", // Cluster ID or 'name' if available
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $proxmoxClusterStatusMapping,
-                                ],
-                                [
-                                    "name" => "Node List (For Discovery)",
-                                    "path" => "/nodes",
-                                    "method" => "GET",
-                                    "poll_interval" => 3600,
-                                    "resource_type" => "custom", // Used primarily for discovering nodes
-                                    "resource_id_field" => "node",
-                                    "resource_name_field" => "node",
-                                    "metric_map" => [
-                                        "node_status" => "status",
-                                        "node_name" => "node",
-                                    ],
-                                ],
-                                [
-                                    "name" => "Node Status (Device/System Metrics)",
-                                    // Requires a node name, e.g., /nodes/pve1/status. Assumes {node} is resolved.
-                                    "path" => "/nodes/{node}/status",
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "device",
-                                    "resource_id_field" => "node",
-                                    "resource_name_field" => "node",
-                                    "metric_map" => $proxmoxNodeStatusMapping,
-                                ],
-                                [
-                                    "name" => "Node Storage Status (All Storage on Node)",
-                                    // Requires a node name. E.g., /nodes/pve1/storage
-                                    "path" => "/nodes/{node}/storage",
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "storage",
-                                    "resource_id_field" => "storage",
-                                    "resource_name_field" => "storage",
-                                    "metric_map" => $proxmoxStorageStatusMapping,
-                                ],
-                                [
-                                    "name" => "Node Network Interfaces",
-                                    // Requires a node name. E.g., /nodes/pve1/network
-                                    "path" => "/nodes/{node}/network",
-                                    "method" => "GET",
-                                    "poll_interval" => 300,
-                                    "resource_type" => "port",
-                                    "resource_id_field" => "iface",
-                                    "resource_name_field" => "iface",
-                                    "metric_map" => $proxmoxNetworkInterfaceMapping,
-                                ],
-                                [
-                                    "name" => "VM and Container Status",
-                                    // Requires a node name. E.g., /nodes/pve1/qemu/100/status/current
-                                    // Using the top-level endpoint that lists all guests for simpler polling
-                                    "path" => "/nodes/{node}/qemu", // Qemu VMs
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "custom", // Virtual guests are custom resources
-                                    "resource_id_field" => "vmid",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $proxmoxVmsAndCtsMapping,
-                                ],
-                                [
-                                    "name" => "LXC Container Status",
-                                    // Requires a node name. E.g., /nodes/pve1/lxc/101/status/current
-                                    // Using the top-level endpoint that lists all guests for simpler polling
-                                    "path" => "/nodes/{node}/lxc", // LXC Containers
-                                    "method" => "GET",
-                                    "poll_interval" => 60,
-                                    "resource_type" => "custom", // Virtual guests are custom resources
-                                    "resource_id_field" => "vmid",
-                                    "resource_name_field" => "name",
-                                    "metric_map" => $proxmoxVmsAndCtsMapping,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
         ];
 
         foreach ($templates as $template) {
