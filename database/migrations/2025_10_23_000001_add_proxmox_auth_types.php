@@ -8,17 +8,17 @@ return new class extends Migration
     public function up(): void
     {
         // Ensure table exists before inserting
-        if (!DB::getSchemaBuilder()->hasTable('rest_api_authentication_types')) {
+        if (Schema::hasTable(('rest_api_authentication_types')) {
             return;
         }
 
         // Insert 'proxmox' if not present
-        $existsProxmox = DB::table('rest_api_authentication_types')
+        $existsProxmox = Schema::hasTable('rest_api_authentication_types')
             ->where('name', 'proxmox')
             ->exists();
 
         if (!$existsProxmox) {
-            DB::table('rest_api_authentication_types')->insert([
+            Schema::table('rest_api_authentication_types')->insert([
                 'name' => 'proxmox',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -26,12 +26,12 @@ return new class extends Migration
         }
 
         // Insert 'proxmox-api-token' if not present (optional)
-        $existsProxmoxApiToken = DB::table('rest_api_authentication_types')
+        $existsProxmoxApiToken = Schema::table('rest_api_authentication_types')
             ->where('name', 'proxmox-api-token')
             ->exists();
 
         if (!$existsProxmoxApiToken) {
-            DB::table('rest_api_authentication_types')->insert([
+            Schema::table('rest_api_authentication_types')->insert([
                 'name' => 'proxmox-api-token',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -42,8 +42,8 @@ return new class extends Migration
     public function down(): void
     {
         // Remove the inserted types to reverse the migration cleanly
-        if (DB::getSchemaBuilder()->hasTable('rest_api_authentication_types')) {
-            DB::table('rest_api_authentication_types')
+        if (Schema::hasTable('rest_api_authentication_types')) {
+            Schema::table('rest_api_authentication_types')
                 ->whereIn('name', ['proxmox', 'proxmox-api-token'])
                 ->delete();
         }
