@@ -10,7 +10,6 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-
 class RestApiPollerService
 {
 
@@ -246,7 +245,6 @@ class RestApiPollerService
 
         $this->processWithProcessorChain($connection, $endpoint, $data);
     }
-}
 
     /**
      * Process endpoint data using the vendor processor chain
