@@ -221,8 +221,10 @@ class DataPersistence
 
         // SMART ROUTING: Physical drives should go to entPhysical, not storage
         // Check for common drive bay naming patterns
-        if (preg_match('/\.(BAY|NVB|SSD|HDD|NVME)\d+$/i', $identifier) ||
-            preg_match('/^(CH\d+|SH\d+)\.(BAY|NVB)/i', $identifier)) {
+        // TEMPORARILY DISABLED: Causing memory exhaustion on inventory page due to recursion issues
+        // TODO: Fix entPhysical hierarchy and re-enable
+        if (false && (preg_match('/\.(BAY|NVB|SSD|HDD|NVME)\d+$/i', $identifier) ||
+            preg_match('/^(CH\d+|SH\d+)\.(BAY|NVB)/i', $identifier))) {
             Log::debug("Routing physical drive to entPhysical instead of storage: {$identifier}");
 
             // Convert to entPhysical format
@@ -245,6 +247,13 @@ class DataPersistence
             }
 
             self::applyEntPhysicalEntity($deviceId, $hardwareData, $endpoint);
+            return;
+        }
+
+        // Skip physical drives - don't store them at all for now
+        if (preg_match('/\.(BAY|NVB|SSD|HDD|NVME)\d+$/i', $identifier) ||
+            preg_match('/^(CH\d+|SH\d+)\.(BAY|NVB)/i', $identifier)) {
+            Log::debug("Skipping physical drive (entPhysical disabled): {$identifier}");
             return;
         }
 
