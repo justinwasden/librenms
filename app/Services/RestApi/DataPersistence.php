@@ -418,9 +418,20 @@ class DataPersistence
         $filteredData = array_intersect_key($entityData, array_flip($validColumns));
         $filteredData['entPhysicalName'] = $identifier;
 
+        // CRITICAL: Never set entPhysicalIndex manually - it's an auto-increment primary key
+        // Remove it from filtered data to prevent issues
+        unset($filteredData['entPhysicalIndex']);
+
         // CRITICAL: Set default hierarchy fields to prevent infinite recursion on inventory page
         // If not provided, set entPhysicalContainedIn to 0 (root level)
         if (!isset($filteredData['entPhysicalContainedIn'])) {
+            $filteredData['entPhysicalContainedIn'] = 0;
+        }
+
+        // CRITICAL: If entPhysicalContainedIn equals entPhysicalIndex, reset to 0 (prevents self-reference)
+        if (isset($filteredData['entPhysicalContainedIn']) &&
+            isset($filteredData['entPhysicalIndex']) &&
+            $filteredData['entPhysicalContainedIn'] == $filteredData['entPhysicalIndex']) {
             $filteredData['entPhysicalContainedIn'] = 0;
         }
 
