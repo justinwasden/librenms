@@ -1,11 +1,11 @@
 <?php
-namespace App\\Services\\RestApi\\Auth;
+namespace App\Services\RestApi\Auth;
 
-use Illuminate\\Support\\Facades\\Http;
-use Illuminate\\Support\\Facades\\Cache;
-use Illuminate\\Support\\Facades\\Log;
-use App\\Models\\RestApiConnection;
-use App\\Models\\RestApiCredential;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use App\Models\RestApiConnection;
+use App\Models\RestApiCredential;
 
 class SessionTokenAuthStrategy implements AuthStrategyInterface
 {

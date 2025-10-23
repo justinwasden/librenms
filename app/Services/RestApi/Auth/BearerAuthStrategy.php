@@ -1,9 +1,9 @@
 <?php
-namespace App\\Services\\RestApi\\Auth;
+namespace App\Services\RestApi\Auth;
 
-use Illuminate\\Support\\Facades\\Http;
-use App\\Models\\RestApiConnection;
-use App\\Models\\RestApiCredential;
+use Illuminate\Support\Facades\Http;
+use App\Models\RestApiConnection;
+use App\Models\RestApiCredential;
 
 class BearerAuthStrategy implements AuthStrategyInterface
 {

@@ -1,8 +1,8 @@
 <?php
-namespace App\\Services\\RestApi\\Auth;
+namespace App\Services\RestApi\Auth;
 
-use App\\Models\\RestApiConnection;
-use App\\Models\\RestApiCredential;
+use App\Models\RestApiConnection;
+use App\Models\RestApiCredential;
 
 interface AuthStrategyInterface
 {

@@ -1,10 +1,10 @@
 <?php
-namespace App\\Services\\RestApi\\Auth;
+namespace App\Services\RestApi\Auth;
 
-use App\\Models\\RestApiConnection;
-use App\\Models\\RestApiCredential;
-use Illuminate\\Support\\Facades\\Log;
-use Illuminate\\Support\\Facades\\Http;
+use App\Models\RestApiConnection;
+use App\Models\RestApiCredential;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class AuthManager
 {
