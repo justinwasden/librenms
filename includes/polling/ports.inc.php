@@ -532,7 +532,7 @@ foreach ($port_stats as $ifIndex => $port) {
             continue;
         }
         if ($ports[$port_id]['deleted'] != '1') {
-            dbUpdate(['deleted' => '1'], 'ports', '`port_id' = ?', [$port_id]);
+            dbUpdate(['deleted' => '1'], 'ports', '`port_id` = ?', [$port_id]);
             $ports[$port_id]['deleted'] = '1';
         }
     }
