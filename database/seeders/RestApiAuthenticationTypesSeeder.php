@@ -11,6 +11,11 @@ class RestApiAuthenticationTypesSeeder extends Seeder
     {
         $types = [
             [
+                'name' => 'Basic Auth',
+                'description' => 'HTTP Basic authentication',
+                'required_params' => json_encode(['username', 'password']),
+            ],
+            [
                 'name' => 'API Key',
                 'description' => 'Simple API key authentication',
                 'required_params' => json_encode(['api_key', 'header_name']),
@@ -21,14 +26,19 @@ class RestApiAuthenticationTypesSeeder extends Seeder
                 'required_params' => json_encode(['token']),
             ],
             [
-                'name' => 'Basic Auth',
-                'description' => 'HTTP Basic authentication',
-                'required_params' => json_encode(['username', 'password']),
-            ],
-            [
                 'name' => 'Session Token',
                 'description' => 'Two-stage session token authentication',
                 'required_params' => json_encode(['api_token', 'login_path', 'login_method', 'api_token_header', 'session_token_header', 'token_header']),
+            ],
+            [
+                'name' => 'OAuth2',
+                'description' => 'OAuth2 authentication',
+                'required_params' => json_encode(['client_id', 'client_secret', 'token_url']),
+            ],
+            [
+                'name' => 'ProxMox API Token',
+                'description' => 'ProxMox User/Realm/ID/Secret',
+                'required_params' => json_encode(['user_realm', 'token_id', 'token_secret']),
             ],
             [
                 'name' => 'OAuth2',
