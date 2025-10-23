@@ -15,11 +15,11 @@ $system_metrics = DB::table('device_api_metrics')
     ->get()
     ->groupBy('metric_name');
 
-// Get resource utilization
-$cpu_util = $system_metrics['cpu']->first()->value ?? 0;
-$mem_util = $system_metrics['memory']->first()->value ?? 0;
-$session_count = $system_metrics['session_count']->first()->value ?? 0;
-$session_limit = $system_metrics['session_limit']->first()->value ?? 0;
+// Get resource utilization (with null safety)
+$cpu_util = isset($system_metrics['cpu']) ? ($system_metrics['cpu']->first()->value ?? 0) : 0;
+$mem_util = isset($system_metrics['memory']) ? ($system_metrics['memory']->first()->value ?? 0) : 0;
+$session_count = isset($system_metrics['session_count']) ? ($system_metrics['session_count']->first()->value ?? 0) : 0;
+$session_limit = isset($system_metrics['session_limit']) ? ($system_metrics['session_limit']->first()->value ?? 0) : 0;
 $session_percent = $session_limit > 0 ? round(($session_count / $session_limit) * 100, 2) : 0;
 
 // Get VPN tunnels
@@ -99,10 +99,10 @@ $sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 80);
                 <div class="row">
                     <div class="col-md-3">
                         <table class="table table-condensed">
-                            <tr><th>Hostname</th><td>{{ $system_metrics['hostname']->first()->string_value ?? $device['hostname'] }}</td></tr>
-                            <tr><th>Model</th><td>{{ $system_metrics['model']->first()->string_value ?? 'N/A' }}</td></tr>
-                            <tr><th>FortiOS Version</th><td>{{ $system_metrics['version']->first()->string_value ?? 'N/A' }}</td></tr>
-                            <tr><th>HA Status</th><td>{{ $system_metrics['ha_mode']->first()->string_value ?? 'Standalone' }}</td></tr>
+                            <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
+                            <tr><th>Model</th><td>{{ isset($system_metrics['model']) ? ($system_metrics['model']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
+                            <tr><th>FortiOS Version</th><td>{{ isset($system_metrics['version']) ? ($system_metrics['version']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
+                            <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
                         </table>
                     </div>
                     <div class="col-md-3">
