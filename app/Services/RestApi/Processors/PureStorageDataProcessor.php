@@ -415,7 +415,6 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
             ],
             [
                 'ipv4_prefixlen' => $cidr,
-                'ipv4_network_id' => null, // Could be populated if we have network discovery
                 'context_name' => '',
             ]
         );
