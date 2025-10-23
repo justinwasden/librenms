@@ -158,7 +158,7 @@ class Storage implements Module
 
     private function printStorage(\App\Models\Storage $storage): void
     {
-        $storage_type = str_replace(['hrStorage', 'ucd'], '', $storage->storage_type);
+        $storage_type = str_replace(['hrStorage', 'ucd'], '', $storage->storage_type ?? '');
         $message = "$storage->storage_descr ($storage_type): $storage->storage_perc%";
         if ($storage->storage_size != 100) {
             $used = Number::formatBi($storage->storage_used);
