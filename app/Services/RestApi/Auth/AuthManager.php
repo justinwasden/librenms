@@ -16,13 +16,11 @@ class AuthManager
         $this->strategies['basic'] = new BasicAuthStrategy();
         $this->strategies['bearer'] = new BearerAuthStrategy();
         $this->strategies['api_key'] = new ApiKeyAuthStrategy();
-        $this->strategies['session token'] = new SessionTokenAuthStrategy(); // Pure Storage
+        $this->strategies['session token'] = new SessionTokenAuthStrategy();
         $this->strategies['proxmox'] = new ProxmoxAuthStrategy();
-        $this->strategies['oauth2'] = new BearerAuthStrategy(); // or a dedicated OAuth2 strategy
-        $this->strategies['custom'] = new CustomHeaderAuthStrategy();
-
-        // NEW: register Proxmox API Token without disrupting others
-        $this->strategies['bearer token'] = new ProxmoxApiTokenAuthStrategy();
+        $this->strategies['oauth2'] = new BearerAuthStrategy();
+        $this->strategies['proxmox api token'] = new ProxmoxApiTokenAuthStrategy();
+        $this->strategies['bearer token'] = new BearerAuthStrategy();
     }
 
     public function getRequest(RestApiConnection $connection, ?RestApiCredential $credential, string $httpMethod)
