@@ -16,7 +16,7 @@ class AuthManager
         $this->strategies['basic'] = new BasicAuthStrategy();
         $this->strategies['bearer'] = new BearerAuthStrategy();
         $this->strategies['api_key'] = new ApiKeyAuthStrategy();
-        $this->strategies['session token'] = new SessionTokenAuthStrategy(); // Pure Storage
+        $this->strategies['session token'] = new SessionTokenAuthStrategy();
         $this->strategies['proxmox'] = new ProxmoxAuthStrategy();
         // 'oauth2' could reuse Bearer or a dedicated strategy
         $this->strategies['oauth2'] = new BearerAuthStrategy();
