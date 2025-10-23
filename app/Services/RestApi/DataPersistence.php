@@ -466,6 +466,17 @@ class DataPersistence
                 ->where('entPhysicalName', $identifier)
                 ->update($filteredData);
         } else {
+            // CRITICAL DEBUG: Log what we're about to insert
+            Log::warning("CREATING entPhysical record - THIS SHOULD NOT HAPPEN FOR PURESTORAGE", [
+                'device_id' => $deviceId,
+                'identifier' => $identifier,
+                'entPhysicalClass' => $filteredData['entPhysicalClass'] ?? 'unknown',
+                'entPhysicalIndex' => $filteredData['entPhysicalIndex'] ?? 'not set',
+                'entPhysicalContainedIn' => $filteredData['entPhysicalContainedIn'] ?? 'not set',
+                'endpoint' => $endpoint->path ?? 'unknown',
+                'stack_trace' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5),
+            ]);
+
             // Insert new record - let entPhysicalIndex auto-increment
             DB::table('entPhysical')->insert(array_merge([
                 'device_id' => $deviceId,
