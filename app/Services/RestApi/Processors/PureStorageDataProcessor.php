@@ -65,18 +65,20 @@ class PureStorageDataProcessor implements VendorDataProcessorInterface
             // Main network interfaces endpoint (port list with details)
             $this->processNetworkInterfaces($connection, $endpoint, $data);
         } else {
-            // For other PureStorage endpoints, use generic mapping if available
-            // Otherwise, just log that we handled it (to suppress warnings)
-            if (!empty($endpoint->template_response_mapping)) {
-                // Delegate to GenericDataProcessor for standard mapping
-                $genericProcessor = new \App\Services\RestApi\Processors\GenericDataProcessor();
-                $genericProcessor->process($connection, $endpoint, $data);
-            } else {
-                Log::debug("PureStorage endpoint has no mappings, skipping: {$endpoint->path}", [
-                    'device_id' => $connection->device_id,
-                    'endpoint' => $endpoint->path,
-                ]);
-            }
+            // For other PureStorage endpoints, skip processing for now
+            // DISABLED: Generic processor delegation was creating problematic entPhysical records
+            // TODO: Implement specific handlers for drives, hardware, controllers endpoints
+
+            // TEMPORARILY DISABLED - was causing entPhysical self-references
+            // if (!empty($endpoint->template_response_mapping)) {
+            //     $genericProcessor = new \App\Services\RestApi\Processors\GenericDataProcessor();
+            //     $genericProcessor->process($connection, $endpoint, $data);
+            // }
+
+            Log::debug("PureStorage endpoint has no mappings, skipping: {$endpoint->path}", [
+                'device_id' => $connection->device_id,
+                'endpoint' => $endpoint->path,
+            ]);
         }
     }
 
