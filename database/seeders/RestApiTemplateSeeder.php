@@ -370,23 +370,51 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
         $proxmoxNodeStatusMapping = [
-            "uptime_seconds" => "uptime",
-            "cpu_usage_fraction" => "cpu", // CPU usage 0..1
-            "memory_total" => "memory.total",
-            "memory_used" => "memory.used",
-            "swap_total" => "swap.total",
-            "swap_used" => "swap.used",
-            "pve_version" => "pveversion",
-            "kernel_version" => "kversion",
+            // General Device stats
+            "devices.uptime" => "uptime",
+            "devices.version" => "pveversion",
+            "devices.os" => "kversion", // Using kversion as a proxy for OS version
+            "devices.serial" => "fingerprint",
+
+            // CPU/Processor stats
+            "processor.usage" => "cpu", // CPU usage 0..1 (Needs multiplication by 100 for percentage)
+
+            // Memory pool stats (proxmox memory)
+            "mempool.total" => "memory.total",
+            "mempool.used" => "memory.used",
+            "mempool.free" => "memory.free",
+            "mempool_swap.total" => "swap.total",
+            "mempool_swap.used" => "swap.used",
         ];
 
         $proxmoxStorageStatusMapping = [
-            "storage_descr" => "storage", // Storage ID
-            "storage_size" => "total", // Total capacity
-            "storage_used" => "used", // Used capacity
-            "available_capacity" => "avail", // Available capacity
-            "storage_active" => "active", // Maps to sensor state
-            "storage_type" => "type", // Storage backend type
+            "storage.storage_descr" => "storage", // Storage ID
+            "storage.storage_size" => "total", // Total capacity
+            "storage.storage_used" => "used", // Used capacity
+            "storage.storage_avail" => "avail", // Available capacity
+            "storage.storage_type" => "type", // Storage backend type (e.g., lvm, zfs, dir)
+            "storage.storage_status" => "active", // Maps boolean to sensor state
+        ];
+
+        $proxmoxVmsAndCtsMapping = [
+            // These map to custom metrics as they represent virtual resources
+            "vm_ct.id" => "vmid",
+            "vm_ct.type" => "type", // 'qemu' or 'lxc'
+            "vm_ct.name" => "name",
+            "vm_ct.status" => "status", // 'running', 'stopped'
+            "vm_ct.cpu_usage" => "cpu", // 0..1
+            "vm_ct.mem_used" => "mem",
+            "vm_ct.mem_total" => "maxmem",
+        ];
+
+        $proxmoxNetworkInterfaceMapping = [
+            // PVE network interfaces are typically bridge/OVS/physical, we map to ports
+            "ports.ifDescr" => "name",
+            "ports.ifType" => "type", // E.g., 'bridge', 'eth', 'vlan'
+            "ports.ifSpeed" => "speed",
+            "ports.ifPhysAddress" => "mac",
+            "ports.ifAdminStatus" => "active", // Maps boolean to status
+            "ports.ifOperStatus" => "active", // Maps boolean to status
         ];
 
 
@@ -1207,33 +1235,80 @@ class RestApiTemplateSeeder extends Seeder
                                     "path" => "/cluster/status",
                                     "method" => "GET",
                                     "poll_interval" => 60,
-                                    "resource_type" => "sensor", // Cluster health status
-                                    "resource_id_field" => "name", // Cluster name or a fixed identifier
+                                    "resource_type" => "sensor",
+                                    "resource_id_field" => "id", // Cluster ID or 'name' if available
                                     "resource_name_field" => "name",
                                     "metric_map" => $proxmoxClusterStatusMapping,
                                 ],
                                 [
-                                    "name" => "Node Status (Requires Node Name)",
-                                    // NOTE: This endpoint requires a node name. For a single device poll, we assume {device_hostname} refers to a node.
+                                    "name" => "Node List (For Discovery)",
+                                    "path" => "/nodes",
+                                    "method" => "GET",
+                                    "poll_interval" => 3600,
+                                    "resource_type" => "custom", // Used primarily for discovering nodes
+                                    "resource_id_field" => "node",
+                                    "resource_name_field" => "node",
+                                    "metric_map" => [
+                                        "node_status" => "status",
+                                        "node_name" => "node",
+                                    ],
+                                ],
+                                [
+                                    "name" => "Node Status (Device/System Metrics)",
+                                    // Requires a node name, e.g., /nodes/pve1/status. Assumes {node} is resolved.
                                     "path" => "/nodes/{node}/status",
                                     "method" => "GET",
                                     "poll_interval" => 60,
                                     "resource_type" => "device",
-                                    // We can't auto-discover the node name easily from a non-cluster endpoint,
-                                    // so we'll use a placeholder and assume the system can resolve this or a specific node is targeted.
                                     "resource_id_field" => "node",
                                     "resource_name_field" => "node",
                                     "metric_map" => $proxmoxNodeStatusMapping,
                                 ],
                                 [
-                                    "name" => "Node Storage Status (Requires Node and Storage ID)",
-                                    "path" => "/nodes/{node}/storage/{storage}/status",
+                                    "name" => "Node Storage Status (All Storage on Node)",
+                                    // Requires a node name. E.g., /nodes/pve1/storage
+                                    "path" => "/nodes/{node}/storage",
                                     "method" => "GET",
                                     "poll_interval" => 300,
                                     "resource_type" => "storage",
                                     "resource_id_field" => "storage",
                                     "resource_name_field" => "storage",
                                     "metric_map" => $proxmoxStorageStatusMapping,
+                                ],
+                                [
+                                    "name" => "Node Network Interfaces",
+                                    // Requires a node name. E.g., /nodes/pve1/network
+                                    "path" => "/nodes/{node}/network",
+                                    "method" => "GET",
+                                    "poll_interval" => 300,
+                                    "resource_type" => "port",
+                                    "resource_id_field" => "iface",
+                                    "resource_name_field" => "iface",
+                                    "metric_map" => $proxmoxNetworkInterfaceMapping,
+                                ],
+                                [
+                                    "name" => "VM and Container Status",
+                                    // Requires a node name. E.g., /nodes/pve1/qemu/100/status/current
+                                    // Using the top-level endpoint that lists all guests for simpler polling
+                                    "path" => "/nodes/{node}/qemu", // Qemu VMs
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom", // Virtual guests are custom resources
+                                    "resource_id_field" => "vmid",
+                                    "resource_name_field" => "name",
+                                    "metric_map" => $proxmoxVmsAndCtsMapping,
+                                ],
+                                [
+                                    "name" => "LXC Container Status",
+                                    // Requires a node name. E.g., /nodes/pve1/lxc/101/status/current
+                                    // Using the top-level endpoint that lists all guests for simpler polling
+                                    "path" => "/nodes/{node}/lxc", // LXC Containers
+                                    "method" => "GET",
+                                    "poll_interval" => 60,
+                                    "resource_type" => "custom", // Virtual guests are custom resources
+                                    "resource_id_field" => "vmid",
+                                    "resource_name_field" => "name",
+                                    "metric_map" => $proxmoxVmsAndCtsMapping,
                                 ],
                             ],
                         ],
