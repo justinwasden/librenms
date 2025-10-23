@@ -106,58 +106,79 @@ class GenericDataProcessor implements VendorDataProcessorInterface
      * Process array-based mappings where each item is a complete entity
      * Example: volumes, ports, hardware components
      */
-    protected function processArrayMappings(RestApiConnection $connection, RestApiEndpoint $endpoint, array $mappings, array $data): void
-    {
-        // Extract the base array path (e.g., "$.items" from "$.items[*].field")
-        $baseArrayPath = null;
-        foreach ($mappings as $apiField) {
-            if (preg_match('/^(\$\.[\w.]+)\[\*\]/', $apiField, $matches)) {
-                $baseArrayPath = $matches[1];
-                break;
-            }
-        }
+    function processArrayMappings(RestApiConnection $connection, RestApiEndpoint $endpoint, array $mappings, array $data): void
+		{
+		// 1) Collect all base array paths present in mappings (e.g., "$.items", "$.results")
+		$baseArrayPaths = [];
+		foreach ($mappings as $apiField) {
+		// Match any "$.[*]" as a base array
+		if (preg_match('/^($.[^[]+)[*]/', $apiField, $matches)) {
+		$base = $matches[1];
+		$baseArrayPaths[$base] = true;
+		}
+		}
+		$baseArrayPaths = array_keys($baseArrayPaths);
 
-        if (!$baseArrayPath) {
-            return;
-        }
+		if (empty($baseArrayPaths)) {
+		    return;
+		}
 
-        // Get the array of items
-        $items = $this->extractJsonPath($data, $baseArrayPath);
-        if (!is_array($items) || empty($items)) {
-            return;
-        }
+		// 2) Process each base array group independently
+		foreach ($baseArrayPaths as $baseArrayPath) {
+		    // Extract the array of items for this base
+		    $items = $this->extractJsonPath($data, $baseArrayPath);
+		    if (!is_array($items) || empty($items)) {
+		        continue;
+		    }
 
-        // Process each item as a complete entity
-        foreach ($items as $item) {
-            $entityData = [];
-            $targetTable = null;
+		    // 3) Process each item as one or more complete entities (per table)
+		    foreach ($items as $item) {
+		        // Accumulate per-table entity data
+		        $perTable = [
+		            'devices' => [],
+		            'ports' => [],
+		            'storage' => [],
+		            'sensors' => [],
+		            'entPhysical' => [],
+		            'hardware' => [], // alias handled by DataPersistence
+		            'metrics' => [],
+		        ];
 
-            // Extract all mapped fields for this item
-            foreach ($mappings as $tableField => $apiField) {
-                // Convert array pattern to single item pattern
-                // "$.items[*].name" -> "$.name"
-                $itemFieldPath = preg_replace('/^\$\.[\w.]+\[\*\]\./', '$.', $apiField);
+		        // 4) For each mapping: if it belongs to this base, resolve value and group by table
+		        foreach ($mappings as $tableField => $apiField) {
+		            // Only process mappings that use the current base array
+		            if (!preg_match('/^' . preg_quote($baseArrayPath, '/') . '\[\*\]\./', $apiField)) {
+		                // Not part of this base array group; skip for now
+		                continue;
+		            }
 
-                $value = $this->extractJsonPath($item, $itemFieldPath);
-                if ($value === null) {
-                    continue;
-                }
+		            // Convert array pattern to per-item relative path:
+		            // "$.items[*].name" -> "$.name" (generic reducer for any base)
+		            $itemFieldPath = preg_replace('/^' . preg_quote($baseArrayPath, '/') . '\[\*\]\./', '$.', $apiField);
 
-                list($table, $field) = $this->parseTableField($tableField);
+		            // Resolve value from the item
+		            $value = $this->extractJsonPath($item, $itemFieldPath);
+		            if ($value === null || (is_array($value) && empty($value))) {
+		                continue;
+		            }
 
-                if ($targetTable === null) {
-                    $targetTable = $table;
-                }
+		            // Parse table.field
+		            [$table, $field] = $this->parseTableField($tableField);
 
-                $entityData[$field] = $value;
-            }
+		            // Assign into per-table entity
+		            $perTable[$table][$field] = $value;
+		        }
 
-            // Apply the complete entity
-            if (!empty($entityData) && $targetTable) {
-                $this->applyEntity($connection->device_id, $targetTable, $entityData, $endpoint);
-            }
-        }
-    }
+		        // 5) Apply each table entity via DataPersistence (skip empty sets)
+		        foreach ($perTable as $table => $entityData) {
+		            if (!empty($entityData)) {
+		                $this->applyEntity($connection->device_id, $table, $entityData, $endpoint);
+		            }
+		        }
+		    }
+		}
+
+		}
 
     /**
      * Process a single mapping

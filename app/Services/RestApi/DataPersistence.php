@@ -526,10 +526,14 @@ class DataPersistence
         }
 
         DB::table('sensors')->updateOrInsert(
-            [
-                'device_id' => $deviceId,
-                'sensor_descr' => $identifier,
-            ],
+            
+                [
+                	'device_id' => $deviceId,
+                	'sensor_class' => $filteredData['sensor_class'] ?? 'generic',
+                	 'sensor_type' => $filteredData['sensor_type'] ?? 'rest-api',
+                	  'sensor_descr' => $identifier
+                ],
+            
             $filteredData
         );
     }

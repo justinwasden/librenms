@@ -1,5 +1,5 @@
 <?php
-
+//app/Services/RestApi/RestApiPollerService.php
 namespace App\Services\RestApi;
 
 use App\Models\RestApiConnection;
@@ -129,11 +129,8 @@ class RestApiPollerService
     }
 
     /**
-     * Pure Storage requires POST /login with X-API-Token to get X-Auth-Token
      * This exchanges the API token for a session token
      */
-    // In RestApiPollerService.php
-
 		protected function sessionTokenLogin(RestApiConnection $connection): void
 		{
 		    // 1. Retrieve parameters from the Session Token credential configuration
@@ -189,102 +186,66 @@ class RestApiPollerService
 
 		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
 		{
+		    // Normalize URL
 		    $baseUrl = rtrim($connection->base_url, '/');
 		    $endpointPath = ltrim($endpoint->path, '/');
+		    $url = $baseUrl . '/' . $endpointPath;
 
-		    // Check if the Base URL contains the API version string
-		    $apiUrlSegment = '/api/2.26/';
+		    // Determine HTTP method (default GET)
+		    $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');
 
-		    $url = $baseUrl;
+		    // Build HTTP request with centralized auth
+		    $authManager = new \App\Services\RestApi\Auth\AuthManager();
+		    $request = $authManager->getRequest($connection, $connection->credential, $httpMethod);
 
-        if (Str::startsWith($endpointPath, 'api/')) {
+		    // Execute request by method
+		    switch ($httpMethod) {
+		        case 'POST':
+		            $response = $request->post($url, []);
+		            break;
+		        case 'PUT':
+		            $response = $request->put($url, []);
+		            break;
+		        case 'DELETE':
+		            $response = $request->delete($url);
+		            break;
+		        case 'PATCH':
+		            $response = $request->patch($url, []);
+		            break;
+		        case 'GET':
+		        default:
+		            $response = $request->get($url);
+		            break;
+		    }
 
-        	$basePathSegment = parse_url($baseUrl, PHP_URL_PATH);
+		    // Handle HTTP errors
+		    if (!$response->successful()) {
+		        if ($response->status() === 404) {
+		            \Log::info("Endpoint not available (404): {$endpoint->path}", [
+		                'device_id' => $connection->device_id,
+		                'url' => $url,
+		            ]);
+		            return;
+		        }
 
-        	if ($basePathSegment && Str::endsWith($basePathSegment, '/2.26')) {
-						$url = Str::before($baseUrl, $basePathSegment) . '/' . $endpointPath;
-					} else {
+		        throw new \Exception("HTTP {$response->status()} from {$url}");
+		    }
 
-						$url = $baseUrl . '/' . $endpointPath;
-        	}
-			} elseif (!Str::contains($baseUrl, $apiUrlSegment) && !Str::contains($endpointPath, $apiUrlSegment)) {
-			        // Case 2: Neither Base URL nor Endpoint Path contains the version (e.g., Base=https://172.16.7.5, Path=/arrays)
-			        // We assume the version is necessary and missing.
-			        $url = $baseUrl . '/api/2.26/' . $endpointPath; // <--- This assumes version 2.26 is required
+		    // Decode JSON
+		    $data = $response->json();
+		    if ($data === null) {
+		        \Log::warning("API response was null/empty for {$endpoint->path}", [
+		            'device_id' => $connection->device_id,
+		            'endpoint' => $endpoint->path,
+		            'status' => $response->status(),
+		            'body' => substr($response->body(), 0, 200),
+		        ]);
+		        return;
+		    }
 
-			    } else {
-			        // Case 3: Standard combination (Base URL contains version, Path does not)
-			        $url = $baseUrl . '/' . $endpointPath;
-			    }
-
-        // Build HTTP request with authentication
-        $request = Http::withOptions([
-            'verify' => !$connection->disable_ssl_verify,
-            'timeout' => 30,
-        ]);
-
-        // Apply credentials/auth headers
-        if ($connection->credential) {
-            $authType = strtolower($connection->credential->authenticationType->name ?? '');
-
-            // Session token auth (e.g., Pure Storage): use cached token from login
-            if ($authType === 'session token' && isset($this->authTokens[$connection->id])) {
-                // Get the configured session token header name from credential params
-                $params = $connection->credential->getParamsArray();
-                $sessionTokenHeader = $params['token_header'] ?? 'X-Auth-Token';
-
-                Log::debug("Using cached session token for {$connection->device->hostname}", [
-                    'connection_id' => $connection->id,
-                    'header_name' => $sessionTokenHeader,
-                    'token_preview' => substr($this->authTokens[$connection->id], 0, 20) . '...',
-                    'endpoint' => $endpoint->path,
-                ]);
-
-                $request = $request->withHeaders([
-                    $sessionTokenHeader => $this->authTokens[$connection->id],
-                ]);
-            } else {
-                // Other auth types
-                Log::debug("Using non-session-token auth for {$connection->device->hostname}", [
-                    'auth_type' => $authType,
-                    'has_cached_token' => isset($this->authTokens[$connection->id]),
-                    'endpoint' => $endpoint->path,
-                ]);
-                $request = $this->applyAuthentication($request, $connection->credential);
-            }
-        }
-
-        $response = $request->get($url);
-
-        if (!$response->successful()) {
-            // Log 404s as info (endpoint may not be available on all devices)
-            if ($response->status() === 404) {
-                Log::info("Endpoint not available (404): {$endpoint->path}", [
-                    'device_id' => $connection->device_id,
-                    'url' => $url,
-                ]);
-                return; // Skip this endpoint gracefully
-            }
-
-            throw new \Exception("HTTP {$response->status()} from {$url}");
-        }
-
-        $data = $response->json();
-
-        // Check if response is null or empty
-        if ($data === null) {
-            Log::warning("API response was null/empty for {$endpoint->path}", [
-                'device_id' => $connection->device_id,
-                'endpoint' => $endpoint->path,
-                'status' => $response->status(),
-                'body' => substr($response->body(), 0, 200),
-            ]);
-            return;
-        }
-
-        // NEW: Use processor chain to handle endpoint data
-        $this->processWithProcessorChain($connection, $endpoint, $data);
-    }
+		    // Process via vendor processor chain
+		    $this->processWithProcessorChain($connection, $endpoint, $data);
+		}
 
     /**
      * Process endpoint data using the vendor processor chain
@@ -703,7 +664,7 @@ class RestApiPollerService
     }
 
     /**
-     * Apply authentication to HTTP request (for non-Pure Storage APIs)
+     * Apply authentication to HTTP request
      */
     protected function applyAuthentication($request, $credential)
     {
