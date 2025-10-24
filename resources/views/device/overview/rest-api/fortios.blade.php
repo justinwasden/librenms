@@ -7,7 +7,6 @@
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
 
-include 'includes/html/graphs.inc.php';
 
 // Get system information
 $system_metrics = DB::table('device_api_metrics')
@@ -25,12 +24,10 @@ $system_model = DB::table('entPhysical')
 // --- 1. CPU Utilization ---
 // LibreNMS typically aggregates CPU usage into $device->perc_cpu.
 $cpu_util = $device->perc_cpu ?? 0;
-$cpu_bg = get_percentage_colours($cpu_util);
 
 // --- 2. Memory Utilization ---
 // LibreNMS typically aggregates memory usage into $device->perc_mem.
 $mem_util = $device->perc_mem ?? 0;
-$mem_bg = get_percentage_colours($mem_util);
 
 // --- 3. Session Utilization (Requires Fortinet-specific OID/Sensor) ---
 
@@ -52,7 +49,6 @@ if ($session_sensor) {
     $session_percent = 0;
 }
 
-$sess_bg = get_percentage_colours($session_percent);
 
 // Get VPN tunnels
 $vpn_tunnels = DB::table('device_api_metrics')
