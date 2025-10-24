@@ -20,12 +20,43 @@ $system_model = DB::table('entPhysical')
     ->where('entPhysicalClass', 'chassis')
     ->first();
 
-// Get resource utilization (with null safety)
-$cpu_util = isset($system_metrics['cpu']) ? ($system_metrics['cpu']->first()->value ?? 0) : 0;
-$mem_util = isset($system_metrics['memory']) ? ($system_metrics['memory']->first()->value ?? 0) : 0;
-$session_count = isset($system_metrics['session_count']) ? ($system_metrics['session_count']->first()->value ?? 0) : 0;
-$session_limit = isset($system_metrics['session_limit']) ? ($system_metrics['session_limit']->first()->value ?? 0) : 0;
-$session_percent = $session_limit > 0 ? round(($session_count / $session_limit) * 100, 2) : 0;
+// --- 1. CPU Utilization ---
+// LibreNMS typically aggregates CPU usage into $device->perc_cpu.
+$cpu_util = $device->perc_cpu;
+$cpu_bg = get_percentage_colours($cpu_util);
+
+// --- 2. Memory Utilization ---
+// LibreNMS typically aggregates memory usage into $device->perc_mem.
+$mem_util = $device->perc_mem;
+$mem_bg = get_percentage_colours($mem_util);
+
+// --- 3. Session Utilization (Requires Fortinet-specific OID/Sensor) ---
+
+// Find the Session Sensor (this is an example, the specific sensor name may vary)
+$session_sensor = \LibreNMS\DB\Queries::getRow('SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? AND sensor_type = ? LIMIT 1', [$device->device_id, 'count', 'sessions']);
+
+if ($session_sensor) {
+    $session_count = (int)$session_sensor['sensor_value'];
+    // The session limit (max-session-limit) is sometimes stored in sensor_limit,
+    // or you might have to hardcode it/pull it from a custom variable.
+    $session_limit = (int)$session_sensor['sensor_limit'];
+
+    // Fallback/Placeholder if limit isn't in the sensor data
+    if ($session_limit === 0) {
+        // You would need a method to get the actual session limit for the model.
+        // For demonstration, a placeholder or device-specific query is needed here.
+        $session_limit = 200000; // Example placeholder limit
+    }
+
+    $session_percent = ($session_limit > 0) ? round(($session_count / $session_limit) * 100, 1) : 0;
+} else {
+    // Fallback if sensor is not found
+    $session_count = 0;
+    $session_limit = 1;
+    $session_percent = 0;
+}
+
+$sess_bg = get_percentage_colours($session_percent);
 
 // Get VPN tunnels
 $vpn_tunnels = DB::table('device_api_metrics')
