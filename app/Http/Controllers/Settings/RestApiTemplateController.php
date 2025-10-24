@@ -79,8 +79,10 @@ class RestApiTemplateController extends Controller
 		    // Check if we're in the Connection Modal scenario (partial update)
 		    if ($request->input('action_type') === 'update_connection_only') {
 
-		        // --- LOGIC FOR CONNECTION MODAL SUBMISSION ---
-
+		        $validated = $request->validate([
+		            'connection_data' => 'required|array',
+    						'connection_data.port' => 'nullable|integer|min:1|max:65535',
+		        ]);
 		        // 1. Load existing template data safely
 		        $existingTemplateData = is_array($template->template_data)
 		            ? $template->template_data
