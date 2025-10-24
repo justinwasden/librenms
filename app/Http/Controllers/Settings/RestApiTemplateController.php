@@ -65,64 +65,66 @@ class RestApiTemplateController extends Controller
 
     public function update(Request $request, RestApiTemplate $template)
 		{
+		    // The main update validation handles all fields
 		    $validated = $request->validate([
 		        'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
 		        'vendor' => 'nullable|string|max:255',
 		        'resource_type' => 'nullable|string|max:50',
-		        'template_data' => 'required', // Holds array (from form fields) OR JSON string (from textarea)
+		        'template_data' => 'required',
 		        'description' => 'nullable|string',
 		    ]);
 
 		    $newTemplateData = $validated['template_data'];
 
-		    if (is_string($newTemplateData)) {
-		        // Case 1: Full JSON textarea was edited. Decode and use directly.
-		        $newTemplateData = json_decode($newTemplateData, true);
-		        if (is_null($newTemplateData)) {
-		             throw new \Exception('Invalid JSON provided for template_data.');
-		        }
-		    } else {
-		        // Case 2: Partial data submitted from Connection/Endpoint forms (PHP array).
+		    // Check if we're in the Connection Modal scenario (partial update)
+		    if ($request->input('action_type') === 'update_connection_only') {
 
-		        // 1. Load existing template data to preserve Endpoints/other connections
-		        $existingTemplateData = $template->template_data;
-		        if (!is_array($existingTemplateData)) {
-		            $existingTemplateData = json_decode($existingTemplateData, true) ?? [];
-		        }
+		        // --- LOGIC FOR CONNECTION MODAL SUBMISSION ---
 
-		        // 2. Process submitted connection data for connections[0]
-		        if (isset($newTemplateData['connections'][0])) {
-		            $submittedConnData = $newTemplateData['connections'][0];
+		        // 1. Load existing template data safely
+		        $existingTemplateData = is_array($template->template_data)
+		            ? $template->template_data
+		            : json_decode($template->template_data, true) ?? [];
 
-		            // 3. Check for and decode the hidden Endpoints JSON string
-		            if (isset($submittedConnData['endpoints_data'])) {
-		                $endpointsJson = $submittedConnData['endpoints_data'];
-		                unset($submittedConnData['endpoints_data']); // Remove the raw JSON string key
+		        // 2. Extract submitted connection data (which is a PHP array)
+		        $submittedConnData = $newTemplateData['connections'][0];
 
-		                $decodedEndpoints = json_decode($endpointsJson, true);
+		        // 3. Process the hidden Endpoints JSON if it exists
+		        if (isset($submittedConnData['endpoints_data'])) {
+		            $endpointsJson = $submittedConnData['endpoints_data'];
+		            unset($submittedConnData['endpoints_data']);
 
-		                if (is_array($decodedEndpoints)) {
-		                    // Merge the clean, full endpoint array back into the connection data
-		                    $submittedConnData['endpoints'] = $decodedEndpoints;
-		                } else {
-		                    \Log::warning("Could not decode endpoints_data JSON: " . Str::limit($endpointsJson, 100));
-		                }
+		            $decodedEndpoints = json_decode($endpointsJson, true);
+
+		            if (is_array($decodedEndpoints)) {
+		                // Insert the full endpoint array back into the submitted connection data
+		                $submittedConnData['endpoints'] = $decodedEndpoints;
 		            }
-
-		            // 4. Merge the submitted connection data (including the updated Base URL)
-		            //    with the existing connection data, ensuring new values overwrite old ones.
-		            $existingTemplateData['connections'][0] = array_merge(
-		                $existingTemplateData['connections'][0] ?? [],
-		                $submittedConnData
-		            );
 		        }
+
+		        // 4. Safely merge the updated Base URL and other fields into the existing structure
+		        $existingTemplateData['connections'][0] = array_merge(
+		            $existingTemplateData['connections'][0] ?? [],
+		            $submittedConnData
+		        );
 
 		        $newTemplateData = $existingTemplateData;
+
+		    } else {
+		        // --- LOGIC FOR MAIN FORM SUBMISSION (FULL JSON) ---
+
+		        // If it's a string, it came from the main JSON textarea, so decode it.
+		        if (is_string($newTemplateData)) {
+		            $newTemplateData = json_decode($newTemplateData, true);
+		            if (is_null($newTemplateData)) {
+		                 throw new \Exception('Invalid JSON provided for template_data.');
+		            }
+		        }
 		    }
 
-		    // Check if the overall structure is valid before saving
+		    // Final save logic (common to both submission types)
 		    if (!is_array($newTemplateData) || !isset($newTemplateData['connections'])) {
-		         throw new \Exception('Template data structure is invalid after merge.');
+		         throw new \Exception('Template data structure is invalid after processing.');
 		    }
 
 		    $validated['template_data'] = $this->cleanTemplateMappings($newTemplateData);
