@@ -15,10 +15,10 @@ $system_metrics = DB::table('device_api_metrics')
     ->get()
     ->groupBy('metric_name');
 
-$system_model =  DB::table('entPhysical')
+$system_model = DB::table('entPhysical')
     ->where('device_id', $device['device_id'])
     ->where('entPhysicalClass', 'chassis')
-    ->get();
+    ->first();
 
 // Get resource utilization (with null safety)
 $cpu_util = isset($system_metrics['cpu']) ? ($system_metrics['cpu']->first()->value ?? 0) : 0;
@@ -105,7 +105,7 @@ $sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 80);
                     <div class="col-md-3">
                         <table class="table table-condensed">
                             <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
-                            <tr><th>Model</th><td>{{ isset($system_model['entPhysicalModelName']) ? ($system_model['entPhysicalModelName']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
+                            <tr><th>Model</th><td>{{ $system_model->entPhysicalModelName ?? 'N/A' }}</td></tr>
                             <tr><th>FortiOS Version</th><td>{{ isset($system_metrics['version']) ? ($system_metrics['version']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
                             <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
                         </table>
