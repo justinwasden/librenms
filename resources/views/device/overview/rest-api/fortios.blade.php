@@ -34,7 +34,7 @@ $mem_util = $device->perc_mem ?? 0;
 // --- 3. Session Utilization (Requires Fortinet-specific OID/Sensor) ---
 
 // Find the Session Sensor (this is an example, the specific sensor name may vary)
-$session_sensor = Queries::getRow( // <-- Now uses the imported class name
+$session_sensor = \LibreNMS\DB\Queries::getRow(
     'SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? LIMIT 1',
     [$device->device_id, 'session']
 );
