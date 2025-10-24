@@ -122,10 +122,9 @@ class RestApiPollerService
 
 		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
     {
-        // Resolve Proxmox placeholders if present
-        $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
-        $baseUrl = rtrim($connection->base_url, '/');
-        $url = $baseUrl . '/' . ltrim($resolvedPath, '/');
+		    // Resolve Proxmox placeholders (if any)
+		    $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
+		    $baseUrl = rtrim($connection->base_url, '/');
 
         // Determine HTTP method (prefer http_method, fallback to method)
         $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');
