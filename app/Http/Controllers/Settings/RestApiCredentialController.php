@@ -4,16 +4,14 @@
 // The correct namespace for this file's location
 namespace App\Http\Controllers\Settings;
 
-// FIX: Import the base Controller class from its root namespace
 use App\Http\Controllers\Controller;
-
 use App\Models\Device;
 use App\Models\RestApiCredential;
 use App\Models\RestApiTemplate;
 use App\Models\RestApiDeviceTemplate;
 use App\Models\RestApiDeviceMapping;
 use App\Models\RestApiConnection;
-use App\Models\RestApiAuthenticationType; // Assumed from previous context
+use App\Models\RestApiAuthenticationType; 
 use App\Services\RestApi\Auth\AuthManager;
 use Illuminate\Http\Request;
 use Illuminate\View\View;

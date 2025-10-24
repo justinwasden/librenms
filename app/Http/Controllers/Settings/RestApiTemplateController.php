@@ -348,49 +348,53 @@ class RestApiTemplateController extends Controller
     {
         ob_start();
         try {
-            $templateId = $request->input('template_id');
-            $connIdx = $request->input('connection_index');
-            $epIdx = $request->input('endpoint_index');
-            $deviceId = $request->input('device_id');
-            $credentialId = $request->input('credential_id');
-
-            if (!$templateId || !is_numeric($connIdx) || !is_numeric($epIdx)) {
-                ob_end_clean();
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Missing required parameters']);
-                exit();
-            }
-
+//            $templateId = $request->input('template_id');
+//            $connIdx = $request->input('connection_index');
+//            $epIdx = $request->input('endpoint_index');
+//            $deviceId = $request->input('device_id');
+//            $credentialId = $request->input('credential_id');
+//
+//            if (!$templateId || !is_numeric($connIdx) || !is_numeric($epIdx)) {
+//                ob_end_clean();
+//                header('Content-Type: application/json');
+//                echo json_encode(['success' => false, 'error' => 'Missing required parameters']);
+//                exit();
+//            }
+//
             $template = RestApiTemplate::findOrFail($templateId);
             \Log::info('getTemplatePreview called with device_id=' . $deviceId . ', credential_id=' . $credentialId);
 
-            $templateData = is_array($template->template_data)
+            $templateData = $template->template_data;
                 ? $template->template_data
                 : json_decode($template->template_data, true);
 
-            if (!isset($templateData['connections'][$connIdx])) {
-                ob_end_clean();
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Connection not found']);
-                exit();
+						if (!is_array($templateData)) {
+                 throw new \Exception('Template data is invalid or missing.');
             }
 
+            if (!isset($templateData['connections'][$connIdx])) {
+//                ob_end_clean();
+//                header('Content-Type: application/json');
+//                echo json_encode(['success' => false, 'error' => 'Connection not found']);
+//                exit();
+//            }
+
             if (!isset($templateData['connections'][$connIdx]['endpoints'][$epIdx])) {
-                ob_end_clean();
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Endpoint not found']);
-                exit();
+ //               ob_end_clean();
+ //               header('Content-Type: application/json');
+ //               echo json_encode(['success' => false, 'error' => 'Endpoint not found']);
+ //               exit();
             }
 
             $connData = $templateData['connections'][$connIdx];
             $endpointData = $connData['endpoints'][$epIdx];
 
             if (empty($endpointData['path'])) {
-                ob_end_clean();
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Endpoint path required']);
-                exit();
-            }
+//                ob_end_clean();
+//                header('Content-Type: application/json');
+//                echo json_encode(['success' => false, 'error' => 'Endpoint path required']);
+//                exit();
+//            }
 
             if ($deviceId) {
                 $device = \App\Models\Device::findOrFail($deviceId);
