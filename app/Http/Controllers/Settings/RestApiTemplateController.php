@@ -87,7 +87,8 @@ class RestApiTemplateController extends Controller
 		        // We must merge the changes with the existing, full template data.
 
 		        $existingTemplateData = $template->template_data; // This is already an array/object in the model
-
+						\Log::info('Existing Template Data:', $existingTemplateData);
+						\Log::info('New Template Data:', $newTemplateData);
 		        // Ensure $existingTemplateData is an array before merging
 		        if (!is_array($existingTemplateData)) {
 		            $existingTemplateData = json_decode($existingTemplateData, true) ?? [];
