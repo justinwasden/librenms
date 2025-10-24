@@ -21,9 +21,9 @@ $mem_data = DB::table('mempools')
     ->where('mempool_descr', 'LIKE', '%memory%') // Use a general search to capture Physical memory (system)
     ->first();
 
-$total_mem = ($mem_data->mempool_used ?? 0) + ($mem_data->mempool_free ?? 100);
+$total_mem = ($mem_data->mempool_used ?? 100) + ($mem_data->mempool_free ?? 0);
 $used_mem = $mem_data->mempool_used ?? 0;
-$mem_percent = ($total_mem > 0) ? round(($used_mem / $total_mem) * 100, 2) : 0;
+$mem_percent = ($total_mem > 0) ? round(($used_mem / $total_mem) * 100, 2) : 100;
 $mem_bg = Color::percentage($mem_percent, 80);
 
 // 3. CPU Data from processors
