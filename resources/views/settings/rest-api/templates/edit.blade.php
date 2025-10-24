@@ -518,6 +518,48 @@
 @include('settings.rest-api.templates.partials.device-selector-modal')
 
 <script>
+
+document.addEventListener('DOMContentLoaded', function() {
+    const saveButton = document.getElementById('saveConnectionButton');
+    if (saveButton) {
+        saveButton.addEventListener('click', function(e) {
+            // Stop the default submission temporarily
+            e.preventDefault();
+
+            // Get the endpointManager instance (assuming it is initialized)
+            const endpointManagerInstance = document.querySelector('#endpointsModal [x-data*=endpointManager]')?.__x?.$data;
+
+            if (endpointManagerInstance && endpointManagerInstance.endpoints) {
+                // 1. Get the current endpoints array
+                const currentEndpoints = endpointManagerInstance.endpoints;
+
+                // 2. Extract the actual endpoint data structures (removing alpine metadata)
+                const connectionData = { endpoints: [] };
+                currentEndpoints.forEach(ep => {
+                    const cleanEp = {
+                        name: ep.name,
+                        path: ep.path,
+                        method: ep.method,
+                        resource_type: ep.resource_type,
+                        poll_interval: ep.poll_interval,
+                        enabled: ep.enabled,
+                        description: ep.description,
+                        // Convert JSON string back to object if possible, otherwise use string
+                        metric_map: ep.metric_map_json ? JSON.parse(ep.metric_map_json) : (ep.metric_map || null)
+                    };
+                    connectionData.endpoints.push(cleanEp);
+                });
+
+                // 3. Serialize the clean endpoint data and put it in the hidden field
+                const endpointsJson = JSON.stringify(connectionData.endpoints);
+                document.getElementById('connection_endpoints_json_input').value = endpointsJson;
+            }
+
+            // 4. Submit the form manually
+            this.closest('form').submit();
+        });
+    }
+});
 window.templateEditor = function() {
     return { init() { console.log('Template Editor Loaded'); } }
 }
