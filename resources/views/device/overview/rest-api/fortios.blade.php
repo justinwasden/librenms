@@ -18,7 +18,6 @@ $system_metrics = DB::table('device_api_metrics')
 $system_model =  DB::table('entPhysical')
     ->where('device_id', $device['device_id'])
     ->where('entPhysicalClass', 'chassis')
-    ->orderBy('collected_at', 'desc')
     ->get();
 
 // Get resource utilization (with null safety)
