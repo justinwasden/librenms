@@ -34,24 +34,25 @@ $mem_util = $device->perc_mem ?? 0;
 
 // Find the Session Sensor (this is an example, the specific sensor name may vary)
 $session_sensor = DB::selectOne(
-    'SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? LIMIT 1',
+    'SELECT sensor_current, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? LIMIT 1',
     [$device->device_id, 'session']
 );
 
 $session_sensor = (array) $session_sensor;
 
 if ($session_sensor) {
-    $session_count = (int)$session_sensor['sensor_value'];
+    // *** FIX: Changed array index from 'sensor_value' to 'sensor_current' ***
+    $session_count = (int)$session_sensor['sensor_current'];
+
     // Use the sensor_limit as the total session capacity
     $session_limit = (int)$session_sensor['sensor_limit'] ?: 1;
     $session_percent = ($session_limit > 0) ? round(($session_count / $session_limit) * 100, 1) : 0;
 } else {
-    // Fallback values if the session sensor is not found
+    // Fallback values if the sensor is not found
     $session_count = 0;
     $session_limit = 1;
     $session_percent = 0;
 }
-
 
 // Get VPN tunnels
 $vpn_tunnels = DB::table('device_api_metrics')
