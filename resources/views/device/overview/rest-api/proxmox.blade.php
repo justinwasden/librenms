@@ -95,24 +95,31 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         </table>
                     </div>
 
-                    {{-- CPU Utilization (Centered) --}}
+ 										{{-- CPU Utilization (Centered) --}}
                     <div class="col-md-4 text-center">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(200, 20, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        {{-- FIX 1: Centered the bar --}}
+                        <div class="d-inline-block">
+                            {!! print_percentage_bar(200, 40, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        </div>
                         <p class="text-muted small mt-2">
-                            {{ number_format($cpu_util, 1) }}% Max/Avg Usage
+                            {{ $cpu_util_formatted }}% Max/Avg Usage
                         </p>
                     </div>
 
                     {{-- Physical Memory Usage (Centered) --}}
                     <div class="col-md-4 text-center">
                         <h4>Physical Memory Usage</h4>
-                        @if($total_mem > 0)
-                            {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
+                        @if($mem_data)
+                            {{-- FIX 1: Centered the bar --}}
+                            <div class="d-inline-block">
+                                {!! print_percentage_bar(200, 40, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
+                            </div>
                             <p class="text-muted small mt-2">
-                                {{ number_format($mem_percent, 2) }}% Utilization
+                                {{ $mem_percent_formatted }}% Utilization
                             </p>
                         @else
+                            {{-- The mem_data object is null, showing a more accurate message --}}
                             <p class="text-muted">Memory data not available in mempools table.</p>
                         @endif
                     </div>
