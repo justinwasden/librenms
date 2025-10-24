@@ -113,9 +113,9 @@ $interfaces = DB::table('device_api_metrics')
     ->orderBy('resource_name')
     ->get();
 
-$cpu_bg  = \LibreNMS\Util\Color::percentage($cpu_util, 70);
-$mem_bg  = \LibreNMS\Util\Color::percentage($mem_util, 80);
-$sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 90);
+$cpu_bg  = Color::percentage($cpu_util, 70);
+$mem_bg  = Color::percentage($mem_util, 80);
+$sess_bg = Color::percentage($session_percent, 90);
 
 
 @endphp
