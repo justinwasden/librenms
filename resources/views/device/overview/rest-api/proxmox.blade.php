@@ -27,17 +27,6 @@ $has_metrics = $storage->count() > 0;
 
 @endphp
 
-@if(!$has_metrics)
-<div class="row">
-    <div class="col-md-12">
-        <div class="alert alert-info">
-            <i class="fa fa-info-circle"></i>
-            <strong>No REST API metrics found for Proxmox.</strong>
-            <br>Ensure endpoints are configured and polled successfully.
-        </div>
-    </div>
-</div>
-@else
 
 {{-- TOP SYSTEM METRICS ROW --}}
 {{-- Node Overview (3 Columns) --}}
@@ -116,4 +105,3 @@ $has_metrics = $storage->count() > 0;
 </div>
 @endif
 
-@endif
