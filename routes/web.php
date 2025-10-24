@@ -199,7 +199,7 @@ Route::middleware(['auth'])->group(function () {
          ->name('templates.update-endpoint');
 		    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
          ->name('templates.delete-endpoint');
-         oute::post('templates/{template}/update-connection', [RestApiTemplateController::class, 'updateConnection'])
+         Route::post('templates/{template}/update-connection', [RestApiTemplateController::class, 'updateConnection'])
     ->name('templates.update-connection');
 
 
