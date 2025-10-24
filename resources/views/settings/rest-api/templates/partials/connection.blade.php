@@ -1,6 +1,19 @@
 @php
+use App\Models\RestApiCredential;
+
 $connections = $template->template_data['connections'] ?? [];
 $connection = $connections[0] ?? [];
+
+// Get the credential object if one is selected, to determine the auth type
+$selectedCredential = null;
+if (!empty($connection['credential_id'])) {
+    $selectedCredential = RestApiCredential::find($connection['credential_id']);
+}
+$authType = $selectedCredential->authenticationType->name ?? 'None';
+$authTypeSlug = \Illuminate\Support\Str::slug($authType, '-');
+
+// This logic can be removed if the template structure doesn't store login paths
+// but we'll leave the code structure for dynamic parameters here.
 @endphp
 
 <div class="row">
@@ -20,7 +33,7 @@ $connection = $connections[0] ?? [];
     <div class="col-md-6">
         <div class="form-group">
             <label>Credential</label>
-            <select class="form-control" name="template_data[connections][0][credential_id]">
+            <select class="form-control" name="template_data[connections][0][credential_id]" id="connection_credential_id">
                 <option value="">None (No Authentication)</option>
                 @foreach(\App\Models\RestApiCredential::orderBy('name')->get() as $credential)
                     <option value="{{ $credential->id }}"
@@ -48,100 +61,32 @@ $connection = $connections[0] ?? [];
     </small>
 </div>
 
-{{-- Login Endpoint Configuration --}}
-<div class="card bg-light mb-3">
-    <div class="card-header">
-        <h6 class="mb-0">
-            <i class="fas fa-sign-in-alt"></i> Login/Authentication Endpoint
-            <small class="text-muted">(Optional - for session-based auth)</small>
-        </h6>
-    </div>
-    <div class="card-body">
-        <div class="alert alert-info mb-3">
-            <i class="fas fa-info-circle"></i>
-            <strong>When to use this:</strong> If your API requires logging in to get a session token
-            (like PureStorage's <code>/api/2.26/login</code>), configure it here.
-        </div>
-
-        <div class="row">
-            <div class="col-md-8">
-                <div class="form-group">
-                    <label>Login Path</label>
-                    <input type="text"
-                           class="form-control"
-                           name="template_data[connections][0][login_path]"
-                           value="{{ $connection['login_path'] ?? '' }}"
-                           placeholder="/api/2.26/login">
-                    <small class="form-text text-muted">
-                        Path to the login endpoint (appended to Base URL).
-                        Example: <code>/api/2.26/login</code>
-                    </small>
+{{-- Dynamic Credential Parameters Section --}}
+{{-- This section will dynamically display custom connection parameters ONLY if the linked credential type requires them --}}
+<div id="connection_specific_params">
+    @if ($authTypeSlug === 'session-token' || $authTypeSlug === 'proxmox' )
+        <div class="card bg-light mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-sign-in-alt"></i> Auth Configuration (<span class="text-primary">{{ $authType }}</span>)
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    The credential type **{{ $authType }}** requires connection details.
                 </div>
-            </div>
 
-            <div class="col-md-4">
-                <div class="form-group">
-                    <label>Login Method</label>
-                    <select class="form-control" name="template_data[connections][0][login_method]">
-                        <option value="POST" {{ ($connection['login_method'] ?? 'POST') === 'POST' ? 'selected' : '' }}>POST</option>
-                        <option value="GET" {{ ($connection['login_method'] ?? '') === 'GET' ? 'selected' : '' }}>GET</option>
-                        <option value="PUT" {{ ($connection['login_method'] ?? '') === 'PUT' ? 'selected' : '' }}>PUT</option>
-                    </select>
-                    <small class="form-text text-muted">HTTP method for login</small>
-                </div>
+                {{-- Include a generalized form for auth-specific connection params --}}
+                @include('settings.rest-api.templates.partials.conn-auth-params', [
+                    'connection' => $connection,
+                    'authType' => $authTypeSlug
+                ])
             </div>
         </div>
-
-        <div class="row">
-            <div class="col-md-6">
-                <div class="form-group">
-                    <label>Session Token Header</label>
-                    <input type="text"
-                           class="form-control"
-                           name="template_data[connections][0][session_token_header]"
-                           value="{{ $connection['session_token_header'] ?? '' }}"
-                           placeholder="x-auth-token">
-                    <small class="form-text text-muted">
-                        Header name where session token is returned
-                    </small>
-                </div>
-            </div>
-
-            <div class="col-md-6">
-                <div class="form-group">
-                    <label>API Token Header</label>
-                    <input type="text"
-                           class="form-control"
-                           name="template_data[connections][0][api_token_header]"
-                           value="{{ $connection['api_token_header'] ?? '' }}"
-                           placeholder="api-token">
-                    <small class="form-text text-muted">
-                        Header name for sending API token during login
-                    </small>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group mb-0">
-            <label>Login Request Body (JSON) <small class="text-muted">(Optional)</small></label>
-            <textarea class="form-control font-monospace"
-                      rows="3"
-                      name="template_data[connections][0][login_body]"
-                      placeholder='{"username": "admin", "password": "secret"}'>{{ $connection['login_body'] ?? '' }}</textarea>
-            <small class="form-text text-muted">
-                JSON body to send with login request. Leave empty if authentication is header-based only.
-            </small>
-        </div>
-
-        {{-- Preview of full login URL --}}
-        <div class="mt-3 p-2 bg-white border rounded" x-data="{ baseUrl: '{{ $connection['base_url'] ?? '' }}', loginPath: '{{ $connection['login_path'] ?? '' }}' }">
-            <small class="text-muted"><strong>Full Login URL Preview:</strong></small>
-            <div class="font-monospace text-primary">
-                <span x-text="baseUrl || 'https://{device_hostname}'"></span><span x-text="loginPath || '/api/login'"></span>
-            </div>
-        </div>
-    </div>
+    @endif
 </div>
+
 
 {{-- Connection Settings --}}
 <div class="row">
@@ -213,6 +158,54 @@ $connection = $connections[0] ?? [];
 </div>
 
 <script>
+// JavaScript to update the dynamic credential params section when the selection changes.
+document.addEventListener('DOMContentLoaded', function() {
+    const credSelect = document.getElementById('connection_credential_id');
+    const paramsContainer = document.getElementById('connection_specific_params');
+
+    credSelect.addEventListener('change', function() {
+        const selectedOption = credSelect.options[credSelect.selectedIndex];
+        const authTypeLabel = selectedOption.textContent.match(/\(([^)]+)\)/)?.[1] || 'None';
+        const authTypeSlug = authTypeLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+        // Only show the specific params section for complex authentication types
+        if (['session-token', 'proxmox'].includes(authTypeSlug)) {
+            // In a real implementation, you would make an AJAX call here to fetch the conn-auth-params partial
+            // to populate paramsContainer dynamically, passing the credential ID and connection data.
+
+            // For now, we simulate the structure based on the pre-selected values
+            paramsContainer.innerHTML = `
+                <div class="card bg-light mb-3">
+                    <div class="card-header"><h6 class="mb-0"><i class="fas fa-sign-in-alt"></i> Auth Configuration (<span class="text-primary">${authTypeLabel}</span>)</h6></div>
+                    <div class="card-body">
+                        <div class="alert alert-warning mb-3">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            This template requires an AJAX call to fully load
+                            the parameters for <strong>${authTypeLabel}</strong>.
+                            Please save and edit again, or ensure the server is configured.
+                        </div>
+
+                        <p><strong>Required Conn Params (Manual Entry):</strong></p>
+                        <ul class="text-muted small">
+                            ${authTypeSlug === 'session-token' ? '<li>Login Path</li><li>Session Token Header</li>' : '<li>ProxMox specific params...</li>'}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        } else {
+            paramsContainer.innerHTML = '';
+        }
+    });
+});
+
+// Initial load trigger (if a credential was already selected)
+document.addEventListener('DOMContentLoaded', function() {
+    const credSelect = document.getElementById('connection_credential_id');
+    if (credSelect.value) {
+        credSelect.dispatchEvent(new Event('change'));
+    }
+});
+
 // Update preview in real-time
 document.addEventListener('alpine:init', () => {
     Alpine.data('connectionPreview', () => ({
