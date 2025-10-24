@@ -105,7 +105,7 @@ $sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 80);
                     <div class="col-md-3">
                         <table class="table table-condensed">
                             <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
-                            <tr><th>Model</th><td>{{ isset($system_model['entPhysicalModelName']) ? ($system_metrics['model']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
+                            <tr><th>Model</th><td>{{ isset($system_model['entPhysicalModelName']) ? ($system_model['entPhysicalModelName']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
                             <tr><th>FortiOS Version</th><td>{{ isset($system_metrics['version']) ? ($system_metrics['version']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
                             <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
                         </table>
