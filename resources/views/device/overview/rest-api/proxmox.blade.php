@@ -9,18 +9,16 @@ use App\Models\EntPhysical;
 
 $device_id = $device['device_id'];
 
-// --- Data Fetch ---
-
-// 1. Cluster Status (Assumed to be mapped to a dedicated sensor)
+// 1. Cluster Status
 $cluster_status = DB::table('sensors')
     ->where('device_id', $device_id)
     ->where('sensor_descr', 'like', 'cluster_status')
     ->first();
 
-// 2. Memory Data from mempools (Corrected query)
+// 2. Memory Data from mempools (FIXED: Using broad LIKE search for "memory" to find correct row)
 $mem_data = DB::table('mempools')
     ->where('device_id', $device_id)
-    ->where('mempool_descr', 'LIKE', 'Physical memory (system)%')
+    ->where('mempool_descr', 'LIKE', '%memory%') // Use a general search to capture Physical memory (system)
     ->first();
 
 $total_mem = ($mem_data->mempool_used ?? 0) + ($mem_data->mempool_free ?? 0);
@@ -46,7 +44,6 @@ $storage = DB::table('storage')
 // Determine if we have any valid data to show
 $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
-// Handle the format() error by using number_format directly, as previously suggested.
 $cpu_util_formatted = number_format($cpu_util, 1);
 $mem_percent_formatted = number_format($mem_percent, 2);
 
