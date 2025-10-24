@@ -178,16 +178,17 @@
             <form action="{{ route('settings.rest-api.templates.update', $template->id) }}" method="POST">
                 @csrf @method('PUT')
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title"><i class="fas fa-plug"></i> Configure API Connection</h5>
-                    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
-                </div>
+                    </div>
                 <div class="modal-body">
                     @include('settings.rest-api.templates.partials.connection', ['template' => $template])
                     <input type="hidden" name="action_type" value="update_connection_only">
+
+                    {{-- ADD THIS HIDDEN FIELD TO CARRY ENDPOINT DATA --}}
+                    <input type="hidden" name="template_data[connections][0][endpoints_json]" id="connection_endpoints_json_input">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-info"><i class="fas fa-save"></i> Save Connection</button>
+                    <button type="submit" class="btn btn-info" id="saveConnectionButton"><i class="fas fa-save"></i> Save Connection</button>
                 </div>
             </form>
         </div>
