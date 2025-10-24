@@ -136,8 +136,7 @@ $sess_bg = Color::percentage($session_percent, 90);
                             {{-- KEEP --}}
                             <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
                             <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
-                            <tr><th>Session Utilization</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone?' }}</td></tr>
-                            <tr><th>HA Status</th><td>{!! print_percentage_bar(250, 20, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], 100 - $session_percent, 'ffffff', $sess_bg['right']) !!}</td></tr>
+                            <tr><th>Session Utilization</th><td>{!! print_percentage_bar(250, 20, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], 100 - $session_percent, 'ffffff', $sess_bg['right']) !!}</td></tr>
 
 
                         </table>
