@@ -104,6 +104,32 @@ class RestApiPollerService
         $this->authTokens = [];
     }
 
+		protected function replacePlaceholdersInString(string $string, $device): string
+    {
+        if (!$device) {
+            return $string; // Cannot resolve placeholders without device context
+        }
+
+        // 1. Simple device fields
+        $string = Str::replace('{device_hostname}', $device->hostname, $string);
+        $string = Str::replace('{device_ip}', $device->ip, $string);
+        $string = Str::replace('{device_sysname}', $device->sysName, $string);
+
+        // 2. Custom device attributes (e.g., {device_attrib:proxmox_node})
+        preg_match_all('/\{device_attrib:([^}]+)\}/', $string, $attribMatches);
+
+        if (!empty($attribMatches[1])) {
+            foreach ($attribMatches[1] as $index => $attribName) {
+                // Assuming the Device model has a getAttrib method
+                $attribValue = method_exists($device, 'getAttrib') ? $device->getAttrib($attribName) : null;
+                $fullPlaceholder = $attribMatches[0][$index];
+                $string = Str::replace($fullPlaceholder, $attribValue ?? '', $string);
+            }
+        }
+
+        return $string;
+    }
+
     public function pollDeviceConnection(RestApiConnection $connection): void
     {
  				// For Session Token authentication (e.g., Pure Storage): authenticate and get session token
@@ -122,16 +148,19 @@ class RestApiPollerService
 
 		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
     {
-		    // Resolve Proxmox placeholders (if any). This returns the ENDPOINT PATH (e.g., /nodes/c2s8-usa-esxi/status)
+		    // 1. Resolve Proxmox-specific path (e.g., get node list if needed)
+            // We assume resolveProxmoxPath only returns the raw endpoint path or handles only complex logic
 		    $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
+
+            // 2. Resolve ALL placeholders (e.g., {device_attrib:proxmox_node}) using the device model.
+            $device = $connection->device; // Device relationship is eager loaded in pollViaLibreNMS
+            $resolvedPath = $this->replacePlaceholdersInString($resolvedPath, $device);
 
             // --- START URL CONSTRUCTION ---
 		    $baseUrl = rtrim($connection->base_url, '/');
             $port = $connection->port; // Get port from connection model
-            $fullUrl = null; // Initialize $fullUrl to prevent the "Undefined variable $url" error
 
-            // 1. Combine Base URL and Port
-            // If a custom port is set AND it's not already in the Base URL, append it to baseUrl.
+            // 1. Combine Base URL and Port (logic retained from previous step)
             if ($port && !preg_match('/:\d+/', $baseUrl)) {
                  $isHttps = str_starts_with(strtolower($baseUrl), 'https');
                  $isHttp = str_starts_with(strtolower($baseUrl), 'http');
@@ -142,12 +171,10 @@ class RestApiPollerService
             }
 
             // 2. Construct the final URL using the endpoint model's method.
-            // We need to pass both the Base URL (now complete with port) and the resolved path.
-            // We use the second argument here to pass the resolved path.
+            // Pass the fully-formed Base URL and the resolved path.
             $url = $endpoint->getUrl($baseUrl, $resolvedPath);
 
             if (empty($url)) {
-                // Should only happen if Base URL or resolvedPath was empty/null
                 throw new \Exception("Could not construct API URL for endpoint {$endpoint->path}. Base URL or Path resolved to null.");
             }
             // --- END URL CONSTRUCTION ---
