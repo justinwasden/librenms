@@ -100,7 +100,7 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         <h4>CPU Utilization</h4>
                         {{-- FIX 1: Centered the bar --}}
                         <div class="d-inline-block">
-                            {!! print_percentage_bar(200, 40, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                            {!! print_percentage_bar(200, 20, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         </div>
                         <p class="text-muted small mt-2">
                             {{ $cpu_util_formatted }}% Max/Avg Usage
@@ -113,7 +113,7 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         {{-- FIX 2: Check $total_mem > 0 to indicate valid data was found --}}
                         @if($total_mem > 0)
                             <div class="d-inline-block">
-                                {!! print_percentage_bar(200, 40, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
+                                {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             </div>
                             <p class="text-muted small mt-2">
                                 {{ $mem_percent_formatted }}% Utilization
