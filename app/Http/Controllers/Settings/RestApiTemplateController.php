@@ -87,8 +87,6 @@ class RestApiTemplateController extends Controller
 		        // We must merge the changes with the existing, full template data.
 
 		        $existingTemplateData = $template->template_data; // This is already an array/object in the model
-						\Log::info('Existing Template Data:', $existingTemplateData);
-						\Log::info('New Template Data:', $newTemplateData);
 		        // Ensure $existingTemplateData is an array before merging
 		        if (!is_array($existingTemplateData)) {
 		            $existingTemplateData = json_decode($existingTemplateData, true) ?? [];
@@ -96,6 +94,8 @@ class RestApiTemplateController extends Controller
 
 		        // Merge the new connection data (sent from the form) back into the existing data.
 		        // This assumes your form structure is simple (only editing connections[0]).
+						\Log::info('Existing Template Data:', $existingTemplateData);
+						\Log::info('New Template Data:', $newTemplateData);
 		        if (isset($newTemplateData['connections'][0])) {
 		            $existingTemplateData['connections'][0] = array_merge(
 		                $existingTemplateData['connections'][0] ?? [],
