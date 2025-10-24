@@ -1,5 +1,9 @@
 {{-- resources/views/device/overview/rest-api/proxmox.blade.php --}}
 
+@extends('layouts.app')
+
+@section('content')
+
 @php
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
@@ -86,9 +90,9 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
                     <div class="col-md-4">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(350, 40, $cpu_util, \LibreNMS\Util\Number::format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        {!! print_percentage_bar(350, 40, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         <p class="text-muted small text-center mt-2">
-                            {{ \LibreNMS\Util\Number::format($cpu_util, 1) }}% Max/Avg Usage
+                            {{ number_format($cpu_util, 1) }}% Max/Avg Usage
                         </p>
                     </div>
 
@@ -97,7 +101,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                         @if($total_mem > 0)
                             {!! print_percentage_bar(350, 40, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             <p class="text-muted small text-center mt-2">
-                                {{ \LibreNMS\Util\Number::format($mem_percent, 2) }}% Utilization
+                                {{ number_format($mem_percent, 2) }}% Utilization
                             </p>
                         @else
                             <p class="text-muted text-center">Memory data not available in mempools table.</p>
