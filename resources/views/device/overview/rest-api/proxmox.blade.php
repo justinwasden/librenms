@@ -102,59 +102,56 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         </table>
                     </div>
 
-															{{-- CPU Utilization (Centered) --}}
-<div class="col-md-4 text-center">
-    <h4>CPU Utilization</h4>
-    <div class="text-center" style="width: 100%;">
-        <div style="display: inline-block; float: none !important; text-align: center;">
-            {!! print_percentage_bar(
-                200,                 // width
-                20,                  // height
-                $cpu_util,           // used %
-                '',                  // ❌ leave blank to suppress default 99 label
-                'ffffff',
-                $cpu_bg['left'],
-                100 - $cpu_util,
-                'ffffff',
-                $cpu_bg['right'],
-                sprintf('%.1f%% Used', $cpu_util) // ✅ this becomes the visible bar text
-            ) !!}
-        </div>
-    </div>
-</div>
+															{{-- CPU Utilization (Used %) --}}
+															<div class="col-md-4 text-center">
+															    <h4>CPU Utilization</h4>
+															    <div class="text-center" style="width: 100%;">
+															        <div style="display: inline-block; float: none !important; text-align: center;">
+															            {!! print_percentage_bar(
+															                200,
+															                20,
+															                $cpu_util, // used portion
+															                '', // no label inside bar
+															                'ffffff',
+															                $cpu_bg['left'],
+															                0, // no "free" portion for inversion
+															                'ffffff',
+															                $cpu_bg['right']
+															            ) !!}
+															        </div>
+															    </div>
+															    <p class="text-muted small mt-2">
+															        {{ $cpu_util_formatted }}% Used
+															    </p>
+															</div>
 
-{{-- Physical Memory Usage (Centered) --}}
-<div class="col-md-4 text-center">
-    <h4>Physical Memory Usage</h4>
-    @if($total_mem > 0)
-        @php
-            $mem_text = sprintf(
-                '%s / %s (%.2f%% Used)',
-                \LibreNMS\Util\Number::formatBi($used_mem),
-                \LibreNMS\Util\Number::formatBi($total_mem),
-                $mem_percent
-            );
-        @endphp
-        <div class="text-center" style="width: 100%;">
-            <div style="display: inline-block; float: none !important; text-align: center;">
-                {!! print_percentage_bar(
-                    200,
-                    20,
-                    $mem_percent,
-                    '', // ❌ suppress internal number
-                    'ffffff',
-                    $mem_bg['left'],
-                    100 - $mem_percent,
-                    'ffffff',
-                    $mem_bg['right'],
-                    $mem_text // ✅ only this text will be shown
-                ) !!}
-            </div>
-        </div>
-    @else
-        <p class="text-muted">Memory data not available in mempools table.</p>
-    @endif
-</div>
+															{{-- Physical Memory Usage (Used %) --}}
+															<div class="col-md-4 text-center">
+															    <h4>Physical Memory Usage</h4>
+															    @if($total_mem > 0)
+															        <div class="text-center" style="width: 100%;">
+															            <div style="display: inline-block; float: none !important; text-align: center;">
+															                {!! print_percentage_bar(
+															                    200,
+															                    20,
+															                    $mem_percent, // used portion
+															                    '', // no text inside bar
+															                    'ffffff',
+															                    $mem_bg['left'],
+															                    0, // don't invert, show used portion
+															                    'ffffff',
+															                    $mem_bg['right']
+															                ) !!}
+															            </div>
+															        </div>
+															        <p class="text-muted small mt-2">
+															            {{ Number::formatBi($used_mem) }} / {{ Number::formatBi($total_mem) }}
+															            ({{ $mem_percent_formatted }}% Used)
+															        </p>
+															    @else
+															        <p class="text-muted">Memory data not available in mempools table.</p>
+															    @endif
+															</div>
 
 
                 </div> {{-- /row --}}
