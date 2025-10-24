@@ -133,22 +133,26 @@ $sess_bg = Color::percentage($session_percent, 90);
                 <div class="row">
                     <div class="col-md-3">
                         <table class="table table-condensed">
+                            {{-- This section starts on the first row --}}
                             <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
+                            <tr><th>Model</th><td>{{ $system_model->entPhysicalModelName ?? 'N/A' }}</td></tr>
+                            <tr><th>FortiOS Version</th><td>{{ isset($system_metrics['version']) ? ($system_metrics['version']->first()->string_value ?? 'N/A') : 'N/A' }}</td></tr>
+                            {{-- This row aligns with the CPU header row --}}
                             <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
                         </table>
                     </div>
-                    {{-- Utilizations: Reduced header size (h5) and bar height (20) --}}
+
+                    {{-- Utilizations: Using style="margin-top: 10px;" to push headers down for better alignment --}}
                     <div class="col-md-3">
-                        <h5>CPU Utilization</h5>
+                        <h5 style="margin-top: 10px;">CPU Utilization</h5>
                         {!! print_percentage_bar(250, 20, $cpu_util, $cpu_util . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                     </div>
                     <div class="col-md-3">
-                        <h5>Memory Utilization</h5>
+                        <h5 style="margin-top: 10px;">Memory Utilization</h5>
                         {!! print_percentage_bar(250, 20, $mem_util, $mem_util . "%", 'ffffff', $mem_bg['left'], 100 - $mem_util, 'ffffff', $mem_bg['right']) !!}
                     </div>
                     <div class="col-md-3">
-                        <h5>Session Utilization</h5>
-                        {{-- Session bar shows count/limit, but colors use percentage --}}
+                        <h5 style="margin-top: 10px;">Session Utilization</h5>
                         {!! print_percentage_bar(250, 20, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], 100 - $session_percent, 'ffffff', $sess_bg['right']) !!}
                     </div>
                 </div>
