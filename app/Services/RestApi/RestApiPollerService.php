@@ -154,7 +154,16 @@ class RestApiPollerService
 
             // 2. Resolve ALL placeholders (e.g., {device_attrib:proxmox_node}) using the device model.
             $device = $connection->device; // Device relationship is eager loaded in pollViaLibreNMS
+
+            // Log input for debugging (This ensures the DEBUG lines show up)
+            \Log::info("DEBUG: Placeholder Input String: '{$resolvedPath}'");
+            \Log::info("DEBUG: Device sysName value: '{$device->sysName}'");
+
             $resolvedPath = $this->replacePlaceholdersInString($resolvedPath, $device);
+
+						// Log output for debugging
+            \Log::info("DEBUG: Placeholder Output String: '{$resolvedPath}'");
+            // --- END FIX ---
 
             // --- START URL CONSTRUCTION ---
 		    $baseUrl = rtrim($connection->base_url, '/');
