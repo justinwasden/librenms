@@ -131,30 +131,14 @@ $sess_bg = Color::percentage($session_percent, 90);
             </div>
             <div class="panel-body">
                 <div class="row">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <table class="table table-condensed">
                             {{-- KEEP --}}
                             <tr><th>Hostname</th><td>{{ isset($system_metrics['hostname']) ? ($system_metrics['hostname']->first()->string_value ?? $device['hostname']) : $device['hostname'] }}</td></tr>
-
-                            {{-- REMOVED: Model --}}
-                            {{-- REMOVED: FortiOS Version --}}
-
-                            {{-- KEEP --}}
                             <tr><th>HA Status</th><td>{{ isset($system_metrics['ha_mode']) ? ($system_metrics['ha_mode']->first()->string_value ?? 'Standalone') : 'Standalone' }}</td></tr>
                         </table>
                     </div>
-
-                    {{-- Utilizations: Reduced header size (h5) and bar height (20) --}}
-                    <div class="col-md-4">
-                        {{-- FIX: Using a smaller margin-top (5px) to align with the shorter table --}}
-                        <h5 style="margin-top: 5px;">CPU Utilization</h5>
-                        {!! print_percentage_bar(250, 20, $cpu_util, $cpu_util . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
-                    </div>
-                    <div class="col-md-4">
-                        <h5 style="margin-top: 5px;">Memory Utilization</h5>
-                        {!! print_percentage_bar(250, 20, $mem_util, $mem_util . "%", 'ffffff', $mem_bg['left'], 100 - $mem_util, 'ffffff', $mem_bg['right']) !!}
-                    </div>
-                    <div class="col-md-4">
+                    <div class="col-md-2">
                         <h5 style="margin-top: 5px;">Session Utilization</h5>
                         {{-- Session bar shows count/limit, but colors use percentage --}}
                         {!! print_percentage_bar(250, 20, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], 100 - $session_percent, 'ffffff', $sess_bg['right']) !!}
