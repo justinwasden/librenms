@@ -7,6 +7,7 @@
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
 use LibreNMS\DB\Queries;
+use LibreNMS\Util\Color;
 
 
 // Get system information
