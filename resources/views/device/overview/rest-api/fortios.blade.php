@@ -7,6 +7,8 @@
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
 
+include 'includes/html/graphs.inc.php';
+
 // Get system information
 $system_metrics = DB::table('device_api_metrics')
     ->where('device_id', $device['device_id'])
@@ -22,35 +24,29 @@ $system_model = DB::table('entPhysical')
 
 // --- 1. CPU Utilization ---
 // LibreNMS typically aggregates CPU usage into $device->perc_cpu.
-$cpu_util = $device->perc_cpu;
+$cpu_util = $device->perc_cpu ?? 0;
 $cpu_bg = get_percentage_colours($cpu_util);
 
 // --- 2. Memory Utilization ---
 // LibreNMS typically aggregates memory usage into $device->perc_mem.
-$mem_util = $device->perc_mem;
+$mem_util = $device->perc_mem ?? 0;
 $mem_bg = get_percentage_colours($mem_util);
 
 // --- 3. Session Utilization (Requires Fortinet-specific OID/Sensor) ---
 
 // Find the Session Sensor (this is an example, the specific sensor name may vary)
-$session_sensor = \LibreNMS\DB\Queries::getRow('SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? AND sensor_type = ? LIMIT 1', [$device->device_id, 'count', 'sessions']);
+$session_sensor = \LibreNMS\DB\Queries::getRow(
+    'SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? LIMIT 1',
+    [$device->device_id, 'session']
+);
 
 if ($session_sensor) {
     $session_count = (int)$session_sensor['sensor_value'];
-    // The session limit (max-session-limit) is sometimes stored in sensor_limit,
-    // or you might have to hardcode it/pull it from a custom variable.
-    $session_limit = (int)$session_sensor['sensor_limit'];
-
-    // Fallback/Placeholder if limit isn't in the sensor data
-    if ($session_limit === 0) {
-        // You would need a method to get the actual session limit for the model.
-        // For demonstration, a placeholder or device-specific query is needed here.
-        $session_limit = 200000; // Example placeholder limit
-    }
-
+    // Use the sensor_limit as the total session capacity
+    $session_limit = (int)$session_sensor['sensor_limit'] ?: 1;
     $session_percent = ($session_limit > 0) ? round(($session_count / $session_limit) * 100, 1) : 0;
 } else {
-    // Fallback if sensor is not found
+    // Fallback values if the session sensor is not found
     $session_count = 0;
     $session_limit = 1;
     $session_percent = 0;
@@ -119,9 +115,11 @@ $interfaces = DB::table('device_api_metrics')
     ->orderBy('resource_name')
     ->get();
 
-$cpu_bg = \LibreNMS\Util\Color::percentage($cpu_util, 70);
-$mem_bg = \LibreNMS\Util\Color::percentage($mem_util, 80);
-$sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 80);
+$cpu_bg  = \LibreNMS\Util\Color::percentage($cpu_util, 70);
+$mem_bg  = \LibreNMS\Util\Color::percentage($mem_util, 80);
+$sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 90);
+
+
 @endphp
 
 <!-- System Health -->
@@ -142,17 +140,18 @@ $sess_bg = \LibreNMS\Util\Color::percentage($session_percent, 80);
                         </table>
                     </div>
                     <div class="col-md-3">
-                        <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(250, 40, $cpu_util, $cpu_util . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
-                    </div>
-                    <div class="col-md-3">
-                        <h4>Memory Utilization</h4>
-                        {!! print_percentage_bar(250, 40, $mem_util, $mem_util . "%", 'ffffff', $mem_bg['left'], 100 - $mem_util, 'ffffff', $mem_bg['right']) !!}
-                    </div>
-                    <div class="col-md-3">
-                        <h4>Session Utilization</h4>
-                        {!! print_percentage_bar(250, 40, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], $session_limit - $session_count, 'ffffff', $sess_bg['right']) !!}
-                    </div>
+										    <h4>CPU Utilization</h4>
+										    {!! print_percentage_bar(250, 40, $cpu_util, $cpu_util . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+										</div>
+										<div class="col-md-3">
+										    <h4>Memory Utilization</h4>
+										    {!! print_percentage_bar(250, 40, $mem_util, $mem_util . "%", 'ffffff', $mem_bg['left'], 100 - $mem_util, 'ffffff', $mem_bg['right']) !!}
+										</div>
+										<div class="col-md-3">
+										    <h4>Session Utilization</h4>
+										    {{-- Session bar shows count/limit, but colors use percentage --}}
+										    {!! print_percentage_bar(250, 40, $session_percent, number_format($session_count) . " / " . number_format($session_limit), 'ffffff', $sess_bg['left'], 100 - $session_percent, 'ffffff', $sess_bg['right']) !!}
+										</div>
                 </div>
             </div>
         </div>
