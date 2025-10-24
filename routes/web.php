@@ -199,6 +199,9 @@ Route::middleware(['auth'])->group(function () {
          ->name('templates.update-endpoint');
 		    Route::post('templates/{template}/delete-endpoint', [\App\Http\Controllers\Settings\RestApiTemplateController::class, 'deleteEndpoint'])
          ->name('templates.delete-endpoint');
+         oute::post('templates/{template}/update-connection', [RestApiTemplateController::class, 'updateConnection'])
+    ->name('templates.update-connection');
+
 
     // Global Endpoint Management Routes (updates database endpoints)
     Route::put('endpoints/{endpoint}', [\App\Http\Controllers\Settings\RestApiEndpointController::class, 'update'])

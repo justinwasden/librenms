@@ -534,6 +534,66 @@ class RestApiTemplateController extends Controller
         return $fields;
     }
 
+    public function updateConnection(Request $request, RestApiTemplate $template)
+		{
+		    try {
+		        $validated = $request->validate([
+		            'connection_index' => 'required|integer',
+		            'connection_data' => 'required|array',
+		        ]);
+
+		        $connIndex = $validated['connection_index'];
+		        $connData = $validated['connection_data'];
+
+		        // Decode template_data safely
+		        $templateData = is_array($template->template_data)
+		            ? $template->template_data
+		            : json_decode($template->template_data, true);
+
+		        if (!isset($templateData['connections'][$connIndex])) {
+		            return response()->json([
+		                'success' => false,
+		                'message' => 'Connection not found in template.'
+		            ], 404);
+		        }
+
+		        // Merge existing connection data with new values
+		        $existingConn = $templateData['connections'][$connIndex];
+
+		        $templateData['connections'][$connIndex] = array_merge(
+		            $existingConn,
+		            $connData
+		        );
+
+		        // Preserve endpoints if not included in update
+		        if (isset($existingConn['endpoints']) && !isset($connData['endpoints'])) {
+		            $templateData['connections'][$connIndex]['endpoints'] = $existingConn['endpoints'];
+		        }
+
+		        $template->update(['template_data' => $templateData]);
+
+		        return response()->json([
+		            'success' => true,
+		            'message' => 'Connection updated successfully.',
+		            'connection' => $templateData['connections'][$connIndex],
+		            'connection_index' => $connIndex
+		        ]);
+		    } catch (\Illuminate\Validation\ValidationException $e) {
+		        return response()->json([
+		            'success' => false,
+		            'message' => 'Validation failed.',
+		            'errors' => $e->errors(),
+		        ], 422);
+		    } catch (\Throwable $e) {
+		        \Log::error('updateConnection error: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
+		        return response()->json([
+		            'success' => false,
+		            'message' => $e->getMessage()
+		        ], 500);
+		    }
+		}
+
+
     /**
      * Suggest a mapping based on field name and type
      */
