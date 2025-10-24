@@ -6,7 +6,6 @@
 @php
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
-use LibreNMS\DB\Queries;
 use LibreNMS\Util\Color;
 
 
@@ -34,10 +33,12 @@ $mem_util = $device->perc_mem ?? 0;
 // --- 3. Session Utilization (Requires Fortinet-specific OID/Sensor) ---
 
 // Find the Session Sensor (this is an example, the specific sensor name may vary)
-$session_sensor = \LibreNMS\DB\Queries::getRow(
+$session_sensor = DB::selectOne(
     'SELECT sensor_value, sensor_limit FROM sensors WHERE device_id = ? AND sensor_class = ? LIMIT 1',
     [$device->device_id, 'session']
 );
+
+$session_sensor = (array) $session_sensor;
 
 if ($session_sensor) {
     $session_count = (int)$session_sensor['sensor_value'];
