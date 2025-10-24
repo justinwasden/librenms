@@ -280,67 +280,32 @@ class RestApiTemplateController extends Controller
         }
     }
 
-    public function updateEndpoint(Request $request, RestApiTemplate $template)
-    {
-        try {
-            $validated = $request->validate([
-                'connection_index' => 'required|integer',
-                'endpoint_index' => 'required|integer',
-                'endpoint_data' => 'required|array',
-                'endpoint_data.name' => 'required|string|max:255',
-                'endpoint_data.path' => 'required|string|max:2048',
-                'endpoint_data.method' => 'required|in:GET,POST,PUT,DELETE',
-                'endpoint_data.resource_type' => 'nullable|string|max:50',
-                'endpoint_data.metric_map' => 'nullable|array',
-            ]);
+    public function updateEndpoint(Request $request, $templateId)
+{
+    $data = $request->validate([
+        'connection_index' => 'required|integer',
+        'endpoint_index'   => 'required|integer',
+        'endpoint_data'    => 'required|array',
+    ]);
 
-            $templateData = is_array($template->template_data)
-                ? $template->template_data
-                : json_decode($template->template_data, true);
+    // Load and update the JSON stored in your template model
+    $template = RestApiTemplate::findOrFail($templateId);
+    $templateData = json_decode($template->template_data, true);
+    $connIdx = $data['connection_index'];
+    $epIdx = $data['endpoint_index'];
 
-            $connIndex = $validated['connection_index'];
-            $epIndex = $validated['endpoint_index'];
+    $templateData['connections'][$connIdx]['endpoints'][$epIdx] = $data['endpoint_data'];
+    $template->template_data = json_encode($templateData, JSON_PRETTY_PRINT);
+    $template->save();
 
-            if (!isset($templateData['connections'][$connIndex]['endpoints'][$epIndex])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Endpoint not found in template'
-                ], 404);
-            }
-
-            $templateData['connections'][$connIndex]['endpoints'][$epIndex] = array_merge(
-                $templateData['connections'][$connIndex]['endpoints'][$epIndex],
-                $validated['endpoint_data']
-            );
-
-            $template->update(['template_data' => $templateData]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Endpoint updated successfully',
-                'endpoint' => array_merge(
-                    $validated['endpoint_data'],
-                    [
-                        '_connection_index' => $connIndex,
-                        '_endpoint_index' => $epIndex,
-                        '_is_template' => true
-                    ]
-                )
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Throwable $e) {
-            \Log::error('updateEndpoint error: ' . $e->getMessage() . ' :: ' . $e->getTraceAsString());
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
+    return response()->json([
+        'success' => true,
+        'endpoint' => [
+            '_connection_index' => $connIdx,
+            '_endpoint_index' => $epIdx,
+        ]
+    ]);
+}
 
     public function deleteEndpoint(Request $request, RestApiTemplate $template)
     {
