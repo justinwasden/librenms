@@ -1,7 +1,4 @@
 {{-- resources/views/device/overview/rest-api/proxmox.blade.php --}}
-
-@extends('layouts.app')
-
 @section('content')
 
 @php
