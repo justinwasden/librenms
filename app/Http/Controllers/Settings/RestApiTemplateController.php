@@ -7,6 +7,7 @@ use App\Models\RestApiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use App\RestApi\Credentials\CredentialHelper;
 
 class RestApiTemplateController extends Controller
 {
