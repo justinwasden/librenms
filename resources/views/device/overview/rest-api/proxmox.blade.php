@@ -92,7 +92,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                     {{-- CPU Utilization --}}
                     <div class="col-md-4">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(350, 40, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        {!! print_percentage_bar(200, 40, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         <p class="text-muted small text-center mt-2">
                             {{ number_format($cpu_util, 1) }}% Max/Avg Usage
                         </p>
