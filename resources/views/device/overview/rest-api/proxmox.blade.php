@@ -15,28 +15,7 @@ $cluster_status = DB::table('sensors')
     ->where('sensor_descr', 'like', 'cluster_status')
     ->first();
 
-$cpu_data = DB::table('processors')
-    ->where('device_id', $device_id)
-    ->orderBy('processor_usage', 'desc')
-    ->first();
-
-$cpu_util = isset($cpu_data->processor_usage) ? floatval($cpu_data->processor_usage) : 0;
-$cpu_util_formatted = number_format($cpu_util, 2);
-$cpu_bg = Color::percentage($cpu_util, 70);
-
-// --- MEMORY DATA ---
-$mem_data = DB::table('mempools')
-    ->where('device_id', $device_id)
-    ->where('mempool_descr', 'LIKE', '%memory%')
-    ->first();
-
-$total_mem = (($mem_data->mempool_used ?? 0) + ($mem_data->mempool_free ?? 0));
-$used_mem  = $mem_data->mempool_used ?? 0;
-$mem_percent = ($total_mem > 0) ? round(($used_mem / $total_mem) * 100, 2) : 0;
-$mem_percent_formatted = number_format($mem_percent, 2);
-$mem_bg = Color::percentage($mem_percent, 80);
-
-// 4. Storage data
+// 2. Storage data
 $storage = DB::table('storage')
     ->where('device_id', $device_id)
     ->where('storage_type', 'rest-api')
@@ -44,10 +23,7 @@ $storage = DB::table('storage')
     ->get();
 
 // Determine if we have any valid data to show
-$has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
-
-$cpu_util_formatted = number_format($cpu_util, 1);
-$mem_percent_formatted = number_format($mem_percent, 2);
+$has_metrics = $storage->count() > 0;
 
 @endphp
 
@@ -64,102 +40,38 @@ $mem_percent_formatted = number_format($mem_percent, 2);
 @else
 
 {{-- TOP SYSTEM METRICS ROW --}}
-<div class="row">
-    <div class="col-md-12">
-        <div class="panel panel-default panel-condensed">
-            <div class="panel-heading">
-                <i class="fa fa-server fa-lg icon-theme"></i>
-                <strong>Proxmox Node Overview: {{ $device['sysName'] }}</strong>
-            </div>
+{{-- Node Overview (3 Columns) --}}
+<div class="row text-center">
+    {{-- Node Name --}}
+    <div class="col-md-4">
+        <h4>Node Name</h4>
+        <p class="text-muted">{{ $node_name ?? 'N/A' }}</p>
+    </div>
 
-            <div class="panel-body">
-                <div class="row">
+    {{-- Hostname --}}
+    <div class="col-md-4">
+        <h4>Hostname</h4>
+        <p class="text-muted">{{ $hostname ?? 'N/A' }}</p>
+    </div>
 
-                    {{-- Node Info & Status --}}
-                    <div class="col-md-4">
-                        <table class="table table-condensed table-striped">
-                            <tbody>
-                                <tr>
-                                    <th class="text-right">Node Name</th>
-                                    <td>{{ $device['sysName'] }}</td>
-                                </tr>
-                                <tr>
-                                    <th class="text-right">Hostname</th>
-                                    <td>{{ $device['hostname'] }}</td>
-                                </tr>
-                                <tr>
-                                    <th class="text-right">Cluster Status</th>
-                                    <td>
-                                        @php
-                                            $status_value = $cluster_status->sensor_current ?? 'N/A';
-                                            $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
-                                            $label = ($status_value == 1) ? 'success' : 'danger';
-                                        @endphp
-                                        <span class="label label-{{ $label }}">{{ $status_text }}</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-															{{-- CPU Utilization (Centered) --}}
-<div class="col-md-4 text-center">
-    <h4>CPU Utilization</h4>
-    <div class="text-center" style="width: 100%;">
-        <div style="display: inline-block; float: none !important; text-align: center;">
-            {!! print_percentage_bar(
-                200,
-                20,
-                $cpu_util,
-                sprintf('%.1f%% Used', $cpu_util), // ✅ Show actual usage text
-                'ffffff',
-                $cpu_bg['left'],
-                100 - $cpu_util,
-                'ffffff',
-                $cpu_bg['right']
-            ) !!}
-        </div>
+    {{-- Cluster Status --}}
+    <div class="col-md-4">
+        <h4>Cluster Status</h4>
+        <p class="text-muted">
+            @if(isset($cluster_status))
+                @if(strtolower($cluster_status) === 'online' || strtolower($cluster_status) === 'active')
+                    <span class="badge bg-success">{{ ucfirst($cluster_status) }}</span>
+                @elseif(strtolower($cluster_status) === 'offline')
+                    <span class="badge bg-danger">{{ ucfirst($cluster_status) }}</span>
+                @else
+                    <span class="badge bg-secondary">{{ ucfirst($cluster_status) }}</span>
+                @endif
+            @else
+                <span class="badge bg-secondary">Unknown</span>
+            @endif
+        </p>
     </div>
 </div>
-
-{{-- Physical Memory Usage (Centered) --}}
-<div class="col-md-4 text-center">
-    <h4>Physical Memory Usage</h4>
-    @if($total_mem > 0)
-        @php
-            $mem_text = sprintf(
-                '%s / %s (%.2f%% Used)',
-                \LibreNMS\Util\Number::formatBi($used_mem),
-                \LibreNMS\Util\Number::formatBi($total_mem),
-                $mem_percent
-            );
-        @endphp
-        <div class="text-center" style="width: 100%;">
-            <div style="display: inline-block; float: none !important; text-align: center;">
-                {!! print_percentage_bar(
-                    200,
-                    20,
-                    $mem_percent,
-                    $mem_text, // ✅ Show usage text inside bar
-                    'ffffff',
-                    $mem_bg['left'],
-                    100 - $mem_percent,
-                    'ffffff',
-                    $mem_bg['right']
-                ) !!}
-            </div>
-        </div>
-    @else
-        <p class="text-muted">Memory data not available in mempools table.</p>
-    @endif
-</div>
-
-
-                </div> {{-- /row --}}
-            </div> {{-- /panel-body --}}
-        </div> {{-- /panel --}}
-    </div> {{-- /col-md-12 --}}
-</div> {{-- /row --}}
 
 {{-- STORAGE DATA ROW --}}
 @if($storage->count() > 0)
