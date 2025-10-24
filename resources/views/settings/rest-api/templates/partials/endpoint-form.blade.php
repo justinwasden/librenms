@@ -131,7 +131,7 @@
                   placeholder="What data does this endpoint provide?">{{ $endpoint['description'] ?? '' }}</textarea>
     </div>
 
-    {{-- ========== METRIC MAPPING SECTION - INTEGRATED UI ========== --}}
+    {{-- ========== METRIC MAPPING SECTION - STATIC CONTENT ONLY ========== --}}
     <div class="card mb-3">
         <div class="card-header bg-primary text-white">
             <h6 class="mb-0">
@@ -141,90 +141,8 @@
         <div class="card-body">
             <div class="alert alert-info mb-3">
                 <i class="fas fa-info-circle"></i>
-                <strong>Map API response fields to LibreNMS metrics.</strong><br>
-                1. Select a device below 2. Click "Fetch API Preview" 3. Map fields to metrics
-            </div>
-
-            {{-- Device Selection for Testing --}}
-            <div class="form-group mb-3" style="background-color: #fff3cd; padding: 15px; border: 2px solid #ffc107; border-radius: 5px;">
-                <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}" style="font-size: 16px; font-weight: bold; color: #000;">
-                    <i class="fas fa-exclamation-triangle" style="color: #ff6b6b;"></i> SELECT A DEVICE TO TEST <span class="text-danger">*REQUIRED*</span>
-                </label>
-                <select class="form-control test-device"
-                        id="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}"
-                        data-conn-idx="{{ $connectionIndex }}"
-                        data-ep-idx="{{ $endpointIndex }}"
-                        style="font-size: 14px; font-weight: bold; border: 2px solid #ff6b6b;">
-                    <option value="" selected style="font-weight: bold; color: red;">🔴 *** REQUIRED *** SELECT A DEVICE ***</option>
-                    @foreach(\App\Models\Device::orderBy('hostname')->get() as $device)
-                        <option value="{{ $device->device_id }}">
-                            ✓ {{ $device->hostname }}
-                            @if($device->ip)
-                                ({{ $device->ip }})
-                            @endif
-                        </option>
-                    @endforeach
-                </select>
-                <small class="form-text" style="color: #d9534f; font-weight: bold; margin-top: 10px; display: block;">
-                    ⚠️ WITHOUT SELECTING A DEVICE: Placeholders like {device_hostname} will NOT be replaced and you'll get "Bad hostname" error<br/>
-                    ✓ AFTER SELECTING A DEVICE: All placeholders replaced + authentication tokens obtained + endpoint tested
-                </small>
-            </div>
-
-            {{-- API Preview Fetch Button --}}
-            <div class="form-group mb-3">
-                <div class="alert alert-warning" style="font-size: 14px; font-weight: bold;">
-                    <i class="fas fa-arrow-up"></i> Did you select a device above? If not, go back and select one before clicking this button!
-                </div>
-                <button type="button"
-                        class="btn btn-info btn-sm fetch-api-preview"
-                        data-conn-idx="{{ $connectionIndex }}"
-                        data-ep-idx="{{ $endpointIndex }}"
-                        id="fetch-preview-{{ $connectionIndex }}-{{ $endpointIndex }}">
-                    <i class="fas fa-download"></i> Fetch API Preview
-                </button>
-                <span class="preview-status ml-2" id="preview-status-{{ $connectionIndex }}-{{ $endpointIndex }}"></span>
-            </div>
-
-            {{-- API Response Preview (Initially Hidden) --}}
-            <div id="api-preview-container-{{ $connectionIndex }}-{{ $endpointIndex }}"
-                 style="display: none; margin-bottom: 20px;">
-                <div class="card bg-light">
-                    <div class="card-header">
-                        <h6 class="mb-0">API Response Preview</h6>
-                    </div>
-                    <div class="card-body">
-                        <ul class="nav nav-tabs" role="tablist">
-                            <li class="nav-item">
-                                <a class="nav-link active" data-toggle="tab" href="#preview-structure-{{ $connectionIndex }}-{{ $endpointIndex }}" role="tab">
-                                    <i class="fas fa-tree"></i> Structure
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" data-toggle="tab" href="#preview-sample-{{ $connectionIndex }}-{{ $endpointIndex }}" role="tab">
-                                    <i class="fas fa-database"></i> Sample Data
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" data-toggle="tab" href="#preview-raw-{{ $connectionIndex }}-{{ $endpointIndex }}" role="tab">
-                                    <i class="fas fa-code"></i> Raw JSON
-                                </a>
-                            </li>
-                        </ul>
-
-                        <div class="tab-content mt-2">
-                            <div id="preview-structure-{{ $connectionIndex }}-{{ $endpointIndex }}" class="tab-pane fade show active" role="tabpanel">
-                                <pre id="structure-content-{{ $connectionIndex }}-{{ $endpointIndex }}" style="max-height: 300px; overflow-y: auto;"></pre>
-                            </div>
-                            <div id="preview-sample-{{ $connectionIndex }}-{{ $endpointIndex }}" class="tab-pane fade" role="tabpanel">
-                                <pre id="sample-content-{{ $connectionIndex }}-{{ $endpointIndex }}" style="max-height: 300px; overflow-y: auto;"></pre>
-                            </div>
-                            <div id="preview-raw-{{ $connectionIndex }}-{{ $endpointIndex }}" class="tab-pane fade" role="tabpanel">
-                                <pre id="raw-content-{{ $connectionIndex }}-{{ $endpointIndex }}" style="max-height: 300px; overflow-y: auto;"></pre>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <strong>API Preview for Mapping:</strong><br>
+                Use the <strong>Fetch API Preview</strong> button in the endpoint manager panel to load data into the preview tab.
             </div>
 
             {{-- Fallback: JSON textarea (for manual entry) --}}
@@ -234,7 +152,7 @@
                           name="template_data[connections][{{ $connectionIndex }}][endpoints][{{ $endpointIndex }}][metric_map]"
                           class="form-control font-monospace metric-map-json"
                           rows="10"
-                          placeholder="Paste JSON mapping here after fetching preview..."
+                          placeholder="Paste JSON mapping here..."
                           style="white-space: pre; resize: vertical;">{{ old('metric_map_json', json_encode($endpoint['metric_map'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) }}</textarea>
                 <small class="form-text text-muted">
                     Format: <code>{"api_field": "librenms_table.librenms_field"}</code><br>
@@ -248,15 +166,6 @@
 <style>
     .preview-status {
         font-weight: 500;
-    }
-    .preview-status.loading {
-        color: #0066cc;
-    }
-    .preview-status.success {
-        color: #28a745;
-    }
-    .preview-status.error {
-        color: #dc3545;
     }
 </style>
 

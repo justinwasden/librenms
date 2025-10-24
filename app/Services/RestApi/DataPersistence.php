@@ -173,7 +173,7 @@ class DataPersistence
     {
         $validColumns = [
             'hostname', 'sysName', 'ip', 'community', 'authlevel', 'authname', 'authpass',
-            'authalgo', 'cryptopass', 'cryptoalgo', 'snmpver', 'port', 'transport', 'timeout',
+            'authalgo', 'cryptopass', 'cryptoalgo', 'snmpver', 'port', 'transport', 'timeout', // ADDED 'port'
             'retries', 'snmp_disable', 'bgpLocalAs', 'sysObjectID', 'sysDescr', 'sysContact',
             'version', 'hardware', 'features', 'location_id', 'os', 'status', 'status_reason',
             'ignore', 'disabled', 'uptime', 'agent_uptime', 'last_polled', 'last_poll_attempted',
@@ -526,14 +526,14 @@ class DataPersistence
         }
 
         DB::table('sensors')->updateOrInsert(
-            
+
                 [
                 	'device_id' => $deviceId,
                 	'sensor_class' => $filteredData['sensor_class'] ?? 'generic',
                 	 'sensor_type' => $filteredData['sensor_type'] ?? 'rest-api',
                 	  'sensor_descr' => $identifier
                 ],
-            
+
             $filteredData
         );
     }

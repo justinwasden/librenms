@@ -401,7 +401,7 @@ class RestApiTemplateSeeder extends Seeder
         ];
 
 
-        // Define all templates
+				// Define all templates
         $templates = [
             // ---------------------------------------------------------------------
             // 1. ARUBA CX
@@ -415,6 +415,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}/rest",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -439,7 +440,7 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
+						// ---------------------------------------------------------------------
             // 2. CISCO IOS XE (RESTCONF)
             // ---------------------------------------------------------------------
             [
@@ -451,6 +452,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -475,8 +477,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 9. CISCO ISE (Identity Services Engine)
+						// ---------------------------------------------------------------------
+            // 3. CISCO ISE (Identity Services Engine)
             // ---------------------------------------------------------------------
             [
                 "name" => "Cisco ISE (Identity Services Engine)",
@@ -487,6 +489,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -513,8 +516,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 16. F5 BIG-IP (iControl REST)
+						// ---------------------------------------------------------------------
+            // 4. F5 BIG-IP (iControl REST)
             // ---------------------------------------------------------------------
             [
                 "name" => "F5 BIG-IP (iControl REST)",
@@ -525,6 +528,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}/mgmt/tm/ltm",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -553,8 +557,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 3. FORTINET FORTIGATE
+						// ---------------------------------------------------------------------
+            // 5. FORTINET FORTIGATE
             // ---------------------------------------------------------------------
             [
                 "name" => "Fortinet FortiGate",
@@ -565,6 +569,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 120,
                             "endpoints" => [
                                 [
@@ -618,8 +623,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 4. JUNIPER JUNOS (REST)
+						// ---------------------------------------------------------------------
+            // 6. JUNIPER JUNOS (REST)
             // ---------------------------------------------------------------------
             [
                 "name" => "Juniper Junos (REST)",
@@ -630,6 +635,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -654,8 +660,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 11. JUNIPER MIST (API Token Auth)
+						// ---------------------------------------------------------------------
+            // 7. JUNIPER MIST (API Token Auth)
             // ---------------------------------------------------------------------
             [
                 "name" => "Juniper MIST",
@@ -666,6 +672,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://api.mist.com/api/v1", // Fixed base URL for MIST API
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -696,7 +703,7 @@ class RestApiTemplateSeeder extends Seeder
 
 
 
-            // ---------------------------------------------------------------------
+						// ---------------------------------------------------------------------
             // 8. MERAKI DASHBOARD (API Key Auth)
             // ---------------------------------------------------------------------
             [
@@ -708,6 +715,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://api.meraki.com/api/v1", // Meraki API uses a fixed base URL
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 100,
                             "endpoints" => [
                                 [
@@ -738,8 +746,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 5. PALO ALTO PAN-OS
+						// ---------------------------------------------------------------------
+            // 9. PALO ALTO PAN-OS
             // ---------------------------------------------------------------------
             [
                 "name" => "Palo Alto PAN-OS",
@@ -750,6 +758,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -786,7 +795,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 17. PROXMOX VE API - NEW TEMPLATE
+            // 10. PROXMOX VE API - NEW TEMPLATE
             // ---------------------------------------------------------------------
             [
                 "name" => "Proxmox VE API",
@@ -797,6 +806,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}:8006/api2/json",
+                            "port" => 8006, // ADDED NON-DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -886,7 +896,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 6. PURE STORAGE FLASHARRAY (Local Appliance API Token)
+            // 11. PURE STORAGE FLASHARRAY (Local Appliance API Token)
             // ---------------------------------------------------------------------
             [
                 "name" => "Pure Storage FlashArray (API Token Login)",
@@ -897,6 +907,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -1008,8 +1019,8 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
 
-            // ---------------------------------------------------------------------
-            // 7. TRUENAS SCALE REST API
+						// ---------------------------------------------------------------------
+            // 12. TRUENAS SCALE REST API
             // ---------------------------------------------------------------------
             [
                 "name" => "TrueNAS SCALE REST API",
@@ -1020,6 +1031,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}/api/v2.0",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -1059,8 +1071,8 @@ class RestApiTemplateSeeder extends Seeder
                 ],
             ],
 
-            // ---------------------------------------------------------------------
-            // 10. VELOCLOUD SD-WAN (Broadcom)
+						// ---------------------------------------------------------------------
+            // 13. VELOCLOUD SD-WAN (Broadcom)
             // ---------------------------------------------------------------------
             [
                 "name" => "VeloCloud SD-WAN Orchestrator",
@@ -1071,6 +1083,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}/portal/rest",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [
@@ -1102,7 +1115,7 @@ class RestApiTemplateSeeder extends Seeder
             ],
 
             // ---------------------------------------------------------------------
-            // 15. VMWARE vCENTER / ESXi
+            // 14. VMWARE vCENTER / ESXi
             // ---------------------------------------------------------------------
             [
                 "name" => "VMware vCenter/ESXi (vSphere API)",
@@ -1113,6 +1126,7 @@ class RestApiTemplateSeeder extends Seeder
                         [
                             "name" => "Primary Connection",
                             "base_url" => "https://{device_hostname}/rest/vcenter",
+                            "port" => 443, // ADDED DEFAULT PORT
                             "rate_limit" => 60,
                             "endpoints" => [
                                 [

@@ -1,5 +1,5 @@
 @extends('layouts.librenms')
-
+//resources/views/rest-api/credentials/edit.blade.php
 @section('title', 'Edit REST API - ' . $device->hostname)
 
 @section('content')
@@ -81,7 +81,7 @@
                 <div id="mapping" class="tab-pane fade">
                     <div class="mt-3">
                         <h4>Field Mapping Configuration</h4>
-                        
+
                         <div class="alert alert-info">
                             <strong>Field Mapping:</strong> Choose how API response fields map to LibreNMS database tables.
                         </div>
@@ -140,7 +140,7 @@
                             <dl class="dl-horizontal">
                                 <dt>Type</dt>
                                 <dd>{{ ucfirst($currentMapping->mapping_type) }}</dd>
-                                
+
                                 <dt>Name</dt>
                                 <dd>{{ $currentMapping->mapping_name }}</dd>
                             </dl>

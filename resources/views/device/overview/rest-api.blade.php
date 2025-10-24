@@ -1,7 +1,7 @@
 @php
-/**
+/**resources\views\device\overview\restapi.blade.php
  * REST API Metrics Overview (Blade Router)
- * 
+ *
  * Displays REST API metrics for devices with REST API connections enabled
  * Routes to vendor-specific Blade templates or generic fallback
  */

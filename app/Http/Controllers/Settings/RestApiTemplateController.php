@@ -102,7 +102,7 @@ class RestApiTemplateController extends Controller
 		            }
 		        }
 
-		        // 4. Safely merge the updated Base URL and other fields into the existing structure
+		        // 4. Safely merge the updated Base URL, Port, and other fields into the existing structure
 		        $existingTemplateData['connections'][0] = array_merge(
 		            $existingTemplateData['connections'][0] ?? [],
 		            $submittedConnData
@@ -448,6 +448,20 @@ class RestApiTemplateController extends Controller
         }
 
         $baseUri = rtrim($connData['base_url'], '/');
+        $port = $connData['port'] ?? null; // GET PORT from connData (from template)
+
+        // START: Logic to construct full base URL with port
+        if ($port && !preg_match('/:\d+/', $baseUri)) {
+             $isHttps = str_starts_with(strtolower($baseUri), 'https');
+             $isHttp = str_starts_with(strtolower($baseUri), 'http');
+
+             if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                 // Append port if not explicitly set in base_url and it's not the default for the scheme
+                 $baseUri = $baseUri . ":{$port}";
+             }
+        }
+        // END: Logic to construct full base URL with port
+
 
         $credential = null;
         $credId = $credentialId ?? $connData['credential_id'] ?? null;
@@ -458,7 +472,8 @@ class RestApiTemplateController extends Controller
 
         // 1. Create a mock RestApiConnection model from array data
         $connection = new RestApiConnection([
-            'base_url' => $baseUri,
+            'base_url' => $baseUri, // Use baseUri which might now include the port
+            'port' => $port, // ADDED PORT TO MOCK CONNECTION
             'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
             // Include other connData params needed by strategies (e.g., login paths)
             'params' => $connData['params'] ?? [],
@@ -471,7 +486,7 @@ class RestApiTemplateController extends Controller
         // 3. Make the request using the client instance
         $method = $endpointData['method'] ?? 'GET';
         $path = ltrim($endpointData['path'], '/');
-        $url = $baseUri . '/' . $path; // Construct full URL outside of Guzzle's base_uri to handle dynamic paths better
+        $url = rtrim($baseUri, '/') . '/' . $path; // Construct full URL using corrected baseUri
 
         // Guzzle's request call using the Illuminate Http facade client methods
         $response = $client->{$method}($url);
@@ -542,6 +557,7 @@ class RestApiTemplateController extends Controller
 		        $validated = $request->validate([
 		            'connection_index' => 'required|integer',
 		            'connection_data' => 'required|array',
+                    'connection_data.port' => 'nullable|integer|min:1|max:65535', // ADDED VALIDATION
 		        ]);
 
 		        $connIndex = $validated['connection_index'];
@@ -634,7 +650,7 @@ class RestApiTemplateController extends Controller
         }
 
         // Sensor metrics (temperature, voltage, fan, etc.)
-        if (preg_match('/(temp|temperature|celsius|°c|voltage|volt|fan|rpm|power|watt|watts|current|amps)/i', $field)) {
+        if (preg_match('/(temp|temperature|celsius|�c|voltage|volt|fan|rpm|power|watt|watts|current|amps)/i', $field)) {
             return [
                 'api_field' => $fieldName,
                 'librenms_table' => 'sensors',
@@ -734,7 +750,7 @@ class RestApiTemplateController extends Controller
             if ($sessionToken) {
                 $params = $credential->params->pluck('value', 'key')->toArray();
                 $tokenHeader = $params['token_header'] ?? 'x-auth-token';
-                \Log::info("✓ Session token obtained, using header: {$tokenHeader}");
+                \Log::info(" Session token obtained, using header: {$tokenHeader}");
                 return [
                     $tokenHeader => $sessionToken,
                 ];

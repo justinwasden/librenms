@@ -14,6 +14,7 @@ class RestApiConnection extends Model
         'credential_id',
         'name',
         'base_url',
+        'port', // ADDED
         'rate_limit',
         'enabled',
         'disable_ssl_verify',
@@ -22,6 +23,7 @@ class RestApiConnection extends Model
     protected $casts = [
         'enabled' => 'boolean',
         'disable_ssl_verify' => 'boolean',
+        'port' => 'integer', // ADDED
     ];
 
     public function device()

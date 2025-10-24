@@ -97,7 +97,7 @@
                                                 <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
                                                     {{ ucfirst($type) }}
                                                 </option>
-                                            @endforeach
+                                            @endgroup
                                         </optgroup>
                                     </select>
                                     <small class="form-text text-muted">Defines the main data category this template handles</small>
@@ -178,7 +178,9 @@
             <form action="{{ route('settings.rest-api.templates.update', $template->id) }}" method="POST">
                 @csrf @method('PUT')
                 <div class="modal-header bg-info text-white">
-                    </div>
+                    <h5 class="modal-title"><i class="fas fa-plug"></i> Configure Connection</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+                </div>
                 <div class="modal-body">
                     @include('settings.rest-api.templates.partials.connection', ['template' => $template])
                     <input type="hidden" name="action_type" value="update_connection_only">
@@ -219,6 +221,8 @@
                         $ep['_connection_index'] = $connectionIndex;
                         $ep['_endpoint_index'] = $idx;
                         $ep['_is_template'] = true; // Flag to indicate this is a template endpoint
+                        // Convert metric_map to JSON string for Alpine.js editing
+                        $ep['metric_map_json'] = json_encode($ep['metric_map'] ?? null, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
                         $endpoints[] = $ep;
                     }
                 }
@@ -246,6 +250,7 @@
                                        @click.prevent="selectEndpoint(index)">
                                         <span class="badge badge-secondary mr-2" x-text="endpoint.method || 'GET'"></span>
                                         <span x-text="endpoint.name || endpoint.path || 'Unnamed'"></span>
+                                        <span x-show="endpoints[index].isDirty" class="float-right text-success"><i class="fas fa-dot-circle"></i></span>
                                     </a>
                                 </template>
 
@@ -264,215 +269,218 @@
                         {{-- RIGHT PANEL --}}
                         <div class="col-md-9">
                             <template x-if="selectedEndpointIndex !== null">
-                                <div class="endpoint-dirty">
-                                    <div class="form-group">
-                                        <label>Endpoint Name <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" x-model="selectedEndpoint.name"
-                                               @input="checkForChanges()" required>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-8">
-                                            <div class="form-group">
-                                                <label>Path <span class="text-danger">*</span></label>
-                                                <input type="text" class="form-control" x-model="selectedEndpoint.path"
-                                                       @input="checkForChanges()" placeholder="/api/2.30/arrays" required>
+                                <div>
+                                    <div class="endpoint-dirty" :class="{ 'border-left-success': isDirty }">
+                                        <div class="form-group">
+                                            <label>Endpoint Name <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" x-model="selectedEndpoint.name"
+                                                   @input="checkForChanges()" required>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-8">
+                                                <div class="form-group">
+                                                    <label>Path <span class="text-danger">*</span></label>
+                                                    <input type="text" class="form-control" x-model="selectedEndpoint.path"
+                                                           @input="checkForChanges()" placeholder="/api/2.30/arrays" required>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>HTTP Method</label>
+                                                    <select class="form-control" x-model="selectedEndpoint.method"
+                                                            @change="checkForChanges()">
+                                                        <option>GET</option>
+                                                        <option>POST</option>
+                                                        <option>PUT</option>
+                                                        <option>DELETE</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="col-md-4">
-                                            <div class="form-group">
-                                                <label>HTTP Method</label>
-                                                <select class="form-control" x-model="selectedEndpoint.method"
-                                                        @change="checkForChanges()">
-                                                    <option>GET</option>
-                                                    <option>POST</option>
-                                                    <option>PUT</option>
-                                                    <option>DELETE</option>
-                                                </select>
-                                            </div>
+                                        <div class="form-group">
+                                            <label>Resource Type</label>
+                                            <select class="form-control" x-model="selectedEndpoint.resource_type"
+                                                    @change="checkForChanges()">
+                                                <option value="">-- Auto Detect --</option>
+                                                <optgroup label="Standard Types">
+                                                    <option value="device">Device</option>
+                                                    <option value="port">Port</option>
+                                                    <option value="sensor">Sensor</option>
+                                                    <option value="processor">Processor</option>
+                                                    <option value="mempool">Memory Pool</option>
+                                                    <option value="alert">Alert</option>
+                                                    <option value="custom">Custom</option>
+                                                </optgroup>
+                                                <optgroup label="Storage Array Types">
+                                                    <option value="array">Array</option>
+                                                    <option value="controller">Controller</option>
+                                                    <option value="host">Host</option>
+                                                    <option value="volume">Volume</option>
+                                                    <option value="storage">Storage (Legacy)</option>
+                                                </optgroup>
+                                            </select>
+                                            <small class="form-text text-muted">Determines which database table to store data in</small>
                                         </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Resource Type</label>
-                                        <select class="form-control" x-model="selectedEndpoint.resource_type"
-                                                @change="checkForChanges()">
-                                            <option value="">-- Auto Detect --</option>
-                                            <optgroup label="Standard Types">
-                                                <option value="device">Device</option>
-                                                <option value="port">Port</option>
-                                                <option value="sensor">Sensor</option>
-                                                <option value="processor">Processor</option>
-                                                <option value="mempool">Memory Pool</option>
-                                                <option value="alert">Alert</option>
-                                                <option value="custom">Custom</option>
-                                            </optgroup>
-                                            <optgroup label="Storage Array Types">
-                                                <option value="array">Array</option>
-                                                <option value="controller">Controller</option>
-                                                <option value="host">Host</option>
-                                                <option value="volume">Volume</option>
-                                                <option value="storage">Storage (Legacy)</option>
-                                            </optgroup>
-                                        </select>
-                                        <small class="form-text text-muted">Determines which database table to store data in</small>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Metric Mapping <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
+                                        <div class="form-group">
+                                            <label>Metric Mapping <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
 
-                                        {{-- API Preview Button --}}
-                                        <div class="mb-3">
-                                            <button type="button" class="btn btn-info btn-sm fetch-api-preview-btn"
-                                                    @click="fetchApiPreview()">
-                                                <i class="fas fa-download"></i> Fetch API Preview
+                                            {{-- API Preview Button --}}
+                                            <div class="mb-3">
+                                                <button type="button" class="btn btn-info btn-sm fetch-api-preview-btn"
+                                                        @click="fetchApiPreview()">
+                                                    <i class="fas fa-download"></i> Fetch API Preview
+                                                </button>
+                                                <span class="preview-status ml-2" x-show="previewLoading" style="color: #0066cc;">
+                                                     Fetching...
+                                                </span>
+                                                <span class="preview-status ml-2" x-show="previewSuccess && !previewLoading" style="color: #28a745;">
+                                                     Preview ready
+                                                </span>
+                                                <span class="preview-status ml-2" x-show="previewError && !previewLoading" style="color: #dc3545;">
+                                                     Error
+                                                </span>
+                                            </div>
+
+                                            {{-- JSON Textarea --}}
+                                            <textarea class="form-control font-monospace" rows="10" x-model="selectedEndpoint.metric_map_json"
+                                                      @input="checkForChanges()" placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
+                                            <small class="form-text text-muted">Leave empty to let the system auto-learn field mappings</small>
+                                            <button type="button" class="btn btn-sm btn-secondary mt-2"
+                                                    @click="beautifyJson()">
+                                                <i class="fas fa-indent"></i> Beautify JSON
                                             </button>
-                                            <span class="preview-status ml-2" x-show="previewLoading" style="color: #0066cc;">
-                                                ⟳ Fetching...
-                                            </span>
-                                            <span class="preview-status ml-2" x-show="previewSuccess && !previewLoading" style="color: #28a745;">
-                                                ✓ Preview ready
-                                            </span>
-                                            <span class="preview-status ml-2" x-show="previewError && !previewLoading" style="color: #dc3545;">
-                                                ✗ Error
-                                            </span>
                                         </div>
 
-                                        {{-- JSON Textarea --}}
-                                        <textarea class="form-control font-monospace" rows="10" x-model="selectedEndpoint.metric_map_json"
-                                                  @input="checkForChanges()" placeholder='{\n  "field_name": "json.path.to.field"\n}'></textarea>
-                                        <small class="form-text text-muted">Leave empty to let the system auto-learn field mappings</small>
-                                        <button type="button" class="btn btn-sm btn-secondary mt-2"
-                                                @click="beautifyJson()">
-                                            <i class="fas fa-indent"></i> Beautify JSON
-                                        </button>
-                                    </div>
+                                        <div class="text-right mt-4">
+                                            <button type="button" class="btn btn-danger mr-2"
+                                                    @click="deleteEndpoint()"
+                                                    x-show="selectedEndpoint._endpoint_index !== undefined">
+                                                <i class="fas fa-trash"></i> Delete Endpoint
+                                            </button>
+                                            <button type="button" class="btn btn-primary"
+                                                    @click="saveEndpointChanges()"
+                                                    :disabled="!isDirty"
+                                                    data-save-endpoint>
+                                                <i class="fas fa-save"></i> Save Endpoint
+                                            </button>
+                                        </div>
 
-                                    <div class="text-right mt-4">
-                                        <button type="button" class="btn btn-danger mr-2"
-                                                @click="deleteEndpoint()"
-                                                x-show="selectedEndpoint._endpoint_index !== undefined">
-                                            <i class="fas fa-trash"></i> Delete Endpoint
-                                        </button>
-                                        <button type="button" class="btn btn-primary"
-                                                @click="saveEndpointChanges()"
-                                                :disabled="!isDirty"
-                                                data-save-endpoint>
-                                            <i class="fas fa-save"></i> Save Endpoint
-                                        </button>
-                                    </div>
+                                        {{-- API PREVIEW SECTION --}}
+                                        <hr class="mt-4 mb-3">
+                                        <h6 class="text-info mb-3"><i class="fas fa-database"></i> API Response Preview</h6>
 
-                                    {{-- API PREVIEW SECTION --}}
-                                    <hr class="mt-4 mb-3">
-                                    <h6 class="text-info mb-3"><i class="fas fa-database"></i> API Response Preview</h6>
+                                        <div x-show="!apiPreviewData && !previewError && previewFetched" class="alert alert-info mb-3">
+                                            <i class="fas fa-info-circle"></i> Click "Fetch API Preview" above to load API response data.
+                                        </div>
 
-                                    <div x-show="!apiPreviewData && !previewError && previewFetched" class="alert alert-info mb-3">
-                                        <i class="fas fa-info-circle"></i> Click "Fetch API Preview" above to load API response data.
-                                    </div>
+                                        <div x-show="previewError && previewFetched" class="alert alert-danger mb-3">
+                                            <i class="fas fa-exclamation-triangle"></i> <strong>Error fetching preview:</strong>
+                                            <p class="mb-0" x-text="previewErrorMessage"></p>
+                                            <p class="mb-0 small" x-text="deviceSelectorError"></p>
+                                        </div>
 
-                                    <div x-show="previewError && previewFetched" class="alert alert-danger mb-3">
-                                        <i class="fas fa-exclamation-triangle"></i> <strong>Error fetching preview:</strong>
-                                        <p class="mb-0" x-text="previewErrorMessage"></p>
-                                    </div>
+                                        <div x-show="apiPreviewData && previewFetched" class="bg-light p-3 rounded" style="max-height: 600px; overflow-y: auto;">
+                                            {{-- Recommendations Tab --}}
+                                            <ul class="nav nav-tabs mb-3" role="tablist">
+                                                <li class="nav-item">
+                                                    <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'"
+                                                       :class="{ 'active': activePreviewTab === 'recommendations' }">
+                                                        <i class="fas fa-lightbulb"></i> Recommendations
+                                                        <span class="badge badge-info ml-2" x-show="apiPreviewRecommendations.length === 0">(Vendor-specific only)</span>
+                                                        <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length > 0"
+                                                              x-text="apiPreviewRecommendations.length"></span>
+                                                    </a>
+                                                </li>
+                                                <li class="nav-item">
+                                                    <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'structure'"
+                                                       :class="{ 'active': activePreviewTab === 'structure' }">
+                                                        <i class="fas fa-sitemap"></i> Structure
+                                                    </a>
+                                                </li>
+                                                <li class="nav-item">
+                                                    <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'sample'"
+                                                       :class="{ 'active': activePreviewTab === 'sample' }">
+                                                        <i class="fas fa-code"></i> Sample Data
+                                                    </a>
+                                                </li>
+                                            </ul>
 
-                                    <div x-show="apiPreviewData && previewFetched" class="bg-light p-3 rounded" style="max-height: 600px; overflow-y: auto;">
-                                        {{-- Recommendations Tab --}}
-                                        <ul class="nav nav-tabs mb-3" role="tablist">
-                                            <li class="nav-item">
-                                                <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'"
-                                                   :class="{ 'active': activePreviewTab === 'recommendations' }">
-                                                    <i class="fas fa-lightbulb"></i> Recommendations
-                                                    <span class="badge badge-info ml-2" x-show="apiPreviewRecommendations.length === 0">(Vendor-specific only)</span>
-                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length > 0"
-                                                          x-text="apiPreviewRecommendations.length"></span>
-                                                </a>
-                                            </li>
-                                            <li class="nav-item">
-                                                <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'structure'"
-                                                   :class="{ 'active': activePreviewTab === 'structure' }">
-                                                    <i class="fas fa-sitemap"></i> Structure
-                                                </a>
-                                            </li>
-                                            <li class="nav-item">
-                                                <a class="nav-link" href="#" @click.prevent="activePreviewTab = 'sample'"
-                                                   :class="{ 'active': activePreviewTab === 'sample' }">
-                                                    <i class="fas fa-code"></i> Sample Data
-                                                </a>
-                                            </li>
-                                        </ul>
+                                            {{-- Recommendations Tab Content --}}
+                                            <div x-show="activePreviewTab === 'recommendations'">
+                                                <div x-show="apiPreviewRecommendations.length === 0" class="text-muted text-center py-4">
+                                                    <p><i class="fas fa-info-circle"></i> <strong>No vendor-specific recommendations available</strong></p>
+                                                    <p class="mb-0">Use the <strong>Structure</strong> tab below to manually map fields to LibreNMS tables.</p>
+                                                    <p class="mb-0 small mt-2">Most API fields will need custom mapping based on your specific use case.</p>
+                                                </div>
 
-                                        {{-- Recommendations Tab Content --}}
-                                        <div x-show="activePreviewTab === 'recommendations'">
-                                            <div x-show="apiPreviewRecommendations.length === 0" class="text-muted text-center py-4">
-                                                <p><i class="fas fa-info-circle"></i> <strong>No vendor-specific recommendations available</strong></p>
-                                                <p class="mb-0">Use the <strong>Structure</strong> tab below to manually map fields to LibreNMS tables.</p>
-                                                <p class="mb-0 small mt-2">Most API fields will need custom mapping based on your specific use case.</p>
+                                                <div x-show="apiPreviewRecommendations.length > 0" class="table-responsive">
+                                                    <p class="text-muted"><i class="fas fa-star"></i> <strong>Vendor-Specific Recommendations</strong></p>
+                                                    <table class="table table-sm table-hover mb-0">
+                                                        <thead class="table-light">
+                                                            <tr>
+                                                                <th>API Field</th>
+                                                                <th>Data Type</th>
+                                                                <th>Recommended</th>
+                                                                <th>Confidence</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <template x-for="(rec, recIndex) in apiPreviewRecommendations" :key="recIndex">
+                                                                <tr>
+                                                                    <td><code x-text="rec.api_field || rec.field" style="font-size: 11px;"></code></td>
+                                                                    <td>
+                                                                        <span class="badge"
+                                                                              :class="getDataTypeBadgeClass(rec.dataType || rec.type)"
+                                                                              x-text="rec.dataType || rec.type"></span>
+                                                                    </td>
+                                                                    <td><small x-text="(rec.librenms_table || rec.table) + '.' + (rec.librenms_field || rec.field)"></small></td>
+                                                                    <td>
+                                                                        <div class="progress" style="height: 18px; width: 60px;">
+                                                                            <div class="progress-bar"
+                                                                                 :style="'width: ' + (rec.confidence * 100) + '%; background-color: ' + getConfidenceColor(rec.confidence)"
+                                                                                 :title="Math.round(rec.confidence * 100) + '%'">
+                                                                                <small x-text="Math.round(rec.confidence * 100) + '%'" style="font-size: 9px;"></small>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            </template>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
 
-                                            <div x-show="apiPreviewRecommendations.length > 0" class="table-responsive">
-                                                <p class="text-muted"><i class="fas fa-star"></i> <strong>Vendor-Specific Recommendations</strong></p>
-                                                <table class="table table-sm table-hover mb-0">
+                                            {{-- Structure Tab Content --}}
+                                            <div x-show="activePreviewTab === 'structure'" class="table-responsive">
+                                                <table class="table table-sm mb-0">
                                                     <thead class="table-light">
                                                         <tr>
-                                                            <th>API Field</th>
-                                                            <th>Data Type</th>
-                                                            <th>Recommended</th>
-                                                            <th>Confidence</th>
+                                                            <th>Field</th>
+                                                            <th>Type</th>
+                                                            <th>Sample Value</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        <template x-for="(rec, recIndex) in apiPreviewRecommendations" :key="recIndex">
+                                                        <template x-for="(field, name) in apiPreviewFields" :key="name">
                                                             <tr>
-                                                                <td><code x-text="rec.api_field || rec.field" style="font-size: 11px;"></code></td>
+                                                                <td><code x-text="name" style="font-size: 11px;"></code></td>
                                                                 <td>
-                                                                    <span class="badge"
-                                                                          :class="getDataTypeBadgeClass(rec.dataType || rec.type)"
-                                                                          x-text="rec.dataType || rec.type"></span>
+                                                                    <span class="badge badge-light"
+                                                                          x-text="getFieldType(field)"></span>
                                                                 </td>
-                                                                <td><small x-text="(rec.librenms_table || rec.table) + '.' + (rec.librenms_field || rec.field)"></small></td>
                                                                 <td>
-                                                                    <div class="progress" style="height: 18px; width: 60px;">
-                                                                        <div class="progress-bar"
-                                                                             :style="'width: ' + (rec.confidence * 100) + '%; background-color: ' + getConfidenceColor(rec.confidence)"
-                                                                             :title="Math.round(rec.confidence * 100) + '%'">
-                                                                            <small x-text="Math.round(rec.confidence * 100) + '%'" style="font-size: 9px;"></small>
-                                                                        </div>
-                                                                    </div>
+                                                                    <small x-text="getFieldSample(field)"></small>
                                                                 </td>
                                                             </tr>
                                                         </template>
                                                     </tbody>
                                                 </table>
                                             </div>
-                                        </div>
 
-                                        {{-- Structure Tab Content --}}
-                                        <div x-show="activePreviewTab === 'structure'" class="table-responsive">
-                                            <table class="table table-sm mb-0">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>Field</th>
-                                                        <th>Type</th>
-                                                        <th>Sample Value</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <template x-for="(field, name) in apiPreviewFields" :key="name">
-                                                        <tr>
-                                                            <td><code x-text="name" style="font-size: 11px;"></code></td>
-                                                            <td>
-                                                                <span class="badge badge-light"
-                                                                      x-text="getFieldType(field)"></span>
-                                                            </td>
-                                                            <td>
-                                                                <small x-text="getFieldSample(field)"></small>
-                                                            </td>
-                                                        </tr>
-                                                    </template>
-                                                </tbody>
-                                            </table>
-                                        </div>
-
-                                        {{-- Sample Data Tab Content --}}
-                                        <div x-show="activePreviewTab === 'sample'">
-                                            <pre style="font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code x-text="JSON.stringify(apiPreviewSample, null, 2)"></code></pre>
+                                            {{-- Sample Data Tab Content --}}
+                                            <div x-show="activePreviewTab === 'sample'">
+                                                <pre style="font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code x-text="JSON.stringify(apiPreviewSample, null, 2)"></code></pre>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -552,7 +560,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // 3. Serialize the clean endpoint data and put it in the hidden field
                 const endpointsJson = JSON.stringify(connectionData.endpoints);
-                document.getElementById('connection_endpoints_json_input').value = endpointsJson;
+                document.getElementById('connection_endpoints_data_input').value = endpointsJson;
             }
 
             // 4. Submit the form manually
@@ -661,7 +669,7 @@ window.endpointManager = function() {
         },
 
         // NEW METHOD: Fetch API Preview
-        async fetchApiPreview() {
+        fetchApiPreview() {
             if (!this.selectedEndpoint.path) {
                 alert('Please enter an API path first');
                 return;
@@ -670,6 +678,12 @@ window.endpointManager = function() {
             // Show device selector modal
             let modal = document.getElementById('deviceSelectorModal');
             if (modal) {
+                // Ensure device selector's Alpine data is loaded (it calls init on show)
+                const dsModal = document.querySelector('#deviceSelectorModal [x-data*=deviceSelectorData]');
+                if (dsModal && dsModal.__x && dsModal.__x.$data) {
+                    dsModal.__x.$data.loadDevices(); // Refresh lists
+                    dsModal.__x.$data.loadCredentials();
+                }
                 $(modal).modal('show');
             }
         },
@@ -721,11 +735,14 @@ window.endpointManager = function() {
         addNewEndpoint() {
             const newEp = {
                 name: 'New Endpoint',
-                path: '/api/2.30/',
+                path: '/api/v1/',
                 method: 'GET',
-                resource_type: '',
+                resource_type: 'custom',
+                poll_interval: 300,
+                enabled: true,
+                description: '',
                 metric_map: null,
-                metric_map_json: '',
+                metric_map_json: '{\n  \n}',
                 _connection_index: 0, // Default to first connection
                 _is_template: true
                 // Note: no _endpoint_index means it's new
@@ -849,11 +866,8 @@ window.endpointManager = function() {
             } catch (err) {
                 console.error('saveEndpointChanges error:', err);
                 // Show validation errors if available
-                if (this.validationErrors && Object.keys(this.validationErrors).length > 0) {
-                    const errorList = Object.entries(this.validationErrors)
-                        .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
-                        .join('\n');
-                    alert('Validation errors:\n' + errorList);
+                if (err.message && err.message.includes('Validation errors')) {
+                    alert('Validation errors. Please check the console.');
                 } else {
                     alert('Failed to save endpoint: ' + err.message);
                 }
@@ -906,79 +920,23 @@ window.endpointManager = function() {
             }
         },
 
-        // DEVICE SELECTOR METHODS
-        async loadDevices() {
-            this.deviceSelectorError = '';
-            try {
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/api/rest-api/devices', {
-                    headers: { 'X-CSRF-TOKEN': token }
-                });
-                const data = await res.json();
-                this.allDevices = data.devices || [];
-                this.filteredDevices = this.allDevices;
-                console.log(`Loaded ${this.allDevices.length} devices`);
-            } catch (err) {
-                console.error('Failed to load devices:', err);
-                this.deviceSelectorError = 'Failed to load devices: ' + err.message;
-            }
-        },
-
-        async loadCredentials() {
-            this.deviceSelectorError = '';
-            try {
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/api/rest-api/credentials', {
-                    headers: { 'X-CSRF-TOKEN': token }
-                });
-                const data = await res.json();
-                this.availableCredentials = data.credentials || [];
-                console.log(`Loaded ${this.availableCredentials.length} credentials`);
-            } catch (err) {
-                console.error('Failed to load credentials:', err);
-                this.deviceSelectorError = 'Failed to load credentials: ' + err.message;
-            }
-        },
-
-        filterDevices() {
-            const search = this.searchText.toLowerCase();
-            this.filteredDevices = this.allDevices.filter(d =>
-                d.hostname.toLowerCase().includes(search) ||
-                d.ip.toLowerCase().includes(search)
-            );
-        },
-
-        selectDevice(device) {
-            this.selectedDevice = device;
-            this.searchText = device.hostname;
-        },
-
-        onCredentialChange() {
-            const cred = this.availableCredentials.find(c => c.id == this.selectedCredentialId);
-            if (cred) {
-                this.selectedCredentialInfo = cred;
-            } else {
-                this.selectedCredentialInfo = {};
-            }
-        },
-
-        // Placeholder for device selector to interact with
+        // API PREVIEW METHODS
         async performPreview(deviceId, credentialId) {
             this.previewLoading = true;
             this.previewError = false;
-            this.deviceSelectorError = '';
             this.previewFetched = false;
+            this.apiPreviewData = null;
+            this.apiPreviewRecommendations = [];
+            this.apiPreviewFields = {};
+            this.apiPreviewSample = {};
+            this.previewErrorMessage = '';
 
             try {
                 const templateId = {{ $template->id }};
                 const connIdx = this.selectedEndpoint._connection_index || 0;
 								const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : this.selectedEndpointIndex;
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                // Use window.location.origin to ensure correct host
-                // Try using the web route path instead of /api/
                 const url = window.location.origin + '/api/rest-api/template-preview';
-                console.log('Calling preview API at:', url);
-                console.log('window.location.href:', window.location.href);
 
                 const res = await fetch(url, {
                     method: 'POST',
@@ -993,20 +951,15 @@ window.endpointManager = function() {
                     })
                 });
 
-                console.log('Response status:', res.status);
-                console.log('Response headers:', res.headers);
-
                 let data;
                 const contentType = res.headers.get('content-type');
-                console.log('Content-Type:', contentType);
 
                 if (contentType && contentType.includes('application/json')) {
                     data = await res.json();
-                    console.log('Response data:', data);
                 } else {
                     const text = await res.text();
                     console.error('Non-JSON response received:', text.substring(0, 500));
-                    throw new Error('Server returned non-JSON response (status ' + res.status + '). Check browser console for details.');
+                    throw new Error('Server returned non-JSON response (status ' + res.status + '). Check console for details.');
                 }
 
                 if (data.success) {
@@ -1025,19 +978,11 @@ window.endpointManager = function() {
                     this.apiPreviewFields = firstItem;
                     this.apiPreviewSample = firstItem;
 
-                    console.log('✓ Preview loaded:', {
-                        itemCount: items.length,
-                        recommendationCount: this.apiPreviewRecommendations.length,
-                        fieldCount: Object.keys(firstItem).length
-                    });
-
-                    $('#deviceSelectorModal').modal('hide');
                 } else {
                     this.previewLoading = false;
                     this.previewError = true;
                     this.previewFetched = true;
                     this.previewErrorMessage = data.error || 'Unknown error';
-                    this.deviceSelectorError = '✗ Error: ' + (data.error || 'Unknown error');
                 }
             } catch (err) {
                 console.error('Preview error:', err);
@@ -1045,41 +990,33 @@ window.endpointManager = function() {
                 this.previewError = true;
                 this.previewFetched = true;
                 this.previewErrorMessage = err.message;
-                this.deviceSelectorError = '✗ Failed to fetch preview: ' + err.message;
             }
         },
 
         // Sanitize recommendations - remove duplicates and validate structure
         sanitizeRecommendations(recs) {
             if (!Array.isArray(recs)) {
-                console.warn('Recommendations is not an array:', typeof recs);
                 return [];
             }
-
-            // Remove duplicates by creating a Map with api_field as key
             const seen = new Map();
             const cleaned = [];
 
             recs.forEach((rec, idx) => {
                 if (!rec || typeof rec !== 'object') {
-                    console.warn('Invalid recommendation at index', idx, rec);
                     return;
                 }
-
                 const key = rec.api_field || rec.field || `rec_${idx}`;
 
                 if (seen.has(key)) {
-                    console.warn('Duplicate recommendation key:', key);
                     return;
                 }
 
-                // Ensure all required properties exist
                 const cleaned_rec = {
                     api_field: rec.api_field || rec.field || 'unknown',
                     librenms_table: rec.librenms_table || rec.table || 'unknown',
                     librenms_field: rec.librenms_field || rec.field || 'unknown',
                     confidence: typeof rec.confidence === 'number' ? rec.confidence : 0.5,
-                    dataType: rec.dataType || rec.type || 'unknown',
+                    dataType: rec.dataType || rec.type || typeof rec.sampleValue,
                     reason: rec.reason || ''
                 };
 
@@ -1087,21 +1024,7 @@ window.endpointManager = function() {
                 cleaned.push(cleaned_rec);
             });
 
-            console.log('Cleaned recommendations:', cleaned.length, cleaned);
             return cleaned;
-        },
-        getDataTypeBadgeClass(type) {
-            const typeMap = {
-                'string': 'badge-success',
-                'integer': 'badge-info',
-                'float': 'badge-info',
-                'double': 'badge-info',
-                'boolean': 'badge-warning',
-                'array': 'badge-danger',
-                'object': 'badge-danger',
-                'null': 'badge-secondary',
-            };
-            return typeMap[type] || 'badge-secondary';
         },
 
         // Helper method to get color for confidence score
@@ -1128,18 +1051,18 @@ window.endpointManager = function() {
             return String(field);
         },
 
-        closeDeviceSelector() {
-            this.showDeviceSelectorModal = false;
-            this.resetDeviceSelector();
-        },
-
-        resetDeviceSelector() {
-            this.searchText = '';
-            this.selectedDevice = null;
-            this.selectedCredentialId = '';
-            this.selectedCredentialInfo = {};
-            this.deviceSelectorError = '';
-            this.filteredDevices = this.allDevices;
+        getDataTypeBadgeClass(type) {
+            const typeMap = {
+                'string': 'badge-success',
+                'integer': 'badge-info',
+                'float': 'badge-info',
+                'double': 'badge-info',
+                'boolean': 'badge-warning',
+                'array': 'badge-danger',
+                'object': 'badge-danger',
+                'null': 'badge-secondary',
+            };
+            return typeMap[type] || 'badge-secondary';
         },
     }
 }

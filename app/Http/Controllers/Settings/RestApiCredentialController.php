@@ -150,7 +150,25 @@ class RestApiCredentialController extends Controller
             return response()->json(['success' => false, 'error' => 'No connection configured or Base URL is empty']);
         }
 
-        $baseUri = str_replace('{device_hostname}', $device->hostname, $connData['base_url']);
+        // START: Logic to construct base URI with port
+        $baseUri = $connData['base_url'];
+
+        // Placeholder replacement for hostname
+        $baseUri = str_replace('{device_hostname}', $device->hostname, $baseUri);
+
+        $port = $connData['port'] ?? null; // GET PORT from connData (from template)
+
+        if ($port && !preg_match('/:\d+/', $baseUri)) {
+             $isHttps = str_starts_with(strtolower($baseUri), 'https');
+             $isHttp = str_starts_with(strtolower($baseUri), 'http');
+
+             if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                 // Append port if not explicitly set in base_url and it's not the default for the scheme
+                 $baseUri = $baseUri . ":{$port}";
+             }
+        }
+        // END: Logic to construct base URI with port
+
         $endpoint = $template->endpoints()->first();
 
         if (!$endpoint) {
@@ -160,6 +178,7 @@ class RestApiCredentialController extends Controller
         // 1. Create mock connection model
         $connection = new RestApiConnection([
             'base_url' => $baseUri,
+            'port' => $port, // ADDED PORT TO MOCK CONNECTION
             'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
         ]);
 

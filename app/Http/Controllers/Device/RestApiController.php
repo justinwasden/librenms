@@ -52,6 +52,7 @@ class RestApiController extends Controller
 				    $connection = $device->restApiConnections()->create([
 				        'name' => $connData['name'],
 				        'base_url' => $connData['base_url'],
+				        'port' => $connData['port'] ?? null, // ADDED PORT
 				        'credential_id' => $connData['credential_id'] ?? null,
 				        'rate_limit' => $connData['rate_limit'] ?? 60,
 				        'enabled' => $connData['enabled'] ?? true,
@@ -117,6 +118,7 @@ class RestApiController extends Controller
                     $fail('The base url must start with http:// or https://');
                 }
             }],
+            'port' => 'nullable|integer|min:1|max:65535', // ADDED PORT VALIDATION
             'rate_limit' => 'nullable|integer|min:1',
         ]);
 
@@ -154,6 +156,7 @@ class RestApiController extends Controller
 		                $fail('The base url must start with http:// or https://');
 		            }
 		        }],
+		        'port' => 'nullable|integer|min:1|max:65535', // ADDED PORT VALIDATION
 		        'rate_limit' => 'nullable|integer|min:1',
 		    ]);
 
@@ -440,8 +443,23 @@ class RestApiController extends Controller
                 return null;
             }
 
-            $loginUrl = rtrim($connection->base_url, '/') . '/' . ltrim($loginPath, '/');
-            $loginUrl = $this->replacePlaceholders($loginUrl, $this->device);
+            // START: Logic to construct full base URL with port
+            $baseUrl = rtrim($connection->base_url, '/');
+            $port = $connection->port;
+
+            if ($port && !preg_match('/:\d+/', $baseUrl)) {
+                 $isHttps = str_starts_with(strtolower($baseUrl), 'https');
+                 $isHttp = str_starts_with(strtolower($baseUrl), 'http');
+
+                 if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                     // Append port if not explicitly set in base_url and it's not the default for the scheme
+                     $baseUrl = $baseUrl . ":{$port}";
+                 }
+            }
+            // END: Logic to construct full base URL with port
+
+            $loginUrl = rtrim($baseUrl, '/') . '/' . ltrim($loginPath, '/');
+            $loginUrl = $this->replacePlaceholdersInString($loginUrl, $this->device); // Fixed to use local helper
 
             $loginOptions = [
                 'headers' => [

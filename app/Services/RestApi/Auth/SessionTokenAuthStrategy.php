@@ -35,7 +35,20 @@ class SessionTokenAuthStrategy implements AuthStrategyInterface
 
     protected function login(RestApiConnection $connection, RestApiCredential $credential): ?string
     {
+        // START: Port logic added
         $baseUrl = rtrim($connection->base_url, '/');
+        $port = $connection->port;
+
+        if ($port && !preg_match('/:\d+/', $baseUrl)) {
+             $isHttps = str_starts_with(strtolower($baseUrl), 'https');
+             $isHttp = str_starts_with(strtolower($baseUrl), 'http');
+
+             if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                 $baseUrl = $baseUrl . ":{$port}";
+             }
+        }
+        // END: Port logic added
+
         $loginPath = $credential->getParamValue('login_path', 'api/2.26/login');
         $method = strtoupper($credential->getParamValue('login_method', 'POST'));
         $apiHeader = $credential->getParamValue('api_token_header', 'api-token');

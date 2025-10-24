@@ -57,7 +57,21 @@ class ProxmoxAuthStrategy implements AuthStrategyInterface
 
     protected function login(RestApiConnection $connection, RestApiCredential $credential): ?array
     {
+        // START: Port logic added
         $baseUrl = rtrim($connection->base_url, '/');
+        $port = $connection->port;
+
+        if ($port && !preg_match('/:\d+/', $baseUrl)) {
+             $isHttps = str_starts_with(strtolower($baseUrl), 'https');
+             $isHttp = str_starts_with(strtolower($baseUrl), 'http');
+
+             if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                 $baseUrl = $baseUrl . ":{$port}";
+             }
+        }
+        // END: Port logic added
+
+        // The base_url in Proxmox template already includes :8006, but this handles custom configurations
         $loginUrl = $baseUrl . '/api2/json/access/ticket';
 
         $username = $credential->getParamValue('username');

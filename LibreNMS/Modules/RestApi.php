@@ -1,6 +1,6 @@
 <?php
 
-/**
+/**LibreNMS\Modules\RestApi.php
  * RestApi.php
  *
  * LibreNMS REST API Poller Module
@@ -47,13 +47,13 @@ class RestApi implements Module
     {
         $device = $os->getDevice();
         $deviceModel = DeviceModel::find($device->device_id);
-        
+
         if (!$deviceModel) {
             return false;
         }
 
         $hasTemplate = RestApiDeviceTemplate::where('device_id', $deviceModel->device_id)->exists();
-        
+
         return $hasTemplate && $status->isEnabled();
     }
 
@@ -64,13 +64,13 @@ class RestApi implements Module
     {
         $device = $os->getDevice();
         $deviceModel = DeviceModel::find($device->device_id);
-        
+
         if (!$deviceModel) {
             return false;
         }
 
         $hasTemplate = RestApiDeviceTemplate::where('device_id', $deviceModel->device_id)->exists();
-        
+
         return $hasTemplate && $status->isEnabled();
     }
 
@@ -90,7 +90,7 @@ class RestApi implements Module
     {
         $device = $os->getDevice();
         $deviceModel = DeviceModel::find($device->device_id);
-        
+
         if (!$deviceModel) {
             return;
         }

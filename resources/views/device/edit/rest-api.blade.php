@@ -91,6 +91,13 @@
                                        value="https://{{ $device->hostname }}"
                                        required style="width: 400px;">
                             </div>
+                            {{-- START: ADDED PORT FIELD --}}
+                            <div class="form-group mr-2">
+                                <input type="number" name="port" class="form-control"
+                                       placeholder="Port (Optional)"
+                                       style="width: 100px;" min="1" max="65535">
+                            </div>
+                            {{-- END: ADDED PORT FIELD --}}
                             <div class="form-group mr-2">
                                 <input type="number" name="rate_limit" class="form-control"
                                        placeholder="Rate Limit (reqs/min, default 60)"
@@ -137,7 +144,12 @@
                                     <div class="clearfix"></div>
                                 </div>
                                 <div class="panel-body">
-                                    <p><strong>Base URL:</strong> {{ $connection->base_url }}</p>
+                                    <p>
+                                        <strong>Base URL:</strong> {{ $connection->base_url }}
+                                        @if($connection->port)
+                                            <span class="text-muted small">(Port: {{ $connection->port }})</span>
+                                        @endif
+                                    </p>
                                     <p><strong>Credential:</strong> {{ $connection->credential->name ?? 'None Applied' }}</p>
                                     <p><strong>Rate Limit:</strong> {{ $connection->rate_limit }} reqs/min</p>
                                     <p><strong>SSL Verify:</strong> <span class="label label-{{ $connection->disable_ssl_verify ? 'danger' : 'success' }}">{{ $connection->disable_ssl_verify ? 'Disabled' : 'Enabled' }}</span></p>
@@ -204,9 +216,18 @@
                             <label>Base URL</label>
                             <input type="text" name="base_url" class="form-control" value="{{ old('base_url', $connection->base_url) }}" required>
                             <small class="form-text text-muted">
-                                Note: Only enable "Disable SSL Verification" if you have self-signed certificates. The URL must be valid even if SSL is disabled.
+                                The URL must be valid even if SSL is disabled.
                             </small>
                         </div>
+                        {{-- START: ADDED PORT FIELD TO EDIT MODAL --}}
+                        <div class="form-group">
+                            <label>Port (Optional)</label>
+                            <input type="number" name="port" class="form-control" value="{{ old('port', $connection->port) }}" min="1" max="65535">
+                            <small class="form-text text-muted">
+                                If set, this port will be used instead of the port in the URL or the default (80/443).
+                            </small>
+                        </div>
+                        {{-- END: ADDED PORT FIELD --}}
                         <div class="form-group">
                             <label>Rate Limit (reqs/min)</label>
                             <input type="number" name="rate_limit" class="form-control" value="{{ old('rate_limit', $connection->rate_limit ?? 60) }}" min="1">
@@ -231,7 +252,7 @@
         </div>
     </div>
 
-    {{-- 2. Credential Modal --}}
+    {{-- 2. Credential Modal (No change needed) --}}
     <div class="modal fade" id="credentialModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
@@ -260,7 +281,7 @@
         </div>
     </div>
 
-    {{-- 3. Endpoint Add Modal --}}
+    {{-- 3. Endpoint Add Modal (No change needed) --}}
     <div class="modal fade" id="endpointAddModal{{ $connection->id }}" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
@@ -299,7 +320,7 @@
     </div>
 @endforeach
 
-{{-- 4. Endpoint Edit Modals --}}
+{{-- 4. Endpoint Edit Modals (No change needed) --}}
 @foreach($device->restApiConnections->flatMap->endpoints as $endpoint)
 <div class="modal fade" id="endpointEditModal{{ $endpoint->id }}" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
@@ -334,7 +355,7 @@
                     </div>
                     <div class="form-group"><label>Path</label><input type="text" name="path" class="form-control" value="{{ old('path', $endpoint->path) }}" required></div>
                     <div class="form-group"><label>Metric Map (JSON)</label>
-                        <textarea name="metric_map_json" class="form-control" rows="5" required>{{ old('metric_map_json', json_encode($endpoint->metric_map, JSON_PRETTY_PRINT)) }}</textarea>
+                        <textarea name="metric_map_json" class="form-control" rows="5" required>{{ old('metric_map_json', json_encode($endpoint->getMappingConfig(), JSON_PRETTY_PRINT)) }}</textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
