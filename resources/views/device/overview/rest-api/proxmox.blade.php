@@ -110,7 +110,7 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         {{-- FIX 2: Check $total_mem > 0 to indicate valid data was found --}}
                         @if($total_mem > 0)
                             <div class="d-inline-block">
-                                {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left']) !!}
+                                {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             </div>
                             <p class="text-muted small mt-2">
                                 {{ $mem_percent_formatted }}% Utilization
