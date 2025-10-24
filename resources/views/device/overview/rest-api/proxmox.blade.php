@@ -1,9 +1,5 @@
 {{-- resources/views/device/overview/rest-api/proxmox.blade.php --}}
 
-@extends('layouts.app')
-
-@section('content')
-
 @php
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
@@ -13,7 +9,7 @@ use LibreNMS\Util\Color;
 
 $device_id = $device['device_id'];
 
-// 1. Cluster Status (Assumed to be mapped to a dedicated sensor)
+// 1. Cluster Status
 $cluster_status = DB::table('sensors')
     ->where('device_id', $device_id)
     ->where('sensor_descr', 'like', 'cluster_status')
@@ -22,7 +18,6 @@ $cluster_status = DB::table('sensors')
 // 2. Memory Data from mempools (Confirmed working via database query)
 $mem_data = DB::table('mempools')
     ->where('device_id', $device_id)
-    // Query for the main System memory pool, which contains Total/Used/Free
     ->where('mempool_descr', 'LIKE', 'Physical memory (system)%')
     ->first();
 
@@ -34,13 +29,12 @@ $mem_bg = Color::percentage($mem_percent, 80);
 // 3. CPU Data from processors
 $cpu_data = DB::table('processors')
     ->where('device_id', $device_id)
-    // Get the highest reported CPU usage (often the average or the core with max load)
     ->orderBy('processor_usage', 'desc')
     ->first();
 $cpu_util = $cpu_data->processor_usage ?? 0;
 $cpu_bg = Color::percentage($cpu_util, 70);
 
-// 4. Storage data (mapped from Proxmox Datastores/Datasets)
+// 4. Storage data
 $storage = DB::table('storage')
     ->where('device_id', $device_id)
     ->where('storage_type', 'rest-api')
@@ -79,7 +73,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                             <tr><th>Cluster Status</th>
                                 <td>
                                     @php
-                                        // Assuming Proxmox cluster status (quorate) maps 1=Online, 0=Offline
+                                        // Assuming 1 = Quorate/Online, 0 = Offline
                                         $status_value = $cluster_status->sensor_current ?? 'N/A';
                                         $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
                                         $label = ($status_value == 1) ? 'success' : 'danger';
@@ -92,18 +86,18 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
                     <div class="col-md-4">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(350, 40, $cpu_util, Number::format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        {!! print_percentage_bar(350, 40, $cpu_util, \LibreNMS\Util\Number::format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         <p class="text-muted small text-center mt-2">
-                            {{ Number::format($cpu_util, 1) }}% Max/Avg Usage
+                            {{ \LibreNMS\Util\Number::format($cpu_util, 1) }}% Max/Avg Usage
                         </p>
                     </div>
 
                     <div class="col-md-4">
                         <h4>Physical Memory Usage</h4>
                         @if($total_mem > 0)
-                            {!! print_percentage_bar(350, 40, $mem_percent, Number::formatBi($used_mem) . " / " . Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
+                            {!! print_percentage_bar(350, 40, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             <p class="text-muted small text-center mt-2">
-                                {{ Number::format($mem_percent, 2) }}% Utilization
+                                {{ \LibreNMS\Util\Number::format($mem_percent, 2) }}% Utilization
                             </p>
                         @else
                             <p class="text-muted text-center">Memory data not available in mempools table.</p>
@@ -138,9 +132,9 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                     <tr>
                         <td><strong>{{ $item->storage_descr }}</strong></td>
                         <td><span class="badge badge-secondary">{{ strtoupper($item->storage_type ?? 'ZFS') }}</span></td>
-                        <td class="text-right">{{ Number::formatBi($item->storage_size ?? 0) }}</td>
-                        <td class="text-right">{{ Number::formatBi($item->storage_used ?? 0) }}</td>
-                        <td class="text-right">{{ Number::formatBi(($item->storage_size ?? 0) - ($item->storage_used ?? 0)) }}</td>
+                        <td class="text-right">{{ \LibreNMS\Util\Number::formatBi($item->storage_size ?? 0) }}</td>
+                        <td class="text-right">{{ \LibreNMS\Util\Number::formatBi($item->storage_used ?? 0) }}</td>
+                        <td class="text-right">{{ \LibreNMS\Util\Number::formatBi(($item->storage_size ?? 0) - ($item->storage_used ?? 0)) }}</td>
                         <td class="text-center">
                             @php
                                 $perc = ($item->storage_size > 0) ? round(($item->storage_used / $item->storage_size) * 100, 1) : 0;
@@ -157,4 +151,4 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 </div>
 @endif
 
-@endsection
+@endif
