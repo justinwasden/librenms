@@ -287,31 +287,31 @@ class RestApiTemplateController extends Controller
     }
 
     public function updateEndpoint(Request $request, $templateId)
-{
-    $data = $request->validate([
-        'connection_index' => 'required|integer',
-        'endpoint_index'   => 'required|integer',
-        'endpoint_data'    => 'required|array',
-    ]);
+		{
+		    $data = $request->validate([
+		        'connection_index' => 'required|integer',
+		        'endpoint_index'   => 'required|integer',
+		        'endpoint_data'    => 'required|array',
+		    ]);
 
-    // Load and update the JSON stored in your template model
-    $template = RestApiTemplate::findOrFail($templateId);
-    $templateData = json_decode($template->template_data, true);
-    $connIdx = $data['connection_index'];
-    $epIdx = $data['endpoint_index'];
+		    // Load and update the JSON stored in your template model
+		    $template = RestApiTemplate::findOrFail($templateId);
+		    $templateData = json_decode($template->template_data, true);
+		    $connIdx = $data['connection_index'];
+		    $epIdx = $data['endpoint_index'];
 
-    $templateData['connections'][$connIdx]['endpoints'][$epIdx] = $data['endpoint_data'];
-    $template->template_data = json_encode($templateData, JSON_PRETTY_PRINT);
-    $template->save();
+		    $templateData['connections'][$connIdx]['endpoints'][$epIdx] = $data['endpoint_data'];
+		    $template->template_data = json_encode($templateData, JSON_PRETTY_PRINT);
+		    $template->save();
 
-    return response()->json([
-        'success' => true,
-        'endpoint' => [
-            '_connection_index' => $connIdx,
-            '_endpoint_index' => $epIdx,
-        ]
-    ]);
-}
+		    return response()->json([
+		        'success' => true,
+		        'endpoint' => [
+		            '_connection_index' => $connIdx,
+		            '_endpoint_index' => $epIdx,
+		        ]
+		    ]);
+		}
 
     public function deleteEndpoint(Request $request, RestApiTemplate $template)
     {
