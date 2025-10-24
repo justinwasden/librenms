@@ -1,3 +1,4 @@
+{{-- /resources/views/settings/rest-api/templates/partials/connection.blade.php --}}
 @php
 // We no longer deal with credential models or logic here.
 $connections = $template->template_data['connections'] ?? [];
@@ -34,6 +35,22 @@ $connection = $connections[0] ?? [];
         Base URL for API calls. Use <code>{device_hostname}</code>, <code>{device_ip}</code>, or <code>{device_sysname}</code> as placeholders.
     </small>
 </div>
+
+{{-- START: ADDED PORT FIELD --}}
+<div class="form-group">
+    <label>Port (Optional)</label>
+    <input type="number"
+           class="form-control"
+           name="template_data[connections][0][port]"
+           value="{{ $connection['port'] ?? '' }}"
+           placeholder="e.g., 8443 or 8006"
+           min="1"
+           max="65535">
+    <small class="form-text text-muted">
+        If specified, this port is used instead of the port implied by the scheme (80/443) or explicitly included in the Base URL.
+    </small>
+</div>
+{{-- END: ADDED PORT FIELD --}}
 
 {{-- Connection Settings --}}
 <div class="row">
