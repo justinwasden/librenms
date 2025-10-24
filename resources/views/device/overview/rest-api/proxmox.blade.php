@@ -66,21 +66,29 @@ $mem_percent_formatted = number_format($mem_percent, 2);
     <div class="col-md-12">
         <div class="panel panel-default panel-condensed">
             <div class="panel-heading">
-                <i class="fa fa-server fa-lg icon-theme"></i> <strong>Proxmox Node Overview: {{ $device['sysName'] }}</strong>
+                <i class="fa fa-server fa-lg icon-theme"></i>
+                <strong>Proxmox Node Overview: {{ $device['sysName'] }}</strong>
             </div>
+
             <div class="panel-body">
                 <div class="row">
 
-                    {{-- Node Info & Status (Right-aligned labels) --}}
+                    {{-- Node Info & Status --}}
                     <div class="col-md-4">
                         <table class="table table-condensed table-striped">
                             <tbody>
-                                <tr><th class="text-right">Node Name</th><td>{{ $device['sysName'] }}</td></tr>
-                                <tr><th class="text-right">Hostname</th><td>{{ $device['hostname'] }}</td></tr>
-                                <tr><th class="text-right">Cluster Status</th>
+                                <tr>
+                                    <th class="text-right">Node Name</th>
+                                    <td>{{ $device['sysName'] }}</td>
+                                </tr>
+                                <tr>
+                                    <th class="text-right">Hostname</th>
+                                    <td>{{ $device['hostname'] }}</td>
+                                </tr>
+                                <tr>
+                                    <th class="text-right">Cluster Status</th>
                                     <td>
                                         @php
-                                            // Assuming 1 = Quorate/Online, 0 = Offline
                                             $status_value = $cluster_status->sensor_current ?? 'N/A';
                                             $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
                                             $label = ($status_value == 1) ? 'success' : 'danger';
@@ -92,50 +100,61 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         </table>
                     </div>
 
- 										{{-- CPU Utilization (Centered) --}}
-                        <div class="d-flex justify-content-center">
+                    {{-- CPU Utilization (Centered) --}}
+                    <div class="col-md-4 text-center">
                         <h4>CPU Utilization</h4>
-                        {{-- FIX 1: Centered the bar --}}
-    										<div style="float:none !important;">
-                            {!! print_percentage_bar(200, 20, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        <div class="d-flex justify-content-center">
+                            <div style="float:none !important;">
+                                {!! print_percentage_bar(
+                                    200,
+                                    20,
+                                    $cpu_util,
+                                    $cpu_util_formatted . "%",
+                                    'ffffff',
+                                    $cpu_bg['left'],
+                                    100 - $cpu_util,
+                                    'ffffff',
+                                    $cpu_bg['right']
+                                ) !!}
+                            </div>
                         </div>
                         <p class="text-muted small mt-2">
                             {{ $cpu_util_formatted }}% Max/Avg Usage
                         </p>
                     </div>
 
-										{{-- Physical Memory Usage (Centered) --}}
+                    {{-- Physical Memory Usage (Centered) --}}
+                    <div class="col-md-4 text-center">
+                        <h4>Physical Memory Usage</h4>
+                        @if($total_mem > 0)
                             <div class="d-flex justify-content-center">
-					                        <h4>Physical Memory Usage</h4>
-					                        {{-- FIX 2: Check $total_mem > 0 to indicate valid data was found --}}
-					                        @if($total_mem > 0)
-														    <div style="float:none !important;">
-														        {!! print_percentage_bar(
-														            200,
-														            20,
-														            $mem_percent,
-														            \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem),
-														            'ffffff',
-														            $mem_bg['left'],
-														            100 - $mem_percent,
-														            'ffffff',
-														            $mem_bg['right']
-														        ) !!}
-														    </div>
-														</div>
+                                <div style="float:none !important;">
+                                    {!! print_percentage_bar(
+                                        200,
+                                        20,
+                                        $mem_percent,
+                                        \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem),
+                                        'ffffff',
+                                        $mem_bg['left'],
+                                        100 - $mem_percent,
+                                        'ffffff',
+                                        $mem_bg['right']
+                                    ) !!}
+                                </div>
+                            </div>
                             <p class="text-muted small mt-2">
                                 {{ $mem_percent_formatted }}% Utilization
                             </p>
                         @else
-                            {{-- This message now implies the poller is working but returned unusable memory data (0 B or null) --}}
                             <p class="text-muted">Memory data not available in mempools table.</p>
                         @endif
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+
+                </div> {{-- /row --}}
+            </div> {{-- /panel-body --}}
+        </div> {{-- /panel --}}
+    </div> {{-- /col-md-12 --}}
+</div> {{-- /row --}}
 
 {{-- STORAGE DATA ROW --}}
 @if($storage->count() > 0)
