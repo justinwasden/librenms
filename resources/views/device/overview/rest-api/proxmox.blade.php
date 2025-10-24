@@ -42,8 +42,8 @@ $storage = DB::table('storage')
                 <tbody>
                     <tr>
                         <td>{{ $node_name ?? $device['sysName'] ?? 'N/A' }}</td>
-                        <td>{{ $hostname ?? $device['hostname'] ?? 'N/A' }}</td>
-                        <td>
+                        <td class="text-center">{{ $hostname ?? $device['hostname'] ?? 'N/A' }}</td>
+                        <td class="text-center">
                             <p class="text-muted">
                                 @if(isset($cluster_status))
                                     @if(strtolower($cluster_status) === 'online' || strtolower($cluster_status) === 'active' || $cluster_status == 1)
