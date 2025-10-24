@@ -29,6 +29,49 @@ $has_metrics = $storage->count() > 0;
 
 
 {{-- TOP SYSTEM METRICS ROW --}}
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-default panel-condensed">
+            <div class="panel-heading">
+                <i class="fa fa-hdd-o fa-lg icon-theme"></i> <strong>Mapped Storage Pools/Datasets</strong>
+            </div>
+              <table class="table table-hover table-condensed table-striped">
+                <thead>
+                    <tr>
+                        <th>Node Overview</th>
+                        <th>Type</th>
+                        <th class="text-right">Node Name</th>
+                        <th class="text-right">Hostname</th>
+                        <th class="text-right">Cluster Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>{{ $item->storage_descr }}</strong></td>
+                        <td>{{$node_name}}</td>
+                        <td {{$hostname}}</td>
+                        <td>
+                        	<p class="text-muted">
+                        		@php
+													            @if(isset($cluster_status))
+													                @if(strtolower($cluster_status) === 'online' || strtolower($cluster_status) === 'active')
+													                    <span class="badge bg-success">{{ ucfirst($cluster_status) }}</span>
+													                @elseif(strtolower($cluster_status) === 'offline')
+													                    <span class="badge bg-danger">{{ ucfirst($cluster_status) }}</span>
+													                @else
+													                    <span class="badge bg-secondary">{{ ucfirst($cluster_status) }}</span>
+													                @endif
+													            @else
+													                <span class="badge bg-secondary">Unknown</span>
+													            @endif
+													  @endphp
+													        </p></td>
+
+                </tbody>
+            </table>
+
+
+
 {{-- Node Overview (3 Columns) --}}
 <div class="row text-center">
     {{-- Node Name --}}
