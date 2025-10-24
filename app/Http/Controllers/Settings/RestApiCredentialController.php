@@ -1,7 +1,7 @@
 <?php
-// app/Http/Controllers/RestApiCredentialController.php
+// app/Http/Controllers/Settings/RestApiCredentialController.php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Settings;
 
 use App\Models\Device;
 use App\Models\RestApiCredential;
