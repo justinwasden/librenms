@@ -51,11 +51,11 @@
                     </tr>
                     <tr>
                         <td>Total Memory</td>
-                        <td>{{ \LibreNMS\Util\Number::formatBytes($node_metrics['memory_total']?->sensor_current ?? 0) }}</td>
+                        <td>{{ \LibreNMS\Util\Number::formatBi($node_metrics['memory_total']?->sensor_current ?? 0) }}</td>
                     </tr>
                     <tr>
                         <td>Used Memory</td>
-                        <td>{{ \LibreNMS\Util\Number::formatBytes($node_metrics['memory_used']?->sensor_current ?? 0) }}</td>
+                        <td>{{ \LibreNMS\Util\Number::formatBi($node_metrics['memory_used']?->sensor_current ?? 0) }}</td>
                     </tr>
                 </table>
 
