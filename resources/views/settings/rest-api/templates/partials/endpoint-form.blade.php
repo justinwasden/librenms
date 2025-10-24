@@ -150,7 +150,7 @@
                 <label for="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}" style="font-size: 16px; font-weight: bold; color: #000;">
                     <i class="fas fa-exclamation-triangle" style="color: #ff6b6b;"></i> SELECT A DEVICE TO TEST <span class="text-danger">*REQUIRED*</span>
                 </label>
-                <select class="form-control test-device" 
+                <select class="form-control test-device"
                         id="test_device_{{ $connectionIndex }}_{{ $endpointIndex }}"
                         data-conn-idx="{{ $connectionIndex }}"
                         data-ep-idx="{{ $endpointIndex }}"
@@ -176,7 +176,7 @@
                 <div class="alert alert-warning" style="font-size: 14px; font-weight: bold;">
                     <i class="fas fa-arrow-up"></i> Did you select a device above? If not, go back and select one before clicking this button!
                 </div>
-                <button type="button" 
+                <button type="button"
                         class="btn btn-info btn-sm fetch-api-preview"
                         data-conn-idx="{{ $connectionIndex }}"
                         data-ep-idx="{{ $endpointIndex }}"
@@ -187,7 +187,7 @@
             </div>
 
             {{-- API Response Preview (Initially Hidden) --}}
-            <div id="api-preview-container-{{ $connectionIndex }}-{{ $endpointIndex }}" 
+            <div id="api-preview-container-{{ $connectionIndex }}-{{ $endpointIndex }}"
                  style="display: none; margin-bottom: 20px;">
                 <div class="card bg-light">
                     <div class="card-header">
@@ -267,75 +267,93 @@ document.addEventListener('DOMContentLoaded', function() {
     const templateIdMatch = window.location.pathname.match(/\/templates\/(\d+)/);
     const templateId = templateIdMatch ? templateIdMatch[1] : null;
 
-    // Fetch API Preview Button Handler
-    const fetchBtn = document.getElementById('fetch-preview-' + connIdx + '-' + epIdx);
-    if (fetchBtn) {
-        fetchBtn.addEventListener('click', function() {
-            const pathInput = document.querySelector('.endpoint-path[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
-            const statusEl = document.getElementById('preview-status-' + connIdx + '-' + epIdx);
-            
-            if (!pathInput || !pathInput.value.trim()) {
-                statusEl.textContent = '✗ Please enter an API path first';
-                statusEl.className = 'preview-status error';
-                return;
-            }
+// Fetch API Preview Button Handler
+const fetchBtn = document.getElementById('fetch-preview-' + connIdx + '-' + epIdx);
+if (fetchBtn) {
+    fetchBtn.addEventListener('click', function() {
+        const pathInput = document.querySelector('.endpoint-path[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
+        const statusEl = document.getElementById('preview-status-' + connIdx + '-' + epIdx);
 
-            // Check if path contains placeholders
-            const pathValue = pathInput.value.trim();
-            const hasPlaceholders = /{device_hostname}|{device_ip}|{device_sysname}|{device_attrib:/.test(pathValue);
-            
-            if (hasPlaceholders) {
-                // Get selected device
-                const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
-                const deviceId = deviceSelect ? deviceSelect.value : null;
-                
-                if (!deviceId) {
-                    statusEl.textContent = '✗ Path has {device_*} placeholders - SELECT A DEVICE';
-                    statusEl.className = 'preview-status error';
-                    return;
-                }
-            }
+        if (!pathInput || !pathInput.value.trim()) {
+            statusEl.textContent = '✗ Please enter an API path first';
+            statusEl.className = 'preview-status error';
+            return;
+        }
 
-            if (!templateId) {
-                statusEl.textContent = '✗ Template not found';
-                statusEl.className = 'preview-status error';
-                return;
-            }
+        // --- START FIX: Collect UNSAVED Connection and Endpoint Data ---
+        const connectionContainer = pathInput.closest('.card-body').querySelector('#api-preview-container-' + connIdx + '-' + epIdx).closest('.card-body').closest('.card-body');
 
-            statusEl.textContent = '⟳ Fetching...';
-            statusEl.className = 'preview-status loading';
+        const currentPath = pathInput.value.trim();
+        const currentMethod = connectionContainer.querySelector('.endpoint-method').value;
+        const currentBaseUrl = document.querySelector('input[name="template_data[connections][0][base_url]"]').value;
 
-            // Get selected device
-            const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
-            const deviceId = deviceSelect ? deviceSelect.value : null;
-            
-            // Get CSRF token
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
-                             document.querySelector('input[name="_token"]')?.value;
-            
-            if (!csrfToken) {
-                statusEl.textContent = '✗ CSRF token not found';
-                statusEl.className = 'preview-status error';
-                console.error('CSRF token not found in page');
-                return;
-            }
+        const hasPlaceholders = /{device_hostname}|{device_ip}|{device_sysname}|{device_attrib:/.test(currentPath);
 
-            console.log('Fetching preview with device_id:', deviceId, 'template_id:', templateId);
+        // The endpoint object we are currently editing
+        const currentEndpointData = {
+            name: connectionContainer.querySelector('.endpoint-name').value,
+            path: currentPath,
+            method: currentMethod,
+            // Include other fields needed for testing (Resource Type, etc.)
+            resource_type: connectionContainer.querySelector('.endpoint-resource-type').value,
+            // You may need to include other data here if the controller uses it
+        };
 
-            // Make API request
-            fetch(`/api/rest-api/template-preview`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                body: JSON.stringify({
-                    template_id: templateId,
-                    connection_index: connIdx,
-                    endpoint_index: epIdx,
-                    device_id: deviceId || null
-                })
+        // The connection object we are currently editing (only passing Base URL is typically enough)
+        const currentConnectionData = {
+            name: document.querySelector('input[name="template_data[connections][0][name]"]').value,
+            base_url: currentBaseUrl,
+            disable_ssl_verify: document.getElementById('disable_ssl_verify')?.checked ? 1 : 0
+        };
+
+        // Check for device selection if placeholders exist
+        const deviceSelect = document.querySelector('.test-device[data-conn-idx="' + connIdx + '"][data-ep-idx="' + epIdx + '"]');
+        const deviceId = deviceSelect ? deviceSelect.value : null;
+
+        if (hasPlaceholders && !deviceId) {
+            statusEl.textContent = '✗ Path has {device_*} placeholders - SELECT A DEVICE';
+            statusEl.className = 'preview-status error';
+            return;
+        }
+
+        if (!templateId) {
+            statusEl.textContent = '✗ Template not found';
+            statusEl.className = 'preview-status error';
+            return;
+        }
+
+        statusEl.textContent = '⟳ Fetching...';
+        statusEl.className = 'preview-status loading';
+
+        // Get CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
+                         document.querySelector('input[name="_token"]')?.value;
+
+        if (!csrfToken) {
+            statusEl.textContent = '✗ CSRF token not found';
+            statusEl.className = 'preview-status error';
+            console.error('CSRF token not found in page');
+            return;
+        }
+
+        // Make API request - Sending UNSAVED connection and endpoint data
+        fetch(`/api/rest-api/template-preview`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify({
+                template_id: templateId,
+                connection_index: connIdx, // Still needed to identify which connection structure is being updated
+                endpoint_index: epIdx, // Still needed to identify which endpoint is being updated
+
+                // --- NEW PAYLOAD ---
+                device_id: deviceId || null,
+                connection_data: currentConnectionData, // Pass the unsaved base_url
+                endpoint_data: currentEndpointData      // Pass the unsaved path/method
             })
+        })
             .then(response => response.text().then(text => {
                 return {
                     ok: response.ok,
@@ -343,13 +361,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     statusText: response.statusText,
                     text: text
                 };
-            }))
+            })
             .then(({ ok, status, statusText, text }) => {
                 console.log('Response:', status, statusText, text.substring(0, 300));
-                
+
                 try {
                     const data = JSON.parse(text);
-                    
+
                     if (data.success) {
                         statusEl.textContent = '✓ Preview ready';
                         statusEl.className = 'preview-status success';

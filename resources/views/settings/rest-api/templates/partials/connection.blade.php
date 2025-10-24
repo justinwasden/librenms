@@ -6,7 +6,7 @@ $connection = $connections[0] ?? [];
 @endphp
 
 <div class="row">
-    <div class="col-md-6">
+    <div class="col-md-12">
         <div class="form-group">
             <label>Connection Name <span class="text-danger">*</span></label>
             <input type="text"
@@ -19,18 +19,7 @@ $connection = $connections[0] ?? [];
         </div>
     </div>
 
-    <div class="col-md-6">
-        <div class="form-group">
-            {{-- REMOVED: Credential Selector Field --}}
-            <label>Connection Target Type</label>
-            <input type="text"
-                   class="form-control"
-                   name="template_data[connections][0][target_type]"
-                   value="{{ $connection['target_type'] ?? 'device' }}"
-                   placeholder="device">
-            <small class="form-text text-muted">Defines the resource level this connection applies to (e.g., 'device', 'vdom').</small>
-        </div>
-    </div>
+    {{-- REMOVED: Connection Target Type Field --}}
 </div>
 
 <div class="form-group">
@@ -46,11 +35,7 @@ $connection = $connections[0] ?? [];
     </small>
 </div>
 
-{{-- REMOVED: Dynamic Connection Parameters Section (Login/Session fields) --}}
-{{-- These parameters are now configured in the Credential Settings and applied by AuthManager. --}}
-
-
-{{-- Connection Settings (Unchanged) --}}
+{{-- Connection Settings --}}
 <div class="row">
     <div class="col-md-4">
         <div class="form-group">
@@ -92,7 +77,7 @@ $connection = $connections[0] ?? [];
     </div>
 </div>
 
-{{-- SSL/TLS Settings (Unchanged) --}}
+{{-- SSL/TLS Settings --}}
 <div class="card bg-light">
     <div class="card-header">
         <h6 class="mb-0">
@@ -126,10 +111,7 @@ document.addEventListener('alpine:init', () => {
         // Bind to input fields for reactive URL preview
         baseUrl: document.querySelector('input[name="template_data[connections][0][base_url]"]').value || '',
 
-        // Removed loginPath logic as it's no longer configured here.
-
         get fullLoginUrl() {
-            // Only return the base URL, or a placeholder
             return this.baseUrl || 'https://{device_hostname}';
         }
     }));
