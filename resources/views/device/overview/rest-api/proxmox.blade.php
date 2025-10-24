@@ -74,44 +74,46 @@ $mem_percent_formatted = number_format($mem_percent, 2);
             <div class="panel-body">
                 <div class="row">
 
-                    {{-- Node Info & Status --}}
+                    {{-- Node Info & Status (Right-aligned labels) --}}
                     <div class="col-md-4">
                         <table class="table table-condensed table-striped">
-                            <tr><th>Node Name</th><td>{{ $device['sysName'] }}</td></tr>
-                            <tr><th>Hostname</th><td>{{ $device['hostname'] }}</td></tr>
-                            <tr><th>Cluster Status</th>
-                                <td>
-                                    @php
-                                        // Assuming 1 = Quorate/Online, 0 = Offline
-                                        $status_value = $cluster_status->sensor_current ?? 'N/A';
-                                        $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
-                                        $label = ($status_value == 1) ? 'success' : 'danger';
-                                    @endphp
-                                    <span class="label label-{{ $label }}">{{ $status_text }}</span>
-                                </td>
-                            </tr>
+                            <tbody>
+                                <tr><th class="text-right">Node Name</th><td>{{ $device['sysName'] }}</td></tr>
+                                <tr><th class="text-right">Hostname</th><td>{{ $device['hostname'] }}</td></tr>
+                                <tr><th class="text-right">Cluster Status</th>
+                                    <td>
+                                        @php
+                                            // Assuming 1 = Quorate/Online, 0 = Offline
+                                            $status_value = $cluster_status->sensor_current ?? 'N/A';
+                                            $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
+                                            $label = ($status_value == 1) ? 'success' : 'danger';
+                                        @endphp
+                                        <span class="label label-{{ $label }}">{{ $status_text }}</span>
+                                    </td>
+                                </tr>
+                            </tbody>
                         </table>
                     </div>
 
-                    {{-- CPU Utilization --}}
-                    <div class="col-md-4">
+                    {{-- CPU Utilization (Centered) --}}
+                    <div class="col-md-4 text-center">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(200, 20, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
-                        <p class="text-muted small text-center mt-2">
-                            {{ $cpu_util_formatted }}% Max/Avg Usage
+                        {!! print_percentage_bar(200, 20, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        <p class="text-muted small mt-2">
+                            {{ number_format($cpu_util, 1) }}% Max/Avg Usage
                         </p>
                     </div>
 
-                    {{-- Physical Memory Usage --}}
-                    <div class="col-md-4">
+                    {{-- Physical Memory Usage (Centered) --}}
+                    <div class="col-md-4 text-center">
                         <h4>Physical Memory Usage</h4>
                         @if($total_mem > 0)
                             {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
-                            <p class="text-muted small text-center mt-2">
-                                {{ $mem_percent_formatted }}% Utilization
+                            <p class="text-muted small mt-2">
+                                {{ number_format($mem_percent, 2) }}% Utilization
                             </p>
                         @else
-                            <p class="text-muted text-center">Memory data not available in mempools table.</p>
+                            <p class="text-muted">Memory data not available in mempools table.</p>
                         @endif
                     </div>
                 </div>
