@@ -382,16 +382,31 @@ class RestApiController extends Controller
 
     private function replacePlaceholdersInString(string $string, Device $device): string
     {
+
+    	  // *** DEBUG LOG START ***
+		    \Log::info("DEBUG: Placeholder Input String: '{$string}'");
+		    \Log::info("DEBUG: Device sysName value: '{$device->sysName}'");
+		    // *** DEBUG LOG END ***
+
         // Support Laravel Blade-style placeholders: {{ $device->hostname }}
         $string = Str::replace('{{ $device->hostname }}', $device->hostname, $string);
         $string = Str::replace('{{ $device->ip }}', $device->ip, $string);
         $string = Str::replace('{{ $device->sysName }}', $device->sysName, $string);
+        // *** DEBUG LOG START ***
+    \Log::info("DEBUG: Placeholder Output String: '{$string}'");
+    // *** DEBUG LOG END ***
+
         $string = Str::replace('{{ $device->display }}', $device->display ?? $device->hostname, $string);
 
         // Support simple placeholder format: {device_hostname}
         $string = Str::replace('{device_hostname}', $device->hostname, $string);
         $string = Str::replace('{device_ip}', $device->ip, $string);
         $string = Str::replace('{device_sysname}', $device->sysName, $string);
+
+        // *** DEBUG LOG START ***
+    \Log::info("DEBUG: Placeholder Output String: '{$string}'");
+    // *** DEBUG LOG END ***
+
         $string = Str::replace('{device_display}', $device->display ?? $device->hostname, $string);
 
         // Support getAttrib for custom attributes: {{ $device->getAttrib('name') }}
