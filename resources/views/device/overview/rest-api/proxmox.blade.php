@@ -104,7 +104,7 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                     <div class="col-md-4 text-center">
                         <h4>CPU Utilization</h4>
                         <div class="text-center" >
-                            <div style="float:none !important;">
+                             <div style="display: inline-block; float: none !important; text-align: center;">
                                 {!! print_percentage_bar(
                                     200,
                                     20,
@@ -128,8 +128,8 @@ $mem_percent_formatted = number_format($mem_percent, 2);
                         <h4>Physical Memory Usage</h4>
                         @if($total_mem > 0)
                             <div class="text-center" >
-                                <div style="float:none !important;">
-                                    {!! print_percentage_bar(
+                                <div style="display: inline-block; float: none !important; text-align: center;">
+                                	{!! print_percentage_bar(
                                         200,
                                         20,
                                         $mem_percent,
