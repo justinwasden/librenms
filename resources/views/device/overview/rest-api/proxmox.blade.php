@@ -34,9 +34,9 @@ $storage = DB::table('storage')
             <table class="table table-hover table-condensed table-striped">
                 <thead>
                     <tr>
-                        <th class="text-right">Node Name</th>
-                        <th class="text-right">Hostname</th>
-                        <th class="text-right">Cluster Status</th>
+                        <th class="text-left">Node Name</th>
+                        <th class="text-center">Hostname</th>
+                        <th class="text-center">Cluster Status</th>
                     </tr>
                 </thead>
                 <tbody>
