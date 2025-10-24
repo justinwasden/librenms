@@ -9,23 +9,20 @@ use App\Models\EntPhysical;
 
 $device_id = $device['device_id'];
 
-// --- Data Fetch ---
-
-// 1. Cluster Status (Assumed to be mapped to a dedicated sensor)
+// 1. Cluster Status
 $cluster_status = DB::table('sensors')
     ->where('device_id', $device_id)
     ->where('sensor_descr', 'like', 'cluster_status')
     ->first();
 
-// 2. Memory Data from mempools (Corrected query)
+// 2. Memory Data from mempools (FIXED: Using broad LIKE search for "memory" to find correct row)
 $mem_data = DB::table('mempools')
     ->where('device_id', $device_id)
-    ->where('mempool_descr', 'LIKE', 'Physical memory (system)%')
+    ->where('mempool_descr', 'LIKE', '%memory%') // Use a general search to capture Physical memory (system)
     ->first();
 
 $total_mem = ($mem_data->mempool_used ?? 0) + ($mem_data->mempool_free ?? 0);
 $used_mem = $mem_data->mempool_used ?? 0;
-$free_mem = $total_mem - $used_mem; // Calculate raw free memory
 $mem_percent = ($total_mem > 0) ? round(($used_mem / $total_mem) * 100, 2) : 0;
 $mem_bg = Color::percentage($mem_percent, 80);
 
@@ -74,51 +71,52 @@ $mem_percent_formatted = number_format($mem_percent, 2);
             <div class="panel-body">
                 <div class="row">
 
-                    {{-- Node Info & Status --}}
+                    {{-- Node Info & Status (Right-aligned labels) --}}
                     <div class="col-md-4">
                         <table class="table table-condensed table-striped">
                             <tbody>
                                 <tr><th class="text-right">Node Name</th><td>{{ $device['sysName'] }}</td></tr>
                                 <tr><th class="text-right">Hostname</th><td>{{ $device['hostname'] }}</td></tr>
-                                <tr><th>Cluster Status</th>
-                                <td>
-                                    @php
-                                        // Assuming 1 = Quorate/Online, 0 = Offline
-                                        $status_value = $cluster_status->sensor_current ?? 'N/A';
-                                        $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
-                                        $label = ($status_value == 1) ? 'success' : 'danger';
-                                    @endphp
-                                    <span class="label label-{{ $label }}">{{ $status_text }}</span>
-                                </td>
-                            </tr>
+                                <tr><th class="text-right">Cluster Status</th>
+                                    <td>
+                                        @php
+                                            // Assuming 1 = Quorate/Online, 0 = Offline
+                                            $status_value = $cluster_status->sensor_current ?? 'N/A';
+                                            $status_text = ($status_value == 1) ? 'ONLINE' : (($status_value === 0) ? 'OFFLINE' : 'N/A');
+                                            $label = ($status_value == 1) ? 'success' : 'danger';
+                                        @endphp
+                                        <span class="label label-{{ $label }}">{{ $status_text }}</span>
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
 
-                    {{-- CPU Utilization (Centered) --}}
+ 										{{-- CPU Utilization (Centered) --}}
                     <div class="col-md-4 text-center">
                         <h4>CPU Utilization</h4>
-                        {{-- Centered the bar via d-inline-block and text-center parent --}}
+                        {{-- FIX 1: Centered the bar --}}
                         <div class="d-inline-block">
-                            {!! print_percentage_bar(200, 40, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                            {!! print_percentage_bar(200, 20, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         </div>
                         <p class="text-muted small mt-2">
                             {{ $cpu_util_formatted }}% Max/Avg Usage
                         </p>
                     </div>
 
-                    {{-- Physical Memory Usage (Centered) --}}
+										{{-- Physical Memory Usage (Centered) --}}
                     <div class="col-md-4 text-center">
                         <h4>Physical Memory Usage</h4>
+                        {{-- FIX 2: Check $total_mem > 0 to indicate valid data was found --}}
                         @if($total_mem > 0)
-                            {{-- FIX: Format the free memory segment using formatBi --}}
                             <div class="d-inline-block">
-                                {!! print_percentage_bar(200, 40, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $free_mem, 'ffffff', $mem_bg['right']) !!}
+                                {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             </div>
                             <p class="text-muted small mt-2">
                                 {{ $mem_percent_formatted }}% Utilization
                             </p>
                         @else
+                            {{-- This message now implies the poller is working but returned unusable memory data (0 B or null) --}}
                             <p class="text-muted">Memory data not available in mempools table.</p>
                         @endif
                     </div>
