@@ -8,8 +8,9 @@ use App\Models\RestApiCredential;
 use App\Models\RestApiTemplate;
 use App\Models\RestApiDeviceTemplate;
 use App\Models\RestApiDeviceMapping;
-use App\Models\RestApiConnection; // ADDED
-use App\Services\RestApi\Auth\AuthManager; // ADDED
+use App\Models\RestApiConnection;
+use App\Http\Controllers\RestApiAuthenticationType; // Import missing class
+use App\Services\RestApi\Auth\AuthManager;
 use App\Services\RestApi\RestApiClient; // Note: This class is likely obsolete, but kept the use statement
 use Illuminate\Http\Request;
 use Illuminate\View\View;
