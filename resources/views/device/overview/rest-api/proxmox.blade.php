@@ -1,9 +1,5 @@
 {{-- resources/views/device/overview/rest-api/proxmox.blade.php --}}
 
-@extends('layouts.app')
-
-@section('content')
-
 @php
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Util\Number;
@@ -21,7 +17,7 @@ $cluster_status = DB::table('sensors')
     ->where('sensor_descr', 'like', 'cluster_status')
     ->first();
 
-// 2. Memory Data from mempools (FIXED: Querying by exact prefix for robustness)
+// 2. Memory Data from mempools (Corrected query)
 $mem_data = DB::table('mempools')
     ->where('device_id', $device_id)
     ->where('mempool_descr', 'LIKE', 'Physical memory (system)%')
@@ -50,6 +46,10 @@ $storage = DB::table('storage')
 // Determine if we have any valid data to show
 $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
+// Handle the format() error by using number_format directly, as previously suggested.
+$cpu_util_formatted = number_format($cpu_util, 1);
+$mem_percent_formatted = number_format($mem_percent, 2);
+
 @endphp
 
 @if(!$has_metrics)
@@ -64,6 +64,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 </div>
 @else
 
+{{-- TOP SYSTEM METRICS ROW --}}
 <div class="row">
     <div class="col-md-12">
         <div class="panel panel-default panel-condensed">
@@ -95,9 +96,9 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                     {{-- CPU Utilization --}}
                     <div class="col-md-4">
                         <h4>CPU Utilization</h4>
-                        {!! print_percentage_bar(200, 20, $cpu_util, number_format($cpu_util, 1) . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
+                        {!! print_percentage_bar(200, 20, $cpu_util, $cpu_util_formatted . "%", 'ffffff', $cpu_bg['left'], 100 - $cpu_util, 'ffffff', $cpu_bg['right']) !!}
                         <p class="text-muted small text-center mt-2">
-                            {{ number_format($cpu_util, 1) }}% Max/Avg Usage
+                            {{ $cpu_util_formatted }}% Max/Avg Usage
                         </p>
                     </div>
 
@@ -107,14 +108,10 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
                         @if($total_mem > 0)
                             {!! print_percentage_bar(200, 20, $mem_percent, \LibreNMS\Util\Number::formatBi($used_mem) . " / " . \LibreNMS\Util\Number::formatBi($total_mem), 'ffffff', $mem_bg['left'], $total_mem - $used_mem, 'ffffff', $mem_bg['right']) !!}
                             <p class="text-muted small text-center mt-2">
-                                {{ number_format($mem_percent, 2) }}% Utilization
+                                {{ $mem_percent_formatted }}% Utilization
                             </p>
                         @else
-                            @if($mem_data)
-                                <p class="text-muted text-center">Memory data is zero or invalid.</p>
-                            @else
-                                <p class="text-muted text-center">Memory data not yet polled successfully.</p>
-                            @endif
+                            <p class="text-muted text-center">Memory data not available in mempools table.</p>
                         @endif
                     </div>
                 </div>
@@ -167,5 +164,3 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 @endif
 
 @endif
-
-@endsection
