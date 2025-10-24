@@ -80,7 +80,7 @@
                                 </div>
                             </div>
 
-                            <div class="row mb-4">
+														<div class="row mb-4">
                                 <div class="col-md-6">
                                     <label for="resource_type">Primary Resource Type</label>
                                     <select name="resource_type" id="resource_type" class="form-control">
@@ -97,15 +97,15 @@
                                                 <option value="{{ $type }}" {{ old('resource_type', $template->resource_type) === $type ? 'selected' : '' }}>
                                                     {{ ucfirst($type) }}
                                                 </option>
-                                            @endgroup
+                                            @endforeach  {{-- CORRECTED: Changed @endgroup to @endforeach --}}
                                         </optgroup>
                                     </select>
                                     <small class="form-text text-muted">Defines the main data category this template handles</small>
                                 </div>
-                                <div class="col-md-6">
+                            <div class="col-md-6">
                                     <label for="description">Description</label>
                                     <textarea name="description" id="description" class="form-control" rows="3">{{ old('description', $template->description) }}</textarea>
-                                </div>
+                            </div>
                             </div>
 
                             <hr class="mb-4">
