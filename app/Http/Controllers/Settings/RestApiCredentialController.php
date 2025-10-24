@@ -1,7 +1,11 @@
 <?php
 // app/Http/Controllers/Settings/RestApiCredentialController.php
 
+// The correct namespace for this file's location
 namespace App\Http\Controllers\Settings;
+
+// FIX: Import the base Controller class from its root namespace
+use App\Http\Controllers\Controller;
 
 use App\Models\Device;
 use App\Models\RestApiCredential;
@@ -9,15 +13,14 @@ use App\Models\RestApiTemplate;
 use App\Models\RestApiDeviceTemplate;
 use App\Models\RestApiDeviceMapping;
 use App\Models\RestApiConnection;
-use App\Http\Controllers\RestApiAuthenticationType; // Import missing class
+use App\Models\RestApiAuthenticationType; // Assumed from previous context
 use App\Services\RestApi\Auth\AuthManager;
-use App\Services\RestApi\RestApiClient; // Note: This class is likely obsolete, but kept the use statement
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str; // ADDED
+use Illuminate\Support\Str;
 
 class RestApiCredentialController extends Controller
 {
