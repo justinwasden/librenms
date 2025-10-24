@@ -147,5 +147,3 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
     </div>
 </div>
 @endif
-
-@endif
