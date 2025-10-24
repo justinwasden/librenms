@@ -49,7 +49,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
 @if(!$has_metrics)
 <div class="row">
-    <div class="col-md-12">
+    <div class="col-md-6">
         <div class="alert alert-info">
             <i class="fa fa-info-circle"></i>
             <strong>No REST API metrics found for Proxmox.</strong>
@@ -60,7 +60,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 @else
 
 <div class="row">
-    <div class="col-md-12">
+    <div class="col-md-6">
         <div class="panel panel-default panel-condensed">
             <div class="panel-heading">
                 <i class="fa fa-server fa-lg icon-theme"></i> <strong>Proxmox Node Overview: {{ $device['sysName'] }}</strong>
@@ -112,7 +112,7 @@ $has_metrics = $mem_data || $cpu_data || $storage->count() > 0;
 
 @if($storage->count() > 0)
 <div class="row">
-    <div class="col-md-12">
+    <div class="col-md-6">
         <div class="panel panel-default panel-condensed">
             <div class="panel-heading">
                 <i class="fa fa-hdd-o fa-lg icon-theme"></i> <strong>Mapped Storage Pools/Datasets</strong>
