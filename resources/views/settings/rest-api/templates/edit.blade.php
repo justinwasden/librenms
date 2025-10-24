@@ -184,7 +184,7 @@
                     <input type="hidden" name="action_type" value="update_connection_only">
 
                     {{-- ADD THIS HIDDEN FIELD TO CARRY ENDPOINT DATA --}}
-                    <input type="hidden" name="template_data[connections][0][endpoints_json]" id="connection_endpoints_json_input">
+                    <input type="hidden" name="template_data[connections][0][endpoints_data]" id="connection_endpoints_data_input">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
