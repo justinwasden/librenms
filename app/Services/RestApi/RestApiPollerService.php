@@ -122,9 +122,36 @@ class RestApiPollerService
 
 		protected function processEndpoint(RestApiConnection $connection, $endpoint): void
     {
-		    // Resolve Proxmox placeholders (if any)
+		    // Resolve Proxmox placeholders (if any). This returns the ENDPOINT PATH (e.g., /nodes/c2s8-usa-esxi/status)
 		    $resolvedPath = $this->resolveProxmoxPath($connection, $endpoint);
+
+            // --- START URL CONSTRUCTION ---
 		    $baseUrl = rtrim($connection->base_url, '/');
+            $port = $connection->port; // Get port from connection model
+            $fullUrl = null; // Initialize $fullUrl to prevent the "Undefined variable $url" error
+
+            // 1. Combine Base URL and Port
+            // If a custom port is set AND it's not already in the Base URL, append it to baseUrl.
+            if ($port && !preg_match('/:\d+/', $baseUrl)) {
+                 $isHttps = str_starts_with(strtolower($baseUrl), 'https');
+                 $isHttp = str_starts_with(strtolower($baseUrl), 'http');
+
+                 if (($isHttps && $port !== 443) || ($isHttp && $port !== 80)) {
+                     $baseUrl = $baseUrl . ":{$port}";
+                 }
+            }
+
+            // 2. Construct the final URL using the endpoint model's method.
+            // We need to pass both the Base URL (now complete with port) and the resolved path.
+            // We use the second argument here to pass the resolved path.
+            $url = $endpoint->getUrl($baseUrl, $resolvedPath);
+
+            if (empty($url)) {
+                // Should only happen if Base URL or resolvedPath was empty/null
+                throw new \Exception("Could not construct API URL for endpoint {$endpoint->path}. Base URL or Path resolved to null.");
+            }
+            // --- END URL CONSTRUCTION ---
+
 
         // Determine HTTP method (prefer http_method, fallback to method)
         $httpMethod = strtoupper($endpoint->http_method ?? $endpoint->method ?? 'GET');

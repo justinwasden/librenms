@@ -49,8 +49,28 @@ class RestApiEndpoint extends Model
         return $this->template_response_mapping ?? $this->metric_map ?? [];
     }
 
-    public function getUrl(string $baseUrl): string
+    /**
+     * Constructs the full URL by combining the Base URL and the Endpoint path (which may be resolved).
+     *
+     * @param string $baseUrl The connection's base URL (already processed for placeholders and port).
+     * @param string|null $resolvedPath The endpoint path, potentially after placeholder replacement.
+     * @return string The fully qualified URL.
+     */
+    public function getUrl(string $baseUrl, ?string $resolvedPath = null): string
     {
-        return rtrim($baseUrl, '/') . $this->path;
+        $path = $resolvedPath ?? $this->path;
+
+        // 1. Remove trailing slashes from the base URL
+        $cleanedBase = rtrim($baseUrl, '/');
+
+        // 2. Remove leading slashes from the endpoint path
+        $cleanedPath = ltrim($path, '/');
+
+        // 3. Recombine them with a single slash. If $cleanedPath is empty, return $cleanedBase.
+        if (empty($cleanedPath)) {
+            return $cleanedBase;
+        }
+
+        return $cleanedBase . '/' . $cleanedPath;
     }
 }
