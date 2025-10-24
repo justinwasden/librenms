@@ -64,27 +64,55 @@ class RestApiTemplateController extends Controller
     }
 
     public function update(Request $request, RestApiTemplate $template)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
-            'vendor' => 'nullable|string|max:255',
-            'resource_type' => 'nullable|string|max:50',
-            'template_data' => 'required',
-            'description' => 'nullable|string',
-        ]);
+		{
+		    $validated = $request->validate([
+		        'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
+		        'vendor' => 'nullable|string|max:255',
+		        'resource_type' => 'nullable|string|max:50',
+		        'template_data' => 'required', // This now holds the array sent by form fields OR the JSON string from the textarea
+		        'description' => 'nullable|string',
+		    ]);
 
-        if (is_string($validated['template_data'])) {
-            $validated['template_data'] = json_decode($validated['template_data'], true);
-        }
+		    $newTemplateData = $validated['template_data'];
 
-        $validated['template_data'] = $this->cleanTemplateMappings($validated['template_data']);
+		    if (is_string($newTemplateData)) {
+		        // Case 1: Full JSON textarea was edited. Decode and use directly.
+		        $newTemplateData = json_decode($newTemplateData, true);
+		        if (is_null($newTemplateData)) {
+		            // Handle invalid JSON error if necessary
+		            // throw new \Exception('Invalid JSON provided for template_data');
+		        }
+		    } else {
+		        // Case 2: Individual form fields (like Base URL) were edited.
+		        // We must merge the changes with the existing, full template data.
 
-        $template->update($validated);
+		        $existingTemplateData = $template->template_data; // This is already an array/object in the model
 
-        return redirect()
-            ->route('settings.rest-api.templates.edit', $template->id)
-            ->with('success', 'Template updated successfully.');
-    }
+		        // Ensure $existingTemplateData is an array before merging
+		        if (!is_array($existingTemplateData)) {
+		            $existingTemplateData = json_decode($existingTemplateData, true) ?? [];
+		        }
+
+		        // Merge the new connection data (sent from the form) back into the existing data.
+		        // This assumes your form structure is simple (only editing connections[0]).
+		        if (isset($newTemplateData['connections'][0])) {
+		            $existingTemplateData['connections'][0] = array_merge(
+		                $existingTemplateData['connections'][0] ?? [],
+		                $newTemplateData['connections'][0]
+		            );
+		        }
+
+		        $newTemplateData = $existingTemplateData;
+		    }
+
+		    $validated['template_data'] = $this->cleanTemplateMappings($newTemplateData);
+
+		    $template->update(['template_data' => $validated['template_data'], 'name' => $validated['name'], 'vendor' => $validated['vendor'], 'resource_type' => $validated['resource_type'], 'description' => $validated['description']]);
+
+		    return redirect()
+		        ->route('settings.rest-api.templates.edit', $template->id)
+		        ->with('success', 'Template updated successfully.');
+		}
 
     public function destroy(RestApiTemplate $template)
     {
