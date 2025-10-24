@@ -69,7 +69,7 @@ class RestApiTemplateController extends Controller
 		        'name' => 'required|string|max:255|unique:rest_api_templates,name,' . $template->id,
 		        'vendor' => 'nullable|string|max:255',
 		        'resource_type' => 'nullable|string|max:50',
-		        'template_data' => 'required', // This now holds the array sent by form fields OR the JSON string from the textarea
+		        'template_data' => 'required', // Holds array (from form fields) OR JSON string (from textarea)
 		        'description' => 'nullable|string',
 		    ]);
 
@@ -79,36 +79,61 @@ class RestApiTemplateController extends Controller
 		        // Case 1: Full JSON textarea was edited. Decode and use directly.
 		        $newTemplateData = json_decode($newTemplateData, true);
 		        if (is_null($newTemplateData)) {
-		            // Handle invalid JSON error if necessary
-		            // throw new \Exception('Invalid JSON provided for template_data');
+		             throw new \Exception('Invalid JSON provided for template_data.');
 		        }
 		    } else {
-		        // Case 2: Individual form fields (like Base URL) were edited.
-		        // We must merge the changes with the existing, full template data.
+		        // Case 2: Partial data submitted from Connection/Endpoint forms (PHP array).
 
-		        $existingTemplateData = $template->template_data; // This is already an array/object in the model
-		        // Ensure $existingTemplateData is an array before merging
+		        // 1. Load existing template data to preserve Endpoints/other connections
+		        $existingTemplateData = $template->template_data;
 		        if (!is_array($existingTemplateData)) {
 		            $existingTemplateData = json_decode($existingTemplateData, true) ?? [];
 		        }
 
-		        // Merge the new connection data (sent from the form) back into the existing data.
-		        // This assumes your form structure is simple (only editing connections[0]).
-						\Log::info('Existing Template Data:', $existingTemplateData);
-						\Log::info('New Template Data:', $newTemplateData);
+		        // 2. Process submitted connection data for connections[0]
 		        if (isset($newTemplateData['connections'][0])) {
+		            $submittedConnData = $newTemplateData['connections'][0];
+
+		            // 3. Check for and decode the hidden Endpoints JSON string
+		            if (isset($submittedConnData['endpoints_data'])) {
+		                $endpointsJson = $submittedConnData['endpoints_data'];
+		                unset($submittedConnData['endpoints_data']); // Remove the raw JSON string key
+
+		                $decodedEndpoints = json_decode($endpointsJson, true);
+
+		                if (is_array($decodedEndpoints)) {
+		                    // Merge the clean, full endpoint array back into the connection data
+		                    $submittedConnData['endpoints'] = $decodedEndpoints;
+		                } else {
+		                    \Log::warning("Could not decode endpoints_data JSON: " . Str::limit($endpointsJson, 100));
+		                }
+		            }
+
+		            // 4. Merge the submitted connection data (including the updated Base URL)
+		            //    with the existing connection data, ensuring new values overwrite old ones.
 		            $existingTemplateData['connections'][0] = array_merge(
 		                $existingTemplateData['connections'][0] ?? [],
-		                $newTemplateData['connections'][0]
+		                $submittedConnData
 		            );
 		        }
 
 		        $newTemplateData = $existingTemplateData;
 		    }
 
+		    // Check if the overall structure is valid before saving
+		    if (!is_array($newTemplateData) || !isset($newTemplateData['connections'])) {
+		         throw new \Exception('Template data structure is invalid after merge.');
+		    }
+
 		    $validated['template_data'] = $this->cleanTemplateMappings($newTemplateData);
 
-		    $template->update(['template_data' => $validated['template_data'], 'name' => $validated['name'], 'vendor' => $validated['vendor'], 'resource_type' => $validated['resource_type'], 'description' => $validated['description']]);
+		    $template->update([
+		        'template_data' => $validated['template_data'],
+		        'name' => $validated['name'],
+		        'vendor' => $validated['vendor'],
+		        'resource_type' => $validated['resource_type'],
+		        'description' => $validated['description']
+		    ]);
 
 		    return redirect()
 		        ->route('settings.rest-api.templates.edit', $template->id)
