@@ -316,7 +316,7 @@
                                     </div>
                                     <div class="form-group">
                                         <label>Metric Mapping <small class="text-muted">- Optional, leave empty for auto-learning</small></label>
-                                        
+
                                         {{-- API Preview Button --}}
                                         <div class="mb-3">
                                             <button type="button" class="btn btn-info btn-sm fetch-api-preview-btn"
@@ -361,7 +361,7 @@
                                     {{-- API PREVIEW SECTION --}}
                                     <hr class="mt-4 mb-3">
                                     <h6 class="text-info mb-3"><i class="fas fa-database"></i> API Response Preview</h6>
-                                    
+
                                     <div x-show="!apiPreviewData && !previewError && previewFetched" class="alert alert-info mb-3">
                                         <i class="fas fa-info-circle"></i> Click "Fetch API Preview" above to load API response data.
                                     </div>
@@ -375,11 +375,11 @@
                                         {{-- Recommendations Tab --}}
                                         <ul class="nav nav-tabs mb-3" role="tablist">
                                             <li class="nav-item">
-                                                <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'" 
+                                                <a class="nav-link active" href="#" @click.prevent="activePreviewTab = 'recommendations'"
                                                    :class="{ 'active': activePreviewTab === 'recommendations' }">
                                                     <i class="fas fa-lightbulb"></i> Recommendations
                                                     <span class="badge badge-info ml-2" x-show="apiPreviewRecommendations.length === 0">(Vendor-specific only)</span>
-                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length > 0" 
+                                                    <span class="badge badge-success ml-2" x-show="apiPreviewRecommendations.length > 0"
                                                           x-text="apiPreviewRecommendations.length"></span>
                                                 </a>
                                             </li>
@@ -421,14 +421,14 @@
                                                             <tr>
                                                                 <td><code x-text="rec.api_field || rec.field" style="font-size: 11px;"></code></td>
                                                                 <td>
-                                                                    <span class="badge" 
+                                                                    <span class="badge"
                                                                           :class="getDataTypeBadgeClass(rec.dataType || rec.type)"
                                                                           x-text="rec.dataType || rec.type"></span>
                                                                 </td>
                                                                 <td><small x-text="(rec.librenms_table || rec.table) + '.' + (rec.librenms_field || rec.field)"></small></td>
                                                                 <td>
                                                                     <div class="progress" style="height: 18px; width: 60px;">
-                                                                        <div class="progress-bar" 
+                                                                        <div class="progress-bar"
                                                                              :style="'width: ' + (rec.confidence * 100) + '%; background-color: ' + getConfidenceColor(rec.confidence)"
                                                                              :title="Math.round(rec.confidence * 100) + '%'">
                                                                             <small x-text="Math.round(rec.confidence * 100) + '%'" style="font-size: 9px;"></small>
@@ -457,7 +457,7 @@
                                                         <tr>
                                                             <td><code x-text="name" style="font-size: 11px;"></code></td>
                                                             <td>
-                                                                <span class="badge badge-light" 
+                                                                <span class="badge badge-light"
                                                                       x-text="getFieldType(field)"></span>
                                                             </td>
                                                             <td>
@@ -588,7 +588,7 @@ window.endpointManager = function() {
             }
 
             console.log('Init complete. selectedEndpointIndex:', this.selectedEndpointIndex);
-            
+
             // Listen for deviceSelected event from device selector modal
             const self = this;
             document.addEventListener('deviceSelected', function(event) {
@@ -758,7 +758,7 @@ window.endpointManager = function() {
                 // Read response as text first, then parse as JSON
                 const responseText = await res.text();
                 let data;
-                
+
                 try {
                     data = JSON.parse(responseText);
                 } catch (parseError) {
@@ -836,7 +836,7 @@ window.endpointManager = function() {
                 // Read response as text first, then parse as JSON
                 const responseText = await res.text();
                 let data;
-                
+
                 try {
                     data = JSON.parse(responseText);
                 } catch (parseError) {
@@ -899,8 +899,8 @@ window.endpointManager = function() {
 
         filterDevices() {
             const search = this.searchText.toLowerCase();
-            this.filteredDevices = this.allDevices.filter(d => 
-                d.hostname.toLowerCase().includes(search) || 
+            this.filteredDevices = this.allDevices.filter(d =>
+                d.hostname.toLowerCase().includes(search) ||
                 d.ip.toLowerCase().includes(search)
             );
         },
@@ -929,8 +929,7 @@ window.endpointManager = function() {
             try {
                 const templateId = {{ $template->id }};
                 const connIdx = this.selectedEndpoint._connection_index || 0;
-                const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : 0;
-                
+								const epIdx = this.selectedEndpoint._endpoint_index !== undefined ? this.selectedEndpoint._endpoint_index : this.selectedEndpointIndex;
                 const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 // Use window.location.origin to ensure correct host
                 // Try using the web route path instead of /api/
@@ -953,11 +952,11 @@ window.endpointManager = function() {
 
                 console.log('Response status:', res.status);
                 console.log('Response headers:', res.headers);
-                
+
                 let data;
                 const contentType = res.headers.get('content-type');
                 console.log('Content-Type:', contentType);
-                
+
                 if (contentType && contentType.includes('application/json')) {
                     data = await res.json();
                     console.log('Response data:', data);
@@ -966,29 +965,29 @@ window.endpointManager = function() {
                     console.error('Non-JSON response received:', text.substring(0, 500));
                     throw new Error('Server returned non-JSON response (status ' + res.status + '). Check browser console for details.');
                 }
-                
+
                 if (data.success) {
                     this.previewLoading = false;
                     this.previewSuccess = true;
                     this.previewFetched = true;
                     this.apiPreviewData = data.preview;
-                    
+
                     // Validate and clean recommendations
                     this.apiPreviewRecommendations = this.sanitizeRecommendations(data.recommendations || []);
                     this.activePreviewTab = 'recommendations';
-                    
+
                     // Extract fields from first item in response
                     const items = data.preview.items || data.preview.data || [data.preview];
                     const firstItem = items[0] || {};
                     this.apiPreviewFields = firstItem;
                     this.apiPreviewSample = firstItem;
-                    
+
                     console.log('✓ Preview loaded:', {
                         itemCount: items.length,
                         recommendationCount: this.apiPreviewRecommendations.length,
                         fieldCount: Object.keys(firstItem).length
                     });
-                    
+
                     $('#deviceSelectorModal').modal('hide');
                 } else {
                     this.previewLoading = false;
@@ -1013,24 +1012,24 @@ window.endpointManager = function() {
                 console.warn('Recommendations is not an array:', typeof recs);
                 return [];
             }
-            
+
             // Remove duplicates by creating a Map with api_field as key
             const seen = new Map();
             const cleaned = [];
-            
+
             recs.forEach((rec, idx) => {
                 if (!rec || typeof rec !== 'object') {
                     console.warn('Invalid recommendation at index', idx, rec);
                     return;
                 }
-                
+
                 const key = rec.api_field || rec.field || `rec_${idx}`;
-                
+
                 if (seen.has(key)) {
                     console.warn('Duplicate recommendation key:', key);
                     return;
                 }
-                
+
                 // Ensure all required properties exist
                 const cleaned_rec = {
                     api_field: rec.api_field || rec.field || 'unknown',
@@ -1040,11 +1039,11 @@ window.endpointManager = function() {
                     dataType: rec.dataType || rec.type || 'unknown',
                     reason: rec.reason || ''
                 };
-                
+
                 seen.set(key, true);
                 cleaned.push(cleaned_rec);
             });
-            
+
             console.log('Cleaned recommendations:', cleaned.length, cleaned);
             return cleaned;
         },

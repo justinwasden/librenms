@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\RestApiTemplate;
+use App\Models\RestApiConnection;
+use App\Models\RestApiCredential;
+use App\Services\RestApi\Auth\AuthManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
-use App\RestApi\Credentials\CredentialHelper;
+use Illuminate\Support\Facades\Http;
 
 class RestApiTemplateController extends Controller
 {
@@ -370,6 +373,7 @@ class RestApiTemplateController extends Controller
                 $endpointData = $this->replacePlaceholdersInArray($endpointData, $device);
             }
 
+            // ** MODIFIED: Call fetchTemplateApiResponse with the updated logic **
             $apiResponse = $this->fetchTemplateApiResponse($connData, $endpointData, $credentialId);
 
             // Don't generate generic recommendations - let vendor mapper or user decide
@@ -422,29 +426,49 @@ class RestApiTemplateController extends Controller
             throw new \Exception('Base URL not configured');
         }
 
-        $client = new \GuzzleHttp\Client([
-            'base_uri' => $connData['base_url'],
-            'timeout' => 15,
-            'verify' => !($connData['disable_ssl_verify'] ?? false),
-        ]);
+        $baseUri = rtrim($connData['base_url'], '/');
 
-        $headers = $this->getTemplateAuthHeaders($connData, $client, $credentialId);
-        $method = $endpointData['method'] ?? 'GET';
-        $path = $endpointData['path'];
-
-        $response = $client->request($method, $path, [
-            'headers' => $headers,
-        ]);
-
-        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
-            throw new \Exception("HTTP {$response->getStatusCode()}");
+        $credential = null;
+        $credId = $credentialId ?? $connData['credential_id'] ?? null;
+        if ($credId) {
+             // Retrieve the full credential model
+            $credential = RestApiCredential::findOrFail($credId);
         }
 
-        $body = (string)$response->getBody();
+        // 1. Create a mock RestApiConnection model from array data
+        $connection = new RestApiConnection([
+            'base_url' => $baseUri,
+            'disable_ssl_verify' => $connData['disable_ssl_verify'] ?? false,
+            // Include other connData params needed by strategies (e.g., login paths)
+            'params' => $connData['params'] ?? [],
+        ]);
+
+        // 2. Use the AuthManager to get the configured Http client
+        $authManager = new AuthManager();
+        $client = $authManager->getRequest($connection, $credential, $endpointData['method'] ?? 'GET');
+
+        // 3. Make the request using the client instance
+        $method = $endpointData['method'] ?? 'GET';
+        $path = ltrim($endpointData['path'], '/');
+        $url = $baseUri . '/' . $path; // Construct full URL outside of Guzzle's base_uri to handle dynamic paths better
+
+        // Guzzle's request call using the Illuminate Http facade client methods
+        $response = $client->{$method}($url);
+
+        // GuzzleHttp\Exception\ConnectException can be thrown here, caught by the main try/catch
+
+        if (!$response->successful()) {
+            $errorBody = json_decode($response->body(), true) ?? $response->body();
+            $errorMsg = is_array($errorBody) ? ($errorBody['error'] ?? $response->reason()) : $errorBody;
+
+            throw new \Exception("HTTP {$response->status()} Error: {$errorMsg}");
+        }
+
+        $body = $response->body();
         $decoded = json_decode($body, true);
 
         if ($decoded === null) {
-            throw new \Exception("Invalid JSON response: " . json_last_error_msg());
+            throw new \Exception("Invalid JSON response: " . json_last_error_msg() . "\nRaw Response: " . Str::limit($body, 200));
         }
 
         return $decoded;
@@ -665,7 +689,6 @@ class RestApiTemplateController extends Controller
             ], 500);
         }
     }
-
     public function getCredentialsList(Request $request)
     {
         try {

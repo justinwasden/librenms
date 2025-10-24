@@ -1,17 +1,18 @@
 <?php
 // app/Http/Controllers/RestApiEndpointController.php
-// UPDATED - Shows how to integrate new mapping UI
 
 namespace App\Http\Controllers;
 
 use App\Models\Device;
 use App\Models\RestApiConnection;
 use App\Models\RestApiEndpoint;
+use App\Models\RestApiCredential; // ADDED
 use App\RestApi\Vendors\VendorMapperFactory;
-use App\RestApi\Credentials\CredentialHelper;
-use GuzzleHttp\Client;
+use App\Services\RestApi\Auth\AuthManager; // ADDED: New Auth entry point
+use GuzzleHttp\Client; // Note: Although Guzzle is here, we'll use Illuminate\Http client via AuthManager
 use Illuminate\Http\Request;
-use Log;
+use Illuminate\Support\Facades\Log; // Changed Log to Illuminate\Support\Facades\Log
+use Illuminate\Support\Str; // Added Str for string operations
 
 class RestApiEndpointController extends Controller
 {
@@ -255,29 +256,37 @@ class RestApiEndpointController extends Controller
      */
     protected function fetchApiResponse(RestApiConnection $connection, RestApiEndpoint $endpoint): array
     {
-        $client = new \GuzzleHttp\Client([
-            'base_uri' => $connection->base_url,
-            'timeout' => 15,
-            'verify' => !$connection->disable_ssl_verify,
-        ]);
-
-        // Get auth headers
-        $headers = $this->getAuthHeaders($connection, $client);
-
-        // Make request
-        $response = $client->request($endpoint->method ?? 'GET', $endpoint->path, [
-            'headers' => $headers,
-        ]);
-
-        if ($response->getStatusCode() !== 200) {
-            throw new \Exception("HTTP {$response->getStatusCode()}");
+        // 1. Get credential model
+        $credential = $connection->credential;
+        if (!$credential) {
+            throw new \Exception("No credential configured for connection");
         }
 
-        $body = (string)$response->getBody();
+        // 2. Use the AuthManager to get the configured Http client
+        $authManager = new AuthManager();
+        $client = $authManager->getRequest($connection, $credential, $endpoint->method ?? 'GET');
+
+        // 3. Construct full URL and make the request
+        $baseUri = rtrim($connection->base_url, '/');
+        $path = ltrim($endpoint->path, '/');
+        $url = $baseUri . '/' . $path;
+        $method = $endpoint->method ?? 'GET';
+
+        // Use the Illuminate\Support\Facades\Http client instance from AuthManager
+        $response = $client->{$method}($url);
+
+        if (!$response->successful()) {
+            $errorBody = json_decode($response->body(), true) ?? $response->body();
+            $errorMsg = is_array($errorBody) ? ($errorBody['error'] ?? $response->reason()) : $errorBody;
+
+            throw new \Exception("HTTP {$response->status()} Error: {$errorMsg}");
+        }
+
+        $body = $response->body();
         $decoded = json_decode($body, true);
 
-        if (!$decoded) {
-            throw new \Exception("Invalid JSON response: " . json_last_error_msg());
+        if ($decoded === null) {
+            throw new \Exception("Invalid JSON response: " . json_last_error_msg() . "\nRaw Response: " . Str::limit($body, 200));
         }
 
         return $decoded;
