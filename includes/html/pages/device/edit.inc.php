@@ -11,6 +11,22 @@ $link_array = [
 if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
+    // Detect the actual legacy file that renders "Device Settings"
+    $base = "includes/html/pages/device/edit/";
+    $device_settings_candidates = [
+        'device.inc.php',     // classic
+        'general.inc.php',    // some tags
+        'settings.inc.php',   // alternative naming
+    ];
+    $deviceSectionFile = null;
+    foreach ($device_settings_candidates as $f) {
+        if (is_file($base . $f)) {
+            $deviceSectionFile = $f;
+            break;
+        }
+    }
+    // Fallback: if none of the candidates exist, we will still show the tab, but warn when loaded.
+
     // Build the panes list (menu tabs)
     $panes = [];
     $panes['device'] = 'Device Settings';
@@ -20,45 +36,34 @@ if (! Auth::user()->hasGlobalAdmin()) {
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
     }
-
     if (dbFetchCell('SELECT COUNT(*) FROM `bgpPeers` WHERE `device_id` = ? LIMIT 1', [$device['device_id']]) > 0) {
         $panes['routing'] = 'Routing';
     }
-
     if (count(\App\Facades\LibrenmsConfig::get("os.{$device['os']}.icons", []))) {
         $panes['icon'] = 'Icon';
     }
-
     if (! $device['snmp_disable']) {
         $panes['apps'] = 'Applications';
     }
-
     $panes['alert-rules'] = 'Alert Rules';
-
     if (! $device['snmp_disable']) {
         $panes['modules'] = 'Modules';
     }
-
     if (\App\Facades\LibrenmsConfig::get('show_services')) {
         $panes['services'] = 'Services';
     }
-
     $panes['ipmi'] = 'IPMI';
-
     if (dbFetchCell("SELECT COUNT(*) FROM `sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['health'] = 'Health';
     }
-
     if (dbFetchCell("SELECT COUNT(*) FROM `wireless_sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['wireless-sensors'] = 'Wireless Sensors';
     }
-
     if (! $device['snmp_disable']) {
         $panes['storage']    = 'Storage';
         $panes['processors'] = 'Processors';
         $panes['mempools']   = 'Memory';
     }
-
     $panes['misc']      = 'Misc';
     $panes['component'] = 'Components';
     $panes['customoid'] = 'Custom OID';
@@ -77,7 +82,14 @@ if (! Auth::user()->hasGlobalAdmin()) {
         }
 
         // All tabs use legacy navigation
-        echo generate_link($text, $link_array, ['section' => $type]);
+        // For the "device" tab, force section name to the detected file (if we found one)
+        if ($type === 'device' && $deviceSectionFile) {
+            // use the base name without .inc.php as the section
+            $sectionName = basename($deviceSectionFile, '.inc.php');
+            echo generate_link($text, $link_array, ['section' => $sectionName]);
+        } else {
+            echo generate_link($text, $link_array, ['section' => $type]);
+        }
 
         if ($vars['section'] == $type) {
             echo '</span>';
@@ -87,10 +99,11 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     print_optionbar_end();
 
+    // Resolve selected section
     $section = basename($vars['section']);
 
-    // Optional debug markers (view source to see them); remove once verified
-    echo "<!-- edit.inc.php: section={$section} -->";
+    // Debug markers (view source to see); remove when done
+    echo "<!-- edit.inc.php: section={$section} deviceSectionFile=" . htmlspecialchars((string)$deviceSectionFile) . " -->";
 
     if ($section === 'api') {
         // Render Device API form inline within the legacy wrapper
@@ -109,37 +122,22 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
         echo '</form>';
     } else {
-        // Legacy section rendering with fallback for "device"
-        $base = "includes/html/pages/device/edit/";
-        if ($section === 'device') {
-            // Try common filenames for Device Settings across tags
-            $candidates = [
-                'device.inc.php',
-                'general.inc.php',
-                'settings.inc.php',
-            ];
+        // Legacy section rendering
+        // If "device" is selected, map to the detected file's section name
+        if ($section === 'device' && $deviceSectionFile) {
+            $section = basename($deviceSectionFile, '.inc.php');
+        }
 
-            $loaded = false;
-            foreach ($candidates as $f) {
-                $path = $base . $f;
-                echo "<!-- edit.inc.php: try {$path} exists=" . (int) is_file($path) . " -->";
-                if (is_file($path)) {
-                    require $path;
-                    $loaded = true;
-                    break;
-                }
-            }
+        $path = $base . $section . '.inc.php';
+        echo "<!-- edit.inc.php: load path={$path} exists=" . (int) is_file($path) . " -->";
 
-            if (! $loaded) {
-                // Safe warning output (no undefined helper)
-                echo '<div class="alert alert-warning">Device Settings file not found. '
-                   . 'Please verify legacy include files under includes/html/pages/device/edit/.</div>';
-            }
-        } elseif (is_file($base . $section . '.inc.php')) {
-            require $base . $section . '.inc.php';
+        if (is_file($path)) {
+            require $path;
         } else {
-            echo '<div class="alert alert-warning">Legacy section file not found: '
-               . htmlspecialchars($base . $section . '.inc.php', ENT_QUOTES, 'UTF-8') . '</div>';
+            // Final fallback: inform about missing file and list directory contents
+            echo '<div class="alert alert-warning">Device Settings content file not found at '
+               . htmlspecialchars($path, ENT_QUOTES, 'UTF-8') . '.<br>'
+               . 'Please check available files under ' . htmlspecialchars($base, ENT_QUOTES, 'UTF-8') . '.</div>';
         }
     }
 }
