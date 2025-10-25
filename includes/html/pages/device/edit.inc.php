@@ -89,7 +89,7 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     $section = basename($vars['section']);
 
-    // Optional debug markers (view source to see them); comment out once verified
+    // Optional debug markers (view source to see them); remove once verified
     echo "<!-- edit.inc.php: section={$section} -->";
 
     if ($section === 'api') {
@@ -131,12 +131,15 @@ if (! Auth::user()->hasGlobalAdmin()) {
             }
 
             if (! $loaded) {
-                print_warning('Device Settings file not found. Please verify legacy include files under includes/html/pages/device/edit/.');
+                // Safe warning output (no undefined helper)
+                echo '<div class="alert alert-warning">Device Settings file not found. '
+                   . 'Please verify legacy include files under includes/html/pages/device/edit/.</div>';
             }
         } elseif (is_file($base . $section . '.inc.php')) {
             require $base . $section . '.inc.php';
         } else {
-            print_warning("Legacy section file not found: {$base}{$section}.inc.php");
+            echo '<div class="alert alert-warning">Legacy section file not found: '
+               . htmlspecialchars($base . $section . '.inc.php', ENT_QUOTES, 'UTF-8') . '</div>';
         }
     }
 }
