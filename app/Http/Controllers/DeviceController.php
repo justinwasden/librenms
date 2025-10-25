@@ -4,13 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Facades\DeviceCache;
 use App\Facades\LibrenmsConfig;
-use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
 use App\View\Components\Device\PageTabs;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 use LibreNMS\Util\Debug;
 use LibreNMS\Util\Url;
@@ -92,105 +89,5 @@ class DeviceController
             'message' => $saved ? 'Device scheduled for discovery' : 'Failed to schedule device for discovery',
             'status' => $saved ? 'ok' : 'error',
         ]);
-    }
-    public function edit(Device $device)
-    {
-        if (! auth()->user()->hasGlobalAdmin()) {
-            abort(403, 'Insufficient Privileges');
-        }
-
-        $section = request()->get('section');
-
-        // Render Blade only for the Device API tab
-        if ($section === 'api') {
-            return view('device.edit', ['device' => $device, 'section' => 'api']);
-        }
-
-        // For Device Settings or any other legacy section, redirect to the legacy edit page.
-        // If section is missing or 'device', resolve the actual legacy file name and use that section.
-        if ($section === null || $section === 'device') {
-            $section = $this->resolveLegacyDeviceSettingsSection();
-        }
-
-        return redirect(url("device/device={$device->device_id}/tab=edit/section={$section}"));
-    }
-
-    public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
-    {
-        if (! auth()->user()->hasGlobalAdmin()) {
-            abort(403, 'Insufficient Privileges');
-        }
-
-        // Example: update hostname
-        $device->hostname = $request->input('hostname', $device->hostname);
-
-        // Device API attributes
-        $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
-        $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
-        $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
-        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
-
-        $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
-        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
-        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
-        $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
-
-        if ($request->filled('rest_token')) {
-            $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));
-        }
-        if ($request->filled('rest_username')) {
-            $device->setAttrib('rest_username', $request->input('rest_username'));
-        }
-        if ($request->filled('rest_password')) {
-            $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
-        }
-
-        // Proxmox token
-        if ($request->filled('proxmox_token_user')) {
-            $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
-        }
-        if ($request->filled('proxmox_token_id')) {
-            $device->setAttrib('proxmox_token_id', $request->input('proxmox_token_id'));
-        }
-        if ($request->filled('proxmox_token')) {
-            $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
-        }
-
-        // Proxmox ticket
-        if ($request->filled('proxmox_username')) {
-            $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
-        }
-        if ($request->filled('proxmox_password')) {
-            $device->setAttrib('proxmox_password_enc', Crypt::encryptString($request->input('proxmox_password')));
-        }
-
-        $device->save();
-
-        // Go back to the legacy device page
-        return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
-    }
-
-    /**
-     * Detect the actual legacy include section for "Device Settings"
-     * by checking common filenames in includes/html/pages/device/edit/.
-     * Returns the section name (filename without .inc.php).
-     */
-    private function resolveLegacyDeviceSettingsSection(): string
-    {
-        $base = base_path('includes/html/pages/device/edit/');
-        $candidates = [
-            'device.inc.php',    // classic
-            'general.inc.php',   // common
-            'settings.inc.php',  // alternative
-        ];
-
-        foreach ($candidates as $file) {
-            if (is_file($base . $file)) {
-                return basename($file, '.inc.php');
-            }
-        }
-
-        // Fallback to 'device' if none found (legacy will try device.inc.php)
-        return 'device';
     }
 }

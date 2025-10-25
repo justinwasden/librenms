@@ -1,43 +1,92 @@
-{{-- resources/views/device/edit.blade.php --}}
-@extends('layouts.librenmsv1')
+<?php
 
-@section('content')
-<div class="container">
-    <h1>Edit Device</h1>
+$no_refresh = true;
 
-    @if ($errors->any())
-        <div class="alert alert-danger">
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+$link_array = ['page' => 'device',
+    'device' => $device['device_id'],
+    'tab' => 'edit', ];
 
-    @php
-        $section = isset($section) ? $section : request()->get('section', 'api');
-        $device_id = $device->device_id;
-    @endphp
+if (! Auth::user()->hasGlobalAdmin()) {
+    print_error('Insufficient Privileges');
+} else {
+    $panes['device'] = 'Device Settings';
+    $panes['snmp'] = 'SNMP';
+    if (! $device['snmp_disable']) {
+        $panes['ports'] = 'Port Settings';
+    }
 
-    @if (!Auth::user()->hasGlobalAdmin())
-        <div class="alert alert-danger">Insufficient Privileges</div>
-    @else
-        @if ($section === 'api')
-            <form method="POST" action="{{ route('device.edit.update', ['device' => $device_id]) }}">
-                @csrf
-                @method('PUT')
+    if (dbFetchCell('SELECT COUNT(*) FROM `bgpPeers` WHERE `device_id` = ? LIMIT 1', [$device['device_id']]) > 0) {
+        $panes['routing'] = 'Routing';
+    }
 
-                @include('device.partials.device_api')
+    if (count(\App\Facades\LibrenmsConfig::get("os.{$device['os']}.icons", []))) {
+        $panes['icon'] = 'Icon';
+    }
 
-                <div class="mt-3">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                    <a href="{{ url("device/{$device_id}") }}" class="btn btn-secondary">Cancel</a>
-                </div>
-            </form>
-        @else
-            <div class="alert alert-warning">This section is handled by the legacy UI.</div>
-        @endif
-    @endif
-</div>
-@endsection
+    if (! $device['snmp_disable']) {
+        $panes['apps'] = 'Applications';
+    }
+    $panes['alert-rules'] = 'Alert Rules';
+    if (! $device['snmp_disable']) {
+        $panes['modules'] = 'Modules';
+    }
+
+    if (\App\Facades\LibrenmsConfig::get('show_services')) {
+        $panes['services'] = 'Services';
+    }
+
+    $panes['ipmi'] = 'IPMI';
+
+    if (dbFetchCell("SELECT COUNT(*) FROM `sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
+        $panes['health'] = 'Health';
+    }
+
+    if (dbFetchCell("SELECT COUNT(*) FROM `wireless_sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
+        $panes['wireless-sensors'] = 'Wireless Sensors';
+    }
+
+    if (! $device['snmp_disable']) {
+        $panes['storage'] = 'Storage';
+        $panes['processors'] = 'Processors';
+        $panes['mempools'] = 'Memory';
+    }
+    $panes['misc'] = 'Misc';
+
+    $panes['component'] = 'Components';
+
+    $panes['customoid'] = 'Custom OID';
+
+    print_optionbar_start();
+
+    $sep = '';
+    foreach ($panes as $type => $text) {
+        if (! isset($vars['section'])) {
+            $vars['section'] = $type;
+        }
+        echo $sep;
+        if ($vars['section'] == $type) {
+            echo "<span class='pagemenu-selected'>";
+        } else {
+        }
+
+        if ($type == 'device') {
+            echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
+        } else {
+            echo generate_link($text, $link_array, ['section' => $type]);
+        }
+
+        if ($vars['section'] == $type) {
+            echo '</span>';
+        }
+        $sep = ' | ';
+    }
+
+    print_optionbar_end();
+
+    $section = basename($vars['section']);
+    if (is_file("includes/html/pages/device/edit/$section.inc.php")) {
+        require "includes/html/pages/device/edit/$section.inc.php";
+    }
+}
+
+$pagetitle[] = 'Settings';
