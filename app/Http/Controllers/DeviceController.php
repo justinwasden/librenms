@@ -90,4 +90,64 @@ class DeviceController
             'status' => $saved ? 'ok' : 'error',
         ]);
     }
+
+    public function edit(Device $device): View
+    {
+        // Optional authorization: only global admins
+        if (! auth()->user()->hasGlobalAdmin()) {
+            abort(403, 'Insufficient Privileges');
+        }
+
+        return view('device.edit', compact('device'));
+    }
+
+    public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
+    {
+        if (! auth()->user()->hasGlobalAdmin()) {
+            abort(403, 'Insufficient Privileges');
+        }
+
+        // existing update logic; example for hostname and Device API fields
+        $device->hostname = $request->input('hostname', $device->hostname);
+
+        $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
+        $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
+        $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
+        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
+        $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
+        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
+        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
+        $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
+
+        if ($request->filled('rest_token')) {
+            $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));
+        }
+        if ($request->filled('rest_username')) {
+            $device->setAttrib('rest_username', $request->input('rest_username'));
+        }
+        if ($request->filled('rest_password')) {
+            $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
+        }
+
+        if ($request->filled('proxmox_token_user')) {
+            $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
+        }
+        if ($request->filled('proxmox_token_id')) {
+            $device->setAttrib('proxmox_token_id', $request->input('proxmox_token_id'));
+        }
+        if ($request->filled('proxmox_token')) {
+            $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
+        }
+        if ($request->filled('proxmox_username')) {
+            $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
+        }
+        if ($request->filled('proxmox_password')) {
+            $device->setAttrib('proxmox_password_enc', Crypt::encryptString($request->input('proxmox_password')));
+        }
+
+        $device->save();
+
+        return redirect()->route('device.show', ['device' => $device->device_id])
+            ->with('status', 'Device updated successfully');
+    }
 }
