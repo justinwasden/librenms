@@ -2,29 +2,27 @@
 
 $no_refresh = true;
 
-$link_array = [
-    'page' => 'device',
+$link_array = ['page' => 'device',
     'device' => $device['device_id'],
-    'tab' => 'edit',
-];
+    'tab' => 'edit', ];
 
 if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
-    $panes = [];
     $panes['device'] = 'Device Settings';
     $panes['snmp'] = 'SNMP';
-    $panes['api'] = 'Device API'; // new tab
-
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
     }
+
     if (dbFetchCell('SELECT COUNT(*) FROM `bgpPeers` WHERE `device_id` = ? LIMIT 1', [$device['device_id']]) > 0) {
         $panes['routing'] = 'Routing';
     }
+
     if (count(\App\Facades\LibrenmsConfig::get("os.{$device['os']}.icons", []))) {
         $panes['icon'] = 'Icon';
     }
+
     if (! $device['snmp_disable']) {
         $panes['apps'] = 'Applications';
     }
@@ -32,23 +30,30 @@ if (! Auth::user()->hasGlobalAdmin()) {
     if (! $device['snmp_disable']) {
         $panes['modules'] = 'Modules';
     }
+
     if (\App\Facades\LibrenmsConfig::get('show_services')) {
         $panes['services'] = 'Services';
     }
+
     $panes['ipmi'] = 'IPMI';
+
     if (dbFetchCell("SELECT COUNT(*) FROM `sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['health'] = 'Health';
     }
+
     if (dbFetchCell("SELECT COUNT(*) FROM `wireless_sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['wireless-sensors'] = 'Wireless Sensors';
     }
+
     if (! $device['snmp_disable']) {
         $panes['storage'] = 'Storage';
         $panes['processors'] = 'Processors';
         $panes['mempools'] = 'Memory';
     }
     $panes['misc'] = 'Misc';
+
     $panes['component'] = 'Components';
+
     $panes['customoid'] = 'Custom OID';
 
     print_optionbar_start();
@@ -59,13 +64,16 @@ if (! Auth::user()->hasGlobalAdmin()) {
             $vars['section'] = $type;
         }
         echo $sep;
-
         if ($vars['section'] == $type) {
             echo "<span class='pagemenu-selected'>";
+        } else {
         }
 
-        // Legacy links for tabs
-        echo generate_link($text, $link_array, ['section' => $type]);
+        if ($type == 'device') {
+            echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
+        } else {
+            echo generate_link($text, $link_array, ['section' => $type]);
+        }
 
         if ($vars['section'] == $type) {
             echo '</span>';
@@ -76,13 +84,7 @@ if (! Auth::user()->hasGlobalAdmin()) {
     print_optionbar_end();
 
     $section = basename($vars['section']);
-
-    if ($section === 'api') {
-        // Render Blade Device API form inside the legacy wrapper
-        $deviceModel = \App\Models\Device::findOrFail($device['device_id']);
-        echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
-    } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
-        // Legacy section rendering
+    if (is_file("includes/html/pages/device/edit/$section.inc.php")) {
         require "includes/html/pages/device/edit/$section.inc.php";
     }
 }
