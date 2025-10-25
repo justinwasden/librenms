@@ -72,7 +72,7 @@ if (! Auth::user()->hasGlobalAdmin()) {
         }
 
         if ($type == 'device') {
-            echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
+            echo generate_link($text, $link_array, ['section' => 'device']);
         } else {
             echo generate_link($text, $link_array, ['section' => $type]);
         }
