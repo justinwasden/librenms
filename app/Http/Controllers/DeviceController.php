@@ -97,7 +97,16 @@ class DeviceController
             abort(403, 'Insufficient Privileges');
         }
 
-        return view('device.edit', compact('device'));
+        $section = request()->get('section');
+
+        // Only render Blade for the Device API tab.
+        if ($section === 'api') {
+            // Pass section so the Blade shows the Device API form only
+            return view('device.edit', ['device' => $device, 'section' => 'api']);
+        }
+
+        // For all other sections (including Device Settings), redirect to legacy edit page
+        return redirect(url("device/device={$device->device_id}/tab=edit" . ($section ? "/section={$section}" : '')));
     }
 
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
@@ -151,8 +160,7 @@ class DeviceController
 
         $device->save();
 
-		    // Redirect to the legacy device page URL
-		    return redirect(url("device/{$device->device_id}"))
-		        ->with('status', 'Device updated successfully');
-		    }
+        // Go back to the legacy device page
+        return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
+    }
 }
