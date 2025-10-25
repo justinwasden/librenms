@@ -15,9 +15,7 @@ if (! Auth::user()->hasGlobalAdmin()) {
     $panes = [];
     $panes['device'] = 'Device Settings';
     $panes['snmp']   = 'SNMP';
-
-    // Insert the new Device API tab right after SNMP
-    $panes['api'] = 'Device API';
+    $panes['api']    = 'Device API'; // new tab
 
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
@@ -91,29 +89,55 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     $section = basename($vars['section']);
 
+    // Optional debug markers (view source to see them); comment out once verified
+    echo "<!-- edit.inc.php: section={$section} -->";
+
     if ($section === 'api') {
         // Render Device API form inline within the legacy wrapper
         $deviceModel = \App\Models\Device::findOrFail($device['device_id']);
 
-        // Open form (use Laravel helpers for CSRF and method spoofing)
         echo '<form method="POST" action="' . route('device.edit.update', ['device' => $device['device_id']]) . '">';
         echo csrf_field();
         echo method_field('PUT');
 
-        // Render the Device API partial (fields only)
         echo view('device.partials.device_api', ['device' => $deviceModel])->render();
 
-        // Buttons
         echo '<div class="mt-3">';
         echo '  <button type="submit" class="btn btn-primary">Save Changes</button>';
         echo '  <a href="' . url("device/{$device['device_id']}") . '" class="btn btn-secondary">Cancel</a>';
         echo '</div>';
 
-        // Close form
         echo '</form>';
-    } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
-        // Legacy section rendering
-        require "includes/html/pages/device/edit/$section.inc.php";
+    } else {
+        // Legacy section rendering with fallback for "device"
+        $base = "includes/html/pages/device/edit/";
+        if ($section === 'device') {
+            // Try common filenames for Device Settings across tags
+            $candidates = [
+                'device.inc.php',
+                'general.inc.php',
+                'settings.inc.php',
+            ];
+
+            $loaded = false;
+            foreach ($candidates as $f) {
+                $path = $base . $f;
+                echo "<!-- edit.inc.php: try {$path} exists=" . (int) is_file($path) . " -->";
+                if (is_file($path)) {
+                    require $path;
+                    $loaded = true;
+                    break;
+                }
+            }
+
+            if (! $loaded) {
+                print_warning('Device Settings file not found. Please verify legacy include files under includes/html/pages/device/edit/.');
+            }
+        } elseif (is_file($base . $section . '.inc.php')) {
+            require $base . $section . '.inc.php';
+        } else {
+            print_warning("Legacy section file not found: {$base}{$section}.inc.php");
+        }
     }
 }
 
