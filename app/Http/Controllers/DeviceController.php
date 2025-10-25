@@ -151,7 +151,8 @@ class DeviceController
 
         $device->save();
 
-        return redirect()->route('device.show', ['device' => $device->device_id])
-            ->with('status', 'Device updated successfully');
-    }
+		    // Redirect to the legacy device page URL
+		    return redirect(url("device/{$device->device_id}"))
+		        ->with('status', 'Device updated successfully');
+		    }
 }
