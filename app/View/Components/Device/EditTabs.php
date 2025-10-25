@@ -40,8 +40,7 @@ class EditTabs extends Component
         public Device $device,
         ?string $tab = null,
     ) {
-        $currentSegment = Request::segment(4, 'edit');
-				$this->tab = $tab ?? str_replace('section=', '', $currentSegment);
+        $this->tab = $tab ?? Request::segment(4, 'edit');
 
         $this->tabs = [
             'edit' => [
@@ -135,11 +134,6 @@ class EditTabs extends Component
             ];
         }
 
-        $this->tabs['rest-api'] = [
-				    'text' => __('REST API'),
-				    'link' => route('device.edit.rest-api', ['device' => $this->device->device_id]),
-				];
-
         $this->tabs['misc'] = [
             'text' => __('Misc'),
             'link' => url('/device/device=' . $this->device->device_id . '/tab=edit/section=misc/'),
@@ -156,7 +150,9 @@ class EditTabs extends Component
         ];
     }
 
-
+    /**
+     * @inheritDoc
+     */
     public function render()
     {
         return view('components.device.edit-tabs');

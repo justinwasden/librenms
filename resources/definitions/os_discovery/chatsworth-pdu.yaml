@@ -3,7 +3,7 @@ modules:
         serial: CPI-UNITY-MIB::modelCode.0
         version: CPI-UNITY-MIB::version.0
     sensors:
-        pre-cache:
+        additional_oids:
             data:
                 -
                     oid:

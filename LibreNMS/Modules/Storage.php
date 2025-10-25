@@ -124,7 +124,7 @@ class Storage implements Module
 
         $data = \SnmpQuery::numeric()->get($oids)->values();
 
-        return $storages->each(function (\App\Models\Storage $storage) use ($data) {
+        return $storages->each(function (\App\Models\Storage $storage) use ($data): void {
             $storage->fillUsage(
                 $data[$storage->storage_used_oid] ?? null,
                 $storage->storage_units ? $storage->storage_size / $storage->storage_units : null,
@@ -158,7 +158,7 @@ class Storage implements Module
 
     private function printStorage(\App\Models\Storage $storage): void
     {
-        $storage_type = str_replace(['hrStorage', 'ucd'], '', $storage->storage_type ?? '');
+        $storage_type = str_replace(['hrStorage', 'ucd'], '', $storage->storage_type);
         $message = "$storage->storage_descr ($storage_type): $storage->storage_perc%";
         if ($storage->storage_size != 100) {
             $used = Number::formatBi($storage->storage_used);

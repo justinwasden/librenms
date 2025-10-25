@@ -1,7 +1,7 @@
 mib: POWER-ETHERNET-MIB:CISCO-POWER-ETHERNET-EXT-MIB:CISCO-ENTITY-FRU-CONTROL-MIB:CISCO-HSRP-MIB
 modules:
     sensors:
-        pre-cache:
+        additional_oids:
             data:
                 -
                     oid:

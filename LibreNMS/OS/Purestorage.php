@@ -1,142 +1,140 @@
 <?php
-/**
- * Purestorage.php
- *
- * PureStorage FlashArray OS definition
- * Uses REST API for all metrics collection (no SSH or limited SNMP)
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
- * @package    LibreNMS
- * @link       https://www.librenms.org
- *
- * @copyright  2025
- * @author     Justin Wasden
- */
-
-declare(strict_types=1);
 
 namespace LibreNMS\OS;
 
-use Illuminate\Support\Facades\Log;
-use LibreNMS\Util\Rrd;
+use LibreNMS\Interfaces\Data\DataStorageInterface;
+use LibreNMS\Interfaces\Polling\OSPolling;
+use LibreNMS\RRD\RrdDefinition;
+use SnmpQuery;
 
-class Purestorage extends Generic
+class Purestorage extends \LibreNMS\OS implements OSPolling
 {
-    protected string $os = 'purestorage';
-
     /**
-     * Poll OS-specific data
-     * PureStorage primarily uses REST API for metrics
-     * SNMP is only used for basic array-level performance metrics
+     * Poll Pure Storage array metrics via SNMP
      */
-    public function poll_os(): void
+    public function pollOS(DataStorageInterface $datastore): void
     {
-        // === SNMP Polling (Array-level metrics only) ===
-        $this->pollSnmp();
-
-        // Note: All detailed metrics (volumes, hosts, capacity, etc.)
-        // are collected via REST API module, not here
-    }
-
-    /**
-     * Poll basic array performance metrics via SNMP
-     * Uses PURESTORAGE-MIB for array-level bandwidth, IOPS, and latency
-     */
-    private function pollSnmp(): void
-    {
-        $oids = [
-            'purestorage_bandwidth' => [
-                'read'  => '.1.3.6.1.4.1.40482.4.1.0',  // pureArrayReadBandwidth
-                'write' => '.1.3.6.1.4.1.40482.4.2.0',  // pureArrayWriteBandwidth
-            ],
-            'purestorage_iops' => [
-                'read'  => '.1.3.6.1.4.1.40482.4.3.0',  // pureArrayReadIOPS
-                'write' => '.1.3.6.1.4.1.40482.4.4.0',  // pureArrayWriteIOPS
-            ],
-            'purestorage_latency' => [
-                'read'  => '.1.3.6.1.4.1.40482.4.5.0',  // pureArrayReadLatency
-                'write' => '.1.3.6.1.4.1.40482.4.6.0',  // pureArrayWriteLatency
-            ],
+        // Pure Storage SNMP metrics OIDs (from PURESTORAGE-MIB)
+        // Using numeric OIDs directly
+        $metrics = [
+            'pureArrayReadBandwidth' => '.1.3.6.1.4.1.40482.4.1.0',    // bytes/sec
+            'pureArrayWriteBandwidth' => '.1.3.6.1.4.1.40482.4.2.0',    // bytes/sec
+            'pureArrayReadIOPS' => '.1.3.6.1.4.1.40482.4.3.0',    // ops/sec
+            'pureArrayWriteIOPS' => '.1.3.6.1.4.1.40482.4.4.0',    // ops/sec
+            'pureArrayReadLatency' => '.1.3.6.1.4.1.40482.4.5.0',    // microseconds
+            'pureArrayWriteLatency' => '.1.3.6.1.4.1.40482.4.6.0',    // microseconds
         ];
 
-        // Build array of all OIDs to query
-        $snmp_oids = [];
-        foreach ($oids as $rrd_file => $ds_oids) {
-            foreach ($ds_oids as $ds => $oid) {
-                $snmp_oids[] = $oid;
+        // Query all OIDs at once
+        $data = [];
+        foreach ($metrics as $name => $oid) {
+            $value = SnmpQuery::get($oid)->value();
+            // Cast to integer, filtering out non-numeric values
+            if (is_numeric($value)) {
+                $data[$name] = (int) $value;
+                echo "[Purestorage] $name = $value\n";
+            } else {
+                echo "[Purestorage] WARNING: $name has non-numeric value: $value\n";
             }
         }
 
-        // Query SNMP
-        $snmp_data = $this->device->getSnmp()->getMulti($snmp_oids, '-OQUs', 'PURESTORAGE-MIB');
+        if (empty($data)) {
+            echo "[Purestorage] No valid metrics returned from SNMP\n";
 
-        if ($snmp_data) {
-            foreach ($oids as $rrd_file => $ds_oids) {
-                $rrd_values = [];
-                $valid = true;
-
-                // Extract values for this RRD file
-                foreach ($ds_oids as $ds => $oid) {
-                    if (isset($snmp_data[$oid]['value']) && is_numeric($snmp_data[$oid]['value'])) {
-                        $rrd_values[] = $snmp_data[$oid]['value'];
-                    } else {
-                        $valid = false;
-                        Log::debug("PureStorage SNMP: Missing or non-numeric value for {$oid} on device {$this->device->device_id}");
-                        break;
-                    }
-                }
-
-                // Update RRD if we have valid data
-                if ($valid && count($rrd_values) > 0) {
-                    Rrd::update($this->device, $rrd_file, $rrd_values);
-                    $this->device->graphs['device_' . $rrd_file] = 1;
-                    Log::debug("PureStorage SNMP: Updated {$rrd_file} for device {$this->device->device_id}");
-                }
-            }
-        } else {
-            Log::debug("PureStorage SNMP: No data returned for device {$this->device->device_id}");
+            return;
         }
+
+        echo '[Purestorage] Polling ' . count($data) . " metrics\n";
+
+        // Store metrics in RRD files
+        $this->storeBandwidth($datastore, $data);
+        $this->storeIOPS($datastore, $data);
+        $this->storeLatency($datastore, $data);
+
+        // Enable graphs for display
+        $this->enableGraph('purestorage_bandwidth');
+        $this->enableGraph('purestorage_iops');
+        $this->enableGraph('purestorage_latency');
     }
 
     /**
-     * Override to disable standard storage discovery
-     * PureStorage storage metrics are collected via REST API
+     * Store bandwidth metrics in RRD
+     * Bandwidth is in bytes/second and will be converted to bits/second by the YAML RPN
      */
-    public function discoverStorage(): \Illuminate\Support\Collection
+    private function storeBandwidth(DataStorageInterface $datastore, $data): void
     {
-        // Return empty collection - storage is handled by REST API
-        return collect();
+        $rrd_name = 'purestorage_bandwidth';
+
+        $rrd_def = RrdDefinition::make()
+            ->addDataset('read', 'GAUGE', 0, 125000000000)      // max 125 Gbps
+            ->addDataset('write', 'GAUGE', 0, 125000000000);
+
+        $read = isset($data['pureArrayReadBandwidth']) ? (int) $data['pureArrayReadBandwidth'] : 0;
+        $write = isset($data['pureArrayWriteBandwidth']) ? (int) $data['pureArrayWriteBandwidth'] : 0;
+
+        $fields = [
+            'read' => $read,
+            'write' => $write,
+        ];
+
+        echo "[Purestorage] Bandwidth - read: $read, write: $write\n";
+
+        $tags = ['rrd_def' => $rrd_def];
+        $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
+        echo "[Purestorage] Stored bandwidth metrics\n";
     }
 
     /**
-     * Override to disable standard processor discovery
-     * PureStorage does not expose CPU via SNMP
+     * Store IOPS metrics in RRD
+     * Operations per second (no conversion needed)
      */
-    public function discoverProcessors()
+    private function storeIOPS(DataStorageInterface $datastore, $data): void
     {
-        // Return empty collection - no CPU metrics available
-        return collect();
+        $rrd_name = 'purestorage_iops';
+
+        $rrd_def = RrdDefinition::make()
+            ->addDataset('read', 'DERIVE', 0, 1000000000)        // max 1B ops/sec
+            ->addDataset('write', 'DERIVE', 0, 1000000000);
+
+        $read = isset($data['pureArrayReadIOPS']) ? (int) $data['pureArrayReadIOPS'] : 0;
+        $write = isset($data['pureArrayWriteIOPS']) ? (int) $data['pureArrayWriteIOPS'] : 0;
+
+        $fields = [
+            'read' => $read,
+            'write' => $write,
+        ];
+
+        echo "[Purestorage] IOPS - read: $read, write: $write\n";
+
+        $tags = ['rrd_def' => $rrd_def];
+        $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
+        echo "[Purestorage] Stored IOPS metrics\n";
     }
 
     /**
-     * Override to disable standard mempool discovery  
-     * PureStorage does not expose memory via SNMP
+     * Store latency metrics in RRD
+     * Latency is in microseconds and will be converted to milliseconds by the YAML RPN
      */
-    public function discoverMempools()
+    private function storeLatency(DataStorageInterface $datastore, $data): void
     {
-        // Return empty collection - no memory metrics available
-        return collect();
+        $rrd_name = 'purestorage_latency';
+
+        $rrd_def = RrdDefinition::make()
+            ->addDataset('read', 'GAUGE', 0, 1000000)            // max 1 second in µs
+            ->addDataset('write', 'GAUGE', 0, 1000000);
+
+        $read = isset($data['pureArrayReadLatency']) ? (int) $data['pureArrayReadLatency'] : 0;
+        $write = isset($data['pureArrayWriteLatency']) ? (int) $data['pureArrayWriteLatency'] : 0;
+
+        $fields = [
+            'read' => $read,
+            'write' => $write,
+        ];
+
+        echo "[Purestorage] Latency - read: $read, write: $write\n";
+
+        $tags = ['rrd_def' => $rrd_def];
+        $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
+        echo "[Purestorage] Stored latency metrics\n";
     }
 }

@@ -19,7 +19,7 @@ modules:
         serial:
             - NMS-CHASSIS::nmscardSerial.0
             - NMS-CHASSIS::nmscardSerial.1
-    pre-cache:
+    additional_oids:
         data:
             -
                 oid:

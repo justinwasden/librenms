@@ -26,7 +26,7 @@
 
 @if($init)
 <script>
-    loadjs('{{ asset("js/leaflet.js") }}', function () {
+    loadjs('js/leaflet.js', function () {
         init_map(@json($id), @json($config))
     })
 </script>

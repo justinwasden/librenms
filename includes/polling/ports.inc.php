@@ -355,7 +355,7 @@ if (LibrenmsConfig::get('enable_ports_poe')) {
             //We replace the ENTITY EntIndex by the IfIndex using the portIfIndex table (stored in $port_ent_to_if).
             //Result is merged into $port_stats
             if ($port_ent_to_if[$p_index] && $port_ent_to_if[$p_index]['portIfIndex'] && $port_stats[$port_ent_to_if[$p_index]['portIfIndex']]) {
-                $port_stats[$port_ent_to_if[$p_index]['portIfIndex']] = $port_stats[$port_ent_to_if[$p_index]['portIfIndex']] + $p_stats;
+                $port_stats[$port_ent_to_if[$p_index]['portIfIndex']] += $p_stats;
             }
         }
     } elseif ($device['os'] == 'vrp') {
@@ -381,6 +381,7 @@ if (LibrenmsConfig::get('enable_ports_poe')) {
             'rlPethPsePortOutputPower',
         ];
 
+        $port_stats_temp = [];
         foreach ($linksys_poe_oids as $oid) {
             $port_stats_temp = snmpwalk_cache_oid($device, $oid, $port_stats_temp, 'LINKSYS-POE-MIB:POWER-ETHERNET-MIB');
         }
@@ -526,11 +527,6 @@ foreach ($port_stats as $ifIndex => $port) {
         $ports_found[] = $port_id;
     } elseif ($port_id && empty($ports[$port_id]['skipped'])) {
         // Port vanished (mark as deleted) (except when skipped by selective port polling)
-        // CRITICAL: Do NOT mark REST API ports as deleted - they're managed by REST API polling
-        if (isset($ports[$port_id]['port_descr_type']) && $ports[$port_id]['port_descr_type'] === 'rest-api') {
-            // Skip REST API ports - they don't appear in SNMP data
-            continue;
-        }
         if ($ports[$port_id]['deleted'] != '1') {
             dbUpdate(['deleted' => '1'], 'ports', '`port_id` = ?', [$port_id]);
             $ports[$port_id]['deleted'] = '1';
@@ -567,11 +563,6 @@ foreach ($ports as $port) {
      * since the last poller run. Mark it deleted in the database and go on.
      */
     if (! in_array($port_id, $ports_found)) {
-        // CRITICAL: Do NOT mark REST API ports as deleted - they're managed by REST API polling
-        if (isset($port['port_descr_type']) && $port['port_descr_type'] === 'rest-api') {
-            // Skip REST API ports - they don't appear in SNMP data
-            continue;
-        }
         if ($port['deleted'] != '1') {
             dbUpdate(['deleted' => '1'], 'ports', '`device_id` = ? AND `port_id` = ?', [$device['device_id'], $port_id]);
             Log::info("{$port_info_string}deleted.");

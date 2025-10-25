@@ -26,7 +26,6 @@ foreach (PluginManager::call(DeviceOverviewHook::class, ['device' => DeviceCache
 
 require 'overview/ports.inc.php';
 require 'overview/transceivers.inc.php';
-echo view('device.overview.rest-api', ['device' => $device])->render();
 
 if ($device['os'] == 'ping') {
     require 'overview/ping.inc.php';

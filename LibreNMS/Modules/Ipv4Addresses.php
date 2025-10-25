@@ -26,6 +26,7 @@
 
 namespace LibreNMS\Modules;
 
+use App\ApiClients\DeviceApiClientFactory;
 use App\Facades\PortCache;
 use App\Models\Device;
 use App\Models\Ipv4Address;
@@ -41,6 +42,7 @@ use LibreNMS\Interfaces\Module;
 use LibreNMS\OS;
 use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\Util\IPv4;
+use LibreNMS\Util\DeviceApiSettings;
 use SnmpQuery;
 
 class Ipv4Addresses implements Module
@@ -77,6 +79,35 @@ class Ipv4Addresses implements Module
     public function discover(OS $os): void
     {
         $ips = new Collection;
+
+        // REST API branch (vendor-agnostic via factory)
+        if (DeviceApiSettings::restEnabled($device)) {
+            $client = DeviceApiClientFactory::make($device);
+            if ($client && in_array('ipv4', $client->capabilities(), true)) {
+                try {
+                    // Expect entries with keys: ifIndex, ipv4_address, ipv4_prefixlen, context_name
+                    $entries = $client->fetchIpv4Addresses($device) ?? [];
+                    foreach ($entries as $row) {
+                        $ifIndex = (int)($row['ifIndex'] ?? 0);
+                        $portId = $ifIndex ? PortCache::getIdFromIfIndex($ifIndex, $device) : null;
+                        if (!$portId) {
+                            // Skip if we can't map to a port; ports module should run first (dependency)
+                            continue;
+                        }
+                        $ips->push(new Ipv4Address([
+                            'port_id' => $portId,
+                            'ipv4_address' => trim((string)($row['ipv4_address'] ?? '')),
+                            'ipv4_prefixlen' => $row['ipv4_prefixlen'] ?? '',
+                            'context_name' => (string)($row['context_name'] ?? ''),
+                        ]));
+                    }
+                    Log::debug('IPv4Addresses REST entries: ' . count($entries));
+                } catch (\Throwable $e) {
+                    Log::warning('IPv4Addresses REST fetch failed: ' . $e->getMessage());
+                }
+            }
+        }
+
         if ($os instanceof Ipv4AddressDiscovery) {
             $ips = $os->discoverIpv4Addresses();
         }

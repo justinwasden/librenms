@@ -384,7 +384,7 @@ function _rrd_info($file)
 
             $key = trim(substr($s, 0, $p));
             $value = trim(substr($s, $p + 1));
-            if (strncmp($key, 'ds[', 3) == 0) {
+            if (str_starts_with($key, 'ds[')) {
                 // DS definition
                 $p = strpos($key, ']');
                 $ds = substr($key, 3, $p - 3);
@@ -394,14 +394,14 @@ function _rrd_info($file)
 
                 $ds_key = substr($key, $p + 2);
 
-                if (strpos($ds_key, '[') === false) {
+                if (! str_contains($ds_key, '[')) {
                     if (! isset($info['DS']["$ds"])) {
                         $info['DS']["$ds"] = [];
                     }
 
                     $info['DS']["$ds"]["$ds_key"] = rrd_strip_quotes($value);
                 }
-            } elseif (strncmp($key, 'rra[', 4) == 0) {
+            } elseif (str_starts_with($key, 'rra[')) {
                 // RRD definition
                 $p = strpos($key, ']');
                 $rra = substr($key, 4, $p - 4);
@@ -411,14 +411,14 @@ function _rrd_info($file)
 
                 $rra_key = substr($key, $p + 2);
 
-                if (strpos($rra_key, '[') === false) {
+                if (! str_contains($rra_key, '[')) {
                     if (! isset($info['RRA']["$rra"])) {
                         $info['RRA']["$rra"] = [];
                     }
 
                     $info['RRA']["$rra"]["$rra_key"] = rrd_strip_quotes($value);
                 }
-            } elseif (strpos($key, '[') === false) {
+            } elseif (! str_contains($key, '[')) {
                 $info[$key] = rrd_strip_quotes($value);
             }//end if
         }//end while
@@ -564,14 +564,17 @@ function collectd_draw_rrd($host, $plugin, $type, $pinst = null, $tinst = null, 
         }
 
         if ($has_avg) {
+            // @phpstan-ignore argument.sprintf
             $graph[] = sprintf('GPRINT:%s_avg:AVERAGE:%%5.1lf%%s', $k, $has_max || $has_min || $has_avg ? ',' : '\\l');
         }
 
         if ($has_min) {
+            // @phpstan-ignore argument.sprintf
             $graph[] = sprintf('GPRINT:%s_min:MIN:%%5.1lf%%s', $k, $has_max || $has_avg ? ',' : '\\l');
         }
 
         if ($has_max) {
+            // @phpstan-ignore argument.sprintf
             $graph[] = sprintf('GPRINT:%s_max:MAX:%%5.1lf%%s', $k, $has_avg ? ',' : '\\l');
         }
 
