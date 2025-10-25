@@ -11,6 +11,8 @@ if (! Auth::user()->hasGlobalAdmin()) {
 } else {
     $panes['device'] = 'Device Settings';
     $panes['snmp'] = 'SNMP';
+    $panes['api'] = 'Device API';
+
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
     }
@@ -84,6 +86,12 @@ if (! Auth::user()->hasGlobalAdmin()) {
     print_optionbar_end();
 
     $section = basename($vars['section']);
+    		if ($section === 'api') {
+					$deviceModel = \App\Models\Device::findOrFail($device['device_id']);
+					echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
+					} elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
+					require "includes/html/pages/device/edit/$section.inc.php";
+				}
     if (is_file("includes/html/pages/device/edit/$section.inc.php")) {
         require "includes/html/pages/device/edit/$section.inc.php";
     }
