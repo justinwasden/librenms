@@ -93,7 +93,6 @@ class DeviceController
 
     public function edit(Device $device): View
     {
-        // Optional authorization: only global admins
         if (! auth()->user()->hasGlobalAdmin()) {
             abort(403, 'Insufficient Privileges');
         }
@@ -107,13 +106,15 @@ class DeviceController
             abort(403, 'Insufficient Privileges');
         }
 
-        // existing update logic; example for hostname and Device API fields
+        // Example: update hostname
         $device->hostname = $request->input('hostname', $device->hostname);
 
+        // Device API attributes
         $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
         $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
         $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
         $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
+
         $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
         $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
         $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
@@ -129,6 +130,7 @@ class DeviceController
             $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
         }
 
+        // Proxmox token
         if ($request->filled('proxmox_token_user')) {
             $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
         }
@@ -138,6 +140,8 @@ class DeviceController
         if ($request->filled('proxmox_token')) {
             $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
         }
+
+        // Proxmox ticket
         if ($request->filled('proxmox_username')) {
             $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
         }
