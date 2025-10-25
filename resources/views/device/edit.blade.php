@@ -97,13 +97,6 @@
                         </div>
                     </div>
 
-                    {{-- Optionally also show Device API inside Device Settings --}}
-                    @include('device.partials.device_api')
-                @endif
-
-                @if ($section === 'api')
-                    {{-- Dedicated Device API tab content --}}
-                    @include('device.partials.device_api')
                 @endif
 
                 <div class="mt-3">
