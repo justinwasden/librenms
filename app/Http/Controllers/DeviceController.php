@@ -93,7 +93,6 @@ class DeviceController
             'status' => $saved ? 'ok' : 'error',
         ]);
     }
-
     public function edit(Device $device)
     {
         if (! auth()->user()->hasGlobalAdmin()) {
