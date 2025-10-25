@@ -2,15 +2,21 @@
 
 $no_refresh = true;
 
-$link_array = ['page' => 'device',
+$link_array = [
+    'page' => 'device',
     'device' => $device['device_id'],
-    'tab' => 'edit', ];
+    'tab' => 'edit',
+];
 
 if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
+    // Build the panes list (menu tabs)
+    $panes = [];
     $panes['device'] = 'Device Settings';
     $panes['snmp'] = 'SNMP';
+
+    // Insert the new Device API tab right after SNMP
     $panes['api'] = 'Device API';
 
     if (! $device['snmp_disable']) {
@@ -28,7 +34,9 @@ if (! Auth::user()->hasGlobalAdmin()) {
     if (! $device['snmp_disable']) {
         $panes['apps'] = 'Applications';
     }
+
     $panes['alert-rules'] = 'Alert Rules';
+
     if (! $device['snmp_disable']) {
         $panes['modules'] = 'Modules';
     }
@@ -52,10 +60,9 @@ if (! Auth::user()->hasGlobalAdmin()) {
         $panes['processors'] = 'Processors';
         $panes['mempools'] = 'Memory';
     }
+
     $panes['misc'] = 'Misc';
-
     $panes['component'] = 'Components';
-
     $panes['customoid'] = 'Custom OID';
 
     print_optionbar_start();
@@ -66,14 +73,21 @@ if (! Auth::user()->hasGlobalAdmin()) {
             $vars['section'] = $type;
         }
         echo $sep;
+
         if ($vars['section'] == $type) {
             echo "<span class='pagemenu-selected'>";
-        } else {
         }
 
+        // Device Settings tab (legacy include)
         if ($type == 'device') {
             echo generate_link($text, $link_array, ['section' => 'device']);
-        } else {
+        }
+        // Device API tab (legacy navigation, Blade content)
+        elseif ($type == 'api') {
+            echo generate_link($text, $link_array, ['section' => 'api']);
+        }
+        // All other tabs use legacy include routing
+        else {
             echo generate_link($text, $link_array, ['section' => $type]);
         }
 
@@ -86,13 +100,13 @@ if (! Auth::user()->hasGlobalAdmin()) {
     print_optionbar_end();
 
     $section = basename($vars['section']);
-    		if ($section === 'api') {
-					$deviceModel = \App\Models\Device::findOrFail($device['device_id']);
-					echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
-					} elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
-					require "includes/html/pages/device/edit/$section.inc.php";
-				}
-    if (is_file("includes/html/pages/device/edit/$section.inc.php")) {
+
+    // If section is 'api', render Blade content inline; otherwise use legacy includes
+    if ($section === 'api') {
+        // Load Eloquent Device model and render the Blade view for Device API
+        $deviceModel = \App\Models\Device::findOrFail($device['device_id']);
+        echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
+    } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
         require "includes/html/pages/device/edit/$section.inc.php";
     }
 }
