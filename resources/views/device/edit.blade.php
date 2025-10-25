@@ -97,6 +97,9 @@
                         </div>
                     </div>
 
+                @if ($section === 'api')
+                    {{-- Dedicated Device API tab content --}}
+                    @include('device.partials.device_api')
                 @endif
 
                 <div class="mt-3">
