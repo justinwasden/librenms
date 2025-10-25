@@ -78,13 +78,13 @@ if (! Auth::user()->hasGlobalAdmin()) {
             echo "<span class='pagemenu-selected'>";
         }
 
-        // Device Settings tab goes to Blade edit route
+        // Device Settings tab (legacy include)
         if ($type == 'device') {
-            echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
+            echo generate_link($text, $link_array, ['section' => 'device']);
         }
-        // New Device API tab: also goes to Blade edit route with section=api
+        // Device API tab (legacy navigation, Blade content)
         elseif ($type == 'api') {
-            echo '<a href="' . route('device.edit', [$device['device_id']]) . '?section=api' . "\">$text</a>";
+            echo generate_link($text, $link_array, ['section' => 'api']);
         }
         // All other tabs use legacy include routing
         else {
@@ -101,9 +101,11 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     $section = basename($vars['section']);
 
-    // If section is 'device' or 'api', render via Blade (handled by DeviceController@edit)
-    if ($section === 'device' || $section === 'api') {
-        // Nothing to include here; Blade view will render these sections.
+    // If section is 'api', render Blade content inline; otherwise use legacy includes
+    if ($section === 'api') {
+        // Load Eloquent Device model and render the Blade view for Device API
+        $deviceModel = \App\Models\Device::findOrFail($device['device_id']);
+        echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
     } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
         require "includes/html/pages/device/edit/$section.inc.php";
     }
