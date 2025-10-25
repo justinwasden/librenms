@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Facades\DeviceCache;
 use App\Facades\LibrenmsConfig;
+use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
 use App\View\Components\Device\PageTabs;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 use LibreNMS\Util\Debug;
 use LibreNMS\Util\Url;
@@ -99,14 +102,18 @@ class DeviceController
 
         $section = request()->get('section');
 
-        // Only render Blade for the Device API tab.
+        // Render Blade only for the Device API tab
         if ($section === 'api') {
-            // Pass section so the Blade shows the Device API form only
             return view('device.edit', ['device' => $device, 'section' => 'api']);
         }
 
-        // For all other sections (including Device Settings), redirect to legacy edit page
-        return redirect(url("device/device={$device->device_id}/tab=edit" . ($section ? "/section={$section}" : '')));
+        // For Device Settings or any other legacy section, redirect to the legacy edit page.
+        // If section is missing or 'device', resolve the actual legacy file name and use that section.
+        if ($section === null || $section === 'device') {
+            $section = $this->resolveLegacyDeviceSettingsSection();
+        }
+
+        return redirect(url("device/device={$device->device_id}/tab=edit/section={$section}"));
     }
 
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
@@ -162,5 +169,29 @@ class DeviceController
 
         // Go back to the legacy device page
         return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
+    }
+
+    /**
+     * Detect the actual legacy include section for "Device Settings"
+     * by checking common filenames in includes/html/pages/device/edit/.
+     * Returns the section name (filename without .inc.php).
+     */
+    private function resolveLegacyDeviceSettingsSection(): string
+    {
+        $base = base_path('includes/html/pages/device/edit/');
+        $candidates = [
+            'device.inc.php',    // classic
+            'general.inc.php',   // common
+            'settings.inc.php',  // alternative
+        ];
+
+        foreach ($candidates as $file) {
+            if (is_file($base . $file)) {
+                return basename($file, '.inc.php');
+            }
+        }
+
+        // Fallback to 'device' if none found (legacy will try device.inc.php)
+        return 'device';
     }
 }
