@@ -2,15 +2,23 @@
 
 $no_refresh = true;
 
-$link_array = ['page' => 'device',
+$link_array = [
+    'page' => 'device',
     'device' => $device['device_id'],
-    'tab' => 'edit', ];
+    'tab' => 'edit',
+];
 
 if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
+    // Build the panes list (menu tabs)
+    $panes = [];
     $panes['device'] = 'Device Settings';
     $panes['snmp'] = 'SNMP';
+
+    // Insert the new Device API tab right after SNMP
+    $panes['api'] = 'Device API';
+
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
     }
@@ -26,7 +34,9 @@ if (! Auth::user()->hasGlobalAdmin()) {
     if (! $device['snmp_disable']) {
         $panes['apps'] = 'Applications';
     }
+
     $panes['alert-rules'] = 'Alert Rules';
+
     if (! $device['snmp_disable']) {
         $panes['modules'] = 'Modules';
     }
@@ -50,10 +60,9 @@ if (! Auth::user()->hasGlobalAdmin()) {
         $panes['processors'] = 'Processors';
         $panes['mempools'] = 'Memory';
     }
+
     $panes['misc'] = 'Misc';
-
     $panes['component'] = 'Components';
-
     $panes['customoid'] = 'Custom OID';
 
     print_optionbar_start();
@@ -64,14 +73,21 @@ if (! Auth::user()->hasGlobalAdmin()) {
             $vars['section'] = $type;
         }
         echo $sep;
+
         if ($vars['section'] == $type) {
             echo "<span class='pagemenu-selected'>";
-        } else {
         }
 
+        // Device Settings tab goes to Blade edit route
         if ($type == 'device') {
             echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
-        } else {
+        }
+        // New Device API tab: also goes to Blade edit route with section=api
+        elseif ($type == 'api') {
+            echo '<a href="' . route('device.edit', [$device['device_id']]) . '?section=api' . "\">$text</a>";
+        }
+        // All other tabs use legacy include routing
+        else {
             echo generate_link($text, $link_array, ['section' => $type]);
         }
 
@@ -84,7 +100,11 @@ if (! Auth::user()->hasGlobalAdmin()) {
     print_optionbar_end();
 
     $section = basename($vars['section']);
-    if (is_file("includes/html/pages/device/edit/$section.inc.php")) {
+
+    // If section is 'device' or 'api', render via Blade (handled by DeviceController@edit)
+    if ($section === 'device' || $section === 'api') {
+        // Nothing to include here; Blade view will render these sections.
+    } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
         require "includes/html/pages/device/edit/$section.inc.php";
     }
 }
