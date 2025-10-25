@@ -11,56 +11,42 @@ $link_array = [
 if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
-    // Build the panes list (menu tabs)
     $panes = [];
     $panes['device'] = 'Device Settings';
     $panes['snmp'] = 'SNMP';
-
-    // Insert the new Device API tab right after SNMP
-    $panes['api'] = 'Device API';
+    $panes['api'] = 'Device API'; // new tab
 
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
     }
-
     if (dbFetchCell('SELECT COUNT(*) FROM `bgpPeers` WHERE `device_id` = ? LIMIT 1', [$device['device_id']]) > 0) {
         $panes['routing'] = 'Routing';
     }
-
     if (count(\App\Facades\LibrenmsConfig::get("os.{$device['os']}.icons", []))) {
         $panes['icon'] = 'Icon';
     }
-
     if (! $device['snmp_disable']) {
         $panes['apps'] = 'Applications';
     }
-
     $panes['alert-rules'] = 'Alert Rules';
-
     if (! $device['snmp_disable']) {
         $panes['modules'] = 'Modules';
     }
-
     if (\App\Facades\LibrenmsConfig::get('show_services')) {
         $panes['services'] = 'Services';
     }
-
     $panes['ipmi'] = 'IPMI';
-
     if (dbFetchCell("SELECT COUNT(*) FROM `sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['health'] = 'Health';
     }
-
     if (dbFetchCell("SELECT COUNT(*) FROM `wireless_sensors` WHERE `device_id` = ? AND `sensor_deleted`='0' LIMIT 1", [$device['device_id']]) > 0) {
         $panes['wireless-sensors'] = 'Wireless Sensors';
     }
-
     if (! $device['snmp_disable']) {
         $panes['storage'] = 'Storage';
         $panes['processors'] = 'Processors';
         $panes['mempools'] = 'Memory';
     }
-
     $panes['misc'] = 'Misc';
     $panes['component'] = 'Components';
     $panes['customoid'] = 'Custom OID';
@@ -78,18 +64,8 @@ if (! Auth::user()->hasGlobalAdmin()) {
             echo "<span class='pagemenu-selected'>";
         }
 
-        // Device Settings tab (legacy include)
-        if ($type == 'device') {
-            echo generate_link($text, $link_array, ['section' => 'device']);
-        }
-        // Device API tab (legacy navigation, Blade content)
-        elseif ($type == 'api') {
-            echo generate_link($text, $link_array, ['section' => 'api']);
-        }
-        // All other tabs use legacy include routing
-        else {
-            echo generate_link($text, $link_array, ['section' => $type]);
-        }
+        // Legacy links for tabs
+        echo generate_link($text, $link_array, ['section' => $type]);
 
         if ($vars['section'] == $type) {
             echo '</span>';
@@ -101,12 +77,12 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
     $section = basename($vars['section']);
 
-    // If section is 'api', render Blade content inline; otherwise use legacy includes
     if ($section === 'api') {
-        // Load Eloquent Device model and render the Blade view for Device API
+        // Render Blade Device API form inside the legacy wrapper
         $deviceModel = \App\Models\Device::findOrFail($device['device_id']);
         echo view('device.edit', ['device' => $deviceModel, 'section' => 'api'])->render();
     } elseif (is_file("includes/html/pages/device/edit/$section.inc.php")) {
+        // Legacy section rendering
         require "includes/html/pages/device/edit/$section.inc.php";
     }
 }
