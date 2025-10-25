@@ -108,7 +108,8 @@
 
                 <div class="mt-3">
                     <button type="submit" class="btn btn-primary">Save Changes</button>
-                    <a href="{{ route('device.show', ['device' => $device_id]) }}" class="btn btn-secondary">Cancel</a>
+                    {{-- Cancel goes back to the legacy device page --}}
+                    <a href="{{ url("device/{$device_id}") }}" class="btn btn-secondary">Cancel</a>
                 </div>
             </form>
         @else
