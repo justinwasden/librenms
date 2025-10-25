@@ -91,7 +91,7 @@ class DeviceController
         ]);
     }
 
-    public function edit(Device $device): View
+    public function edit(Device $device)
     {
         if (! auth()->user()->hasGlobalAdmin()) {
             abort(403, 'Insufficient Privileges');
