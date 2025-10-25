@@ -1,5 +1,5 @@
 {{-- resources/views/device/edit.blade.php --}}
-@extends('layouts.app')
+@extends('layouts.librenmsv1')
 
 @section('content')
 <div class="container">
