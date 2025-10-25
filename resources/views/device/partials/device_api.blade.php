@@ -1,6 +1,6 @@
 {{-- resources/views/device/partials/device_api.blade.php --}}
 <div class="card mt-3">
-    <div class="card-header">API</div>
+    <div class="card-header">Device API</div>
     <div class="card-body">
         <div class="alert alert-info">
             Configure per-device Device API polling. Enable this only for devices with supported vendor APIs (Pure Storage, Proxmox).
