@@ -26,6 +26,7 @@
 
 namespace App\Http\Controllers\Device;
 
+use App\ApiClients\DeviceHttpClient;
 use App\Facades\LibrenmsConfig;
 use App\Facades\Rrd;
 use App\Http\Requests\UpdateDeviceRequest;
@@ -33,11 +34,14 @@ use App\Models\Device;
 use App\Models\DeviceGroup;
 use App\Models\PollerGroup;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
+use LibreNMS\Util\DeviceApiSettings;
 use LibreNMS\Util\File;
 use LibreNMS\Util\Number;
 
@@ -204,5 +208,79 @@ class EditDeviceController
         }
 
         $device->save();
+    }
+
+    /**
+     * Test API connection with provided credentials
+     */
+    public function testApiConnection(Request $request, Device $device): JsonResponse
+    {
+        try {
+            // Build temporary options from request
+            $options = [
+                'base_url' => $request->input('rest_base_url'),
+                'verify_tls' => $request->boolean('rest_verify_tls', true),
+                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
+                'headers' => [],
+            ];
+
+            // Add auth headers based on type
+            $authType = $request->input('rest_auth_type', 'bearer');
+            $token = $request->input('rest_token');
+            $username = $request->input('rest_username');
+            $password = $request->input('rest_password');
+
+            if ($authType === 'bearer' && $token) {
+                $options['headers']['Authorization'] = 'Bearer ' . $token;
+            } elseif ($authType === 'apikey' && $token) {
+                $options['headers']['X-API-Key'] = $token;
+            } elseif ($authType === 'basic' && $username) {
+                $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . ($password ?? ''));
+            }
+
+            // Create client and test
+            $client = new DeviceHttpClient($options);
+
+            if (!$client->isReachable()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'API endpoint is not reachable',
+                ]);
+            }
+
+            $info = $client->getApiInfo();
+
+            return response()->json([
+                'success' => true,
+                'vendor' => $info['vendor'] ?? 'unknown',
+                'version' => $info['version'] ?? 'unknown',
+                'base_url' => $info['base_url'] ?? $options['base_url'],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Reset circuit breaker for a device
+     */
+    public function resetCircuitBreaker(Request $request, Device $device): JsonResponse
+    {
+        try {
+            DeviceApiSettings::resetCircuitBreaker($device);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Circuit breaker reset successfully',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
