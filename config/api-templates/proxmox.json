@@ -2,6 +2,8 @@
     "name": "Proxmox VE",
     "vendor": "proxmox",
     "description": "Template for Proxmox Virtual Environment API",
+    "os": ["proxmox"],
+    "base_url_pattern": "https://{hostname}:8006",
     "base_url_example": "https://pve-host:8006",
     "auth_type": "token",
     "auth_config": {

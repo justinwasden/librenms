@@ -36,11 +36,33 @@ class ApiTemplateManager
                     'vendor' => $template['vendor'],
                     'name' => $template['name'],
                     'description' => $template['description'] ?? '',
+                    'os' => $template['os'] ?? [],
                 ];
             }
         }
 
         return $templates;
+    }
+
+    /**
+     * Get templates filtered by device OS
+     *
+     * @param string $os Device OS
+     * @return array Array of template metadata matching the OS
+     */
+    public static function getTemplatesForOs(string $os): array
+    {
+        $allTemplates = self::getAllTemplates();
+        $filtered = [];
+
+        foreach ($allTemplates as $vendor => $template) {
+            // Include if OS array is empty (generic) or contains the device OS
+            if (empty($template['os']) || in_array($os, $template['os'])) {
+                $filtered[$vendor] = $template;
+            }
+        }
+
+        return $filtered;
     }
 
     /**

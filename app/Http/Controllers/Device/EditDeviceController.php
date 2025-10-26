@@ -54,15 +54,18 @@ class EditDeviceController
 
         // Handle API section
         if ($section === 'api') {
-            // Load available templates and auth types
-            $templates = ApiTemplateManager::getAllTemplates();
+            // Load templates filtered by device OS
+            $templates = ApiTemplateManager::getTemplatesForOs($device->os);
             $authTypes = ApiTemplateManager::getAuthTypes();
 
             // Get currently configured endpoints (or empty array if none)
             $configuredEndpoints = json_decode($device->attribs['rest_endpoints'] ?? '[]', true);
 
-            // If a template is selected, load it
+            // If a template is selected, load it; otherwise auto-select if only one template matches
             $selectedTemplate = $device->attribs['rest_template'] ?? null;
+            if (!$selectedTemplate && count($templates) === 1) {
+                $selectedTemplate = array_key_first($templates);
+            }
             $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
 
             return view('device.edit', [
@@ -73,6 +76,7 @@ class EditDeviceController
                 'configuredEndpoints' => $configuredEndpoints,
                 'selectedTemplate' => $selectedTemplate,
                 'templateData' => $templateData,
+                'autoSelectTemplate' => !$device->attribs['rest_template'] && count($templates) === 1,
             ]);
         }
 

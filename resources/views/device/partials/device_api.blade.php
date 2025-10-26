@@ -33,7 +33,15 @@
                 </option>
             @endforeach
         </select>
-        <small class="text-muted">Select a pre-configured template or configure manually.</small>
+        <small class="text-muted">
+            @if(count($templates) === 0)
+                No templates available for {{ $device->os }}. Use custom configuration.
+            @elseif(count($templates) === 1)
+                Template auto-selected for {{ $device->os }} devices.
+            @else
+                Select a pre-configured template or configure manually.
+            @endif
+        </small>
     </div>
 </div>
 
@@ -278,6 +286,11 @@
 
 @push('scripts')
 <script>
+// Device information
+const deviceHostname = '{{ $device->hostname }}';
+const deviceSysName = '{{ $device->sysName ?? $device->hostname }}';
+const autoSelectTemplate = {{ isset($autoSelectTemplate) && $autoSelectTemplate ? 'true' : 'false' }};
+
 // Template metadata and auth config
 const templates = @json($templates);
 const authTypes = @json($authTypes);
@@ -311,8 +324,13 @@ $(document).ready(function() {
         $('.auth-description').text(authTypes[authType].description);
     }
 
-    // Note: We don't auto-load template on page load to preserve user customizations
-    // Template is only loaded when user actively selects it from the dropdown
+    // Auto-select and apply template if only one matches device OS and nothing is configured yet
+    if (autoSelectTemplate && endpoints.length === 0) {
+        const templateName = $('#rest_template').val();
+        if (templateName) {
+            loadTemplateData(templateName);
+        }
+    }
 });
 
 // Template selection handler
@@ -345,8 +363,12 @@ function applyTemplate(template) {
         $('#rest_vendor').val(template.vendor);
     }
 
-    // Set base URL hint
-    if (template.base_url_example) {
+    // Build and set base URL from pattern using device hostname
+    if (template.base_url_pattern) {
+        const baseUrl = template.base_url_pattern.replace('{hostname}', deviceHostname);
+        $('#rest_base_url').val(baseUrl);
+        $('.base-url-hint').text('Auto-populated from device hostname');
+    } else if (template.base_url_example) {
         $('#rest_base_url').attr('placeholder', template.base_url_example);
         $('.base-url-hint').text('Example: ' + template.base_url_example);
     }

@@ -2,6 +2,8 @@
     "name": "Pure Storage FlashArray",
     "vendor": "purestorage",
     "description": "Template for Pure Storage FlashArray REST API v2.x",
+    "os": ["purestorage"],
+    "base_url_pattern": "https://{hostname}/api/2.26",
     "base_url_example": "https://array-name/api/2.26",
     "auth_type": "apikey",
     "auth_config": {
