@@ -53,16 +53,21 @@ class ApiTemplateManager
     public static function getTemplatesForOs(string $os): array
     {
         $allTemplates = self::getAllTemplates();
-        $filtered = [];
+        $osSpecific = [];
+        $generic = [];
 
         foreach ($allTemplates as $vendor => $template) {
-            // Include if OS array is empty (generic) or contains the device OS
-            if (empty($template['os']) || in_array($os, $template['os'])) {
-                $filtered[$vendor] = $template;
+            if (empty($template['os'])) {
+                // Generic template (no OS specified)
+                $generic[$vendor] = $template;
+            } elseif (in_array($os, $template['os'])) {
+                // OS-specific template
+                $osSpecific[$vendor] = $template;
             }
         }
 
-        return $filtered;
+        // Return OS-specific templates if available, otherwise return generic templates
+        return !empty($osSpecific) ? $osSpecific : $generic;
     }
 
     /**

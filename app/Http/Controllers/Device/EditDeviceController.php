@@ -289,21 +289,60 @@ class EditDeviceController
             // Create client and test with better error handling
             $client = new DeviceHttpClient($options);
 
-            // Try to make a simple request
-            try {
-                // Try root path first
-                $data = $client->get('/');
+            // Determine which endpoint to test based on template
+            $testPaths = ['/'];
+            $templateName = $request->input('rest_template');
 
-                return response()->json([
-                    'success' => true,
-                    'vendor' => 'generic',
-                    'version' => 'connected',
-                    'base_url' => $baseUrl,
-                    'message' => 'Connection successful',
-                ]);
-            } catch (\Throwable $e) {
-                // If root fails, provide detailed error
-                $errorMessage = $e->getMessage();
+            if ($templateName) {
+                $template = ApiTemplateManager::loadTemplate($templateName);
+                if ($template && !empty($template['endpoints'])) {
+                    // Use the first enabled endpoint from the template for testing
+                    foreach ($template['endpoints'] as $endpoint) {
+                        if ($endpoint['enabled'] ?? true) {
+                            $testPaths = [$endpoint['path']];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Try to make a simple request
+            $lastError = null;
+            foreach ($testPaths as $path) {
+                try {
+                    $data = $client->get($path);
+
+                    return response()->json([
+                        'success' => true,
+                        'vendor' => $templateName ?? 'generic',
+                        'version' => 'connected',
+                        'base_url' => $baseUrl,
+                        'message' => 'Connection successful',
+                        'test_path' => $path,
+                    ]);
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+
+                    // If we got HTTP 404, that's actually OK - it means we connected
+                    if (str_contains($e->getMessage(), '404')) {
+                        return response()->json([
+                            'success' => true,
+                            'vendor' => $templateName ?? 'generic',
+                            'version' => 'connected',
+                            'base_url' => $baseUrl,
+                            'message' => 'Connection successful (HTTP 404 is expected for test endpoint)',
+                            'test_path' => $path,
+                        ]);
+                    }
+
+                    // For other errors, continue trying next path
+                    continue;
+                }
+            }
+
+            // All paths failed - provide detailed error
+            if ($lastError) {
+                $errorMessage = $lastError->getMessage();
 
                 // Extract useful error information
                 if (str_contains($errorMessage, 'Could not resolve host')) {
@@ -318,16 +357,25 @@ class EditDeviceController
                     $errorMessage = 'Authentication failed (HTTP 401) - check credentials';
                 } elseif (str_contains($errorMessage, '403')) {
                     $errorMessage = 'Access forbidden (HTTP 403) - check permissions';
-                } elseif (str_contains($errorMessage, '404')) {
-                    $errorMessage = 'Endpoint not found (HTTP 404) - the base URL might need an API path like /api';
                 } elseif (preg_match('/returned (\d+)/', $errorMessage, $matches)) {
-                    $errorMessage = 'API returned HTTP ' . $matches[1] . ' - connection works but endpoint may need adjustment';
+                    $code = $matches[1];
+                    // Any 2xx or 4xx response means we connected successfully
+                    if ($code >= 200 && $code < 500) {
+                        return response()->json([
+                            'success' => true,
+                            'vendor' => $templateName ?? 'generic',
+                            'version' => 'connected',
+                            'base_url' => $baseUrl,
+                            'message' => "Connection successful (HTTP $code received)",
+                        ]);
+                    }
+                    $errorMessage = 'API returned HTTP ' . $code . ' - server error';
                 }
 
                 return response()->json([
                     'success' => false,
                     'error' => $errorMessage,
-                    'raw_error' => $e->getMessage(),
+                    'raw_error' => $lastError->getMessage(),
                 ]);
             }
         } catch (\Throwable $e) {

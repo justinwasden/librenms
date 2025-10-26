@@ -566,6 +566,7 @@ $('#test-api-connection').on('click', function() {
         },
         body: JSON.stringify({
             rest_enabled: $('#rest_enabled').is(':checked'),
+            rest_template: $('#rest_template').val(),
             rest_vendor: $('#rest_vendor').val(),
             rest_base_url: $('#rest_base_url').val(),
             rest_auth_type: $('#rest_auth_type').val(),
@@ -579,7 +580,11 @@ $('#test-api-connection').on('click', function() {
     .then(r => r.json())
     .then(d => {
         if (d.success) {
-            toastr.success('Connection successful! Detected: ' + (d.vendor || 'Unknown') + ' ' + (d.version || ''));
+            let message = d.message || 'Connection successful!';
+            if (d.test_path) {
+                message += ' (tested: ' + d.test_path + ')';
+            }
+            toastr.success(message);
         } else {
             toastr.error('Connection failed: ' + (d.error || 'Unknown error'));
         }
