@@ -109,7 +109,15 @@ class DeviceController extends Controller
 
         // Render Blade for Device API only
         if ($section === 'api') {
-            return view('device.edit', ['device' => $device, 'section' => 'api']);
+            return view('device.edit', [
+							'device' => $device,
+							'section' => 'api',
+							// add defaults if not already set
+							'templates' => [], // array of template metadata keyed by vendor
+							'authTypes' => [], // array of auth types registry keyed by type
+							'configuredEndpoints' => [], // array of endpoints configured for this device
+							'autoSelectTemplate' => false, // whether to auto-apply a matching template
+							]);
         }
 
         // For Device Settings or other legacy sections, redirect to legacy UI
