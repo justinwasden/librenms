@@ -43,9 +43,13 @@ class EditTabs extends Component
         $this->tab = $tab ?? Request::segment(4, 'edit');
 
         $this->tabs = [
-            'edit' => [
+            'device' => [
                 'text' => __('Device Settings'),
                 'link' => route('device.edit', $this->device->device_id),
+            ],
+            'api' => [
+                'text' => __('Device API'),
+                'link' => route('device.edit', ['device' => $this->device->device_id, 'section' => 'api']),
             ],
             'snmp' => [
                 'text' => 'SNMP',

@@ -34,6 +34,7 @@ use App\Models\DeviceGroup;
 use App\Models\PollerGroup;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
@@ -44,6 +45,17 @@ class EditDeviceController
 {
     public function index(Device $device): View
     {
+        $section = request()->get('section', 'device');
+
+        // Handle API section
+        if ($section === 'api') {
+            return view('device.edit', [
+                'device' => $device,
+                'section' => 'api',
+            ]);
+        }
+
+        // Handle device settings section (default)
         $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
         if (! $types->has($device->type)) {
             $types->put($device->type, [
@@ -70,8 +82,9 @@ class EditDeviceController
             ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
             : [false, []];
 
-        return view('device.edit.device', [
+        return view('device.edit', [
             'device' => $device,
+            'section' => $section,
             'show_static_groups' => $static_show,
             'static_groups' => $static_groups,
             'types' => $types,
@@ -91,6 +104,15 @@ class EditDeviceController
 
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
     {
+        // Check if this is an API settings update
+        if ($request->has('rest_enabled')) {
+            $this->updateApiSettings($request, $device);
+            toast()->success(__('Device API settings updated'));
+
+            return redirect()->route('device.edit', ['device' => $device->device_id, 'section' => 'api']);
+        }
+
+        // Handle device settings update
         $device->fill($request->validated());
 
         $device->parents()->sync($request->get('parent_id', [])); // TODO avoid loops!
@@ -136,5 +158,50 @@ class EditDeviceController
         }
 
         return response()->redirectToRoute('device', ['device' => $device->device_id, 'edit']);
+    }
+
+    private function updateApiSettings($request, Device $device): void
+    {
+        // Device API attributes
+        $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
+        $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
+        $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
+        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
+
+        $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
+        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
+        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
+        $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
+
+        if ($request->filled('rest_token')) {
+            $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));
+        }
+        if ($request->filled('rest_username')) {
+            $device->setAttrib('rest_username', $request->input('rest_username'));
+        }
+        if ($request->filled('rest_password')) {
+            $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
+        }
+
+        // Proxmox token
+        if ($request->filled('proxmox_token_user')) {
+            $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
+        }
+        if ($request->filled('proxmox_token_id')) {
+            $device->setAttrib('proxmox_token_id', $request->input('proxmox_token_id'));
+        }
+        if ($request->filled('proxmox_token')) {
+            $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
+        }
+
+        // Proxmox ticket
+        if ($request->filled('proxmox_username')) {
+            $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
+        }
+        if ($request->filled('proxmox_password')) {
+            $device->setAttrib('proxmox_password_enc', Crypt::encryptString($request->input('proxmox_password')));
+        }
+
+        $device->save();
     }
 }

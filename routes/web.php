@@ -204,15 +204,6 @@ Route::middleware(['auth'])->group(function (): void {
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
     });
 
-    Route::middleware(['web', 'auth'])->group(function () {
-    // Show the Device edit form (Blade)
-    Route::get('/device/{device}/edit', [DeviceController::class, 'edit'])
-        ->name('device.edit');
-
-    // Save updates from the edit form
-    Route::put('/device/{device}', [DeviceController::class, 'update'])
-        ->name('device.update');
-		});
 
     Route::get('plugin', [PluginLegacyController::class, 'redirect']);
     Route::redirect('plugin/view=admin', '/plugin/admin');
