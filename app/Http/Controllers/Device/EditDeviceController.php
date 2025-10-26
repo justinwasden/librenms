@@ -50,23 +50,32 @@ class EditDeviceController
 {
     public function index(Device $device): View
     {
+        // Eager load attribs to ensure they're available in the view
+        $device->load('attribs');
+
         $section = request()->get('section', 'device');
 
         // Handle API section
         if ($section === 'api') {
+            // Convert attribs collection to associative array for easy access in views
+            $attribsArray = $device->attribs->pluck('attrib_value', 'attrib_type')->toArray();
+
             // Load templates filtered by device OS
             $templates = ApiTemplateManager::getTemplatesForOs($device->os);
             $authTypes = ApiTemplateManager::getAuthTypes();
 
             // Get currently configured endpoints (or empty array if none)
-            $configuredEndpoints = json_decode($device->attribs['rest_endpoints'] ?? '[]', true);
+            $configuredEndpoints = json_decode($attribsArray['rest_endpoints'] ?? '[]', true);
 
             // If a template is selected, load it; otherwise auto-select if only one template matches
-            $selectedTemplate = $device->attribs['rest_template'] ?? null;
+            $selectedTemplate = $attribsArray['rest_template'] ?? null;
             if (!$selectedTemplate && count($templates) === 1) {
                 $selectedTemplate = array_key_first($templates);
             }
             $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
+
+            // Add attribs array to device object for blade template access
+            $device->attribs = $attribsArray;
 
             return view('device.edit', [
                 'device' => $device,
@@ -76,7 +85,7 @@ class EditDeviceController
                 'configuredEndpoints' => $configuredEndpoints,
                 'selectedTemplate' => $selectedTemplate,
                 'templateData' => $templateData,
-                'autoSelectTemplate' => !$device->attribs['rest_template'] && count($templates) === 1,
+                'autoSelectTemplate' => !($attribsArray['rest_template'] ?? false) && count($templates) === 1,
             ]);
         }
 
