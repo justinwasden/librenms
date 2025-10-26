@@ -1,40 +1,25 @@
-@extends('layouts.librenmsv1')
-
-@section('content')
-    <x-device.page :device="$device">
-        <x-device.edit-tabs :device="$device" />
-
-        @if ($errors->any())
-            <div class="alert alert-danger">
-                <ul>
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        <div class="row">
-            <div class="col-sm-6 col-sm-offset-2 tw:justify-between tw:flex tw:flex-wrap">
-                <form id="delete_host" name="delete_host" method="post" action="delhost/" role="form" class="tw:inline-block">
-                    @csrf
-                    <input type="hidden" name="id" value="{{ $device->device_id }}">
-                    <button type="submit" class="btn btn-danger" name="Submit"><i class="fa fa-trash"></i> {{ __('device.edit.delete_device') }}</button>
-                </form>
-
-                @if(LibrenmsConfig::get('enable_clear_discovery') && ! $device->snmp_disable)
-                    <button type="submit" id="rediscover" data-device_id="{{ $device->device_id }}"
-                            class="btn btn-primary" name="rediscover" title="{{ __('device.edit.rediscover_title') }}">
-                        <i class="fa fa-retweet"></i> {{ __('device.edit.rediscover') }}
-                    </button>
-                @endif
-            </div>
-        </div>
-        <br>
-
-        <form id="edit" name="edit" method="post" action="{{ route('device.edit.update', [$device->device_id]) }}" role="form" class="form-horizontal">
-            @method('PUT')
+{{-- Device Settings Form (partial included in edit.blade.php) --}}
+<div class="row">
+    <div class="col-sm-6 col-sm-offset-2 tw:justify-between tw:flex tw:flex-wrap">
+        <form id="delete_host" name="delete_host" method="post" action="delhost/" role="form" class="tw:inline-block">
             @csrf
+            <input type="hidden" name="id" value="{{ $device->device_id }}">
+            <button type="submit" class="btn btn-danger" name="Submit"><i class="fa fa-trash"></i> {{ __('device.edit.delete_device') }}</button>
+        </form>
+
+        @if(LibrenmsConfig::get('enable_clear_discovery') && ! $device->snmp_disable)
+            <button type="submit" id="rediscover" data-device_id="{{ $device->device_id }}"
+                    class="btn btn-primary" name="rediscover" title="{{ __('device.edit.rediscover_title') }}">
+                <i class="fa fa-retweet"></i> {{ __('device.edit.rediscover') }}
+            </button>
+        @endif
+    </div>
+</div>
+<br>
+
+<form id="edit" name="edit" method="post" action="{{ route('device.edit.update', [$device->device_id]) }}" role="form" class="form-horizontal">
+    @method('PUT')
+    @csrf
             <div class="form-group" data-toggle="tooltip" data-container="body" data-placement="bottom" title="{{ __('device.edit.hostname_title') }}" >
                 <label for="edit-hostname-input" class="col-sm-2 control-label" >{{ __('device.edit.hostname_ip') }}</label>
                 <div class="col-sm-6">
@@ -207,26 +192,24 @@
                     />
                 </div>
             </div>
-            <div class="row">
-                <div class="col-md-1 col-md-offset-2">
-                    <button type="submit" name="Submit"  class="btn btn-default"><i class="fa fa-check"></i> {{ __('device.edit.save') }}</button>
-                </div>
-            </div>
-        </form>
-        <br />
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                @if($rrd_num)
-                {{ __('device.edit.size_on_disk') }}: <b>{{ $rrd_size }}</b> in <b>{{ $rrd_num }}</b> {{ __('device.edit.rrd_files') }} |
-                @endif
-                {{ __('device.edit.last_polled') }}: <b>{{ $device->last_polled }}</b>
-                @if($device->last_discovered)
-                    | {{ __('device.edit.last_discovered') }}: <b>{{ $device->last_discovered }}</b>
-                @endif
-            </div>
+    <div class="row">
+        <div class="col-md-1 col-md-offset-2">
+            <button type="submit" name="Submit"  class="btn btn-default"><i class="fa fa-check"></i> {{ __('device.edit.save') }}</button>
         </div>
-    </x-device.page>
-@endsection
+    </div>
+</form>
+<br />
+<div class="panel panel-default">
+    <div class="panel-heading">
+        @if($rrd_num)
+        {{ __('device.edit.size_on_disk') }}: <b>{{ $rrd_size }}</b> in <b>{{ $rrd_num }}</b> {{ __('device.edit.rrd_files') }} |
+        @endif
+        {{ __('device.edit.last_polled') }}: <b>{{ $device->last_polled }}</b>
+        @if($device->last_discovered)
+            | {{ __('device.edit.last_discovered') }}: <b>{{ $device->last_discovered }}</b>
+        @endif
+    </div>
+</div>
 
 @push('scripts')
     <script>

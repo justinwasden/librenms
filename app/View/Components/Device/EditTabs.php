@@ -40,12 +40,12 @@ class EditTabs extends Component
         public Device $device,
         ?string $tab = null,
     ) {
-        $this->tab = $tab ?? Request::segment(4, 'edit');
+        $this->tab = $tab ?? Request::segment(4, 'device');
 
         $this->tabs = [
             'device' => [
                 'text' => __('Device Settings'),
-                'link' => route('device.edit', $this->device->device_id),
+                'link' => route('device.edit', ['device' => $this->device->device_id, 'section' => 'device']),
             ],
             'api' => [
                 'text' => __('Device API'),
