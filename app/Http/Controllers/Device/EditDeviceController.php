@@ -41,6 +41,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
+use LibreNMS\Util\ApiTemplateManager;
 use LibreNMS\Util\DeviceApiSettings;
 use LibreNMS\Util\File;
 use LibreNMS\Util\Number;
@@ -53,9 +54,25 @@ class EditDeviceController
 
         // Handle API section
         if ($section === 'api') {
+            // Load available templates and auth types
+            $templates = ApiTemplateManager::getAllTemplates();
+            $authTypes = ApiTemplateManager::getAuthTypes();
+
+            // Get currently configured endpoints (or empty array if none)
+            $configuredEndpoints = json_decode($device->attribs['rest_endpoints'] ?? '[]', true);
+
+            // If a template is selected, load it
+            $selectedTemplate = $device->attribs['rest_template'] ?? null;
+            $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
+
             return view('device.edit', [
                 'device' => $device,
                 'section' => 'api',
+                'templates' => $templates,
+                'authTypes' => $authTypes,
+                'configuredEndpoints' => $configuredEndpoints,
+                'selectedTemplate' => $selectedTemplate,
+                'templateData' => $templateData,
             ]);
         }
 
@@ -168,6 +185,7 @@ class EditDeviceController
     {
         // Device API attributes
         $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
+        $device->setAttrib('rest_template', $request->input('rest_template', ''));
         $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
         $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
         $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
@@ -177,6 +195,12 @@ class EditDeviceController
         $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
         $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
         $device->setAttrib('rest_rate_limit_qps', (int) $request->input('rest_rate_limit_qps', 10));
+
+        // Save endpoints configuration
+        if ($request->has('rest_endpoints')) {
+            $endpoints = $request->input('rest_endpoints');
+            $device->setAttrib('rest_endpoints', is_array($endpoints) ? json_encode($endpoints) : $endpoints);
+        }
 
         if ($request->filled('rest_token')) {
             $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));

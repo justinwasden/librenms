@@ -1,0 +1,119 @@
+{
+    "name": "Pure Storage FlashArray",
+    "vendor": "purestorage",
+    "description": "Template for Pure Storage FlashArray REST API v2.x",
+    "base_url_example": "https://array-name/api/2.26",
+    "auth_type": "apikey",
+    "auth_config": {
+        "method": "header",
+        "header_name": "X-API-Key",
+        "header_format": "{token}"
+    },
+    "default_settings": {
+        "verify_tls": true,
+        "timeout_ms": 5000,
+        "rate_limit_qps": 10
+    },
+    "endpoints": [
+        {
+            "id": "arrays",
+            "name": "Array Information",
+            "path": "/arrays",
+            "method": "GET",
+            "enabled": true,
+            "description": "Get array metadata (name, version, ID)",
+            "poll_interval": 300,
+            "category": "inventory"
+        },
+        {
+            "id": "array_performance",
+            "name": "Array Performance",
+            "path": "/arrays/performance",
+            "method": "GET",
+            "enabled": true,
+            "description": "Array-level performance metrics (IOPS, bandwidth, latency)",
+            "poll_interval": 60,
+            "category": "performance"
+        },
+        {
+            "id": "controllers",
+            "name": "Controllers",
+            "path": "/controllers",
+            "method": "GET",
+            "enabled": true,
+            "description": "Controller status and health",
+            "poll_interval": 60,
+            "category": "hardware"
+        },
+        {
+            "id": "drives",
+            "name": "Drives",
+            "path": "/drives",
+            "method": "GET",
+            "enabled": true,
+            "description": "Drive inventory and status",
+            "poll_interval": 300,
+            "category": "hardware"
+        },
+        {
+            "id": "hardware",
+            "name": "Hardware Components",
+            "path": "/hardware",
+            "method": "GET",
+            "enabled": true,
+            "description": "Power supplies, fans, temperature sensors",
+            "poll_interval": 60,
+            "category": "hardware"
+        },
+        {
+            "id": "ports",
+            "name": "Network Ports",
+            "path": "/ports",
+            "method": "GET",
+            "enabled": true,
+            "description": "FC/iSCSI port status and configuration",
+            "poll_interval": 300,
+            "category": "ports"
+        },
+        {
+            "id": "port_performance",
+            "name": "Port Performance",
+            "path": "/ports/performance",
+            "method": "GET",
+            "enabled": true,
+            "description": "Per-port bandwidth and error counters",
+            "poll_interval": 60,
+            "category": "performance"
+        },
+        {
+            "id": "volumes",
+            "name": "Volumes",
+            "path": "/volumes",
+            "method": "GET",
+            "enabled": true,
+            "description": "Volume inventory and space usage",
+            "poll_interval": 300,
+            "category": "storage"
+        },
+        {
+            "id": "volume_performance",
+            "name": "Volume Performance",
+            "path": "/volumes/performance",
+            "method": "GET",
+            "enabled": true,
+            "description": "Per-volume IOPS, bandwidth, latency",
+            "poll_interval": 60,
+            "category": "performance"
+        },
+        {
+            "id": "hosts",
+            "name": "Attached Hosts",
+            "path": "/hosts",
+            "method": "GET",
+            "enabled": true,
+            "description": "Host connectivity and space metrics",
+            "poll_interval": 300,
+            "category": "storage"
+        }
+    ]
+}
