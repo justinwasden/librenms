@@ -20,46 +20,55 @@
     </div>
 </div>
 
+{{-- Template Selector --}}
 <div class="form-group">
-    <label for="rest_vendor" class="col-sm-2 control-label">Vendor <span class="text-danger">*</span></label>
+    <label for="rest_template" class="col-sm-2 control-label">Template</label>
     <div class="col-sm-6">
-        @php $vendor = old('rest_vendor', $device->attribs['rest_vendor'] ?? ''); @endphp
-        <select class="form-control" id="rest_vendor" name="rest_vendor">
-            <option value="" {{ $vendor === '' ? 'selected' : '' }}>Select a vendor...</option>
-            <option value="purestorage" {{ $vendor === 'purestorage' ? 'selected' : '' }}>Pure Storage (FlashArray)</option>
-            <option value="proxmox" {{ $vendor === 'proxmox' ? 'selected' : '' }}>Proxmox VE</option>
-            <option value="generic" {{ $vendor === 'generic' ? 'selected' : '' }}>Generic REST API</option>
+        @php $selectedTemplate = old('rest_template', $device->attribs['rest_template'] ?? ''); @endphp
+        <select class="form-control" id="rest_template" name="rest_template">
+            <option value="">Custom (no template)</option>
+            @foreach($templates as $vendor => $template)
+                <option value="{{ $vendor }}" {{ $selectedTemplate === $vendor ? 'selected' : '' }}>
+                    {{ $template['name'] }}
+                </option>
+            @endforeach
         </select>
-        <small class="text-muted">Select the vendor to auto-populate recommended settings.</small>
+        <small class="text-muted">Select a pre-configured template or configure manually.</small>
     </div>
 </div>
 
+{{-- Authentication Type Selector --}}
 <div class="form-group">
-    <label for="rest_base_url" class="col-sm-2 control-label">Base URL</label>
+    <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
+    <div class="col-sm-6">
+        @php $authType = old('rest_auth_type', $device->attribs['rest_auth_type'] ?? ''); @endphp
+        <select class="form-control" id="rest_auth_type" name="rest_auth_type">
+            <option value="">Select authentication type...</option>
+            @foreach($authTypes as $type => $config)
+                <option value="{{ $type }}" {{ $authType === $type ? 'selected' : '' }}>
+                    {{ $config['name'] }}
+                </option>
+            @endforeach
+        </select>
+        <small class="text-muted auth-description"></small>
+    </div>
+</div>
+
+{{-- Base URL --}}
+<div class="form-group">
+    <label for="rest_base_url" class="col-sm-2 control-label">Base URL <span class="text-danger">*</span></label>
     <div class="col-sm-6">
         <input type="url" id="rest_base_url" class="form-control" name="rest_base_url"
-               value="{{ old('rest_base_url', $device->attribs['rest_base_url'] ?? $device->attribs['proxmox_base_url'] ?? '') }}"
-               placeholder="https://array.example/api/2.26 or https://pve.example:8006">
-        <small class="text-muted">Pure Storage: https://array/api/2.26 • Proxmox: https://host:8006</small>
+               value="{{ old('rest_base_url', $device->attribs['rest_base_url'] ?? '') }}"
+               placeholder="https://device.example/api">
+        <small class="text-muted base-url-hint"></small>
     </div>
 </div>
 
-<div class="form-group">
-    <label for="rest_auth_type" class="col-sm-2 control-label">Auth Type</label>
-    <div class="col-sm-6">
-        @php $auth = old('rest_auth_type', $device->attribs['rest_auth_type'] ?? ($device->attribs['proxmox_auth_type'] ?? '')); @endphp
-        <select class="form-control" id="rest_auth_type" name="rest_auth_type">
-            <option value="" {{ $auth === '' ? 'selected' : '' }}>Select auth</option>
-            <option value="apikey" {{ $auth === 'apikey' ? 'selected' : '' }}>API Key / Token (Pure Storage)</option>
-            <option value="bearer" {{ $auth === 'bearer' ? 'selected' : '' }}>Bearer Token</option>
-            <option value="basic" {{ $auth === 'basic' ? 'selected' : '' }}>Basic (username/password)</option>
-            <option value="token" {{ $auth === 'token' ? 'selected' : '' }}>Proxmox API Token</option>
-            <option value="ticket" {{ $auth === 'ticket' ? 'selected' : '' }}>Proxmox Ticket (username/password)</option>
-        </select>
-    </div>
-</div>
+{{-- Auth Fields (dynamically shown based on auth type) --}}
 
-<div class="form-group">
+{{-- Bearer Token --}}
+<div class="form-group auth-field auth-bearer auth-apikey" style="display: none;">
     <label for="rest_token" class="col-sm-2 control-label">Token / API Key</label>
     <div class="col-sm-6">
         <input type="password" id="rest_token" class="form-control" name="rest_token"
@@ -70,16 +79,17 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="rest_username" class="col-sm-2 control-label">Basic Auth Username</label>
+{{-- Basic Auth --}}
+<div class="form-group auth-field auth-basic" style="display: none;">
+    <label for="rest_username" class="col-sm-2 control-label">Username</label>
     <div class="col-sm-6">
         <input type="text" id="rest_username" class="form-control" name="rest_username"
-               value="{{ old('rest_username') }}">
+               value="{{ old('rest_username', $device->attribs['rest_username'] ?? '') }}">
     </div>
 </div>
 
-<div class="form-group">
-    <label for="rest_password" class="col-sm-2 control-label">Basic Auth Password</label>
+<div class="form-group auth-field auth-basic" style="display: none;">
+    <label for="rest_password" class="col-sm-2 control-label">Password</label>
     <div class="col-sm-6">
         <input type="password" id="rest_password" class="form-control" name="rest_password" value="">
         @if(!empty($device->attribs['rest_password_enc']))
@@ -88,8 +98,9 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="proxmox_token_user" class="col-sm-2 control-label">Proxmox Token User@Realm</label>
+{{-- Proxmox Token Auth --}}
+<div class="form-group auth-field auth-token" style="display: none;">
+    <label for="proxmox_token_user" class="col-sm-2 control-label">Token User@Realm</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_token_user" class="form-control" name="proxmox_token_user"
                value="{{ old('proxmox_token_user', $device->attribs['proxmox_token_user'] ?? '') }}"
@@ -97,8 +108,8 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="proxmox_token_id" class="col-sm-2 control-label">Proxmox Token ID</label>
+<div class="form-group auth-field auth-token" style="display: none;">
+    <label for="proxmox_token_id" class="col-sm-2 control-label">Token ID</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_token_id" class="form-control" name="proxmox_token_id"
                value="{{ old('proxmox_token_id', $device->attribs['proxmox_token_id'] ?? '') }}"
@@ -106,8 +117,8 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="proxmox_token" class="col-sm-2 control-label">Proxmox Token Secret</label>
+<div class="form-group auth-field auth-token" style="display: none;">
+    <label for="proxmox_token" class="col-sm-2 control-label">Token Secret</label>
     <div class="col-sm-6">
         <input type="password" id="proxmox_token" class="form-control" name="proxmox_token"
                placeholder="Enter to set or replace" value="">
@@ -117,8 +128,9 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="proxmox_username" class="col-sm-2 control-label">Proxmox Username@Realm</label>
+{{-- Proxmox Ticket Auth --}}
+<div class="form-group auth-field auth-ticket" style="display: none;">
+    <label for="proxmox_username" class="col-sm-2 control-label">Username@Realm</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_username" class="form-control" name="proxmox_username"
                value="{{ old('proxmox_username', $device->attribs['proxmox_username'] ?? '') }}"
@@ -126,8 +138,8 @@
     </div>
 </div>
 
-<div class="form-group">
-    <label for="proxmox_password" class="col-sm-2 control-label">Proxmox Password</label>
+<div class="form-group auth-field auth-ticket" style="display: none;">
+    <label for="proxmox_password" class="col-sm-2 control-label">Password</label>
     <div class="col-sm-6">
         <input type="password" id="proxmox_password" class="form-control" name="proxmox_password" value="">
         @if(!empty($device->attribs['proxmox_password_enc']))
@@ -136,11 +148,12 @@
     </div>
 </div>
 
+{{-- Other Settings --}}
 <div class="form-group">
     <label for="rest_headers" class="col-sm-2 control-label">Extra Headers (JSON)</label>
     <div class="col-sm-6">
         <textarea id="rest_headers" class="form-control" name="rest_headers" rows="2"
-                  placeholder='{"X-Org":"netops"}'>{{ old('rest_headers', $device->attribs['rest_headers'] ?? '') }}</textarea>
+                  placeholder='{"X-Custom-Header":"value"}'>{{ old('rest_headers', $device->attribs['rest_headers'] ?? '') }}</textarea>
     </div>
 </div>
 
@@ -148,11 +161,12 @@
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">
             <label>
-                @php $verify = old('rest_verify_tls', $device->attribs['rest_verify_tls'] ?? $device->attribs['proxmox_verify_tls'] ?? 1); @endphp
+                @php $verify = old('rest_verify_tls', $device->attribs['rest_verify_tls'] ?? 1); @endphp
                 <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
                        {{ $verify ? 'checked' : '' }}>
-                Verify TLS certificates
+                Verify TLS/SSL certificates
             </label>
+            <small class="text-muted d-block">Uncheck to disable SSL certificate verification (not recommended for production).</small>
         </div>
     </div>
 </div>
@@ -161,7 +175,7 @@
     <label for="rest_timeout_ms" class="col-sm-2 control-label">Timeout (ms)</label>
     <div class="col-sm-6">
         <input type="number" id="rest_timeout_ms" class="form-control" name="rest_timeout_ms"
-               value="{{ old('rest_timeout_ms', $device->attribs['rest_timeout_ms'] ?? $device->attribs['proxmox_timeout_ms'] ?? 5000) }}">
+               value="{{ old('rest_timeout_ms', $device->attribs['rest_timeout_ms'] ?? 5000) }}">
     </div>
 </div>
 
@@ -169,7 +183,7 @@
     <label for="rest_proxy" class="col-sm-2 control-label">Proxy (optional)</label>
     <div class="col-sm-6">
         <input type="text" id="rest_proxy" class="form-control" name="rest_proxy"
-               value="{{ old('rest_proxy', $device->attribs['rest_proxy'] ?? $device->attribs['proxmox_proxy'] ?? '') }}"
+               value="{{ old('rest_proxy', $device->attribs['rest_proxy'] ?? '') }}"
                placeholder="http://user:pass@proxy:3128">
     </div>
 </div>
@@ -183,7 +197,54 @@
     </div>
 </div>
 
+<hr>
 
+{{-- Endpoints Management Section --}}
+<div class="form-group">
+    <div class="col-sm-offset-2 col-sm-10">
+        <h4>API Endpoints <small class="text-muted">Configure which endpoints to poll</small></h4>
+    </div>
+</div>
+
+<div class="form-group">
+    <div class="col-sm-offset-2 col-sm-10">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <button type="button" id="add-endpoint-btn" class="btn btn-xs btn-success pull-right">
+                    <i class="fa fa-plus"></i> Add Endpoint
+                </button>
+                Configured Endpoints
+            </div>
+            <div class="panel-body" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-condensed table-hover" id="endpoints-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;"><input type="checkbox" id="toggle-all-endpoints"></th>
+                            <th style="width: 20%;">Name</th>
+                            <th style="width: 25%;">Path</th>
+                            <th style="width: 10%;">Method</th>
+                            <th style="width: 15%;">Category</th>
+                            <th style="width: 15%;">Poll Interval (s)</th>
+                            <th style="width: 10%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="endpoints-tbody">
+                        {{-- Endpoints will be populated via JavaScript --}}
+                    </tbody>
+                </table>
+                <p class="text-muted text-center" id="no-endpoints-msg" style="display: none;">
+                    No endpoints configured. Select a template or add endpoints manually.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" name="rest_endpoints" id="rest_endpoints" value="">
+
+<hr>
+
+{{-- Test Connection and Health Status --}}
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <button type="button" id="test-api-connection" class="btn btn-info">
@@ -214,44 +275,244 @@
 
 @push('scripts')
 <script>
-// Vendor auto-fill defaults
-const vendorDefaults = {
-    'purestorage': {
-        auth_type: 'apikey',
-        base_url_hint: 'https://array-name/api/2.26',
-        timeout_ms: 5000,
-        rate_limit_qps: 10
-    },
-    'proxmox': {
-        auth_type: 'token',
-        base_url_hint: 'https://pve-host:8006',
-        timeout_ms: 3000,
-        rate_limit_qps: 5
-    },
-    'generic': {
-        auth_type: 'bearer',
-        base_url_hint: 'https://device/api/v1',
-        timeout_ms: 5000,
-        rate_limit_qps: 10
-    }
-};
+// Template data and auth config
+const templates = @json($templates);
+const templateData = @json($templateData ?? []);
+const authTypes = @json($authTypes);
+const configuredEndpoints = @json($configuredEndpoints);
 
-$('#rest_vendor').on('change', function() {
-    const vendor = $(this).val();
-    if (vendor && vendorDefaults[vendor]) {
-        const defaults = vendorDefaults[vendor];
+// Endpoints storage
+let endpoints = configuredEndpoints && Array.isArray(configuredEndpoints) ? configuredEndpoints : [];
 
-        // Only update if fields are empty
-        const baseUrlField = $('input[name="rest_base_url"]');
-        if (!baseUrlField.val()) {
-            baseUrlField.attr('placeholder', defaults.base_url_hint);
-        }
+// Initialize on page load
+$(document).ready(function() {
+    updateAuthFieldVisibility();
+    renderEndpointsTable();
+    updateEndpointsHiddenField();
 
-        $('select[name="rest_auth_type"]').val(defaults.auth_type);
-        $('input[name="rest_timeout_ms"]').val(defaults.timeout_ms);
-        $('input[name="rest_rate_limit_qps"]').val(defaults.rate_limit_qps);
+    // If template is selected, load it
+    if ($('#rest_template').val()) {
+        loadTemplateData($('#rest_template').val());
     }
 });
+
+// Template selection handler
+$('#rest_template').on('change', function() {
+    const templateName = $(this).val();
+    if (templateName) {
+        loadTemplateData(templateName);
+    } else {
+        // Clear template data
+        endpoints = [];
+        renderEndpointsTable();
+    }
+});
+
+// Load template data via AJAX
+function loadTemplateData(templateName) {
+    $.ajax({
+        url: '/api/v0/resources/api-template/' + templateName,
+        method: 'GET',
+        success: function(data) {
+            if (data.status === 'ok' && data.template) {
+                applyTemplate(data.template);
+            }
+        },
+        error: function() {
+            // Fallback to static data if API not available
+            fetch(`/config/api-templates/${templateName}.json`)
+                .then(r => r.json())
+                .then(template => applyTemplate(template))
+                .catch(e => console.error('Failed to load template:', e));
+        }
+    });
+}
+
+// Apply template to form
+function applyTemplate(template) {
+    // Set base URL hint
+    if (template.base_url_example) {
+        $('#rest_base_url').attr('placeholder', template.base_url_example);
+        $('.base-url-hint').text(template.base_url_example);
+    }
+
+    // Set auth type
+    if (template.auth_type) {
+        $('#rest_auth_type').val(template.auth_type).trigger('change');
+    }
+
+    // Set default settings
+    if (template.default_settings) {
+        $('#rest_verify_tls').prop('checked', template.default_settings.verify_tls ?? true);
+        $('#rest_timeout_ms').val(template.default_settings.timeout_ms ?? 5000);
+        $('#rest_rate_limit_qps').val(template.default_settings.rate_limit_qps ?? 10);
+    }
+
+    // Load endpoints (only if not already configured)
+    if (template.endpoints && endpoints.length === 0) {
+        endpoints = template.endpoints;
+        renderEndpointsTable();
+        updateEndpointsHiddenField();
+    }
+}
+
+// Auth type change handler
+$('#rest_auth_type').on('change', function() {
+    updateAuthFieldVisibility();
+
+    // Update description
+    const authType = $(this).val();
+    if (authType && authTypes[authType]) {
+        $('.auth-description').text(authTypes[authType].description);
+    } else {
+        $('.auth-description').text('');
+    }
+});
+
+// Show/hide auth fields based on selected type
+function updateAuthFieldVisibility() {
+    const authType = $('#rest_auth_type').val();
+
+    // Hide all auth fields
+    $('.auth-field').hide();
+
+    // Show fields for selected auth type
+    if (authType) {
+        $('.auth-' + authType).show();
+    }
+}
+
+// Render endpoints table
+function renderEndpointsTable() {
+    const tbody = $('#endpoints-tbody');
+    tbody.empty();
+
+    if (endpoints.length === 0) {
+        $('#no-endpoints-msg').show();
+        return;
+    }
+
+    $('#no-endpoints-msg').hide();
+
+    endpoints.forEach((endpoint, index) => {
+        const row = `
+            <tr data-index="${index}">
+                <td>
+                    <input type="checkbox" class="endpoint-enabled" data-index="${index}"
+                           ${endpoint.enabled ? 'checked' : ''}>
+                </td>
+                <td>${escapeHtml(endpoint.name)}</td>
+                <td><code>${escapeHtml(endpoint.path)}</code></td>
+                <td><span class="label label-info">${endpoint.method || 'GET'}</span></td>
+                <td>${endpoint.category || 'general'}</td>
+                <td>${endpoint.poll_interval || 60}</td>
+                <td>
+                    <button type="button" class="btn btn-xs btn-primary edit-endpoint" data-index="${index}">
+                        <i class="fa fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-xs btn-danger delete-endpoint" data-index="${index}">
+                        <i class="fa fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+// Update hidden field with endpoints JSON
+function updateEndpointsHiddenField() {
+    $('#rest_endpoints').val(JSON.stringify(endpoints));
+}
+
+// Toggle endpoint enabled status
+$(document).on('change', '.endpoint-enabled', function() {
+    const index = $(this).data('index');
+    endpoints[index].enabled = $(this).is(':checked');
+    updateEndpointsHiddenField();
+});
+
+// Toggle all endpoints
+$('#toggle-all-endpoints').on('change', function() {
+    const checked = $(this).is(':checked');
+    $('.endpoint-enabled').prop('checked', checked).each(function() {
+        const index = $(this).data('index');
+        endpoints[index].enabled = checked;
+    });
+    updateEndpointsHiddenField();
+});
+
+// Add endpoint
+$('#add-endpoint-btn').on('click', function() {
+    showEndpointModal();
+});
+
+// Edit endpoint
+$(document).on('click', '.edit-endpoint', function() {
+    const index = $(this).data('index');
+    showEndpointModal(endpoints[index], index);
+});
+
+// Delete endpoint
+$(document).on('click', '.delete-endpoint', function() {
+    if (!confirm('Are you sure you want to delete this endpoint?')) {
+        return;
+    }
+
+    const index = $(this).data('index');
+    endpoints.splice(index, 1);
+    renderEndpointsTable();
+    updateEndpointsHiddenField();
+});
+
+// Show endpoint modal (simplified - using prompt for now)
+function showEndpointModal(endpoint = null, index = null) {
+    const isEdit = endpoint !== null;
+
+    const name = prompt('Endpoint Name:', endpoint?.name || '');
+    if (!name) return;
+
+    const path = prompt('Endpoint Path (e.g., /api/status):', endpoint?.path || '/');
+    if (!path) return;
+
+    const method = prompt('HTTP Method (GET/POST):', endpoint?.method || 'GET');
+    const category = prompt('Category:', endpoint?.category || 'general');
+    const pollInterval = parseInt(prompt('Poll Interval (seconds):', endpoint?.poll_interval || 60));
+    const description = prompt('Description:', endpoint?.description || '');
+
+    const newEndpoint = {
+        id: endpoint?.id || 'custom_' + Date.now(),
+        name: name,
+        path: path,
+        method: method.toUpperCase(),
+        category: category,
+        poll_interval: pollInterval,
+        description: description,
+        enabled: endpoint?.enabled ?? true
+    };
+
+    if (isEdit && index !== null) {
+        endpoints[index] = newEndpoint;
+    } else {
+        endpoints.push(newEndpoint);
+    }
+
+    renderEndpointsTable();
+    updateEndpointsHiddenField();
+    toastr.success(isEdit ? 'Endpoint updated' : 'Endpoint added');
+}
+
+// Helper function
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
 
 // Test API connection
 $('#test-api-connection').on('click', function() {
@@ -268,13 +529,13 @@ $('#test-api-connection').on('click', function() {
         body: JSON.stringify({
             rest_enabled: $('#rest_enabled').is(':checked'),
             rest_vendor: $('#rest_vendor').val(),
-            rest_base_url: $('input[name="rest_base_url"]').val(),
-            rest_auth_type: $('select[name="rest_auth_type"]').val(),
-            rest_token: $('input[name="rest_token"]').val(),
-            rest_username: $('input[name="rest_username"]').val(),
-            rest_password: $('input[name="rest_password"]').val(),
+            rest_base_url: $('#rest_base_url').val(),
+            rest_auth_type: $('#rest_auth_type').val(),
+            rest_token: $('#rest_token').val(),
+            rest_username: $('#rest_username').val(),
+            rest_password: $('#rest_password').val(),
             rest_verify_tls: $('#rest_verify_tls').is(':checked'),
-            rest_timeout_ms: $('input[name="rest_timeout_ms"]').val()
+            rest_timeout_ms: $('#rest_timeout_ms').val()
         })
     })
     .then(r => r.json())
