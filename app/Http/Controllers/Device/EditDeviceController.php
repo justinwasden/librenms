@@ -172,6 +172,7 @@ class EditDeviceController
         $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
         $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
         $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
+        $device->setAttrib('rest_rate_limit_qps', (int) $request->input('rest_rate_limit_qps', 10));
 
         if ($request->filled('rest_token')) {
             $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));

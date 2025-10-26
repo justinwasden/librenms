@@ -1,25 +1,37 @@
 {{-- resources/views/device/partials/device_api.blade.php --}}
 <div class="card mt-3">
-    <div class="card-header">Device API</div>
+    <div class="card-header">Device API Configuration</div>
     <div class="card-body">
         <div class="alert alert-info">
-            Configure per-device Device API polling. Enable this only for devices with supported vendor APIs (Pure Storage, Proxmox).
+            <i class="fa fa-info-circle"></i> Configure per-device REST API polling. Enable this for devices with supported vendor APIs (Pure Storage, Proxmox).
+            @if(!empty($device->attribs['rest_last_error_message']))
+                <div class="mt-2 alert alert-warning">
+                    <strong>Last Error:</strong> {{ $device->attribs['rest_last_error_message'] }}
+                    @if(!empty($device->attribs['rest_last_error']))
+                        <br><small>{{ \Carbon\Carbon::createFromTimestamp($device->attribs['rest_last_error'])->diffForHumans() }}</small>
+                    @endif
+                </div>
+            @endif
         </div>
 
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="rest_enabled" name="rest_enabled" value="1"
                    {{ old('rest_enabled', $device->attribs['rest_enabled'] ?? 0) ? 'checked' : '' }}>
-            <label class="form-check-label" for="rest_enabled">Enable Device API discovery/polling</label>
+            <label class="form-check-label" for="rest_enabled">
+                <strong>Enable REST API discovery/polling</strong>
+            </label>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Vendor</label>
+            <label class="form-label">Vendor <span class="text-danger">*</span></label>
             @php $vendor = old('rest_vendor', $device->attribs['rest_vendor'] ?? ''); @endphp
-            <select class="form-select" name="rest_vendor">
-                <option value="" {{ $vendor === '' ? 'selected' : '' }}>Select a vendor</option>
+            <select class="form-select" id="rest_vendor" name="rest_vendor">
+                <option value="" {{ $vendor === '' ? 'selected' : '' }}>Select a vendor...</option>
                 <option value="purestorage" {{ $vendor === 'purestorage' ? 'selected' : '' }}>Pure Storage (FlashArray)</option>
                 <option value="proxmox" {{ $vendor === 'proxmox' ? 'selected' : '' }}>Proxmox VE</option>
+                <option value="generic" {{ $vendor === 'generic' ? 'selected' : '' }}>Generic REST API</option>
             </select>
+            <small class="text-muted">Select the vendor to auto-populate recommended settings.</small>
         </div>
 
         <div class="mb-3">

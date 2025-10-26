@@ -85,4 +85,101 @@ class DeviceApiSettings
 
         return $opts;
     }
+
+    /**
+     * Get rate limit queries per second for the device
+     *
+     * @param Device $device
+     * @return int Queries per second (default 10)
+     */
+    public static function rateLimitQps(Device $device): int
+    {
+        return (int) ($device->attribs['rest_rate_limit_qps'] ?? 10);
+    }
+
+    /**
+     * Record a successful API call
+     *
+     * @param Device $device
+     * @param int $latencyMs Response latency in milliseconds
+     * @return void
+     */
+    public static function recordSuccess(Device $device, int $latencyMs): void
+    {
+        $device->setAttrib('rest_last_success', time());
+        $device->setAttrib('rest_error_count', 0);
+
+        // Update rolling average latency
+        $currentAvg = (int) ($device->attribs['rest_avg_latency_ms'] ?? 0);
+        $newAvg = $currentAvg === 0 ? $latencyMs : (int) (($currentAvg * 0.8) + ($latencyMs * 0.2));
+        $device->setAttrib('rest_avg_latency_ms', $newAvg);
+    }
+
+    /**
+     * Record a failed API call
+     *
+     * @param Device $device
+     * @param string $error Error message (will be truncated if too long)
+     * @return void
+     */
+    public static function recordError(Device $device, string $error): void
+    {
+        $device->setAttrib('rest_last_error', time());
+        $device->setAttrib('rest_last_error_message', substr($error, 0, 255));
+
+        $errorCount = (int) ($device->attribs['rest_error_count'] ?? 0);
+        $device->setAttrib('rest_error_count', $errorCount + 1);
+    }
+
+    /**
+     * Get API health status
+     *
+     * @param Device $device
+     * @return array Array with keys: healthy, last_success, last_error, error_count, avg_latency_ms
+     */
+    public static function getHealthStatus(Device $device): array
+    {
+        $lastSuccess = (int) ($device->attribs['rest_last_success'] ?? 0);
+        $lastError = (int) ($device->attribs['rest_last_error'] ?? 0);
+        $errorCount = (int) ($device->attribs['rest_error_count'] ?? 0);
+        $avgLatency = (int) ($device->attribs['rest_avg_latency_ms'] ?? 0);
+
+        // Consider healthy if last success was more recent than last error, or no errors
+        $healthy = $errorCount === 0 || ($lastSuccess > 0 && $lastSuccess >= $lastError);
+
+        return [
+            'healthy' => $healthy,
+            'last_success' => $lastSuccess,
+            'last_error' => $lastError,
+            'last_error_message' => $device->attribs['rest_last_error_message'] ?? null,
+            'error_count' => $errorCount,
+            'avg_latency_ms' => $avgLatency,
+        ];
+    }
+
+    /**
+     * Check if the circuit breaker should trip (too many consecutive errors)
+     *
+     * @param Device $device
+     * @param int $threshold Number of errors before tripping (default 5)
+     * @return bool True if circuit breaker should trip
+     */
+    public static function shouldTripCircuitBreaker(Device $device, int $threshold = 5): bool
+    {
+        $errorCount = (int) ($device->attribs['rest_error_count'] ?? 0);
+        return $errorCount >= $threshold;
+    }
+
+    /**
+     * Reset circuit breaker and error counters
+     *
+     * @param Device $device
+     * @return void
+     */
+    public static function resetCircuitBreaker(Device $device): void
+    {
+        $device->setAttrib('rest_error_count', 0);
+        $device->setAttrib('rest_last_error', 0);
+        $device->setAttrib('rest_last_error_message', '');
+    }
 }
