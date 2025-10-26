@@ -1,9 +1,17 @@
 {{-- resources/views/device/partials/device_api.blade.php --}}
+@php
+    // Ensure arrays/booleans to avoid count()/foreach/JSON errors
+    $templates = is_array($templates ?? null) ? $templates : [];
+    $authTypes = is_array($authTypes ?? null) ? $authTypes : [];
+    $configuredEndpoints = is_array($configuredEndpoints ?? null) ? $configuredEndpoints : [];
+    $autoSelectTemplate = isset($autoSelectTemplate) ? (bool) $autoSelectTemplate : false;
+@endphp
+
 @if(!empty($device->getAttrib('rest_last_error_message')))
     <div class="alert alert-warning">
         <strong>Last Error:</strong> {{ $device->getAttrib('rest_last_error_message') }}
         @if(!empty($device->getAttrib('rest_last_error')))
-            <br><small>{{ \Carbon\Carbon::createFromTimestamp($device->getAttrib('rest_last_error'))->diffForHumans() }}</small>
+            <br><small>{{ \Carbon\Carbon::createFromTimestamp((int) $device->getAttrib('rest_last_error'))->diffForHumans() }}</small>
         @endif
     </div>
 @endif
@@ -13,7 +21,7 @@
         <div class="checkbox">
             <label>
                 <input type="checkbox" id="rest_enabled" name="rest_enabled" value="1"
-                       {{ old('rest_enabled', $device->getAttrib('rest_enabled', 0)) ? 'checked' : '' }}>
+                       {{ old('rest_enabled', (int) $device->getAttrib('rest_enabled', 0)) ? 'checked' : '' }}>
                 <strong>Enable REST API discovery/polling</strong>
             </label>
         </div>
@@ -29,12 +37,12 @@
             <option value="">Custom (no template)</option>
             @foreach($templates as $vendor => $template)
                 <option value="{{ $vendor }}" {{ $selectedTemplate === $vendor ? 'selected' : '' }}>
-                    {{ $template['name'] }}
+                    {{ $template['name'] ?? ucfirst((string) $vendor) }}
                 </option>
             @endforeach
         </select>
         <small class="text-muted">
-            @if(count($templates) === 0)
+            @if(empty($templates))
                 No templates available for {{ $device->os }}. Use custom configuration.
             @elseif(count($templates) === 1)
                 Template auto-selected for {{ $device->os }} devices.
@@ -57,7 +65,7 @@
             <option value="">Select authentication type...</option>
             @foreach($authTypes as $type => $config)
                 <option value="{{ $type }}" {{ $authType === $type ? 'selected' : '' }}>
-                    {{ $config['name'] }}
+                    {{ $config['name'] ?? ucfirst((string) $type) }}
                 </option>
             @endforeach
         </select>
@@ -78,7 +86,7 @@
 
 {{-- Auth Fields (dynamically shown based on auth type) --}}
 
-{{-- Bearer Token --}}
+{{-- Bearer Token / API Key --}}
 <div class="form-group auth-field auth-bearer auth-apikey" style="display: none;">
     <label for="rest_token" class="col-sm-2 control-label">Token / API Key</label>
     <div class="col-sm-6">
@@ -172,7 +180,7 @@
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">
             <label>
-                @php $verify = old('rest_verify_tls', $device->getAttrib('rest_verify_tls', 1)); @endphp
+                @php $verify = (bool) old('rest_verify_tls', (int) $device->getAttrib('rest_verify_tls', 1)); @endphp
                 <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
                        {{ $verify ? 'checked' : '' }}>
                 Verify TLS/SSL certificates
@@ -186,7 +194,7 @@
     <label for="rest_timeout_ms" class="col-sm-2 control-label">Timeout (ms)</label>
     <div class="col-sm-6">
         <input type="number" id="rest_timeout_ms" class="form-control" name="rest_timeout_ms"
-               value="{{ old('rest_timeout_ms', $device->getAttrib('rest_timeout_ms', 5000)) }}">
+               value="{{ (int) old('rest_timeout_ms', (int) $device->getAttrib('rest_timeout_ms', 5000)) }}">
     </div>
 </div>
 
@@ -203,7 +211,7 @@
     <label for="rest_rate_limit_qps" class="col-sm-2 control-label">Rate Limit (queries/second)</label>
     <div class="col-sm-6">
         <input type="number" id="rest_rate_limit_qps" class="form-control" name="rest_rate_limit_qps" min="1" max="100"
-               value="{{ old('rest_rate_limit_qps', $device->getAttrib('rest_rate_limit_qps', 10)) }}">
+               value="{{ (int) old('rest_rate_limit_qps', (int) $device->getAttrib('rest_rate_limit_qps', 10)) }}">
         <small class="text-muted">Maximum API requests per second (default: 10).</small>
     </div>
 </div>
@@ -262,7 +270,8 @@
             <i class="fa fa-plug"></i> Test Connection
         </button>
 
-        @if(!empty($device->getAttrib('rest_error_count')) && $device->getAttrib('rest_error_count') > 0)
+        @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
+        @if($errorCount > 0)
             <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
                 <i class="fa fa-refresh"></i> Reset Error Counter
             </button>
@@ -270,14 +279,16 @@
     </div>
 </div>
 
-@if(!empty($device->getAttrib('rest_last_success')))
+@php $lastSuccess = (int) $device->getAttrib('rest_last_success'); @endphp
+@if($lastSuccess > 0)
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <small class="text-muted">
             <i class="fa fa-check-circle text-success"></i>
-            Last success: {{ \Carbon\Carbon::createFromTimestamp($device->getAttrib('rest_last_success'))->diffForHumans() }}
-            @if(!empty($device->getAttrib('rest_avg_latency_ms')))
-                (avg {{ $device->getAttrib('rest_avg_latency_ms') }}ms)
+            Last success: {{ \Carbon\Carbon::createFromTimestamp($lastSuccess)->diffForHumans() }}
+            @php $avgLatency = (int) $device->getAttrib('rest_avg_latency_ms'); @endphp
+            @if($avgLatency > 0)
+                (avg {{ $avgLatency }}ms)
             @endif
         </small>
     </div>
@@ -289,9 +300,9 @@
 // Device information
 const deviceHostname = '{{ $device->hostname }}';
 const deviceSysName = '{{ $device->sysName ?? $device->hostname }}';
-const autoSelectTemplate = {{ isset($autoSelectTemplate) && $autoSelectTemplate ? 'true' : 'false' }};
+const autoSelectTemplate = {{ $autoSelectTemplate ? 'true' : 'false' }};
 
-// Template metadata and auth config
+// Template metadata and auth config (always arrays by guards above)
 const templates = @json($templates);
 const authTypes = @json($authTypes);
 const configuredEndpoints = @json($configuredEndpoints);
@@ -302,12 +313,12 @@ const allTemplateData = {
     @php
         $fullTemplate = \LibreNMS\Util\ApiTemplateManager::loadTemplate($vendor);
     @endphp
-    '{{ $vendor }}': @json($fullTemplate),
+    '{{ $vendor }}': @json($fullTemplate ?? []),
 @endforeach
 };
 
 // Endpoints storage
-let endpoints = configuredEndpoints && Array.isArray(configuredEndpoints) ? configuredEndpoints : [];
+let endpoints = Array.isArray(configuredEndpoints) ? configuredEndpoints : [];
 
 // Initialize on page load
 $(document).ready(function() {
@@ -321,10 +332,10 @@ $(document).ready(function() {
     // Update auth description if auth type is already set
     const authType = $('#rest_auth_type').val();
     if (authType && authTypes[authType]) {
-        $('.auth-description').text(authTypes[authType].description);
+        $('.auth-description').text(authTypes[authType].description || '');
     }
 
-    // Auto-select and apply template if only one matches device OS and nothing is configured yet
+    // Auto-select and apply template if requested and nothing is configured yet
     if (autoSelectTemplate && endpoints.length === 0) {
         const templateName = $('#rest_template').val();
         if (templateName) {
@@ -358,6 +369,8 @@ function loadTemplateData(templateName) {
 
 // Apply template to form
 function applyTemplate(template) {
+    if (!template || typeof template !== 'object') return;
+
     // Set vendor name
     if (template.vendor) {
         $('#rest_vendor').val(template.vendor);
@@ -380,14 +393,14 @@ function applyTemplate(template) {
 
     // Set default settings
     if (template.default_settings) {
-        $('#rest_verify_tls').prop('checked', template.default_settings.verify_tls ?? true);
-        $('#rest_timeout_ms').val(template.default_settings.timeout_ms ?? 5000);
-        $('#rest_rate_limit_qps').val(template.default_settings.rate_limit_qps ?? 10);
+        $('#rest_verify_tls').prop('checked', !!template.default_settings.verify_tls);
+        $('#rest_timeout_ms').val(parseInt(template.default_settings.timeout_ms ?? 5000, 10));
+        $('#rest_rate_limit_qps').val(parseInt(template.default_settings.rate_limit_qps ?? 10, 10));
     }
 
     // Load endpoints from template (always replace when template is selected)
-    if (template.endpoints && template.endpoints.length > 0) {
-        endpoints = template.endpoints.map(ep => ({...ep})); // Deep copy
+    if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
+        endpoints = template.endpoints.map(function(ep) { return Object.assign({}, ep); }); // Deep copy
         renderEndpointsTable();
         updateEndpointsHiddenField();
         toastr.success('Template applied with ' + endpoints.length + ' endpoint(s)');
@@ -401,7 +414,7 @@ $('#rest_auth_type').on('change', function() {
     // Update description
     const authType = $(this).val();
     if (authType && authTypes[authType]) {
-        $('.auth-description').text(authTypes[authType].description);
+        $('.auth-description').text(authTypes[authType].description || '');
     } else {
         $('.auth-description').text('');
     }
@@ -425,7 +438,7 @@ function renderEndpointsTable() {
     const tbody = $('#endpoints-tbody');
     tbody.empty();
 
-    if (endpoints.length === 0) {
+    if (!Array.isArray(endpoints) || endpoints.length === 0) {
         $('#no-endpoints-msg').show();
         return;
     }
@@ -433,17 +446,23 @@ function renderEndpointsTable() {
     $('#no-endpoints-msg').hide();
 
     endpoints.forEach((endpoint, index) => {
+        const safeName = escapeHtml(endpoint?.name ?? '');
+        const safePath = escapeHtml(endpoint?.path ?? '');
+        const method = (endpoint?.method || 'GET').toUpperCase();
+        const category = endpoint?.category || 'general';
+        const pollInterval = parseInt(endpoint?.poll_interval ?? 60, 10);
+        const enabled = endpoint?.enabled ?? true;
+
         const row = `
             <tr data-index="${index}">
                 <td>
-                    <input type="checkbox" class="endpoint-enabled" data-index="${index}"
-                           ${endpoint.enabled ? 'checked' : ''}>
+                    <input type="checkbox" class="endpoint-enabled" data-index="${index}" ${enabled ? 'checked' : ''}>
                 </td>
-                <td>${escapeHtml(endpoint.name)}</td>
-                <td><code>${escapeHtml(endpoint.path)}</code></td>
-                <td><span class="label label-info">${endpoint.method || 'GET'}</span></td>
-                <td>${endpoint.category || 'general'}</td>
-                <td>${endpoint.poll_interval || 60}</td>
+                <td>${safeName}</td>
+                <td><code>${safePath}</code></td>
+                <td><span class="label label-info">${method}</span></td>
+                <td>${category}</td>
+                <td>${pollInterval}</td>
                 <td>
                     <button type="button" class="btn btn-xs btn-primary edit-endpoint" data-index="${index}">
                         <i class="fa fa-edit"></i>
@@ -460,14 +479,20 @@ function renderEndpointsTable() {
 
 // Update hidden field with endpoints JSON
 function updateEndpointsHiddenField() {
-    $('#rest_endpoints').val(JSON.stringify(endpoints));
+    try {
+        $('#rest_endpoints').val(JSON.stringify(endpoints || []));
+    } catch (e) {
+        $('#rest_endpoints').val('[]');
+    }
 }
 
 // Toggle endpoint enabled status
 $(document).on('change', '.endpoint-enabled', function() {
     const index = $(this).data('index');
-    endpoints[index].enabled = $(this).is(':checked');
-    updateEndpointsHiddenField();
+    if (endpoints[index]) {
+        endpoints[index].enabled = $(this).is(':checked');
+        updateEndpointsHiddenField();
+    }
 });
 
 // Toggle all endpoints
@@ -475,7 +500,9 @@ $('#toggle-all-endpoints').on('change', function() {
     const checked = $(this).is(':checked');
     $('.endpoint-enabled').prop('checked', checked).each(function() {
         const index = $(this).data('index');
-        endpoints[index].enabled = checked;
+        if (endpoints[index]) {
+            endpoints[index].enabled = checked;
+        }
     });
     updateEndpointsHiddenField();
 });
@@ -488,7 +515,7 @@ $('#add-endpoint-btn').on('click', function() {
 // Edit endpoint
 $(document).on('click', '.edit-endpoint', function() {
     const index = $(this).data('index');
-    showEndpointModal(endpoints[index], index);
+    showEndpointModal(endpoints[index] || null, index);
 });
 
 // Delete endpoint
@@ -513,13 +540,13 @@ function showEndpointModal(endpoint = null, index = null) {
     const path = prompt('Endpoint Path (e.g., /api/status):', endpoint?.path || '/');
     if (!path) return;
 
-    const method = prompt('HTTP Method (GET/POST):', endpoint?.method || 'GET');
+    const method = prompt('HTTP Method (GET/POST):', (endpoint?.method || 'GET').toUpperCase());
     const category = prompt('Category:', endpoint?.category || 'general');
-    const pollInterval = parseInt(prompt('Poll Interval (seconds):', endpoint?.poll_interval || 60));
+    const pollInterval = parseInt(prompt('Poll Interval (seconds):', endpoint?.poll_interval || 60), 10);
     const description = prompt('Description:', endpoint?.description || '');
 
     const newEndpoint = {
-        id: endpoint?.id || 'custom_' + Date.now(),
+        id: endpoint?.id || ('custom_' + Date.now()),
         name: name,
         path: path,
         method: method.toUpperCase(),
@@ -549,7 +576,7 @@ function escapeHtml(text) {
         '"': '&quot;',
         "'": '&#039;'
     };
-    return String(text).replace(/[&<>"']/g, m => map[m]);
+    return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
 // Test API connection
@@ -579,14 +606,14 @@ $('#test-api-connection').on('click', function() {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.success) {
+        if (d && d.success) {
             let message = d.message || 'Connection successful!';
             if (d.test_path) {
                 message += ' (tested: ' + d.test_path + ')';
             }
             toastr.success(message);
         } else {
-            toastr.error('Connection failed: ' + (d.error || 'Unknown error'));
+            toastr.error('Connection failed: ' + ((d && d.error) || 'Unknown error'));
         }
     })
     .catch(e => {
@@ -614,7 +641,7 @@ $('#reset-circuit-breaker').on('click', function() {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.success) {
+        if (d && d.success) {
             toastr.success('Circuit breaker reset successfully');
             setTimeout(() => location.reload(), 1000);
         } else {
