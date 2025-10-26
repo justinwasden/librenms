@@ -1,9 +1,9 @@
 {{-- resources/views/device/partials/device_api.blade.php --}}
-@if(!empty($device->attribs['rest_last_error_message']))
+@if(!empty($device->getAttrib('rest_last_error_message')))
     <div class="alert alert-warning">
-        <strong>Last Error:</strong> {{ $device->attribs['rest_last_error_message'] }}
-        @if(!empty($device->attribs['rest_last_error']))
-            <br><small>{{ \Carbon\Carbon::createFromTimestamp($device->attribs['rest_last_error'])->diffForHumans() }}</small>
+        <strong>Last Error:</strong> {{ $device->getAttrib('rest_last_error_message') }}
+        @if(!empty($device->getAttrib('rest_last_error')))
+            <br><small>{{ \Carbon\Carbon::createFromTimestamp($device->getAttrib('rest_last_error'))->diffForHumans() }}</small>
         @endif
     </div>
 @endif
@@ -13,7 +13,7 @@
         <div class="checkbox">
             <label>
                 <input type="checkbox" id="rest_enabled" name="rest_enabled" value="1"
-                       {{ old('rest_enabled', $device->attribs['rest_enabled'] ?? 0) ? 'checked' : '' }}>
+                       {{ old('rest_enabled', $device->getAttrib('rest_enabled', 0)) ? 'checked' : '' }}>
                 <strong>Enable REST API discovery/polling</strong>
             </label>
         </div>
@@ -24,7 +24,7 @@
 <div class="form-group">
     <label for="rest_template" class="col-sm-2 control-label">Template</label>
     <div class="col-sm-6">
-        @php $selectedTemplate = old('rest_template', $device->attribs['rest_template'] ?? ''); @endphp
+        @php $selectedTemplate = old('rest_template', $device->getAttrib('rest_template', '')); @endphp
         <select class="form-control" id="rest_template" name="rest_template">
             <option value="">Custom (no template)</option>
             @foreach($templates as $vendor => $template)
@@ -46,13 +46,13 @@
 </div>
 
 {{-- Hidden vendor field (auto-populated from template) --}}
-<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $device->attribs['rest_vendor'] ?? '') }}">
+<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $device->getAttrib('rest_vendor', '')) }}">
 
 {{-- Authentication Type Selector --}}
 <div class="form-group">
     <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
     <div class="col-sm-6">
-        @php $authType = old('rest_auth_type', $device->attribs['rest_auth_type'] ?? ''); @endphp
+        @php $authType = old('rest_auth_type', $device->getAttrib('rest_auth_type', '')); @endphp
         <select class="form-control" id="rest_auth_type" name="rest_auth_type">
             <option value="">Select authentication type...</option>
             @foreach($authTypes as $type => $config)
@@ -70,7 +70,7 @@
     <label for="rest_base_url" class="col-sm-2 control-label">Base URL <span class="text-danger">*</span></label>
     <div class="col-sm-6">
         <input type="url" id="rest_base_url" class="form-control" name="rest_base_url"
-               value="{{ old('rest_base_url', $device->attribs['rest_base_url'] ?? '') }}"
+               value="{{ old('rest_base_url', $device->getAttrib('rest_base_url', '')) }}"
                placeholder="https://device.example/api">
         <small class="text-muted base-url-hint"></small>
     </div>
@@ -84,7 +84,7 @@
     <div class="col-sm-6">
         <input type="password" id="rest_token" class="form-control" name="rest_token"
                placeholder="Enter to set or replace" value="">
-        @if(!empty($device->attribs['rest_token_enc']))
+        @if(!empty($device->getAttrib('rest_token_enc')))
             <small class="text-muted">A token is stored. Enter a new value to replace.</small>
         @endif
     </div>
@@ -95,7 +95,7 @@
     <label for="rest_username" class="col-sm-2 control-label">Username</label>
     <div class="col-sm-6">
         <input type="text" id="rest_username" class="form-control" name="rest_username"
-               value="{{ old('rest_username', $device->attribs['rest_username'] ?? '') }}">
+               value="{{ old('rest_username', $device->getAttrib('rest_username', '')) }}">
     </div>
 </div>
 
@@ -103,7 +103,7 @@
     <label for="rest_password" class="col-sm-2 control-label">Password</label>
     <div class="col-sm-6">
         <input type="password" id="rest_password" class="form-control" name="rest_password" value="">
-        @if(!empty($device->attribs['rest_password_enc']))
+        @if(!empty($device->getAttrib('rest_password_enc')))
             <small class="text-muted">A password is stored. Enter a new value to replace.</small>
         @endif
     </div>
@@ -114,7 +114,7 @@
     <label for="proxmox_token_user" class="col-sm-2 control-label">Token User@Realm</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_token_user" class="form-control" name="proxmox_token_user"
-               value="{{ old('proxmox_token_user', $device->attribs['proxmox_token_user'] ?? '') }}"
+               value="{{ old('proxmox_token_user', $device->getAttrib('proxmox_token_user', '')) }}"
                placeholder="user@pve">
     </div>
 </div>
@@ -123,7 +123,7 @@
     <label for="proxmox_token_id" class="col-sm-2 control-label">Token ID</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_token_id" class="form-control" name="proxmox_token_id"
-               value="{{ old('proxmox_token_id', $device->attribs['proxmox_token_id'] ?? '') }}"
+               value="{{ old('proxmox_token_id', $device->getAttrib('proxmox_token_id', '')) }}"
                placeholder="tokenid">
     </div>
 </div>
@@ -133,7 +133,7 @@
     <div class="col-sm-6">
         <input type="password" id="proxmox_token" class="form-control" name="proxmox_token"
                placeholder="Enter to set or replace" value="">
-        @if(!empty($device->attribs['proxmox_token_enc']))
+        @if(!empty($device->getAttrib('proxmox_token_enc')))
             <small class="text-muted">A token secret is stored. Enter a new value to replace.</small>
         @endif
     </div>
@@ -144,7 +144,7 @@
     <label for="proxmox_username" class="col-sm-2 control-label">Username@Realm</label>
     <div class="col-sm-6">
         <input type="text" id="proxmox_username" class="form-control" name="proxmox_username"
-               value="{{ old('proxmox_username', $device->attribs['proxmox_username'] ?? '') }}"
+               value="{{ old('proxmox_username', $device->getAttrib('proxmox_username', '')) }}"
                placeholder="root@pam">
     </div>
 </div>
@@ -153,7 +153,7 @@
     <label for="proxmox_password" class="col-sm-2 control-label">Password</label>
     <div class="col-sm-6">
         <input type="password" id="proxmox_password" class="form-control" name="proxmox_password" value="">
-        @if(!empty($device->attribs['proxmox_password_enc']))
+        @if(!empty($device->getAttrib('proxmox_password_enc')))
             <small class="text-muted">A password is stored. Enter a new value to replace.</small>
         @endif
     </div>
@@ -164,7 +164,7 @@
     <label for="rest_headers" class="col-sm-2 control-label">Extra Headers (JSON)</label>
     <div class="col-sm-6">
         <textarea id="rest_headers" class="form-control" name="rest_headers" rows="2"
-                  placeholder='{"X-Custom-Header":"value"}'>{{ old('rest_headers', $device->attribs['rest_headers'] ?? '') }}</textarea>
+                  placeholder='{"X-Custom-Header":"value"}'>{{ old('rest_headers', $device->getAttrib('rest_headers', '')) }}</textarea>
     </div>
 </div>
 
@@ -172,7 +172,7 @@
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">
             <label>
-                @php $verify = old('rest_verify_tls', $device->attribs['rest_verify_tls'] ?? 1); @endphp
+                @php $verify = old('rest_verify_tls', $device->getAttrib('rest_verify_tls', 1)); @endphp
                 <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
                        {{ $verify ? 'checked' : '' }}>
                 Verify TLS/SSL certificates
@@ -186,7 +186,7 @@
     <label for="rest_timeout_ms" class="col-sm-2 control-label">Timeout (ms)</label>
     <div class="col-sm-6">
         <input type="number" id="rest_timeout_ms" class="form-control" name="rest_timeout_ms"
-               value="{{ old('rest_timeout_ms', $device->attribs['rest_timeout_ms'] ?? 5000) }}">
+               value="{{ old('rest_timeout_ms', $device->getAttrib('rest_timeout_ms', 5000)) }}">
     </div>
 </div>
 
@@ -194,7 +194,7 @@
     <label for="rest_proxy" class="col-sm-2 control-label">Proxy (optional)</label>
     <div class="col-sm-6">
         <input type="text" id="rest_proxy" class="form-control" name="rest_proxy"
-               value="{{ old('rest_proxy', $device->attribs['rest_proxy'] ?? '') }}"
+               value="{{ old('rest_proxy', $device->getAttrib('rest_proxy', '')) }}"
                placeholder="http://user:pass@proxy:3128">
     </div>
 </div>
@@ -203,7 +203,7 @@
     <label for="rest_rate_limit_qps" class="col-sm-2 control-label">Rate Limit (queries/second)</label>
     <div class="col-sm-6">
         <input type="number" id="rest_rate_limit_qps" class="form-control" name="rest_rate_limit_qps" min="1" max="100"
-               value="{{ old('rest_rate_limit_qps', $device->attribs['rest_rate_limit_qps'] ?? 10) }}">
+               value="{{ old('rest_rate_limit_qps', $device->getAttrib('rest_rate_limit_qps', 10)) }}">
         <small class="text-muted">Maximum API requests per second (default: 10).</small>
     </div>
 </div>
@@ -262,7 +262,7 @@
             <i class="fa fa-plug"></i> Test Connection
         </button>
 
-        @if(!empty($device->attribs['rest_error_count']) && $device->attribs['rest_error_count'] > 0)
+        @if(!empty($device->getAttrib('rest_error_count')) && $device->getAttrib('rest_error_count') > 0)
             <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
                 <i class="fa fa-refresh"></i> Reset Error Counter
             </button>
@@ -270,14 +270,14 @@
     </div>
 </div>
 
-@if(!empty($device->attribs['rest_last_success']))
+@if(!empty($device->getAttrib('rest_last_success')))
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <small class="text-muted">
             <i class="fa fa-check-circle text-success"></i>
-            Last success: {{ \Carbon\Carbon::createFromTimestamp($device->attribs['rest_last_success'])->diffForHumans() }}
-            @if(!empty($device->attribs['rest_avg_latency_ms']))
-                (avg {{ $device->attribs['rest_avg_latency_ms'] }}ms)
+            Last success: {{ \Carbon\Carbon::createFromTimestamp($device->getAttrib('rest_last_success'))->diffForHumans() }}
+            @if(!empty($device->getAttrib('rest_avg_latency_ms')))
+                (avg {{ $device->getAttrib('rest_avg_latency_ms') }}ms)
             @endif
         </small>
     </div>

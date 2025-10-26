@@ -57,25 +57,19 @@ class EditDeviceController
 
         // Handle API section
         if ($section === 'api') {
-            // Convert attribs collection to associative array for easy access in views
-            $attribsArray = $device->attribs->pluck('attrib_value', 'attrib_type')->toArray();
-
             // Load templates filtered by device OS
             $templates = ApiTemplateManager::getTemplatesForOs($device->os);
             $authTypes = ApiTemplateManager::getAuthTypes();
 
             // Get currently configured endpoints (or empty array if none)
-            $configuredEndpoints = json_decode($attribsArray['rest_endpoints'] ?? '[]', true);
+            $configuredEndpoints = json_decode($device->getAttrib('rest_endpoints', '[]'), true);
 
             // If a template is selected, load it; otherwise auto-select if only one template matches
-            $selectedTemplate = $attribsArray['rest_template'] ?? null;
+            $selectedTemplate = $device->getAttrib('rest_template');
             if (!$selectedTemplate && count($templates) === 1) {
                 $selectedTemplate = array_key_first($templates);
             }
             $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
-
-            // Add attribs array to device object for blade template access
-            $device->attribs = $attribsArray;
 
             return view('device.edit', [
                 'device' => $device,
@@ -85,7 +79,7 @@ class EditDeviceController
                 'configuredEndpoints' => $configuredEndpoints,
                 'selectedTemplate' => $selectedTemplate,
                 'templateData' => $templateData,
-                'autoSelectTemplate' => !($attribsArray['rest_template'] ?? false) && count($templates) === 1,
+                'autoSelectTemplate' => !$device->getAttrib('rest_template') && count($templates) === 1,
             ]);
         }
 
@@ -258,12 +252,24 @@ class EditDeviceController
     public function testApiConnection(Request $request, Device $device): JsonResponse
     {
         try {
+            $baseUrl = $request->input('rest_base_url');
+
+            // Validate base URL
+            if (empty($baseUrl)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Base URL is required',
+                ]);
+            }
+
             // Build temporary options from request
             $options = [
-                'base_url' => $request->input('rest_base_url'),
+                'base_url' => $baseUrl,
                 'verify_tls' => $request->boolean('rest_verify_tls', true),
                 'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
                 'headers' => [],
+                'enable_circuit_breaker' => false, // Disable circuit breaker for testing
+                'max_retries' => 0, // Don't retry during testing for faster feedback
             ];
 
             // Add auth headers based on type
@@ -280,24 +286,50 @@ class EditDeviceController
                 $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . ($password ?? ''));
             }
 
-            // Create client and test
+            // Create client and test with better error handling
             $client = new DeviceHttpClient($options);
 
-            if (!$client->isReachable()) {
+            // Try to make a simple request
+            try {
+                // Try root path first
+                $data = $client->get('/');
+
+                return response()->json([
+                    'success' => true,
+                    'vendor' => 'generic',
+                    'version' => 'connected',
+                    'base_url' => $baseUrl,
+                    'message' => 'Connection successful',
+                ]);
+            } catch (\Throwable $e) {
+                // If root fails, provide detailed error
+                $errorMessage = $e->getMessage();
+
+                // Extract useful error information
+                if (str_contains($errorMessage, 'Could not resolve host')) {
+                    $errorMessage = 'Could not resolve hostname - check the URL';
+                } elseif (str_contains($errorMessage, 'Connection refused')) {
+                    $errorMessage = 'Connection refused - check if the service is running';
+                } elseif (str_contains($errorMessage, 'timed out')) {
+                    $errorMessage = 'Connection timed out - check firewall/network settings';
+                } elseif (str_contains($errorMessage, 'SSL')) {
+                    $errorMessage = 'SSL/TLS error - try disabling certificate verification for testing';
+                } elseif (str_contains($errorMessage, '401')) {
+                    $errorMessage = 'Authentication failed (HTTP 401) - check credentials';
+                } elseif (str_contains($errorMessage, '403')) {
+                    $errorMessage = 'Access forbidden (HTTP 403) - check permissions';
+                } elseif (str_contains($errorMessage, '404')) {
+                    $errorMessage = 'Endpoint not found (HTTP 404) - the base URL might need an API path like /api';
+                } elseif (preg_match('/returned (\d+)/', $errorMessage, $matches)) {
+                    $errorMessage = 'API returned HTTP ' . $matches[1] . ' - connection works but endpoint may need adjustment';
+                }
+
                 return response()->json([
                     'success' => false,
-                    'error' => 'API endpoint is not reachable',
+                    'error' => $errorMessage,
+                    'raw_error' => $e->getMessage(),
                 ]);
             }
-
-            $info = $client->getApiInfo();
-
-            return response()->json([
-                'success' => true,
-                'vendor' => $info['vendor'] ?? 'unknown',
-                'version' => $info['version'] ?? 'unknown',
-                'base_url' => $info['base_url'] ?? $options['base_url'],
-            ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
