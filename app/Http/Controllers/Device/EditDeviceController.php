@@ -185,21 +185,21 @@ class EditDeviceController
     {
         // Device API attributes
         $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
-        $device->setAttrib('rest_template', $request->input('rest_template', ''));
-        $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
-        $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
-        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
+        $device->setAttrib('rest_template', $request->input('rest_template') ?? '');
+        $device->setAttrib('rest_vendor', $request->input('rest_vendor') ?? '');
+        $device->setAttrib('rest_base_url', $request->input('rest_base_url') ?? '');
+        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type') ?? '');
 
-        $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
+        $device->setAttrib('rest_headers', $request->input('rest_headers') ?? '');
         $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
-        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
-        $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
-        $device->setAttrib('rest_rate_limit_qps', (int) $request->input('rest_rate_limit_qps', 10));
+        $device->setAttrib('rest_timeout_ms', (int) ($request->input('rest_timeout_ms') ?? 5000));
+        $device->setAttrib('rest_proxy', $request->input('rest_proxy') ?? '');
+        $device->setAttrib('rest_rate_limit_qps', (int) ($request->input('rest_rate_limit_qps') ?? 10));
 
         // Save endpoints configuration
         if ($request->has('rest_endpoints')) {
             $endpoints = $request->input('rest_endpoints');
-            $device->setAttrib('rest_endpoints', is_array($endpoints) ? json_encode($endpoints) : $endpoints);
+            $device->setAttrib('rest_endpoints', is_array($endpoints) ? json_encode($endpoints) : ($endpoints ?? '[]'));
         }
 
         if ($request->filled('rest_token')) {
