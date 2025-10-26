@@ -6,14 +6,26 @@ use Illuminate\Support\Facades\Crypt;
 
 class DeviceApiSettings
 {
+    protected static function read(Device $device, string $key, $default = null)
+    {
+        // Prefer Device::getAttrib() if available, fallback to attribs array
+        if (method_exists($device, 'getAttrib')) {
+            $val = $device->getAttrib($key, $default);
+            return $val !== null ? $val : $default;
+        }
+        $a = $device->attribs ?? [];
+        return array_key_exists($key, $a) ? $a[$key] : $default;
+    }
+
     public static function restEnabled(Device $device): bool
     {
-        return (bool) (($device->attribs['rest_enabled'] ?? 0));
+        return (bool) self::read($device, 'rest_enabled', 0);
     }
 
     public static function vendor(Device $device): ?string
     {
-        return $device->attribs['rest_vendor'] ?? null; // e.g., 'purestorage', 'proxmox'
+        $v = self::read($device, 'rest_vendor', null);
+        return $v !== '' ? $v : null;
     }
 
     public static function httpOptions(Device $device): array

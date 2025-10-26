@@ -14,15 +14,22 @@ use Illuminate\Support\Facades\Log;
 d_echo("\n");
 d_echo("REST API Port Polling\n");
 
+// Convert device array to Model object
+$deviceModel = \App\Models\Device::find($device['device_id']);
+if (!$deviceModel) {
+    d_echo("Device {$device['device_id']} not found in database, skipping REST port polling\n");
+    return;
+}
+
 // Check if REST API is enabled for this device
-if (!DeviceApiSettings::restEnabled($device)) {
+if (!DeviceApiSettings::restEnabled($deviceModel)) {
     d_echo("REST API disabled, skipping REST port polling\n");
     return;
 }
 
 try {
     // Create vendor-specific API client
-    $apiClient = DeviceApiClientFactory::make($device);
+    $apiClient = DeviceApiClientFactory::make($deviceModel);
 
     if (!$apiClient) {
         d_echo("No REST API client available for port polling\n");
@@ -37,7 +44,7 @@ try {
 
     // Fetch ports from API
     d_echo("Fetching ports from REST API for polling...\n");
-    $api_ports = $apiClient->fetchPorts($device);
+    $api_ports = $apiClient->fetchPorts($deviceModel);
 
     if (empty($api_ports)) {
         d_echo("No ports returned from REST API\n");

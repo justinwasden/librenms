@@ -80,6 +80,9 @@ class Ipv4Addresses implements Module
     {
         $ips = new Collection;
 
+        // Get device from OS object
+        $device = $os->getDevice();
+
         // REST API branch (vendor-agnostic via factory)
         if (DeviceApiSettings::restEnabled($device)) {
             $client = DeviceApiClientFactory::make($device);

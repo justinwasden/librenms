@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Facades\DeviceCache;
 use App\Facades\LibrenmsConfig;
+use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
 use App\View\Components\Device\PageTabs;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 use LibreNMS\Util\Debug;
 use LibreNMS\Util\Url;
@@ -91,4 +94,124 @@ class DeviceController extends Controller
         ]);
     }
 
+    /**
+     * Edit device settings. Renders Blade only for the Device API tab (section=api),
+     * otherwise redirects to legacy edit page and auto-resolves the correct legacy
+     * "Device Settings" section filename.
+     */
+    public function edit(Device $device)
+    {
+        if (! auth()->user()->hasGlobalAdmin()) {
+            abort(403, 'Insufficient Privileges');
+        }
+
+        $section = request()->get('section');
+
+        // Render Blade for Device API only
+        if ($section === 'api') {
+            return view('device.edit', ['device' => $device, 'section' => 'api']);
+        }
+
+        // For Device Settings or other legacy sections, redirect to legacy UI
+        if ($section === null || $section === 'device') {
+            $section = $this->resolveLegacyDeviceSettingsSection();
+        }
+
+        return redirect(url("device/device={$device->device_id}/tab=edit/section={$section}"));
+    }
+
+    /**
+     * Update device API configuration and return to the legacy device page.
+     * Saves sensitive fields encrypted.
+     */
+    public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
+    {
+        if (! auth()->user()->hasGlobalAdmin()) {
+            abort(403, 'Insufficient Privileges');
+        }
+
+        // Optional: basic device fields
+        if ($request->filled('hostname')) {
+            $device->hostname = $request->input('hostname');
+        }
+        if ($request->filled('display')) {
+            $device->display = $request->input('display');
+        }
+        if ($request->filled('overwrite_ip')) {
+            $device->overwrite_ip = $request->input('overwrite_ip');
+        }
+
+        // Device API attributes (keep keys consistent with your UI)
+        $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
+        $device->setAttrib('rest_template', $request->input('rest_template', ''));
+        $device->setAttrib('rest_vendor', $request->input('rest_vendor', ''));
+        $device->setAttrib('rest_base_url', $request->input('rest_base_url', ''));
+        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type', ''));
+        $device->setAttrib('rest_headers', $request->input('rest_headers', ''));
+        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
+        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
+        $device->setAttrib('rest_proxy', $request->input('rest_proxy', ''));
+        $device->setAttrib('rest_rate_limit_qps', (int) $request->input('rest_rate_limit_qps', 10));
+        $device->setAttrib('rest_endpoints', $request->input('rest_endpoints', ''));
+
+        // Generic token / API key
+        if ($request->filled('rest_token')) {
+            $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));
+        }
+
+        // Basic auth
+        if ($request->filled('rest_username')) {
+            $device->setAttrib('rest_username', $request->input('rest_username'));
+        }
+        if ($request->filled('rest_password')) {
+            $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
+        }
+
+        // Proxmox token auth
+        if ($request->filled('proxmox_token_user')) {
+            $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
+        }
+        if ($request->filled('proxmox_token_id')) {
+            $device->setAttrib('proxmox_token_id', $request->input('proxmox_token_id'));
+        }
+        if ($request->filled('proxmox_token')) {
+            $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
+        }
+
+        // Proxmox ticket auth
+        if ($request->filled('proxmox_username')) {
+            $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
+        }
+        if ($request->filled('proxmox_password')) {
+            $device->setAttrib('proxmox_password_enc', Crypt::encryptString($request->input('proxmox_password')));
+        }
+
+        $device->save();
+
+        // Return to the legacy device page
+        return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
+    }
+
+    /**
+     * Detect the actual legacy include section for "Device Settings"
+     * (filename without .inc.php) under includes/html/pages/device/edit/.
+     */
+    private function resolveLegacyDeviceSettingsSection(): string
+    {
+        $base = base_path('includes/html/pages/device/edit/');
+        $candidates = [
+            'device.inc.php',
+            'general.inc.php',
+            'settings.inc.php',
+        ];
+
+        foreach ($candidates as $file) {
+            if (is_file($base . $file)) {
+                return basename($file, '.inc.php');
+            }
+        }
+
+        // Fallback to 'device'
+        return 'device';
+    }
 }

@@ -11,8 +11,15 @@ use App\ApiClients\DeviceApiClientFactory;
 use LibreNMS\Util\DeviceApiSettings;
 use Illuminate\Support\Facades\Log;
 
+// Convert device array to Model object
+$deviceModel = \App\Models\Device::find($device['device_id']);
+if (!$deviceModel) {
+    d_echo("Device {$device['device_id']} not found in database, skipping REST port discovery\n");
+    return;
+}
+
 // Check if REST API is enabled for this device
-if (!DeviceApiSettings::restEnabled($device)) {
+if (!DeviceApiSettings::restEnabled($deviceModel)) {
     d_echo("REST API disabled for device, skipping REST port discovery\n");
     return;
 }
@@ -21,7 +28,7 @@ d_echo("REST API Port Discovery: Device {$device['hostname']}\n");
 
 try {
     // Create vendor-specific API client
-    $apiClient = DeviceApiClientFactory::make($device);
+    $apiClient = DeviceApiClientFactory::make($deviceModel);
 
     if (!$apiClient) {
         d_echo("No REST API client available for port discovery\n");
@@ -36,7 +43,7 @@ try {
 
     // Fetch ports from API
     d_echo("Fetching ports from REST API...\n");
-    $api_ports = $apiClient->fetchPorts($device);
+    $api_ports = $apiClient->fetchPorts($deviceModel);
 
     if (empty($api_ports)) {
         d_echo("No ports returned from REST API\n");

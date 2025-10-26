@@ -13,8 +13,15 @@ use Illuminate\Support\Facades\Log;
 
 echo "\n";
 
+// Convert device array to Model object
+$deviceModel = \App\Models\Device::find($device['device_id']);
+if (!$deviceModel) {
+    d_echo("Device {$device['device_id']} not found in database, skipping REST sensor discovery\n");
+    return;
+}
+
 // Check if REST API is enabled for this device
-if (!DeviceApiSettings::restEnabled($device)) {
+if (!DeviceApiSettings::restEnabled($deviceModel)) {
     d_echo("REST API disabled for device {$device['device_id']}, skipping REST sensor discovery\n");
     return;
 }
@@ -23,7 +30,7 @@ d_echo("REST API Discovery: Device {$device['hostname']} ({$device['device_id']}
 
 try {
     // Create vendor-specific API client
-    $apiClient = DeviceApiClientFactory::make($device);
+    $apiClient = DeviceApiClientFactory::make($deviceModel);
 
     if (!$apiClient) {
         d_echo("No REST API client available for device {$device['hostname']}\n");
@@ -40,7 +47,7 @@ try {
 
     // Fetch sensors from API
     d_echo("Fetching sensors from REST API...\n");
-    $sensors = $apiClient->fetchSensors($device);
+    $sensors = $apiClient->fetchSensors($deviceModel);
 
     if (empty($sensors)) {
         d_echo("No sensors returned from REST API\n");

@@ -116,9 +116,12 @@ Route::middleware(['auth'])->group(function (): void {
 
     // Device Tabs
     Route::middleware('can:admin')->group(function (): void {
-        Route::get('/device/{device}/edit', [Device\EditDeviceController::class, 'index'])->name('device.edit');
-        Route::put('/device/{device}/edit', [Device\EditDeviceController::class, 'update'])->name('device.edit.update');
+		    Route::get('/device/{device}/edit', [DeviceController::class, 'edit'])->name('device.edit');
+		    Route::put('/device/{device}/edit', [DeviceController::class, 'update'])->name('device.edit.update');
         Route::post('/device/{device}/rediscover', [DeviceController::class, 'rediscover'])->name('device.rediscover');
+//      Route::get('/device/{device}/edit', [Device\EditDeviceController::class, 'index'])->name('device.edit');
+//      Route::put('/device/{device}/edit', [Device\EditDeviceController::class, 'update'])->name('device.edit.update');
+//        Route::post('/device/{device}/rediscover', [DeviceController::class, 'rediscover'])->name('device.rediscover');
         Route::post('/device/{device}/test-api-connection', [Device\EditDeviceController::class, 'testApiConnection'])->name('device.test-api-connection');
         Route::post('/device/{device}/reset-circuit-breaker', [Device\EditDeviceController::class, 'resetCircuitBreaker'])->name('device.reset-circuit-breaker');
     });
