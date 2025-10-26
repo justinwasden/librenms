@@ -37,6 +37,9 @@
     </div>
 </div>
 
+{{-- Hidden vendor field (auto-populated from template) --}}
+<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $device->attribs['rest_vendor'] ?? '') }}">
+
 {{-- Authentication Type Selector --}}
 <div class="form-group">
     <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
@@ -275,65 +278,77 @@
 
 @push('scripts')
 <script>
-// Template data and auth config
+// Template metadata and auth config
 const templates = @json($templates);
-const templateData = @json($templateData ?? []);
 const authTypes = @json($authTypes);
 const configuredEndpoints = @json($configuredEndpoints);
+
+// Pre-load all template data for instant switching
+const allTemplateData = {
+@foreach($templates as $vendor => $template)
+    @php
+        $fullTemplate = \LibreNMS\Util\ApiTemplateManager::loadTemplate($vendor);
+    @endphp
+    '{{ $vendor }}': @json($fullTemplate),
+@endforeach
+};
 
 // Endpoints storage
 let endpoints = configuredEndpoints && Array.isArray(configuredEndpoints) ? configuredEndpoints : [];
 
 // Initialize on page load
 $(document).ready(function() {
+    // Show appropriate auth fields for saved auth type
     updateAuthFieldVisibility();
+
+    // Render saved endpoints
     renderEndpointsTable();
     updateEndpointsHiddenField();
 
-    // If template is selected, load it
-    if ($('#rest_template').val()) {
-        loadTemplateData($('#rest_template').val());
+    // Update auth description if auth type is already set
+    const authType = $('#rest_auth_type').val();
+    if (authType && authTypes[authType]) {
+        $('.auth-description').text(authTypes[authType].description);
     }
+
+    // Note: We don't auto-load template on page load to preserve user customizations
+    // Template is only loaded when user actively selects it from the dropdown
 });
 
 // Template selection handler
 $('#rest_template').on('change', function() {
     const templateName = $(this).val();
     if (templateName) {
+        // User selected a template - load and apply it
         loadTemplateData(templateName);
     } else {
-        // Clear template data
-        endpoints = [];
-        renderEndpointsTable();
+        // User selected "Custom" - clear vendor but keep existing endpoints
+        $('#rest_vendor').val('');
+        toastr.info('Switched to custom configuration');
     }
 });
 
-// Load template data via AJAX
+// Load template data (from pre-loaded data)
 function loadTemplateData(templateName) {
-    $.ajax({
-        url: '/api/v0/resources/api-template/' + templateName,
-        method: 'GET',
-        success: function(data) {
-            if (data.status === 'ok' && data.template) {
-                applyTemplate(data.template);
-            }
-        },
-        error: function() {
-            // Fallback to static data if API not available
-            fetch(`/config/api-templates/${templateName}.json`)
-                .then(r => r.json())
-                .then(template => applyTemplate(template))
-                .catch(e => console.error('Failed to load template:', e));
-        }
-    });
+    if (allTemplateData[templateName]) {
+        applyTemplate(allTemplateData[templateName]);
+    } else {
+        toastr.error('Template not found: ' + templateName);
+        console.error('Template not found:', templateName);
+    }
 }
 
 // Apply template to form
 function applyTemplate(template) {
+    // Set vendor name
+    if (template.vendor) {
+        $('#rest_vendor').val(template.vendor);
+    }
+
     // Set base URL hint
     if (template.base_url_example) {
         $('#rest_base_url').attr('placeholder', template.base_url_example);
-        $('.base-url-hint').text(template.base_url_example);
+        $('.base-url-hint').text('Example: ' + template.base_url_example);
     }
 
     // Set auth type
@@ -348,11 +363,12 @@ function applyTemplate(template) {
         $('#rest_rate_limit_qps').val(template.default_settings.rate_limit_qps ?? 10);
     }
 
-    // Load endpoints (only if not already configured)
-    if (template.endpoints && endpoints.length === 0) {
-        endpoints = template.endpoints;
+    // Load endpoints from template (always replace when template is selected)
+    if (template.endpoints && template.endpoints.length > 0) {
+        endpoints = template.endpoints.map(ep => ({...ep})); // Deep copy
         renderEndpointsTable();
         updateEndpointsHiddenField();
+        toastr.success('Template applied with ' + endpoints.length + ' endpoint(s)');
     }
 }
 
