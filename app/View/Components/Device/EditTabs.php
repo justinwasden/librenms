@@ -48,7 +48,7 @@ class EditTabs extends Component
                 'link' => route('device.edit', ['device' => $this->device->device_id, 'section' => 'device']),
             ],
             'api' => [
-                'text' => __('Device API'),
+                'text' => __('API'),
                 'link' => route('device.edit', ['device' => $this->device->device_id, 'section' => 'api']),
             ],
             'snmp' => [
