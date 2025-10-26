@@ -10,6 +10,7 @@ if (! Auth::user()->hasGlobalAdmin()) {
     print_error('Insufficient Privileges');
 } else {
     $panes['device'] = 'Device Settings';
+    $panes['api'] = 'API';
     $panes['snmp'] = 'SNMP';
     if (! $device['snmp_disable']) {
         $panes['ports'] = 'Port Settings';
@@ -71,6 +72,8 @@ if (! Auth::user()->hasGlobalAdmin()) {
 
         if ($type == 'device') {
             echo '<a href="' . route('device.edit', [$device['device_id']]) . "\">$text</a>";
+        } elseif ($type == 'api') {
+            echo '<a href="' . route('device.edit', [$device['device_id'], 'section' => 'api']) . "\">$text</a>";
         } else {
             echo generate_link($text, $link_array, ['section' => $type]);
         }
