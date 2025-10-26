@@ -132,6 +132,11 @@ class EditDeviceController
         // Check if this is an API settings update
         if ($request->has('rest_enabled')) {
             $this->updateApiSettings($request, $device);
+
+            // Reload the device to get fresh attributes from database
+            $device->refresh();
+            $device->load('attribs');
+
             toast()->success(__('Device API settings updated'));
 
             return redirect()->route('device.edit', ['device' => $device->device_id, 'section' => 'api']);
