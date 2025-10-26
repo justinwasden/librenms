@@ -323,16 +323,29 @@ class EditDeviceController
                 } catch (\Throwable $e) {
                     $lastError = $e;
 
-                    // If we got HTTP 404, that's actually OK - it means we connected
-                    if (str_contains($e->getMessage(), '404')) {
-                        return response()->json([
-                            'success' => true,
-                            'vendor' => $templateName ?? 'generic',
-                            'version' => 'connected',
-                            'base_url' => $baseUrl,
-                            'message' => 'Connection successful (HTTP 404 is expected for test endpoint)',
-                            'test_path' => $path,
-                        ]);
+                    // If we got HTTP 4xx, that's actually OK - it means we connected
+                    // 401 = auth required (connected but need creds)
+                    // 403 = forbidden (connected, auth sent, but insufficient permissions)
+                    // 404 = not found (connected, endpoint doesn't exist)
+                    if (preg_match('/returned (\d+)/', $e->getMessage(), $matches)) {
+                        $code = (int)$matches[1];
+                        if ($code >= 400 && $code < 500) {
+                            $messages = [
+                                401 => 'Connection successful - Authentication required (check credentials)',
+                                403 => 'Connection successful - Authenticated but insufficient permissions (check API token permissions)',
+                                404 => 'Connection successful - Endpoint not found (this is normal for some APIs)',
+                            ];
+
+                            return response()->json([
+                                'success' => true,
+                                'vendor' => $templateName ?? 'generic',
+                                'version' => 'connected',
+                                'base_url' => $baseUrl,
+                                'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
+                                'test_path' => $path,
+                                'http_code' => $code,
+                            ]);
+                        }
                     }
 
                     // For other errors, continue trying next path
@@ -353,10 +366,6 @@ class EditDeviceController
                     $errorMessage = 'Connection timed out - check firewall/network settings';
                 } elseif (str_contains($errorMessage, 'SSL')) {
                     $errorMessage = 'SSL/TLS error - try disabling certificate verification for testing';
-                } elseif (str_contains($errorMessage, '401')) {
-                    $errorMessage = 'Authentication failed (HTTP 401) - check credentials';
-                } elseif (str_contains($errorMessage, '403')) {
-                    $errorMessage = 'Access forbidden (HTTP 403) - check permissions';
                 } elseif (preg_match('/returned (\d+)/', $errorMessage, $matches)) {
                     $code = $matches[1];
                     // Any 2xx or 4xx response means we connected successfully

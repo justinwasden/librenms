@@ -44,6 +44,9 @@ if ($device['os'] == 'gw-eydfa') {
     include 'includes/discovery/sensors/gw-eydfa.inc.php';
 }
 
+// REST API sensor discovery (if enabled)
+include 'includes/discovery/sensors/rest-api.inc.php';
+
 // filter submodules
 $run_sensors = array_intersect(Sensor::values(), LibrenmsConfig::get('discovery_submodules.sensors', Sensor::values()));
 

@@ -443,6 +443,9 @@ if ($device['os'] == 'ios' || $device['os'] == 'iosxe') {
 
 Log::info($fetched_data_string);
 
+// REST API port polling (if enabled)
+require base_path('includes/polling/ports/rest-api.inc.php');
+
 $polled = time();
 
 // End Building SNMP Cache Array

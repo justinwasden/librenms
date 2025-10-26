@@ -87,6 +87,9 @@ if ($device['os'] == 'tachyon') {
     require base_path('includes/discovery/ports/tachyon.inc.php');
 }
 
+// REST API port discovery (if enabled)
+require base_path('includes/discovery/ports/rest-api.inc.php');
+
 // End Building SNMP Cache Array
 d_echo($port_stats);
 
