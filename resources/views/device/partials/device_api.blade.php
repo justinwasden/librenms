@@ -169,6 +169,8 @@
         <div class="col-sm-offset-2 col-sm-6">
             <div class="checkbox">
                 @php $verify = (bool) old('rest_verify_tls', $apiConfig?->verify_ssl ?? true); @endphp
+                {{-- Hidden field ensures unchecked state is sent --}}
+                <input type="hidden" name="rest_verify_tls" value="0">
                 <label>
                     <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
                            {{ $verify ? 'checked' : '' }}>
@@ -194,6 +196,55 @@
             <input type="text" id="rest_proxy" class="form-control" name="rest_proxy"
                    value="{{ old('rest_proxy', $device->getAttrib('rest_proxy') ?? '') }}"
                    placeholder="http://proxy.example:3128">
+        </div>
+    </div>
+
+    <hr>
+
+    {{-- Save Settings Button --}}
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-6">
+            <button type="submit" name="Submit" class="btn btn-success">
+                <i class="fa fa-check"></i> Save Settings
+            </button>
+        </div>
+    </div>
+
+    {{-- Test Connection Button --}}
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-6">
+            <button type="button" id="test-api-connection" class="btn btn-info">
+                <i class="fa fa-plug"></i> Test Connection
+            </button>
+
+            @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
+            @if($errorCount > 0)
+                <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
+                    <i class="fa fa-refresh"></i> Reset Error Counter
+                </button>
+            @endif
+        </div>
+    </div>
+
+    @php $lastSuccess = (int) $device->getAttrib('rest_last_success'); @endphp
+    @if($lastSuccess > 0)
+        <div class="form-group">
+            <div class="col-sm-offset-2 col-sm-6">
+                <small class="text-muted">
+                    <i class="fa fa-check-circle text-success"></i>
+                    Last success: {{ \Carbon\Carbon::createFromTimestamp($lastSuccess)->diffForHumans() }}
+                    @php $avgLatency = (int) $device->getAttrib('rest_avg_latency_ms'); @endphp
+                    @if($avgLatency > 0)
+                        (avg {{ $avgLatency }}ms)
+                    @endif
+                </small>
+            </div>
+        </div>
+    @endif
+
+    <div id="connection-test-result" class="form-group" style="display: none;">
+        <div class="col-sm-offset-2 col-sm-6">
+            <div class="alert" id="test-result-message"></div>
         </div>
     </div>
 
@@ -241,39 +292,7 @@
     </div>
 
     <input type="hidden" name="rest_endpoints" id="rest_endpoints" value="">
-    <hr>
 
-    {{-- Test Connection and Health Status --}}
-    <div class="form-group">
-        <div class="col-sm-offset-2 col-sm-6">
-            <button type="button" id="test-api-connection" class="btn btn-info">
-                <i class="fa fa-plug"></i> Test Connection
-            </button>
-
-            @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
-            @if($errorCount > 0)
-                <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
-                    <i class="fa fa-refresh"></i> Reset Error Counter
-                </button>
-            @endif
-        </div>
-    </div>
-
-    @php $lastSuccess = (int) $device->getAttrib('rest_last_success'); @endphp
-    @if($lastSuccess > 0)
-        <div class="form-group">
-            <div class="col-sm-offset-2 col-sm-6">
-                <small class="text-muted">
-                    <i class="fa fa-check-circle text-success"></i>
-                    Last success: {{ \Carbon\Carbon::createFromTimestamp($lastSuccess)->diffForHumans() }}
-                    @php $avgLatency = (int) $device->getAttrib('rest_avg_latency_ms'); @endphp
-                    @if($avgLatency > 0)
-                        (avg {{ $avgLatency }}ms)
-                    @endif
-                </small>
-            </div>
-        </div>
-    @endif
 </div> {{-- #api-settings-content --}}
 
 @push('scripts')

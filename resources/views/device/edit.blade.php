@@ -32,15 +32,10 @@
                     'templateData' => $templateData ?? null,
                     'autoSelectTemplate' => $autoSelectTemplate ?? false,
                 ])
-                <div class="row">
-                    <div class="col-md-1 col-md-offset-2">
-                        <button type="submit" name="Submit" class="btn btn-default"><i class="fa fa-check"></i> Save</button>
-                    </div>
-                </div>
             </form>
             <br><br>
             <div class="alert alert-info" role="alert">
-                <p>To disable REST API polling, uncheck "Enable REST API discovery/polling" and click <b>Save</b>.</p>
+                <p>To disable REST API polling, uncheck "Enable REST API discovery/polling" and click <b>Save Settings</b>.</p>
             </div>
         @elseif ($section === 'device' || !isset($section))
 				    @include('device.edit.device')

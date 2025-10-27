@@ -306,7 +306,7 @@ class EditDeviceController
         $apiConfig->template_id = $template->id;
         $apiConfig->schema_id = $schema->id;
         $apiConfig->base_url = $baseUrl;
-        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls');
         $apiConfig->extra_headers = $extraHeaders;
 
         // Store connection settings in values
