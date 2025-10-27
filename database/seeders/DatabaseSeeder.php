@@ -16,6 +16,6 @@ class DatabaseSeeder extends Seeder
         $this->call(DefaultAlertTemplateSeeder::class);
         $this->call(ConfigSeeder::class);
         $this->call(RolesSeeder::class);
-				$this->call(DeviceApiSeeder::class);
+				$this->call(DeviceApiAuthSchemasSeeder::class);
     }
 }
