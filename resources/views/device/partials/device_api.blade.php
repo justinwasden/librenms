@@ -264,7 +264,7 @@ const autoSelectTemplate = {{ $autoSelectTemplate ? 'true' : 'false' }};
 // Template metadata and auth config (always arrays by guards above)
 const templates = @json($templates);
 const authTypes = @json($authTypes);
-const configuredEndpoints = [];
+const selectedTemplateKey = '{{ $selectedTemplate ?? '' }}';
 
 // Pre-load all template data for instant switching
 const allTemplateData = {
@@ -276,11 +276,51 @@ const allTemplateData = {
 @endforeach
 };
 
-// Endpoints storage
-let endpoints = Array.isArray(configuredEndpoints) ? configuredEndpoints : [];
+// Endpoints storage - load from selected template if available
+let endpoints = [];
 
 // Initialize on page load
 $(document).ready(function() {
+    // Helper function to generate readable endpoint name
+    function generateEndpointName(path, capability) {
+        // Remove leading slash and extract meaningful parts
+        let name = path.replace(/^\//, '');
+        // Replace common patterns with readable names
+        name = name.replace(/\{[^}]+\}/g, ''); // Remove {variables}
+        name = name.replace(/[/_-]/g, ' '); // Replace separators with spaces
+        name = name.trim();
+        // Capitalize first letter of each word
+        name = name.split(' ')
+            .filter(word => word.length > 0)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        // Add capability prefix for context
+        if (capability) {
+            name = capability.charAt(0).toUpperCase() + capability.slice(1) + ': ' + name;
+        }
+        return name || 'API Endpoint';
+    }
+
+    // Load endpoints from selected template on page load
+    if (selectedTemplateKey && allTemplateData[selectedTemplateKey]) {
+        const template = allTemplateData[selectedTemplateKey];
+        if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
+            endpoints = template.endpoints.map(function(ep) {
+                return {
+                    name: generateEndpointName(ep.path, ep.capability),
+                    path: ep.path,
+                    method: ep.method || 'GET',
+                    category: ep.capability || 'general',
+                    poll_interval: 60,
+                    enabled: ep.enabled !== false,
+                    transform: ep.transform || '',
+                    headers: ep.headers || {},
+                    request_body: ep.request_body || null
+                };
+            });
+        }
+    }
+
     // Show appropriate auth fields for saved auth type
     updateAuthFieldVisibility();
 
@@ -361,8 +401,21 @@ function applyTemplate(template) {
     if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
         // Convert database endpoint structure to UI structure
         endpoints = template.endpoints.map(function(ep) {
+            // Generate readable name
+            let name = ep.path.replace(/^\//, '');
+            name = name.replace(/\{[^}]+\}/g, '');
+            name = name.replace(/[/_-]/g, ' ').trim();
+            name = name.split(' ')
+                .filter(word => word.length > 0)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+            if (ep.capability) {
+                name = ep.capability.charAt(0).toUpperCase() + ep.capability.slice(1) + ': ' + name;
+            }
+            name = name || 'API Endpoint';
+
             return {
-                name: ep.path.replace(/^\//, '').replace(/\//g, ' ') || 'Endpoint',
+                name: name,
                 path: ep.path,
                 method: ep.method || 'GET',
                 category: ep.capability || 'general',
