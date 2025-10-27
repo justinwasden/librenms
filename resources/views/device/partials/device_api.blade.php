@@ -1,10 +1,5 @@
 {{-- resources/views/device/partials/device_api.blade.php --}}
 @php
-    // Debug output
-    error_log("device_api.blade.php rendering");
-    error_log("Templates count: " . count($templates ?? []));
-    error_log("AuthTypes count: " . count($authTypes ?? []));
-
     // Ensure arrays/booleans to avoid count()/foreach/JSON errors
     $templates = is_array($templates ?? null) ? $templates : [];
     $authTypes = is_array($authTypes ?? null) ? $authTypes : [];
@@ -12,10 +7,6 @@
     $apiEnabled = $apiConfig ? true : false;
     $currentAuthType = $apiConfig?->schema?->key ?? '';
 @endphp
-
-<div class="alert alert-info">
-    <strong>Debug:</strong> Templates: {{ count($templates) }}, Auth Types: {{ count($authTypes) }}
-</div>
 
 @if(!empty($device->getAttrib('rest_last_error_message')))
     <div class="alert alert-warning">
