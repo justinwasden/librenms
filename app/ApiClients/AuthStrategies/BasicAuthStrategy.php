@@ -2,13 +2,21 @@
 
 namespace App\ApiClients\AuthStrategies;
 
+use App\ApiClients\Contracts\AuthStrategyInterface;
+use App\ApiClients\AuthStrategies\AuthContext;
+use App\Models\Device;
+
 class BasicAuthStrategy implements AuthStrategyInterface
 {
-    public function authenticate(\App\Models\Device $device, array $options): AuthContext
+    public function authenticate(Device $device, array $options): AuthContext
     {
         $ctx = new AuthContext();
-        $user = (string) ($options['values']['api_username'] ?? '');
-        $pass = (string) ($options['values']['api_password'] ?? '');
+        $v = $options['values'] ?? [];
+
+        // Canonical names with backward-compatible aliases
+        $user = (string) ($v['username'] ?? $v['api_username'] ?? '');
+        $pass = (string) ($v['password'] ?? $v['api_password'] ?? '');
+
         $ctx->headers['Authorization'] = 'Basic ' . base64_encode($user . ':' . $pass);
 
         return $ctx;
@@ -18,8 +26,16 @@ class BasicAuthStrategy implements AuthStrategyInterface
     {
         $requestOptions['headers'] = array_merge(($requestOptions['headers'] ?? []), $context->headers);
 
+        // Apply cookies if present
+        if (!empty($context->cookies)) {
+            $requestOptions['_cookies'] = $context->cookies;
+        }
+
         return $requestOptions;
     }
 
-    public function refresh(AuthContext $context): AuthContext { return $context; }
+    public function refresh(AuthContext $context): AuthContext
+    {
+        return $context;
+    }
 }

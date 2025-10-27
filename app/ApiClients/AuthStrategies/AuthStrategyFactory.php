@@ -8,15 +8,15 @@ class AuthStrategyFactory
 {
     public static function make(string $strategyKey): ?AuthStrategyInterface
     {
-        return match ($key) {
-            'pure_token_login' => new PureTokenLoginStrategy(),
-            'basic'            => new BasicAuthStrategy(),
-            'bearer'           => new BearerAuthStrategy(),
-            'api_key_header'   => new ApiKeyHeaderStrategy(),
-            'api_key_query'    => new ApiKeyQueryStrategy(),
-            'oauth2_client_credentials' => new OAuth2ClientCredentialsStrategy(),
-            'cookie_session'   => new CookieSessionStrategy(),
-            default            => new BearerAuthStrategy(), // sane default
+        return match ($strategyKey) {
+            'pure_token_login', 'purestorage_api_token_login' => new PureTokenLoginStrategy(),
+            'basic' => new BasicAuthStrategy(),
+            'bearer' => new BearerAuthStrategy(),
+            'api_key_header', 'apikey', 'apikey_custom_header' => class_exists(ApiKeyHeaderStrategy::class) ? new ApiKeyHeaderStrategy() : new BearerAuthStrategy(),
+            'api_key_query', 'apikey_query' => class_exists(ApiKeyQueryStrategy::class) ? new ApiKeyQueryStrategy() : new BearerAuthStrategy(),
+            'oauth2_client_credentials' => class_exists(OAuth2ClientCredentialsStrategy::class) ? new OAuth2ClientCredentialsStrategy() : new BearerAuthStrategy(),
+            'cookie_session', 'cookie' => class_exists(CookieSessionStrategy::class) ? new CookieSessionStrategy() : new BearerAuthStrategy(),
+            default => new BearerAuthStrategy(), // sane default
         };
     }
 }

@@ -6,8 +6,6 @@ use App\ApiClients\Contracts\AuthStrategyInterface;
 use App\Models\Device;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Str;
 
 class PureTokenLoginStrategy implements AuthStrategyInterface
 {
@@ -15,16 +13,15 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
      * Authenticate by sending login header (api-token) to login_url and obtaining session header (X-Auth-Token).
      *
      * Expected config keys:
-     *  - base_url      (string)
-     *  - verify_ssl    (bool)
-     *  - timeout_ms    (int)
-     *  - proxy         (string|null)
-     *  - values        (array) contains:
-     *      - api_login_url               string
-     *      - api_login_header_key        string (e.g., 'api-token')
-     *      - api_login_header_value      encrypted or plaintext token
-     *      - api_session_header_key      string (e.g., 'X-Auth-Token')
-     *      - api_session_expiry_minutes  int (optional, default 30)
+     *  - base_url                 string
+     *  - verify_ssl               bool
+     *  - timeout_ms               int
+     *  - proxy                    string|null
+     *  - login_url                string (e.g., base + '/login')
+     *  - login_header_key         string (e.g., 'api-token')
+     *  - session_header_key       string (e.g., 'X-Auth-Token')
+     *  - session_expiry_minutes   int (default 30)
+     *  - values.api_login_header_value string (plaintext token)
      */
     public function authenticate(Device $device, array $options): AuthContext
     {
@@ -40,20 +37,14 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
         $ctx = new AuthContext();
 
         // Use cached token if valid
-        if (is_array($cached) && isset($cached['token'], $cached['expires'])) {
+        if (is_array($cached) && isset($cached['token'], $cached['expires']) && time() < (int)$cached['expires']) {
             $ctx->token = $cached['token'];
             $ctx->expiresAtUnix = (int) $cached['expires'];
             $ctx->headers[$sessionHeaderKey] = $ctx->token;
-
             return $ctx;
         }
 
-        // Decrypted API token (provided by UI)
         $apiToken = (string) ($options['values']['api_login_header_value'] ?? '');
-        if (empty($apiToken) && !empty($options['values']['api_login_header_value_enc'])) {
-            // if you store encrypted, decrypt before calling this strategy
-            $apiToken = (string) $options['values']['api_login_header_value_enc'];
-        }
 
         $req = Http::withHeaders([$loginHeaderKey => $apiToken])
             ->timeout(($options['timeout_ms'] ?? 5000) / 1000)
@@ -71,7 +62,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
         // Token usually in response headers
         $sessionToken = $resp->header($sessionHeaderKey);
         if (!$sessionToken) {
-            // Some arrays return in JSON body instead
             $json = $resp->json();
             $sessionToken = $json['token'] ?? $json[$sessionHeaderKey] ?? null;
         }
@@ -98,9 +88,9 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
         }
 
         $requestOptions['headers'] = $headers;
-        // Cookies if needed:
+
         if (!empty($context->cookies)) {
-            $requestOptions['_cookies'] = $context->cookies; // your DeviceHttpClient can read this key and apply withCookies()
+            $requestOptions['_cookies'] = $context->cookies;
         }
 
         return $requestOptions;
@@ -108,7 +98,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
 
     public function refresh(AuthContext $context): AuthContext
     {
-        // For Pure, re-login when expired (handled by authenticate cache behavior in client).
         return $context;
     }
 }

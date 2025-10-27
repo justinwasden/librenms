@@ -21,7 +21,7 @@ class FlashArrayClient
 
         // Read HTTP options and decrypted values (from device_api_configs or device attribs)
         $http = DeviceApiSettings::httpOptions($device);
-        $values = $this->resolveValues($device); // implement to read and decrypt values as array
+        $values = $this->resolveValues($device);
 
         // Strategy key: from template or derived from auth_type
         $strategyKey = $template['strategy_key'] ?? $device->getAttrib('rest_auth_type') ?? 'pure_token_login';
@@ -32,6 +32,19 @@ class FlashArrayClient
             'proxy'      => $http['proxy'] ?? null,
             'values'     => $values,
         ]);
+
+        // Map schema values to Pure strategy expected keys when using Pure login strategy
+        if (in_array($strategyKey, ['pure_token_login', 'purestorage_api_token_login'], true)) {
+            $strategyOpts['login_url'] = $strategyOpts['login_url'] ?? ($http['base_url'] . '/login');
+            $strategyOpts['login_header_key'] = $strategyOpts['login_header_key'] ?? 'api-token';
+            $v = $strategyOpts['values'] ?? [];
+            $strategyOpts['values'] = array_merge($v, [
+                'api_login_header_value' => $v['api_token'] ?? $v['api_login_header_value'] ?? null,
+            ]);
+            if (!isset($strategyOpts['session_header_key']) && isset($v['auth_header_name'])) {
+                $strategyOpts['session_header_key'] = $v['auth_header_name'];
+            }
+        }
 
         $strategy = AuthStrategyFactory::make($strategyKey);
         $this->authCtx = $strategy->authenticate($device, $strategyOpts);
@@ -80,14 +93,16 @@ class FlashArrayClient
         return $resp->json() ?: [];
     }
 
-    // Implement for your schema/template storage
     protected function resolveValues(Device $device): array
     {
-        // If using device_api_configs: decrypt values array fields before returning
-        // If using device attribs (rest_*): return a map compatible with strategies
+        // Return a map compatible with strategies and schemas
+        // If using device_api_configs, decrypt fields and return them here.
+        // For attribs-based config:
         return [
-            'api_login_header_value' => $device->getAttrib('rest_token') ?: null,
-            // Add more fields as needed...
+            // Canonical Pure login schema fields
+            'api_token' => $device->getAttrib('rest_token') ?: null,
+            'auth_header_name' => 'X-Auth-Token',
+            'login_path' => '/login',
         ];
     }
 }

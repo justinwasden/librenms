@@ -10,11 +10,6 @@ use App\Models\DeviceApiTemplate;
  */
 class ApiTemplateManager
 {
-    /**
-     * Get all available templates
-     *
-     * @return array Array of template metadata
-     */
     public static function getAllTemplates(): array
     {
         $templates = [];
@@ -37,12 +32,6 @@ class ApiTemplateManager
         return $templates;
     }
 
-    /**
-     * Get templates filtered by device OS
-     *
-     * @param string $os Device OS
-     * @return array Array of template metadata matching the OS
-     */
     public static function getTemplatesForOs(string $os): array
     {
         $allTemplates = self::getAllTemplates();
@@ -51,24 +40,15 @@ class ApiTemplateManager
 
         foreach ($allTemplates as $vendor => $template) {
             if (empty($template['os'])) {
-                // Generic template (no OS specified)
                 $generic[$vendor] = $template;
             } elseif (in_array($os, $template['os'])) {
-                // OS-specific template
                 $osSpecific[$vendor] = $template;
             }
         }
 
-        // Return OS-specific templates if available, otherwise return generic templates
         return !empty($osSpecific) ? $osSpecific : $generic;
     }
 
-    /**
-     * Load a specific template by key
-     *
-     * @param string $key Template key
-     * @return array|null
-     */
     public static function loadTemplate(string $key): ?array
     {
         $template = DeviceApiTemplate::with(['schema.fields', 'endpoints'])
@@ -105,11 +85,6 @@ class ApiTemplateManager
         ];
     }
 
-    /**
-     * Get supported authentication types
-     *
-     * @return array
-     */
     public static function getAuthTypes(): array
     {
         $authTypes = [];
@@ -140,12 +115,6 @@ class ApiTemplateManager
         return $authTypes;
     }
 
-    /**
-     * Get fields required for a specific auth type
-     *
-     * @param string $authType Auth schema key
-     * @return array
-     */
     public static function getAuthFields(string $authType): array
     {
         $schema = DeviceApiAuthSchema::with('fields')
@@ -171,12 +140,6 @@ class ApiTemplateManager
         })->toArray();
     }
 
-    /**
-     * Validate template structure
-     *
-     * @param array $template
-     * @return bool
-     */
     public static function validateTemplate(array $template): bool
     {
         $required = ['name', 'vendor', 'auth_type', 'endpoints'];

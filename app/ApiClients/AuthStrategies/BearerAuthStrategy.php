@@ -2,12 +2,19 @@
 
 namespace App\ApiClients\AuthStrategies;
 
+use App\ApiClients\Contracts\AuthStrategyInterface;
+use App\ApiClients\AuthStrategies\AuthContext;
+use App\Models\Device;
+
 class BearerAuthStrategy implements AuthStrategyInterface
 {
-    public function authenticate(\App\Models\Device $device, array $options): AuthContext
+    public function authenticate(Device $device, array $options): AuthContext
     {
         $ctx = new AuthContext();
-        $token = (string) ($options['values']['api_bearer_token'] ?? '');
+        $v = $options['values'] ?? [];
+
+        // Canonical names with backward-compatible aliases
+        $token = (string) ($v['access_token'] ?? $v['api_bearer_token'] ?? $v['api_token'] ?? '');
         $ctx->headers['Authorization'] = 'Bearer ' . $token;
 
         return $ctx;
@@ -17,8 +24,15 @@ class BearerAuthStrategy implements AuthStrategyInterface
     {
         $requestOptions['headers'] = array_merge(($requestOptions['headers'] ?? []), $context->headers);
 
+        if (!empty($context->cookies)) {
+            $requestOptions['_cookies'] = $context->cookies;
+        }
+
         return $requestOptions;
     }
 
-    public function refresh(AuthContext $context): AuthContext { return $context; }
+    public function refresh(AuthContext $context): AuthContext
+    {
+        return $context;
+    }
 }
