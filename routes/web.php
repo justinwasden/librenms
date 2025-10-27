@@ -118,7 +118,7 @@ Route::middleware(['auth'])->group(function (): void {
     // Device Tabs
     Route::middleware('can:admin')->group(function (): void {
 		    Route::get('device/{device}/edit', [EditDeviceController::class, 'index'])->name('device.edit');
-		    Route::put('/device/{device}/edit', [DeviceController::class, 'update'])->name('device.edit.update');
+		    Route::put('/device/{device}/edit', [EditDeviceController::class, 'update'])->name('device.edit.update');
         Route::post('/device/{device}/rediscover', [DeviceController::class, 'rediscover'])->name('device.rediscover');
 //      Route::get('/device/{device}/edit', [Device\EditDeviceController::class, 'index'])->name('device.edit');
 //      Route::put('/device/{device}/edit', [Device\EditDeviceController::class, 'update'])->name('device.edit.update');
