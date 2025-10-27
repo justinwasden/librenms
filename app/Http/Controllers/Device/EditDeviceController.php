@@ -403,14 +403,35 @@ class EditDeviceController
     }
 
     protected function makeClient(Device $device, array $tpl)
-    {
-        return match ($tpl['vendor']) {
-            'proxmox_ve_token', 'proxmox_ve_ticket' => new \App\ApiClients\Proxmox\ProxmoxApiClient($device),
-            'purestorage_flasharray' => new \App\ApiClients\PureStorage\FlashArrayClient($device, ['strategy_key' => $tpl['auth_type']]),
-            'vmware_vcenter' => new \App\ApiClients\Vmware\VcenterClient($device),
-            default => new \App\ApiClients\Generic\RestClient($device),
-        };
-    }
+		{
+		    return match ($tpl['vendor']) {
+		        'proxmox_ve_token', 'proxmox_ve_ticket' => new \App\ApiClients\Proxmox\ProxmoxApiClient($device),
+		        'purestorage_flasharray' => new \App\ApiClients\PureStorage\FlashArrayClient($device, ['strategy_key' => $tpl['auth_type']]),
+		        'vmware_vcenter', 'vmware_vcenter_default' => new \App\ApiClients\Vmware\VcenterClient($device),
+		        'vmware_esxi' => new \App\ApiClients\Vmware\EsxiClient($device),
+
+		        'fortinet_fortigate' => new \App\ApiClients\Generic\RestClient($device),
+		        'juniper_junos' => new \App\ApiClients\Generic\RestClient($device),
+		        'dell_os10' => new \App\ApiClients\Generic\RestClient($device),
+		        'hpe_network' => new \App\ApiClients\Generic\RestClient($device),
+		        'hpe_nimble' => new \App\ApiClients\Generic\RestClient($device),
+		        'nutanix_prism' => new \App\ApiClients\Generic\RestClient($device),
+		        'cisco_ise' => new \App\ApiClients\Generic\RestClient($device),
+		        'paloalto_panos' => new \App\ApiClients\Generic\RestClient($device),
+		        'cisco_nxos' => new \App\ApiClients\Generic\RestClient($device),
+		        'cisco_ios_xr' => new \App\ApiClients\Generic\RestClient($device),
+		        'cisco_cucm' => new \App\ApiClients\Generic\RestClient($device),
+		        'calix_generic' => new \App\ApiClients\Generic\RestClient($device),
+		        'cisco_ndfc' => new \App\ApiClients\Generic\RestClient($device),
+		        'arista_eos' => new \App\ApiClients\Generic\RestClient($device),
+		        'extreme_exos' => new \App\ApiClients\Generic\RestClient($device),
+		        'brocade_fastiron' => new \App\ApiClients\Generic\RestClient($device),
+		        'sonicwall_gen7' => new \App\ApiClients\Generic\RestClient($device),
+		        'checkpoint_mgmt' => new \App\ApiClients\Generic\RestClient($device),
+
+		        default => new \App\ApiClients\Generic\RestClient($device),
+		    };
+		}
 
     public function resetCircuitBreaker(Request $request, Device $device): JsonResponse
     {

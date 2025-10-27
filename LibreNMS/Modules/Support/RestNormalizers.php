@@ -18,6 +18,82 @@ class RestNormalizers
     public static function normalizeProxmoxClusterStatus(array $payload): array { /* ... existing ... */ }
     public static function normalizeProxmoxClusterResources(array $payload): array { /* ... existing ... */ }
 
+		public static function normalizeFortigateSystemUsage(array $payload): array { return []; }
+    public static function normalizeFortigateSystemStatus(array $payload): array { return []; }
+    public static function normalizeFortigateInterfaces(array $payload): array { return []; }
+    public static function normalizeFortigateIpv4(array $payload): array { return []; }
+
+    public static function normalizeJunosInterfaces(array $payload): array { return []; }
+    public static function normalizeJunosInventory(array $payload): array { return []; }
+    public static function normalizeJunosSystem(array $payload): array { return []; }
+
+    public static function normalizeDellSystem(array $payload): array { return []; }
+    public static function normalizeDellInterfaces(array $payload): array { return []; }
+    public static function normalizeDellSensors(array $payload): array { return []; }
+
+    public static function normalizeHpeSystem(array $payload): array { return []; }
+    public static function normalizeHpeInterfaces(array $payload): array { return []; }
+    public static function normalizeHpeSensors(array $payload): array { return []; }
+
+    public static function normalizeNimbleArrays(array $payload): array { return []; }
+    public static function normalizeNimbleDisks(array $payload): array { return []; }
+    public static function normalizeNimbleStats(array $payload): array { return []; }
+    public static function normalizeNimbleInterfaces(array $payload): array { return []; }
+
+    public static function normalizeNutanixClusters(array $payload): array { return []; }
+    public static function normalizeNutanixHosts(array $payload): array { return []; }
+    public static function normalizeNutanixStorage(array $payload): array { return []; }
+
+    public static function normalizeIseNetworkDevices(array $payload): array { return []; }
+    public static function normalizeIseEndpoints(array $payload): array { return []; }
+
+    public static function vcHostsToInventory(array $payload): array { return []; }
+    public static function vcNetworksToPortsInventory(array $payload): array { return []; }
+    public static function vcDatastoresToStorageSensors(array $payload): array { return []; }
+    public static function vcClustersToInventory(array $payload): array { return []; }
+    public static function vcHostSummaryToProcessorsMempools(array $payload): array { return []; }
+
+    public static function normalizeEsxiVersion(array $payload): array { return []; }
+    public static function normalizeEsxiHealth(array $payload): array { return []; }
+
+    public static function normalizePanInventory(array $payload): array { return []; }
+    public static function normalizePanInterfaces(array $payload): array { return []; }
+    public static function normalizePanSystem(array $payload): array { return []; }
+
+    public static function normalizeNxInterfaces(array $payload): array { return []; }
+    public static function normalizeNxInventory(array $payload): array { return []; }
+
+    public static function normalizeIosxrInterfaces(array $payload): array { return []; }
+    public static function normalizeIosxrInventory(array $payload): array { return []; }
+
+    public static function normalizeCucmInventory(array $payload): array { return []; }
+
+    public static function normalizeCalixDevices(array $payload): array { return []; }
+    public static function normalizeCalixInterfaces(array $payload): array { return []; }
+    public static function normalizeCalixSensors(array $payload): array { return []; }
+
+    public static function normalizeNdfcDevices(array $payload): array { return []; }
+    public static function normalizeNdfcInterfaces(array $payload): array { return []; }
+
+    public static function normalizeAristaSystem(array $payload): array { return []; }
+    public static function normalizeAristaInterfaces(array $payload): array { return []; }
+    public static function normalizeAristaSensors(array $payload): array { return []; }
+
+    public static function normalizeExtremeSystem(array $payload): array { return []; }
+    public static function normalizeExtremeInterfaces(array $payload): array { return []; }
+    public static function normalizeExtremeSensors(array $payload): array { return []; }
+
+    public static function normalizeBrocadeSystem(array $payload): array { return []; }
+    public static function normalizeBrocadeInterfaces(array $payload): array { return []; }
+
+    public static function normalizeSonicSystem(array $payload): array { return []; }
+    public static function normalizeSonicInterfaces(array $payload): array { return []; }
+    public static function normalizeSonicSensors(array $payload): array { return []; }
+
+    public static function normalizeCheckpointGateways(array $payload): array { return []; }
+    public static function normalizeCheckpointInterfaces(array $payload): array { return []; }
+}
+
     // NetApp ONTAP
     public static function normalizeOntapEthernetPorts(array $payload): array
     {

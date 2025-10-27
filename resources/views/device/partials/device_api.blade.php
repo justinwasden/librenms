@@ -276,19 +276,25 @@
 
 @push('scripts')
 <script>
-// Toggle API settings visibility based on checkbox
 (function() {
     const enabledCheckbox = document.getElementById('rest_enabled');
     const content = document.getElementById('api-settings-content');
 
+    function toggleInputsDisability(disabled) {
+        content.querySelectorAll('input, select, textarea, button').forEach(el => {
+            if (el.id === 'rest_enabled') return;
+            el.disabled = disabled;
+        });
+    }
+
     function toggleContent() {
-        if (!enabledCheckbox) return;
-        content.style.display = enabledCheckbox.checked ? '' : 'none';
+        const enabled = enabledCheckbox && enabledCheckbox.checked;
+        content.style.display = enabled ? '' : 'none';
+        toggleInputsDisability(!enabled);
     }
 
     if (enabledCheckbox) {
         enabledCheckbox.addEventListener('change', toggleContent);
-        // Initial toggle
         toggleContent();
     }
 })();
