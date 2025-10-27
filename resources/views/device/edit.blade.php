@@ -21,7 +21,7 @@
         @endif
 
         @if ($section === 'api')
-            <form id="edit-api" name="edit-api" method="POST" action="{{ route('device.edit.update', $device) }}" role="form" class="form-horizontal">
+            <form id="edit-api" name="edit-api" method="POST" action="{{ route('device.edit.update', [$device->device_id]) }}" role="form" class="form-horizontal">
                 @method('PUT')
                 @csrf
                 @include('device.partials.device_api', [
