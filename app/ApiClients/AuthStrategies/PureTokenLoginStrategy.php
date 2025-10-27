@@ -9,20 +9,6 @@ use Illuminate\Support\Facades\Http;
 
 class PureTokenLoginStrategy implements AuthStrategyInterface
 {
-    /**
-     * Authenticate by sending login header (api-token) to login_url and obtaining session header (X-Auth-Token).
-     *
-     * Expected config keys:
-     *  - base_url                 string
-     *  - verify_ssl               bool
-     *  - timeout_ms               int
-     *  - proxy                    string|null
-     *  - login_url                string (e.g., base + '/login')
-     *  - login_header_key         string (e.g., 'api-token')
-     *  - session_header_key       string (e.g., 'X-Auth-Token')
-     *  - session_expiry_minutes   int (default 30)
-     *  - values.api_login_header_value string (plaintext token)
-     */
     public function authenticate(Device $device, array $options): AuthContext
     {
         $baseUrl = rtrim((string) ($options['base_url'] ?? ''), '/');
@@ -36,7 +22,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
 
         $ctx = new AuthContext();
 
-        // Use cached token if valid
         if (is_array($cached) && isset($cached['token'], $cached['expires']) && time() < (int)$cached['expires']) {
             $ctx->token = $cached['token'];
             $ctx->expiresAtUnix = (int) $cached['expires'];
@@ -59,7 +44,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
             throw new \RuntimeException('Pure login failed: ' . $resp->status());
         }
 
-        // Token usually in response headers
         $sessionToken = $resp->header($sessionHeaderKey);
         if (!$sessionToken) {
             $json = $resp->json();
@@ -74,7 +58,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
         $ctx->expiresAtUnix = time() + ($expiryMinutes * 60);
         $ctx->headers[$sessionHeaderKey] = $sessionToken;
 
-        // Cache session
         Cache::put($cachedKey, ['token' => $sessionToken, 'expires' => $ctx->expiresAtUnix], now()->addMinutes($expiryMinutes));
 
         return $ctx;
@@ -86,7 +69,6 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
         foreach ($context->headers as $k => $v) {
             $headers[$k] = $v;
         }
-
         $requestOptions['headers'] = $headers;
 
         if (!empty($context->cookies)) {

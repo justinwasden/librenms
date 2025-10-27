@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Crypt;
 
 class ProxmoxApiClient
 {
+    protected Device $device;
     protected string $base;
     protected int $timeout;
     protected bool $verifyTls;
@@ -17,11 +18,12 @@ class ProxmoxApiClient
 
     public function __construct(Device $device)
     {
+        $this->device = $device;
         $a = $device->attribs ?? [];
-        $this->base = rtrim($a['proxmox_base_url'] ?? '', '/');
-        $this->timeout = (int)($a['proxmox_timeout_ms'] ?? 5000);
-        $this->verifyTls = (bool)($a['proxmox_verify_tls'] ?? true);
-        $this->proxy = $a['proxmox_proxy'] ?? null;
+        $this->base = rtrim($a['proxmox_base_url'] ?? $a['rest_base_url'] ?? '', '/');
+        $this->timeout = (int)($a['proxmox_timeout_ms'] ?? $a['rest_timeout_ms'] ?? 5000);
+        $this->verifyTls = (bool)($a['proxmox_verify_tls'] ?? $a['rest_verify_tls'] ?? true);
+        $this->proxy = $a['proxmox_proxy'] ?? $a['rest_proxy'] ?? null;
         $this->authType = $a['proxmox_auth_type'] ?? 'token';
 
         if ($this->authType === 'token') {
@@ -40,7 +42,7 @@ class ProxmoxApiClient
         $password = !empty($a['proxmox_password_enc']) ? Crypt::decryptString($a['proxmox_password_enc']) : '';
         $resp = Http::timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls])
-            ->post($this->base . '/api2/json/access/ticket', ['username' => $user, 'password' => $password]);
+            ->post($this->base . '/access/ticket', ['username' => $user, 'password' => $password]);
 
         if ($resp->failed()) {
             throw new \RuntimeException('Proxmox login failed: ' . $resp->status());
@@ -54,26 +56,45 @@ class ProxmoxApiClient
         }
     }
 
-    protected function request(string $path): array
+    protected function http(): \Illuminate\Http\Client\PendingRequest
     {
         $req = Http::withHeaders($this->headers)
             ->withCookies($this->cookies, parse_url($this->base, PHP_URL_HOST))
             ->timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls]);
+
         if ($this->proxy) {
             $req = $req->withOptions(['proxy' => $this->proxy]);
         }
 
-        $resp = $req->get($this->base . '/api2/json/' . ltrim($path, '/'));
+        return $req;
+    }
+
+    public function get(string $path, array $query = []): array
+    {
+        $uri = rtrim($this->base, '/') . '/' . ltrim($path, '/');
+        $resp = $this->http()->get($uri, $query);
         if ($resp->failed()) {
-            throw new \RuntimeException('Proxmox GET ' . $path . ' failed: ' . $resp->status());
+            throw new \RuntimeException("Proxmox GET $path failed: " . $resp->status());
         }
         $json = $resp->json();
         return is_array($json) ? $json : [];
     }
 
-    public function getNodes(): array { return $this->request('nodes'); }
-    public function getNodeStatus(string $node): array { return $this->request("nodes/{$node}/status"); }
-    public function getNodeNetwork(string $node): array { return $this->request("nodes/{$node}/network"); }
-    public function getClusterStatus(): array { return $this->request('cluster/status'); }
+    public function post(string $path, array $body = []): array
+    {
+        $uri = rtrim($this->base, '/') . '/' . ltrim($path, '/');
+        $resp = $this->http()->post($uri, $body);
+        if ($resp->failed()) {
+            throw new \RuntimeException("Proxmox POST $path failed: " . $resp->status());
+        }
+        $json = $resp->json();
+        return is_array($json) ? $json : [];
+    }
+
+    // Optional helpers (not required by executor but useful)
+    public function getNodes(): array { return $this->get('nodes'); }
+    public function getNodeStatus(string $node): array { return $this->get("nodes/{$node}/status"); }
+    public function getNodeNetwork(string $node): array { return $this->get("nodes/{$node}/network"); }
+    public function getClusterStatus(): array { return $this->get('cluster/status'); }
 }

@@ -13,7 +13,6 @@ class BasicAuthStrategy implements AuthStrategyInterface
         $ctx = new AuthContext();
         $v = $options['values'] ?? [];
 
-        // Canonical names with backward-compatible aliases
         $user = (string) ($v['username'] ?? $v['api_username'] ?? '');
         $pass = (string) ($v['password'] ?? $v['api_password'] ?? '');
 
@@ -25,12 +24,9 @@ class BasicAuthStrategy implements AuthStrategyInterface
     public function apply(array $requestOptions, AuthContext $context): array
     {
         $requestOptions['headers'] = array_merge(($requestOptions['headers'] ?? []), $context->headers);
-
-        // Apply cookies if present
         if (!empty($context->cookies)) {
             $requestOptions['_cookies'] = $context->cookies;
         }
-
         return $requestOptions;
     }
 

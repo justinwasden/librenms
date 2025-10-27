@@ -16,6 +16,30 @@ class DeviceApiSettings
         return array_key_exists($key, $a) ? $a[$key] : $default;
     }
 
+    /**
+     * Resolve and persist rest_base_url from the selected template's base_url_pattern.
+     * Requires device attrib 'rest_template_key' to be set when selecting a template.
+     */
+    public static function ensureResolvedBaseUrl(Device $device): void
+    {
+        $tplKey = self::read($device, 'rest_template_key', null);
+        if (!$tplKey) {
+            return;
+        }
+
+        $tpl = \LibreNMS\Util\ApiTemplateManager::loadTemplate($tplKey);
+        if (!$tpl || empty($tpl['base_url_pattern'])) {
+            return;
+        }
+
+        $resolved = \LibreNMS\Util\EndpointPathResolver::resolveBaseUrl($device, $tpl['base_url_pattern']);
+        $current = self::read($device, 'rest_base_url', null);
+
+        if (!$current || $current !== $resolved) {
+            $device->setAttrib('rest_base_url', $resolved);
+        }
+    }
+
     public static function restEnabled(Device $device): bool
     {
         return (bool) self::read($device, 'rest_enabled', 0);
@@ -29,6 +53,9 @@ class DeviceApiSettings
 
     public static function httpOptions(Device $device): array
     {
+        // Resolve and persist base_url from selected template (idempotent)
+        self::ensureResolvedBaseUrl($device);
+
         $a = $device->attribs ?? [];
 
         $headers = array();
@@ -48,6 +75,7 @@ class DeviceApiSettings
         );
     }
 
+    // Pure options (unchanged)
     public static function pureOptions(Device $device): array
     {
         $a = $device->attribs ?? array();
@@ -64,6 +92,7 @@ class DeviceApiSettings
         );
     }
 
+    // Proxmox options (unchanged)
     public static function proxmoxOptions(Device $device): array
     {
         $a = $device->attribs ?? array();

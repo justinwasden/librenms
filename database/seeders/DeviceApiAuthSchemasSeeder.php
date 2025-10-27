@@ -82,7 +82,7 @@ class DeviceApiAuthSchemasSeeder extends Seeder
         $apikeyHeader = $schema([
             'key' => 'apikey_custom_header',
             'label' => 'API Key (Custom Header)',
-            'description' => 'API key sent in a custom header (e.g., X-Auth-Token)',
+            'description' => 'API key in a custom header (e.g. X-Auth-Token)',
             'vendor' => 'generic',
             'enabled' => true,
         ]);
@@ -400,7 +400,7 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             );
         };
 
-        // PureStorage FlashArray
+        // PureStorage FlashArray (login schema)
         $pureSchema = DeviceApiAuthSchema::where('key', 'purestorage_api_token_login')->first();
         $pureTemplate = DeviceApiTemplate::updateOrCreate(
             ['key' => 'purestorage_flasharray'],
@@ -630,7 +630,7 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             ['capability' => 'sensors',   'path' => '/cluster/status',             'transform' => 'normalizeIsilonClusterStatusToSensors',    'order' => 3],
         ] as $e) { $upsertEndpoint($isilonTemplate->id, $e); }
 
-        // Generic Bearer template
+        // Generic Bearer
         $genericSchema = DeviceApiAuthSchema::where('key', 'bearer')->first();
         DeviceApiTemplate::updateOrCreate(
             ['key' => 'generic_rest_api'],

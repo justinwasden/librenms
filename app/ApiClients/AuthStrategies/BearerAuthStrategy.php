@@ -13,7 +13,6 @@ class BearerAuthStrategy implements AuthStrategyInterface
         $ctx = new AuthContext();
         $v = $options['values'] ?? [];
 
-        // Canonical names with backward-compatible aliases
         $token = (string) ($v['access_token'] ?? $v['api_bearer_token'] ?? $v['api_token'] ?? '');
         $ctx->headers['Authorization'] = 'Bearer ' . $token;
 
@@ -23,11 +22,9 @@ class BearerAuthStrategy implements AuthStrategyInterface
     public function apply(array $requestOptions, AuthContext $context): array
     {
         $requestOptions['headers'] = array_merge(($requestOptions['headers'] ?? []), $context->headers);
-
         if (!empty($context->cookies)) {
             $requestOptions['_cookies'] = $context->cookies;
         }
-
         return $requestOptions;
     }
 

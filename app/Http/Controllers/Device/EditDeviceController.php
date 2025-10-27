@@ -210,237 +210,285 @@ class EditDeviceController
     }
 
     private function updateApiSettings($request, Device $device): void
-    {
-        // Check if API is being disabled
-        if (!$request->boolean('rest_enabled')) {
-            // Delete the config if it exists
-            DeviceApiConfig::where('device_id', $device->device_id)->delete();
-            return;
-        }
+		{
+		    // Check if API is being disabled
+		    if (!$request->boolean('rest_enabled')) {
+		        DeviceApiConfig::where('device_id', $device->device_id)->delete();
 
-        // Get template and schema IDs
-        $templateKey = $request->input('rest_template');
-        $authTypeKey = $request->input('rest_auth_type');
+		        // Also clear REST attribs
+		        $device->forgetAttrib('rest_enabled');
+		        $device->forgetAttrib('rest_template_key');
+		        $device->forgetAttrib('rest_auth_type');
+		        $device->forgetAttrib('rest_base_url');
 
-        if (!$templateKey || !$authTypeKey) {
-            return;
-        }
+		        return;
+		    }
 
-        $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
-        $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
+		    // Get template and schema IDs
+		    $templateKey = $request->input('rest_template');
+		    $authTypeKey = $request->input('rest_auth_type');
 
-        if (!$template || !$schema) {
-            return;
-        }
+		    if (!$templateKey || !$authTypeKey) {
+		        return;
+		    }
 
-    // Find or create the config
-    $apiConfig = DeviceApiConfig::firstOrNew([
-        'device_id' => $device->device_id,
-    ]);
+		    $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
+		    $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
 
-    // Check if the schema changed
-    $schemaChanged = $apiConfig->schema_id !== $schema->id;
+		    if (!$template || !$schema) {
+		        return;
+		    }
 
-    // Update config fields
-    $apiConfig->template_id = $template->id;
-    $apiConfig->schema_id = $schema->id;
-    $apiConfig->base_url = $request->input('rest_base_url') ?? '';
-		$apiConfig->verify_ssl = $request->has('rest_verify_tls');
-//    $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+		    // Persist selected template and auth type to device attribs
+		    $device->setAttrib('rest_template_key', $template->key);
+		    $device->setAttrib('rest_auth_type', $schema->key);
+		    $device->setAttrib('rest_enabled', 1);
 
-        // Parse extra headers
-        $headersString = $request->input('rest_headers', '');
-        $extraHeaders = [];
-        if (!empty($headersString)) {
-            foreach (explode("\n", $headersString) as $line) {
-                $line = trim($line);
-                if (empty($line)) {
-                    continue;
-                }
-                $parts = explode(':', $line, 2);
-                if (count($parts) === 2) {
-                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
-                }
-            }
-        }
-        $apiConfig->extra_headers = $extraHeaders;
+		    // Base URL override from form or resolve from template pattern
+		    $overrideBase = $request->input('rest_base_url');
+		    if (!empty($overrideBase)) {
+		        $device->setAttrib('rest_base_url', rtrim((string) $overrideBase, '/'));
+		    } else {
+		        // Resolve and persist base_url from template's base_url_pattern
+		        \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($device);
+		    }
 
-        // Save auth values - dynamically handle all schema fields
-        $values = [];
-				 // Save auth values - dynamically handle all schema fields
-				    foreach ($schema->fields as $field) {
-				        $fieldName = $field->name;
-				        $inputValue = $request->input($fieldName);
+		    // Find or create the config
+		    $apiConfig = DeviceApiConfig::firstOrNew([
+		        'device_id' => $device->device_id,
+		    ]);
 
-				        if ($field->type === 'password') {
-				            // FIX 1: If the input is filled, set the value (will be encrypted by setValue)
-				            if ($request->filled($fieldName)) {
-				                $apiConfig->setValue($fieldName, $inputValue);
-				            }
-				            // FIX 2: If input is EMPTY and we are on an existing config, do nothing.
-				            //        setValue is NOT called, so the previously stored value remains.
-				            //        If the schema changed, we SHOULD clear the old value.
-				            elseif ($schemaChanged) {
-				                // Clear the value for the new schema
-				                $apiConfig->setValue($fieldName, null);
-				            }
-				        } else {
-				            // For non-password fields (text, select, etc.), always set the new value (even if empty)
-				            $apiConfig->setValue($fieldName, $inputValue);
-				        }
-				    }
+		    // Detect schema change for password field handling
+		    $schemaChanged = $apiConfig->schema_id !== $schema->id;
 
-				    $apiConfig->save();
-    }
+		    // Update config fields
+		    $apiConfig->template_id = $template->id;
+		    $apiConfig->schema_id = $schema->id;
+		    $apiConfig->base_url = $request->input('rest_base_url') ?? ($device->getAttrib('rest_base_url') ?? '');
+		    $apiConfig->verify_ssl = $request->has('rest_verify_tls');
 
+		    // Parse extra headers (one per line "Header: value")
+		    $headersString = $request->input('rest_headers', '');
+		    $extraHeaders = [];
+		    if (!empty($headersString)) {
+		        foreach (explode("\n", $headersString) as $line) {
+		            $line = trim($line);
+		            if ($line === '') {
+		                continue;
+		            }
+		            $parts = explode(':', $line, 2);
+		            if (count($parts) === 2) {
+		                $extraHeaders[trim($parts[0])] = trim($parts[1]);
+		            }
+		        }
+		    }
+		    $apiConfig->extra_headers = $extraHeaders;
+
+		    // Save auth values dynamically from schema fields
+		    $values = [];
+		    foreach ($schema->fields as $field) {
+		        $fieldName = $field->name;
+		        $inputValue = $request->input($fieldName);
+
+		        if ($field->type === 'password') {
+		            if ($request->filled($fieldName)) {
+		                $apiConfig->setValue($fieldName, $inputValue);
+		            } elseif ($schemaChanged) {
+		                $apiConfig->setValue($fieldName, null);
+		            }
+		        } else {
+		            $apiConfig->setValue($fieldName, $inputValue);
+		        }
+		    }
+
+		    $apiConfig->save();
+		}
+
+		public function testConnection(Device $device)
+		{
+		    $tplKey = request('template_key');
+		    $tpl = \LibreNMS\Util\ApiTemplateManager::loadTemplate($tplKey);
+		    if (!$tpl) return response()->json(['ok' => false, 'error' => 'Template not found'], 404);
+
+		    \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($device);
+
+		    try {
+		        $client = $this->makeClient($device, $tpl);
+		        // Pick a simple info endpoint by vendor
+		        $path = match ($tpl['vendor']) {
+		            'proxmox_ve_token', 'proxmox_ve_ticket' => '/cluster/status',
+		            'purestorage_flasharray' => '/arrays',
+		            'vmware_vcenter' => '/appliance/health/system', // or /vcenter/host
+		            default => '/',
+		        };
+		        $path = \LibreNMS\Util\EndpointPathResolver::resolve($device, $path);
+		        $data = $client->get($path);
+		        return response()->json(['ok' => true, 'sample' => array_slice($data, 0, 10)]);
+		    } catch (\Throwable $e) {
+		        // map common causes to friendly messages
+		        $msg = $e->getMessage();
+		        if (str_contains($msg, 'SSL')) $msg .= ' (Tip: check TLS verification settings)';
+		        return response()->json(['ok' => false, 'error' => $msg], 400);
+		    }
+		}
+
+		protected function makeClient(Device $device, array $tpl)
+		{
+		    return match ($tpl['vendor']) {
+		        'proxmox_ve_token', 'proxmox_ve_ticket' => new \App\ApiClients\Proxmox\ProxmoxApiClient($device),
+		        'purestorage_flasharray' => new \App\ApiClients\PureStorage\FlashArrayClient($device, ['strategy_key' => $tpl['auth_type']]),
+		        'vmware_vcenter' => new \App\ApiClients\Vmware\VcenterClient($device),
+		        default => new \App\ApiClients\Generic\RestClient($device),
+		    };
+		}
     /**
      * Test API connection with provided credentials
      */
-    public function testApiConnection(Request $request, Device $device): JsonResponse
-    {
-        try {
-            $baseUrl = $request->input('rest_base_url');
-
-            // Validate base URL
-            if (empty($baseUrl)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Base URL is required',
-                ]);
-            }
-
-            // Build temporary options from request
-            $options = [
-                'base_url' => $baseUrl,
-                'verify_tls' => $request->boolean('rest_verify_tls', true),
-                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
-                'headers' => [],
-                'enable_circuit_breaker' => false, // Disable circuit breaker for testing
-                'max_retries' => 0, // Don't retry during testing for faster feedback
-            ];
-
-            // Add auth headers based on type
-            $authType = $request->input('rest_auth_type', 'bearer');
-            $token = $request->input('rest_token');
-            $username = $request->input('rest_username');
-            $password = $request->input('rest_password');
-
-            if ($authType === 'bearer' && $token) {
-                $options['headers']['Authorization'] = 'Bearer ' . $token;
-            } elseif ($authType === 'apikey' && $token) {
-                $options['headers']['X-API-Key'] = $token;
-            } elseif ($authType === 'basic' && $username) {
-                $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . ($password ?? ''));
-            }
-
-            // Create client and test with better error handling
-            $client = new DeviceHttpClient($options);
-
-            // Determine which endpoint to test based on template
-            $testPaths = ['/'];
-            $templateName = $request->input('rest_template');
-
-            if ($templateName) {
-                $template = ApiTemplateManager::loadTemplate($templateName);
-                if ($template && !empty($template['endpoints'])) {
-                    // Use the first enabled endpoint from the template for testing
-                    foreach ($template['endpoints'] as $endpoint) {
-                        if ($endpoint['enabled'] ?? true) {
-                            $testPaths = [$endpoint['path']];
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Try to make a simple request
-            $lastError = null;
-            foreach ($testPaths as $path) {
-                try {
-                    $data = $client->get($path);
-
-                    return response()->json([
-                        'success' => true,
-                        'vendor' => $templateName ?? 'generic',
-                        'version' => 'connected',
-                        'base_url' => $baseUrl,
-                        'message' => 'Connection successful',
-                        'test_path' => $path,
-                    ]);
-                } catch (\Throwable $e) {
-                    $lastError = $e;
-
-                    // If we got HTTP 4xx, that's actually OK - it means we connected
-                    // 401 = auth required (connected but need creds)
-                    // 403 = forbidden (connected, auth sent, but insufficient permissions)
-                    // 404 = not found (connected, endpoint doesn't exist)
-                    if (preg_match('/returned (\d+)/', $e->getMessage(), $matches)) {
-                        $code = (int)$matches[1];
-                        if ($code >= 400 && $code < 500) {
-                            $messages = [
-                                401 => 'Connection successful - Authentication required (check credentials)',
-                                403 => 'Connection successful - Authenticated but insufficient permissions (check API token permissions)',
-                                404 => 'Connection successful - Endpoint not found (this is normal for some APIs)',
-                            ];
-
-                            return response()->json([
-                                'success' => true,
-                                'vendor' => $templateName ?? 'generic',
-                                'version' => 'connected',
-                                'base_url' => $baseUrl,
-                                'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
-                                'test_path' => $path,
-                                'http_code' => $code,
-                            ]);
-                        }
-                    }
-
-                    // For other errors, continue trying next path
-                    continue;
-                }
-            }
-
-            // All paths failed - provide detailed error
-            if ($lastError) {
-                $errorMessage = $lastError->getMessage();
-
-                // Extract useful error information
-                if (str_contains($errorMessage, 'Could not resolve host')) {
-                    $errorMessage = 'Could not resolve hostname - check the URL';
-                } elseif (str_contains($errorMessage, 'Connection refused')) {
-                    $errorMessage = 'Connection refused - check if the service is running';
-                } elseif (str_contains($errorMessage, 'timed out')) {
-                    $errorMessage = 'Connection timed out - check firewall/network settings';
-                } elseif (str_contains($errorMessage, 'SSL')) {
-                    $errorMessage = 'SSL/TLS error - try disabling certificate verification for testing';
-                } elseif (preg_match('/returned (\d+)/', $errorMessage, $matches)) {
-                    $code = $matches[1];
-                    // Any 2xx or 4xx response means we connected successfully
-                    if ($code >= 200 && $code < 500) {
-                        return response()->json([
-                            'success' => true,
-                            'vendor' => $templateName ?? 'generic',
-                            'version' => 'connected',
-                            'base_url' => $baseUrl,
-                            'message' => "Connection successful (HTTP $code received)",
-                        ]);
-                    }
-                    $errorMessage = 'API returned HTTP ' . $code . ' - server error';
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'error' => $errorMessage,
-                    'raw_error' => $lastError->getMessage(),
-                ]);
-            }
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
+//    public function testApiConnection(Request $request, Device $device): JsonResponse
+//    {
+//        try {
+//            $baseUrl = $request->input('rest_base_url');
+//
+//            // Validate base URL
+//            if (empty($baseUrl)) {
+//                return response()->json([
+//                    'success' => false,
+//                    'error' => 'Base URL is required',
+//                ]);
+//            }
+//
+//            // Build temporary options from request
+//            $options = [
+//                'base_url' => $baseUrl,
+//                'verify_tls' => $request->boolean('rest_verify_tls', true),
+//                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
+//                'headers' => [],
+//                'enable_circuit_breaker' => false, // Disable circuit breaker for testing
+//                'max_retries' => 0, // Don't retry during testing for faster feedback
+//            ];
+//
+//            // Add auth headers based on type
+//            $authType = $request->input('rest_auth_type', 'bearer');
+//            $token = $request->input('rest_token');
+//            $username = $request->input('rest_username');
+//            $password = $request->input('rest_password');
+//
+//            if ($authType === 'bearer' && $token) {
+//                $options['headers']['Authorization'] = 'Bearer ' . $token;
+//            } elseif ($authType === 'apikey' && $token) {
+//                $options['headers']['X-API-Key'] = $token;
+//            } elseif ($authType === 'basic' && $username) {
+//                $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . ($password ?? ''));
+//            }
+//
+//            // Create client and test with better error handling
+//            $client = new DeviceHttpClient($options);
+//
+//            // Determine which endpoint to test based on template
+//            $testPaths = ['/'];
+//            $templateName = $request->input('rest_template');
+//
+//            if ($templateName) {
+//                $template = ApiTemplateManager::loadTemplate($templateName);
+//                if ($template && !empty($template['endpoints'])) {
+//                    // Use the first enabled endpoint from the template for testing
+//                    foreach ($template['endpoints'] as $endpoint) {
+//                        if ($endpoint['enabled'] ?? true) {
+//                            $testPaths = [$endpoint['path']];
+//                            break;
+//                        }
+//                    }
+//                }
+//            }
+//
+//            // Try to make a simple request
+//            $lastError = null;
+//            foreach ($testPaths as $path) {
+//                try {
+//                    $data = $client->get($path);
+//
+//                    return response()->json([
+//                        'success' => true,
+//                        'vendor' => $templateName ?? 'generic',
+//                        'version' => 'connected',
+//                        'base_url' => $baseUrl,
+//                        'message' => 'Connection successful',
+//                        'test_path' => $path,
+//                    ]);
+//                } catch (\Throwable $e) {
+//                    $lastError = $e;
+//
+//                    // If we got HTTP 4xx, that's actually OK - it means we connected
+//                    // 401 = auth required (connected but need creds)
+//                    // 403 = forbidden (connected, auth sent, but insufficient permissions)
+//                    // 404 = not found (connected, endpoint doesn't exist)
+//                    if (preg_match('/returned (\d+)/', $e->getMessage(), $matches)) {
+//                        $code = (int)$matches[1];
+//                        if ($code >= 400 && $code < 500) {
+//                            $messages = [
+//                                401 => 'Connection successful - Authentication required (check credentials)',
+//                                403 => 'Connection successful - Authenticated but insufficient permissions (check API token permissions)',
+//                                404 => 'Connection successful - Endpoint not found (this is normal for some APIs)',
+//                            ];
+//
+//                            return response()->json([
+//                                'success' => true,
+//                                'vendor' => $templateName ?? 'generic',
+//                                'version' => 'connected',
+//                                'base_url' => $baseUrl,
+//                                'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
+//                                'test_path' => $path,
+//                                'http_code' => $code,
+//                            ]);
+//                        }
+//                    }
+//
+//                    // For other errors, continue trying next path
+//                    continue;
+//                }
+//            }
+//
+//            // All paths failed - provide detailed error
+//            if ($lastError) {
+//                $errorMessage = $lastError->getMessage();
+//
+//                // Extract useful error information
+//                if (str_contains($errorMessage, 'Could not resolve host')) {
+//                    $errorMessage = 'Could not resolve hostname - check the URL';
+//                } elseif (str_contains($errorMessage, 'Connection refused')) {
+//                    $errorMessage = 'Connection refused - check if the service is running';
+//                } elseif (str_contains($errorMessage, 'timed out')) {
+//                    $errorMessage = 'Connection timed out - check firewall/network settings';
+//                } elseif (str_contains($errorMessage, 'SSL')) {
+//                    $errorMessage = 'SSL/TLS error - try disabling certificate verification for testing';
+//                } elseif (preg_match('/returned (\d+)/', $errorMessage, $matches)) {
+//                    $code = $matches[1];
+//                    // Any 2xx or 4xx response means we connected successfully
+//                    if ($code >= 200 && $code < 500) {
+//                        return response()->json([
+//                            'success' => true,
+//                            'vendor' => $templateName ?? 'generic',
+//                            'version' => 'connected',
+//                            'base_url' => $baseUrl,
+//                            'message' => "Connection successful (HTTP $code received)",
+//                        ]);
+//                    }
+//                    $errorMessage = 'API returned HTTP ' . $code . ' - server error';
+//                }
+//
+//                return response()->json([
+//                    'success' => false,
+//                    'error' => $errorMessage,
+//                    'raw_error' => $lastError->getMessage(),
+//                ]);
+//            }
+//        } catch (\Throwable $e) {
+//            return response()->json([
+//                'success' => false,
+//                'error' => $e->getMessage(),
+//            ]);
+//        }
+//    }
 
     /**
      * Reset circuit breaker for a device
@@ -461,4 +509,23 @@ class EditDeviceController
             ]);
         }
     }
+
+    public function showApiConfig(Device $device)
+		{
+		    $os = $device->os ?? 'generic';
+		    $templates = \LibreNMS\Util\ApiTemplateManager::getTemplatesForOs($os);
+
+		    $recommended = reset($templates); // first candidate
+		    // Autofill Pure defaults if recommended is Pure
+		    $defaults = $recommended['vendor'] === 'purestorage_flasharray'
+		        ? ['login_path' => '/login', 'auth_header_name' => 'X-Auth-Token']
+		        : [];
+
+		    return view('devices.api-config', [
+		        'device' => $device,
+		        'templates' => $templates,
+		        'recommended' => $recommended,
+		        'defaults' => $defaults,
+		    ]);
+		}
 }

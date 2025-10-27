@@ -19,11 +19,9 @@ class FlashArrayClient
     {
         $this->device = $device;
 
-        // Read HTTP options and decrypted values (from device_api_configs or device attribs)
         $http = DeviceApiSettings::httpOptions($device);
         $values = $this->resolveValues($device);
 
-        // Strategy key: from template or derived from auth_type
         $strategyKey = $template['strategy_key'] ?? $device->getAttrib('rest_auth_type') ?? 'pure_token_login';
         $strategyOpts = array_merge($template['strategy_options'] ?? [], [
             'base_url'   => $http['base_url'],
@@ -33,9 +31,9 @@ class FlashArrayClient
             'values'     => $values,
         ]);
 
-        // Map schema values to Pure strategy expected keys when using Pure login strategy
+        // Map schema fields to strategy expectations for Pure login
         if (in_array($strategyKey, ['pure_token_login', 'purestorage_api_token_login'], true)) {
-            $strategyOpts['login_url'] = $strategyOpts['login_url'] ?? ($http['base_url'] . '/login');
+            $strategyOpts['login_url'] = $strategyOpts['login_url'] ?? ($http['base_url'] . ($values['login_path'] ?? '/login'));
             $strategyOpts['login_header_key'] = $strategyOpts['login_header_key'] ?? 'api-token';
             $v = $strategyOpts['values'] ?? [];
             $strategyOpts['values'] = array_merge($v, [
@@ -49,7 +47,6 @@ class FlashArrayClient
         $strategy = AuthStrategyFactory::make($strategyKey);
         $this->authCtx = $strategy->authenticate($device, $strategyOpts);
 
-        // Build request options applied to all calls
         $this->requestOpts = $strategy->apply([
             'headers' => $http['headers'] ?? [],
             'verify'  => $http['verify_tls'],
@@ -71,7 +68,6 @@ class FlashArrayClient
         $req = Http::withOptions($this->httpBaseOpts)
             ->withHeaders($this->requestOpts['headers'] ?? []);
 
-        // Apply cookies if present
         if (!empty($this->requestOpts['_cookies'])) {
             $host = parse_url($this->httpBaseOpts['base_uri'] ?? '', PHP_URL_HOST) ?: '';
             $req = $req->withCookies($this->requestOpts['_cookies'], $host);
@@ -80,26 +76,27 @@ class FlashArrayClient
         return $req;
     }
 
-    // Example endpoints
-    public function getArray(): array
+    public function get(string $path, array $query = []): array
     {
-        $resp = $this->client()->get('array');
+        $resp = $this->client()->get(ltrim($path, '/'), $query);
+        if ($resp->failed()) {
+            throw new \RuntimeException("Pure GET $path failed: " . $resp->status());
+        }
         return $resp->json() ?: [];
     }
 
-    public function getArrayPerformance(): array
+    public function post(string $path, array $body = []): array
     {
-        $resp = $this->client()->get('array/performance');
+        $resp = $this->client()->post(ltrim($path, '/'), $body);
+        if ($resp->failed()) {
+            throw new \RuntimeException("Pure POST $path failed: " . $resp->status());
+        }
         return $resp->json() ?: [];
     }
 
     protected function resolveValues(Device $device): array
     {
-        // Return a map compatible with strategies and schemas
-        // If using device_api_configs, decrypt fields and return them here.
-        // For attribs-based config:
         return [
-            // Canonical Pure login schema fields
             'api_token' => $device->getAttrib('rest_token') ?: null,
             'auth_header_name' => 'X-Auth-Token',
             'login_path' => '/login',
