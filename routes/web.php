@@ -13,6 +13,7 @@ use App\Http\Controllers\DashboardWidgetController;
 use App\Http\Controllers\Device;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\DeviceGroupController;
+use App\Http\Controllers\Device\EditDeviceController;
 use App\Http\Controllers\GraphController;
 use App\Http\Controllers\Install;
 use App\Http\Controllers\LegacyController;
@@ -116,7 +117,7 @@ Route::middleware(['auth'])->group(function (): void {
 
     // Device Tabs
     Route::middleware('can:admin')->group(function (): void {
-		    Route::get('/device/{device}/edit', [DeviceController::class, 'edit'])->name('device.edit');
+		    Route::get('device/{device}/edit', [EditDeviceController::class, 'index'])->name('device.edit');
 		    Route::put('/device/{device}/edit', [DeviceController::class, 'update'])->name('device.edit.update');
         Route::post('/device/{device}/rediscover', [DeviceController::class, 'rediscover'])->name('device.rediscover');
 //      Route::get('/device/{device}/edit', [Device\EditDeviceController::class, 'index'])->name('device.edit');
