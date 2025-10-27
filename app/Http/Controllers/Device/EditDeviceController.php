@@ -440,8 +440,37 @@ class EditDeviceController
             // Temporarily attach config to device for API client factory
             $device->setRelation('apiConfig', $tempConfig);
 
+            // Set rest_vendor in device attribs so factory can find the right client
+            if (!isset($device->attribs)) {
+                $device->attribs = [];
+            }
+            $device->attribs['rest_vendor'] = $templateKey;
+
             // Use the API client factory to create the proper client
             $client = \App\ApiClients\DeviceApiClientFactory::make($device);
+
+            // If factory returns null, fall back to generic HTTP client
+            if (!$client) {
+                // Use generic DeviceHttpClient as fallback
+                $options = [
+                    'base_url' => $baseUrl,
+                    'verify_tls' => $request->boolean('rest_verify_tls', true),
+                    'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
+                    'headers' => $extraHeaders,
+                ];
+
+                // Add basic auth headers
+                if ($authType === 'bearer' && $tempConfig->getValue('api_token')) {
+                    $options['headers']['Authorization'] = 'Bearer ' . $tempConfig->getValue('api_token');
+                } elseif ($authType === 'apikey' && $tempConfig->getValue('api_key')) {
+                    $options['headers']['X-API-Key'] = $tempConfig->getValue('api_key');
+                } elseif ($authType === 'basic' && $tempConfig->getValue('username')) {
+                    $password = $tempConfig->getValue('password') ?? '';
+                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($tempConfig->getValue('username') . ':' . $password);
+                }
+
+                $client = new \App\ApiClients\DeviceHttpClient($options);
+            }
 
             $start = microtime(true);
 
