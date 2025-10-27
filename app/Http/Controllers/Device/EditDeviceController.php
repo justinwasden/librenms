@@ -233,16 +233,19 @@ class EditDeviceController
             return;
         }
 
-        // Find or create the config
-        $apiConfig = DeviceApiConfig::firstOrNew([
-            'device_id' => $device->device_id,
-        ]);
+// Find or create the config
+    $apiConfig = DeviceApiConfig::firstOrNew([
+        'device_id' => $device->device_id,
+    ]);
 
-        // Update config fields
-        $apiConfig->template_id = $template->id;
-        $apiConfig->schema_id = $schema->id;
-        $apiConfig->base_url = $request->input('rest_base_url') ?? '';
-        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+    // Check if the schema changed
+    $schemaChanged = $apiConfig->schema_id !== $schema->id;
+
+    // Update config fields
+    $apiConfig->template_id = $template->id;
+    $apiConfig->schema_id = $schema->id;
+    $apiConfig->base_url = $request->input('rest_base_url') ?? '';
+    $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
 
         // Parse extra headers
         $headersString = $request->input('rest_headers', '');
@@ -263,14 +266,30 @@ class EditDeviceController
 
         // Save auth values - dynamically handle all schema fields
         $values = [];
-        foreach ($schema->fields as $field) {
-            $fieldName = $field->name;
-            if ($request->filled($fieldName)) {
-                $apiConfig->setValue($fieldName, $request->input($fieldName));
-            }
-        }
+				 // Save auth values - dynamically handle all schema fields
+				    foreach ($schema->fields as $field) {
+				        $fieldName = $field->name;
+				        $inputValue = $request->input($fieldName);
 
-        $apiConfig->save();
+				        if ($field->type === 'password') {
+				            // FIX 1: If the input is filled, set the value (will be encrypted by setValue)
+				            if ($request->filled($fieldName)) {
+				                $apiConfig->setValue($fieldName, $inputValue);
+				            }
+				            // FIX 2: If input is EMPTY and we are on an existing config, do nothing.
+				            //        setValue is NOT called, so the previously stored value remains.
+				            //        If the schema changed, we SHOULD clear the old value.
+				            elseif ($schemaChanged) {
+				                // Clear the value for the new schema
+				                $apiConfig->setValue($fieldName, null);
+				            }
+				        } else {
+				            // For non-password fields (text, select, etc.), always set the new value (even if empty)
+				            $apiConfig->setValue($fieldName, $inputValue);
+				        }
+				    }
+
+				    $apiConfig->save();
     }
 
     /**
