@@ -12,7 +12,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $now = now();
 
         // Helper to get schema id
-        $schemaId = fn($key) => DB::table('api_auth_schemas')->where('key', $key)->value('id');
+        $schemaId = fn($key) => DB::table('device_api_auth_schemas')->where('key', $key)->value('id');
 
         // Pure Storage FlashArray template
         $pureTemplate = [

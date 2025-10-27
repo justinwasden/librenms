@@ -5,7 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
-class ApiAuthSchemasSeeder extends Seeder
+class DeviceApiAuthSchemasSeeder extends Seeder
 {
     public function run(): void
     {
@@ -20,14 +20,14 @@ class ApiAuthSchemasSeeder extends Seeder
         ];
 
         foreach ($schemas as $schema) {
-            DB::table('api_auth_schemas')->updateOrInsert(
+            DB::table('device_api_auth_schemas')->updateOrInsert(
                 ['key' => $schema['key']],
                 array_merge($schema, ['created_at' => $now, 'updated_at' => $now])
             );
         }
 
         // Fields for each schema
-        $schemaId = fn($key) => DB::table('api_auth_schemas')->where('key', $key)->value('id');
+        $schemaId = fn($key) => DB::table('device_api_auth_schemas')->where('key', $key)->value('id');
 
         $fields = [
             'bearer' => [
@@ -54,7 +54,7 @@ class ApiAuthSchemasSeeder extends Seeder
         foreach ($fields as $schemaKey => $schemaFields) {
             $sid = $schemaId($schemaKey);
             foreach ($schemaFields as $f) {
-                DB::table('api_auth_schema_fields')->updateOrInsert(
+                DB::table('device_api_auth_schema_fields')->updateOrInsert(
                     ['schema_id' => $sid, 'name' => $f['name']],
                     array_merge($f, ['created_at' => $now, 'updated_at' => $now])
                 );
