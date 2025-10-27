@@ -339,42 +339,96 @@ class EditDeviceController
         }
     }
 
-    public function testConnection(Device $device): JsonResponse
+    public function testConnection(Request $request, Device $device): JsonResponse
     {
-        $tplKey = request('template_key');
-        $tpl = ApiTemplateManager::loadTemplate($tplKey);
-        if (!$tpl) {
-            return response()->json(['ok' => false, 'error' => 'Template not found'], 404);
-        }
-
-        DeviceApiSettings::ensureResolvedBaseUrl($device);
-
-        $start = microtime(true);
-
         try {
-            $client = $this->makeClient($device, $tpl);
-            // Pick a simple info endpoint by vendor
-            $path = match ($tpl['vendor']) {
-                'proxmox_ve_token', 'proxmox_ve_ticket' => '/cluster/status',
-                'purestorage_flasharray' => '/arrays',
-                'vmware_vcenter' => '/appliance/health/system', // or /vcenter/host
-                default => '/',
-            };
-            $path = \LibreNMS\Util\EndpointPathResolver::resolve($device, $path);
-            $data = $client->get($path);
+            $baseUrl = $request->input('rest_base_url');
+            $templateKey = $request->input('rest_template');
+            $authType = $request->input('rest_auth_type');
 
-            // record success and latency
+            // Validate required fields
+            if (empty($baseUrl)) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'Base URL is required',
+                ], 400);
+            }
+
+            if (empty($templateKey) || empty($authType)) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'Template and authentication type are required',
+                ], 400);
+            }
+
+            // Load template to get test endpoint
+            $template = ApiTemplateManager::loadTemplate($templateKey);
+            if (!$template) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'Template not found',
+                ], 404);
+            }
+
+            // Build test options from request
+            $options = [
+                'base_url' => $baseUrl,
+                'verify_tls' => $request->boolean('rest_verify_tls', true),
+                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
+                'headers' => [],
+                'enable_circuit_breaker' => false,
+                'max_retries' => 0,
+            ];
+
+            // Add auth headers based on type and get field values from request
+            $schema = \App\Models\DeviceApiAuthSchema::where('key', $authType)->with('fields')->first();
+            if ($schema) {
+                foreach ($schema->fields as $field) {
+                    $value = $request->input($field->name);
+                    if ($value) {
+                        // Add auth based on schema type
+                        if ($authType === 'bearer' && $field->name === 'api_token') {
+                            $options['headers']['Authorization'] = 'Bearer ' . $value;
+                        } elseif ($authType === 'apikey' && $field->name === 'api_key') {
+                            $options['headers']['X-API-Key'] = $value;
+                        } elseif ($authType === 'basic') {
+                            if ($field->name === 'username') {
+                                $username = $value;
+                            } elseif ($field->name === 'password') {
+                                $password = $value ?? '';
+                                if (isset($username)) {
+                                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . $password);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Create client and test
+            $client = new \App\ApiClients\DeviceHttpClient($options);
+
+            // Pick first endpoint from template or use root
+            $testPath = '/';
+            if (!empty($template['endpoints'])) {
+                $testPath = $template['endpoints'][0]['path'] ?? '/';
+            }
+
+            $start = microtime(true);
+            $data = $client->get($testPath);
             $latencyMs = (int) ((microtime(true) - $start) * 1000);
-            DeviceApiSettings::recordSuccess($device, $latencyMs);
 
             return response()->json([
                 'ok' => true,
+                'success' => true,
                 'message' => 'Connection successful',
-                'sample' => is_array($data) ? array_slice($data, 0, 10) : $data,
+                'test_path' => $testPath,
                 'latency_ms' => $latencyMs,
             ]);
+
         } catch (\Throwable $e) {
             $msg = $e->getMessage();
+
             // Friendly 4xx handling: treat as connected
             if (preg_match('/returned\s+(\d{3})/', $msg, $m)) {
                 $code = (int) $m[1];
@@ -386,19 +440,28 @@ class EditDeviceController
                     ];
                     return response()->json([
                         'ok' => true,
+                        'success' => true,
                         'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
                         'http_code' => $code,
                     ]);
                 }
             }
 
-            // record error for UI health display
-            DeviceApiSettings::recordError($device, $msg);
-            if (str_contains($msg, 'SSL')) {
-                $msg .= ' (Tip: check TLS verification settings)';
+            // Provide helpful error messages
+            if (str_contains($msg, 'Could not resolve host')) {
+                $msg = 'Could not resolve hostname - check the URL';
+            } elseif (str_contains($msg, 'Connection refused')) {
+                $msg = 'Connection refused - check if the service is running';
+            } elseif (str_contains($msg, 'timed out')) {
+                $msg = 'Connection timed out - check firewall/network settings';
+            } elseif (str_contains($msg, 'SSL')) {
+                $msg .= ' (Try disabling SSL verification for testing)';
             }
 
-            return response()->json(['ok' => false, 'error' => $msg], 400);
+            return response()->json([
+                'ok' => false,
+                'error' => $msg,
+            ], 400);
         }
     }
 

@@ -633,6 +633,16 @@ $('#test-api-connection').on('click', function() {
     const originalHtml = btn.html();
     btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Testing...');
 
+    // Collect all visible auth fields
+    const authData = {};
+    $('.auth-field:visible input, .auth-field:visible select, .auth-field:visible textarea').each(function() {
+        const name = $(this).attr('name');
+        const value = $(this).val();
+        if (name && value) {
+            authData[name] = value;
+        }
+    });
+
     fetch('{{ route("device.test-api-connection", $device->device_id) }}', {
         method: 'POST',
         headers: {
@@ -647,7 +657,8 @@ $('#test-api-connection').on('click', function() {
             rest_headers: $('#rest_headers').val(),
             rest_verify_tls: $('#rest_verify_tls').is(':checked'),
             rest_timeout_ms: $('#rest_timeout_ms').val(),
-            rest_proxy: $('#rest_proxy').val()
+            rest_proxy: $('#rest_proxy').val(),
+            ...authData
         })
     })
     .then(r => r.json())
