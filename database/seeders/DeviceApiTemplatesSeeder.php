@@ -19,7 +19,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             'key' => 'pure_flasharray_default',
             'label' => 'Pure Storage FlashArray (Default)',
             'os_keys' => json_encode(['purestorage.flasharray']),
-            'schema_id' => $schemaId('custom_token_login'),
+            'schema_id' => $schemaId('purestorage_api_token_login'),
             'default_values' => json_encode([
                 'api_login_url' => 'https://{hostname}/api/2.26/login',
                 'api_login_header_key' => 'api-token',
