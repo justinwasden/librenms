@@ -441,7 +441,7 @@ class EditDeviceController
             $device->setRelation('apiConfig', $tempConfig);
 
             // Use the API client factory to create the proper client
-            $client = \LibreNMS\Util\DeviceApiClientFactory::make($device);
+            $client = \App\ApiClients\DeviceApiClientFactory::make($device);
 
             $start = microtime(true);
 
