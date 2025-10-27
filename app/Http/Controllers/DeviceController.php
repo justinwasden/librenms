@@ -99,52 +99,52 @@ class DeviceController extends Controller
      * otherwise redirects to legacy edit page and auto-resolves the correct legacy
      * "Device Settings" section filename.
      */
-    public function edit(Device $device)
-    {
-        if (! auth()->user()->hasGlobalAdmin()) {
-            abort(403, 'Insufficient Privileges');
-        }
-
-        $section = request()->get('section');
-
-        // Render Blade for Device API only
-        if ($section === 'api') {
-            // Load templates filtered by device OS
-            $templates = \LibreNMS\Util\ApiTemplateManager::getTemplatesForOs($device->os);
-            $authTypes = \LibreNMS\Util\ApiTemplateManager::getAuthTypes();
-
-            // Load API config from database
-            $apiConfig = \App\Models\DeviceApiConfig::with(['schema.fields', 'template'])
-                ->where('device_id', $device->device_id)
-                ->first();
-
-            // If a template is selected, load it; otherwise auto-select if only one template matches
-            $selectedTemplate = $apiConfig?->template?->key ?? null;
-            if (!$selectedTemplate && count($templates) === 1) {
-                $selectedTemplate = array_key_first($templates);
-            }
-            $templateData = $selectedTemplate ? \LibreNMS\Util\ApiTemplateManager::loadTemplate($selectedTemplate) : null;
-
-            return view('device.edit', [
-                'device' => $device,
-                'section' => 'api',
-                'templates' => $templates,
-                'authTypes' => $authTypes,
-                'apiConfig' => $apiConfig,
-                'selectedTemplate' => $selectedTemplate,
-                'templateData' => $templateData,
-                'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
-            ]);
-        }
-
-        // For Device Settings or other legacy sections, redirect to legacy UI
-        if ($section === null || $section === 'device') {
-            $section = $this->resolveLegacyDeviceSettingsSection();
-        }
-
-        return redirect(url("device/device={$device->device_id}/tab=edit/section={$section}"));
-    }
-
+//    public function edit(Device $device)
+//    {
+//        if (! auth()->user()->hasGlobalAdmin()) {
+//            abort(403, 'Insufficient Privileges');
+//        }
+//
+//        $section = request()->get('section');
+//
+//        // Render Blade for Device API only
+//        if ($section === 'api') {
+//            // Load templates filtered by device OS
+//            $templates = \LibreNMS\Util\ApiTemplateManager::getTemplatesForOs($device->os);
+//            $authTypes = \LibreNMS\Util\ApiTemplateManager::getAuthTypes();
+//
+//            // Load API config from database
+//            $apiConfig = \App\Models\DeviceApiConfig::with(['schema.fields', 'template'])
+//                ->where('device_id', $device->device_id)
+//                ->first();
+//
+//            // If a template is selected, load it; otherwise auto-select if only one template matches
+//            $selectedTemplate = $apiConfig?->template?->key ?? null;
+//            if (!$selectedTemplate && count($templates) === 1) {
+//                $selectedTemplate = array_key_first($templates);
+//            }
+//            $templateData = $selectedTemplate ? \LibreNMS\Util\ApiTemplateManager::loadTemplate($selectedTemplate) : null;
+//
+//            return view('device.edit', [
+//                'device' => $device,
+//                'section' => 'api',
+//                'templates' => $templates,
+//                'authTypes' => $authTypes,
+//                'apiConfig' => $apiConfig,
+//                'selectedTemplate' => $selectedTemplate,
+//                'templateData' => $templateData,
+//                'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
+//            ]);
+//        }
+//
+//        // For Device Settings or other legacy sections, redirect to legacy UI
+//        if ($section === null || $section === 'device') {
+//            $section = $this->resolveLegacyDeviceSettingsSection();
+//        }
+//
+//        return redirect(url("device/device={$device->device_id}/tab=edit/section={$section}"));
+//    }
+//
     /**
      * Update device API configuration and return to the legacy device page.
      * Saves sensitive fields encrypted.
@@ -240,22 +240,22 @@ class DeviceController extends Controller
      * Detect the actual legacy include section for "Device Settings"
      * (filename without .inc.php) under includes/html/pages/device/edit/.
      */
-    private function resolveLegacyDeviceSettingsSection(): string
-    {
-        $base = base_path('includes/html/pages/device/edit/');
-        $candidates = [
-            'device.inc.php',
-            'general.inc.php',
-            'settings.inc.php',
-        ];
-
-        foreach ($candidates as $file) {
-            if (is_file($base . $file)) {
-                return basename($file, '.inc.php');
-            }
-        }
-
-        // Fallback to 'device'
-        return 'device';
-    }
+//    private function resolveLegacyDeviceSettingsSection(): string
+//    {
+//        $base = base_path('includes/html/pages/device/edit/');
+//        $candidates = [
+//            'device.inc.php',
+//            'general.inc.php',
+//            'settings.inc.php',
+//        ];
+//
+//        foreach ($candidates as $file) {
+//            if (is_file($base . $file)) {
+//                return basename($file, '.inc.php');
+//            }
+//        }
+//
+//        // Fallback to 'device'
+//        return 'device';
+//    }
 }
