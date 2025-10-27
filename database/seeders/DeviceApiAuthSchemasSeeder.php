@@ -378,10 +378,27 @@ class DeviceApiAuthSchemasSeeder extends Seeder
         $upsertField($pureLogin->id, ['name' => 'login_path','label' => 'Login Path','type' => 'text','required' => true,'encrypted' => false,'placeholder' => '/login','display_order' => 2]);
         $upsertField($pureLogin->id, ['name' => 'auth_header_name','label' => 'Auth Header Name','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'X-Auth-Token','display_order' => 3]);
         $upsertField($pureLogin->id, ['name' => 'auth_header_prefix','label' => 'Auth Header Prefix','type' => 'text','required' => false,'encrypted' => false,'placeholder' => 'Optional (e.g., Token )','display_order' => 4]);
+
+        // Check Point Management API session (custom)
+        $checkpoint = $schema([
+            'key' => 'checkpoint_session',
+            'label' => 'Check Point Session',
+            'description' => 'Login session via /login, then send X-chkp-sid header',
+            'vendor' => 'checkpoint',
+            'enabled' => true,
+        ]);
+        $upsertField($checkpoint->id, ['name' => 'login_path','label' => 'Login Path','type' => 'text','required' => true,'encrypted' => false,'placeholder' => '/login','display_order' => 1]);
+        $upsertField($checkpoint->id, ['name' => 'username','label' => 'Username','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'admin','display_order' => 2]);
+        $upsertField($checkpoint->id, ['name' => 'password','label' => 'Password','type' => 'password','required' => true,'encrypted' => true,'placeholder' => 'Password','display_order' => 3]);
+        $upsertField($checkpoint->id, ['name' => 'sid_header_name','label' => 'SID Header Name','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'X-chkp-sid','display_order' => 4]);
     }
 
     private function createTemplates(): void
     {
+        // Keep any DB-backed template creation you need here.
+        // This section previously created PureStorage, Proxmox, vCenter etc. from models directly.
+        // If these are already covered by DeviceApiTemplatesSeeder, you may remove duplicates or leave this as-is.
+
         $upsertEndpoint = function ($templateId, array $e) {
             return DeviceApiTemplateEndpoint::updateOrCreate(
                 [
@@ -400,7 +417,8 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             );
         };
 
-        // PureStorage FlashArray (login schema)
+        // Example: (If retaining DB model-based seeding for Pure and Proxmox)
+        // Pure Storage FlashArray (login schema)
         $pureSchema = DeviceApiAuthSchema::where('key', 'purestorage_api_token_login')->first();
         $pureTemplate = DeviceApiTemplate::updateOrCreate(
             ['key' => 'purestorage_flasharray'],
@@ -456,194 +474,5 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             ['capability' => 'sensors',    'path' => '/cluster/status',        'transform' => 'normalizeProxmoxClusterStatus',     'order' => 4],
             ['capability' => 'sensors',    'path' => '/cluster/resources',     'transform' => 'normalizeProxmoxClusterResources',  'order' => 5],
         ] as $e) { $upsertEndpoint($pxTokenTemplate->id, $e); }
-
-        // Proxmox VE (Ticket)
-        $pxTicketSchema = DeviceApiAuthSchema::where('key', 'proxmox_ticket')->first();
-        $pxTicketTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'proxmox_ve_ticket'],
-            [
-                'label'        => 'Proxmox VE (Ticket)',
-                'os_keys'      => ['proxmox'],
-                'schema_id'    => $pxTicketSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}:8006/api2/json',
-                ],
-                'modules'      => ['ports', 'sensors', 'processors', 'mempools', 'inventory'],
-                'capabilities' => ['ports', 'sensors', 'processors', 'mempools', 'inventory'],
-                'description'  => 'Proxmox VE with username/password ticket auth',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            ['capability' => 'sensors',    'path' => '/nodes/{node}/status',   'transform' => 'normalizeProxmoxNodeStatus',       'order' => 1],
-            ['capability' => 'ports',      'path' => '/nodes/{node}/network',  'transform' => 'normalizeProxmoxNodeNetwork',       'order' => 2],
-            ['capability' => 'inventory',  'path' => '/storage',               'transform' => 'normalizeProxmoxNodeStorage',       'order' => 3],
-            ['capability' => 'sensors',    'path' => '/cluster/status',        'transform' => 'normalizeProxmoxClusterStatus',     'order' => 4],
-            ['capability' => 'sensors',    'path' => '/cluster/resources',     'transform' => 'normalizeProxmoxClusterResources',  'order' => 5],
-        ] as $e) { $upsertEndpoint($pxTicketTemplate->id, $e); }
-
-        // VMware vCenter
-        $vcenterSchema = DeviceApiAuthSchema::where('key', 'vmware_vcenter_session')->first();
-        $vcenterTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'vmware_vcenter'],
-            [
-                'label'        => 'VMware vCenter',
-                'os_keys'      => ['vmware', 'vsphere'],
-                'schema_id'    => $vcenterSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}/api',
-                ],
-                'modules'      => ['inventory', 'ports', 'sensors', 'processors', 'mempools'],
-                'capabilities' => ['inventory', 'ports', 'sensors', 'processors', 'mempools'],
-                'description'  => 'VMware vCenter REST API (inventory; initial metrics)',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            ['capability' => 'inventory', 'path' => '/vcenter/host',     'transform' => 'vcHostsToInventory',                'order' => 1],
-            ['capability' => 'ports',     'path' => '/vcenter/network',  'transform' => 'vcNetworksToPortsInventory',        'order' => 2],
-            ['capability' => 'sensors',   'path' => '/vcenter/datastore','transform' => 'vcDatastoresToStorageSensors',      'order' => 3],
-            ['capability' => 'inventory', 'path' => '/vcenter/cluster',  'transform' => 'vcClustersToInventory',             'order' => 4],
-            ['capability' => 'processors','path' => '/vcenter/host',     'transform' => 'vcHostSummaryToProcessorsMempools', 'order' => 5],
-            ['capability' => 'mempools',  'path' => '/vcenter/host',     'transform' => 'vcHostSummaryToProcessorsMempools', 'order' => 6],
-        ] as $e) { $upsertEndpoint($vcenterTemplate->id, $e); }
-
-        // Zabbix Server (JSON-RPC)
-        $zabbixSchema = DeviceApiAuthSchema::where('key', 'zabbix_session')->first();
-        $zabbixTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'zabbix_server'],
-            [
-                'label'        => 'Zabbix Server',
-                'os_keys'      => ['zabbix'],
-                'schema_id'    => $zabbixSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}/api_jsonrpc.php',
-                ],
-                'modules'      => ['inventory', 'sensors', 'ports'],
-                'capabilities' => ['inventory', 'sensors', 'ports'],
-                'description'  => 'Zabbix JSON-RPC API (host inventory, selected item metrics)',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            [
-                'capability'   => 'inventory',
-                'path'         => '/',
-                'method'       => 'POST',
-                'transform'    => 'zbHostGetToInventory',
-                'order'        => 1,
-                'headers'      => ['Content-Type' => 'application/json'],
-                'request_body' => ['jsonrpc' => '2.0', 'method' => 'host.get', 'params' => ['output' => 'extend', 'selectInterfaces' => 'extend'], 'id' => 1],
-            ],
-            [
-                'capability'   => 'ports',
-                'path'         => '/',
-                'method'       => 'POST',
-                'transform'    => 'zbHostInterfacesToPorts',
-                'order'        => 2,
-                'headers'      => ['Content-Type' => 'application/json'],
-                'request_body' => ['jsonrpc' => '2.0', 'method' => 'host.get', 'params' => ['output' => ['hostid','host'], 'selectInterfaces' => 'extend'], 'id' => 2],
-            ],
-            [
-                'capability'   => 'sensors',
-                'path'         => '/',
-                'method'       => 'POST',
-                'transform'    => 'zbItemGetToSensors',
-                'order'        => 3,
-                'headers'      => ['Content-Type' => 'application/json'],
-                'request_body' => ['jsonrpc' => '2.0', 'method' => 'item.get', 'params' => ['output' => ['name','key_','lastvalue'],'search' => ['key_' => 'system.cpu.util']], 'id' => 3],
-            ],
-        ] as $e) { $upsertEndpoint($zabbixTemplate->id, $e); }
-
-        // NetApp ONTAP (REST)
-        $basicSchema = DeviceApiAuthSchema::where('key', 'basic')->first();
-        $ontapTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'netapp_ontap'],
-            [
-                'label'        => 'NetApp ONTAP',
-                'os_keys'      => ['netapp', 'ontap'],
-                'schema_id'    => $basicSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}/api',
-                ],
-                'modules'      => ['ports', 'sensors', 'storage', 'inventory', 'processors', 'mempools'],
-                'capabilities' => ['ports', 'sensors', 'storage', 'inventory', 'processors', 'mempools'],
-                'description'  => 'NetApp ONTAP REST API (inventory, storage, ports, processors, mempools)',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            ['capability' => 'ports',     'path' => '/network/ethernet/ports',     'transform' => 'normalizeOntapEthernetPorts',                 'order' => 1],
-            ['capability' => 'storage',   'path' => '/storage/volumes',            'transform' => 'normalizeOntapVolumesToStorage',              'order' => 1],
-            ['capability' => 'sensors',   'path' => '/storage/aggregates',         'transform' => 'normalizeOntapAggregatesToSensors',           'order' => 2],
-            ['capability' => 'inventory', 'path' => '/cluster/nodes',              'transform' => 'normalizeOntapNodesToInventory',              'order' => 1],
-            ['capability' => 'inventory', 'path' => '/storage/disks',              'transform' => 'normalizeOntapDisksToInventory',              'order' => 2],
-            ['capability' => 'processors','path' => '/cluster/nodes',              'transform' => 'normalizeOntapNodeMetricsToProcessorsMempools','order' => 3],
-            ['capability' => 'mempools',  'path' => '/cluster/nodes',              'transform' => 'normalizeOntapNodeMetricsToProcessorsMempools','order' => 4],
-        ] as $e) { $upsertEndpoint($ontapTemplate->id, $e); }
-
-        // Dell EMC Unity (Unisphere REST)
-        $unityTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'dellemc_unity'],
-            [
-                'label'        => 'Dell EMC Unity',
-                'os_keys'      => ['dellemc', 'unity'],
-                'schema_id'    => $basicSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}/api',
-                ],
-                'modules'      => ['storage', 'inventory', 'sensors', 'ports'],
-                'capabilities' => ['storage', 'inventory', 'sensors', 'ports'],
-                'description'  => 'Dell EMC Unity Unisphere API (pools, resources, disks, ports)',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            ['capability' => 'storage',   'path' => '/types/pool/instances',              'transform' => 'normalizeUnityPoolsToStorage',      'order' => 1],
-            ['capability' => 'sensors',   'path' => '/types/storageResource/instances',   'transform' => 'normalizeUnityResourcesToSensors',   'order' => 2],
-            ['capability' => 'inventory', 'path' => '/types/storageResource/instances',   'transform' => 'normalizeUnityResourcesToInventory', 'order' => 3],
-            ['capability' => 'inventory', 'path' => '/types/disk/instances',              'transform' => 'normalizeUnityDisksToInventory',     'order' => 4],
-            ['capability' => 'ports',     'path' => '/types/ethPort/instances',           'transform' => 'normalizeUnityEthPortsToPorts',      'order' => 5],
-        ] as $e) { $upsertEndpoint($unityTemplate->id, $e); }
-
-        // Dell EMC Isilon / PowerScale (OneFS API v3)
-        $isilonTemplate = DeviceApiTemplate::updateOrCreate(
-            ['key' => 'dellemc_isilon'],
-            [
-                'label'        => 'Dell EMC Isilon / PowerScale',
-                'os_keys'      => ['dellemc', 'isilon', 'powerscale'],
-                'schema_id'    => $basicSchema?->id,
-                'default_values' => [
-                    'base_url_pattern' => 'https://{hostname}/platform/3',
-                ],
-                'modules'      => ['ports', 'storage', 'inventory', 'sensors'],
-                'capabilities' => ['ports', 'storage', 'inventory', 'sensors'],
-                'description'  => 'Isilon/PowerScale OneFS API (interfaces, pools, cluster nodes)',
-                'enabled'      => true,
-            ]
-        );
-        foreach ([
-            ['capability' => 'ports',     'path' => '/network/interfaces',         'transform' => 'normalizeIsilonInterfacesToPorts',         'order' => 1],
-            ['capability' => 'storage',   'path' => '/storage/pools',              'transform' => 'normalizeIsilonPoolsToStorage',            'order' => 1],
-            ['capability' => 'inventory', 'path' => '/cluster/nodes',              'transform' => 'normalizeIsilonNodesToInventory',          'order' => 1],
-            ['capability' => 'sensors',   'path' => '/cluster/nodes',              'transform' => 'normalizeIsilonNodesToSensors',            'order' => 2],
-            ['capability' => 'sensors',   'path' => '/cluster/status',             'transform' => 'normalizeIsilonClusterStatusToSensors',    'order' => 3],
-        ] as $e) { $upsertEndpoint($isilonTemplate->id, $e); }
-
-        // Generic Bearer
-        $genericSchema = DeviceApiAuthSchema::where('key', 'bearer')->first();
-        DeviceApiTemplate::updateOrCreate(
-            ['key' => 'generic_rest_api'],
-            [
-                'label' => 'Generic REST API',
-                'os_keys' => [],
-                'schema_id' => $genericSchema?->id,
-                'default_values' => [],
-                'modules' => [],
-                'capabilities' => [],
-                'description' => 'Generic REST API template for custom integrations',
-                'enabled' => true,
-            ]
-        );
     }
 }
