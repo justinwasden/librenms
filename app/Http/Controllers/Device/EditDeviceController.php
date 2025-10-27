@@ -354,20 +354,30 @@ class EditDeviceController
                 ], 400);
             }
 
-            if (empty($templateKey) || empty($authType)) {
+            if (empty($authType)) {
                 return response()->json([
                     'ok' => false,
-                    'error' => 'Template and authentication type are required',
+                    'error' => 'Authentication type is required',
                 ], 400);
             }
 
-            // Load template to get test endpoint
-            $template = ApiTemplateManager::loadTemplate($templateKey);
-            if (!$template) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'Template not found',
-                ], 404);
+            // Load template if provided to get test endpoint
+            $template = null;
+            $testPath = '/';
+
+            if (!empty($templateKey)) {
+                $template = ApiTemplateManager::loadTemplate($templateKey);
+                if (!$template) {
+                    return response()->json([
+                        'ok' => false,
+                        'error' => 'Template not found',
+                    ], 404);
+                }
+
+                // Pick first endpoint from template
+                if (!empty($template['endpoints'])) {
+                    $testPath = $template['endpoints'][0]['path'] ?? '/';
+                }
             }
 
             // Build test options from request
@@ -407,12 +417,6 @@ class EditDeviceController
 
             // Create client and test
             $client = new \App\ApiClients\DeviceHttpClient($options);
-
-            // Pick first endpoint from template or use root
-            $testPath = '/';
-            if (!empty($template['endpoints'])) {
-                $testPath = $template['endpoints'][0]['path'] ?? '/';
-            }
 
             $start = microtime(true);
             $data = $client->get($testPath);
