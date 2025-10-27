@@ -387,50 +387,77 @@ class EditDeviceController
                 }
             }
 
-            // Build test options from request
-            $options = [
-                'base_url' => $baseUrl,
-                'verify_tls' => $request->boolean('rest_verify_tls', true),
-                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
-                'headers' => [],
-                'enable_circuit_breaker' => false,
-                'max_retries' => 0,
-            ];
+            // Create a temporary in-memory config to use with the API client
+            $tempConfig = new DeviceApiConfig();
+            $tempConfig->device_id = $device->device_id;
+            $tempConfig->base_url = $baseUrl;
+            $tempConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
 
-            // Add auth headers based on type and get field values from request
-            $schema = \App\Models\DeviceApiAuthSchema::where('key', $authType)->with('fields')->first();
-            if ($schema) {
-                $authValues = [];
-                foreach ($schema->fields as $field) {
+            // Get schema and template IDs
+            $schemaModel = \App\Models\DeviceApiAuthSchema::where('key', $authType)->first();
+            $templateModel = !empty($templateKey) ? \App\Models\DeviceApiTemplate::where('key', $templateKey)->first() : null;
+
+            if ($schemaModel) {
+                $tempConfig->schema_id = $schemaModel->id;
+            }
+            if ($templateModel) {
+                $tempConfig->template_id = $templateModel->id;
+            }
+
+            // Set auth field values from request
+            if ($schemaModel) {
+                foreach ($schemaModel->fields as $field) {
                     $value = $request->input($field->name);
                     if ($value) {
-                        $authValues[$field->name] = $value;
+                        $tempConfig->setValue($field->name, $value);
                     }
-                }
-
-                // Add auth based on schema type
-                if ($authType === 'bearer' && isset($authValues['api_token'])) {
-                    $options['headers']['Authorization'] = 'Bearer ' . $authValues['api_token'];
-                } elseif ($authType === 'apikey' && isset($authValues['api_key'])) {
-                    $options['headers']['X-API-Key'] = $authValues['api_key'];
-                } elseif ($authType === 'basic' && isset($authValues['username'])) {
-                    $password = $authValues['password'] ?? '';
-                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($authValues['username'] . ':' . $password);
-                } elseif ($authType === 'proxmox_token' && isset($authValues['token_user'], $authValues['token_id'], $authValues['token_secret'])) {
-                    // Proxmox API Token format: PVEAPIToken=user@realm!tokenid=secret
-                    $options['headers']['Authorization'] = 'PVEAPIToken=' . $authValues['token_user'] . '!' . $authValues['token_id'] . '=' . $authValues['token_secret'];
-                } elseif ($authType === 'proxmox_ticket' && isset($authValues['username'], $authValues['password'])) {
-                    // For ticket auth, we would need to make a login call first to get the ticket
-                    // For now, just try basic auth as fallback
-                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($authValues['username'] . ':' . $authValues['password']);
                 }
             }
 
-            // Create client and test
-            $client = new \App\ApiClients\DeviceHttpClient($options);
+            // Parse extra headers
+            $headersString = $request->input('rest_headers', '');
+            $extraHeaders = [];
+            if (!empty($headersString)) {
+                foreach (explode("\n", $headersString) as $line) {
+                    $line = trim($line);
+                    if (empty($line)) {
+                        continue;
+                    }
+                    $parts = explode(':', $line, 2);
+                    if (count($parts) === 2) {
+                        $extraHeaders[trim($parts[0])] = trim($parts[1]);
+                    }
+                }
+            }
+            $tempConfig->extra_headers = $extraHeaders;
+
+            // Create a temporary relationship
+            $tempConfig->setRelation('schema', $schemaModel);
+            if ($templateModel) {
+                $tempConfig->setRelation('template', $templateModel);
+            }
+
+            // Temporarily attach config to device for API client factory
+            $device->setRelation('apiConfig', $tempConfig);
+
+            // Use the API client factory to create the proper client
+            $client = \LibreNMS\Util\DeviceApiClientFactory::make($device);
 
             $start = microtime(true);
-            $data = $client->get($testPath);
+
+            // Try to call a simple method or get endpoint
+            try {
+                $data = $client->get($testPath);
+            } catch (\BadMethodCallException $e) {
+                // If get() doesn't exist, try other common methods
+                if (method_exists($client, 'testConnection')) {
+                    $result = $client->testConnection();
+                    $data = $result;
+                } else {
+                    throw $e;
+                }
+            }
+
             $latencyMs = (int) ((microtime(true) - $start) * 1000);
 
             return response()->json([
