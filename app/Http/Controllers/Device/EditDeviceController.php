@@ -440,11 +440,39 @@ class EditDeviceController
             // Temporarily attach config to device for API client factory
             $device->setRelation('apiConfig', $tempConfig);
 
-            // Set rest_vendor in device attribs so factory can find the right client
+            // Set device attribs for compatibility with old API clients
             if (!isset($device->attribs)) {
                 $device->attribs = [];
             }
             $device->attribs['rest_vendor'] = $templateKey;
+            $device->attribs['rest_enabled'] = 1;
+            $device->attribs['rest_base_url'] = $baseUrl;
+            $device->attribs['rest_auth_type'] = $authType;
+            $device->attribs['rest_verify_tls'] = $request->boolean('rest_verify_tls', true) ? 1 : 0;
+            $device->attribs['rest_timeout_ms'] = (int) $request->input('rest_timeout_ms', 5000);
+
+            // Map new field names to old attribute keys for backward compatibility
+            if ($schemaModel) {
+                foreach ($schemaModel->fields as $field) {
+                    $value = $request->input($field->name);
+                    if ($value) {
+                        // Map api_token -> rest_token, api_key -> rest_token, etc.
+                        if ($field->name === 'api_token' || $field->name === 'api_key') {
+                            $device->attribs['rest_token'] = $value;
+                        } elseif ($field->name === 'username') {
+                            $device->attribs['rest_username'] = $value;
+                        } elseif ($field->name === 'password') {
+                            $device->attribs['rest_password'] = $value;
+                        } elseif ($field->name === 'token_user') {
+                            $device->attribs['proxmox_token_user'] = $value;
+                        } elseif ($field->name === 'token_id') {
+                            $device->attribs['proxmox_token_id'] = $value;
+                        } elseif ($field->name === 'token_secret') {
+                            $device->attribs['proxmox_token'] = $value;
+                        }
+                    }
+                }
+            }
 
             // Use the API client factory to create the proper client
             $client = \App\ApiClients\DeviceApiClientFactory::make($device);
