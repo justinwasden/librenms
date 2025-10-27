@@ -19,6 +19,8 @@
     </div>
 @endif
 
+<input type="hidden" name="api_settings_form" value="1">
+
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">

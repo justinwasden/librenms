@@ -143,8 +143,8 @@ class EditDeviceController
 
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
     {
-        // Check if this is an API settings update
-        if ($request->has('rest_enabled')) {
+        // Check if this is an API settings update (using hidden field to detect form submission)
+        if ($request->has('api_settings_form')) {
             $this->updateApiSettings($request, $device);
 
             // Reload the device to get fresh attributes from database
@@ -208,7 +208,8 @@ class EditDeviceController
     {
         // Check if API is being disabled
         if (!$request->boolean('rest_enabled')) {
-            DeviceApiConfig::where('device_id', $device->device_id)->delete();
+            // Delete API configuration and all related data
+            $deleted = DeviceApiConfig::where('device_id', $device->device_id)->delete();
 
             // Clear legacy attribs if they exist (migration cleanup)
             $device->forgetAttrib('rest_enabled');
@@ -235,6 +236,15 @@ class EditDeviceController
             $device->forgetAttrib('proxmox_verify_tls');
             $device->forgetAttrib('proxmox_timeout_ms');
             $device->forgetAttrib('proxmox_proxy');
+            $device->forgetAttrib('rest_last_success');
+            $device->forgetAttrib('rest_last_error');
+            $device->forgetAttrib('rest_last_error_message');
+            $device->forgetAttrib('rest_error_count');
+            $device->forgetAttrib('rest_avg_latency_ms');
+
+            if ($deleted > 0) {
+                toast()->success(__('API configuration removed and credentials deleted'));
+            }
 
             return;
         }
