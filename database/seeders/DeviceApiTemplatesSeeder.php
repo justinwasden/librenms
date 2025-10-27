@@ -59,7 +59,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             'key' => 'proxmox_node_default',
             'label' => 'Proxmox VE Node (Default)',
             'os_keys' => json_encode(['proxmox.ve.node']),
-            'schema_id' => $schemaId('token'), // default to token auth; users can switch to ticket
+            'schema_id' => $schemaId('proxmox_token'), // default to token auth; users can switch to ticket
             'default_values' => json_encode([
                 'api_token_user' => 'user@pve',
                 'api_token_id'   => 'tokenid',
