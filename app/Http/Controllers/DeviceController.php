@@ -149,92 +149,92 @@ class DeviceController extends Controller
      * Update device API configuration and return to the legacy device page.
      * Saves sensitive fields encrypted.
      */
-    public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
-    {
-        if (! auth()->user()->hasGlobalAdmin()) {
-            abort(403, 'Insufficient Privileges');
-        }
-
-        // Optional: basic device fields
-        if ($request->filled('hostname')) {
-            $device->hostname = $request->input('hostname');
-        }
-        if ($request->filled('display')) {
-            $device->display = $request->input('display');
-        }
-        if ($request->filled('overwrite_ip')) {
-            $device->overwrite_ip = $request->input('overwrite_ip');
-        }
-
-        // Device API configuration - save to database
-        if ($request->has('rest_enabled')) {
-            // Check if API is being disabled
-            if (!$request->boolean('rest_enabled')) {
-                // Delete the config if it exists
-                \App\Models\DeviceApiConfig::where('device_id', $device->device_id)->delete();
-            } else {
-                // Get template and schema IDs
-                $templateKey = $request->input('rest_template');
-                $authTypeKey = $request->input('rest_auth_type');
-
-                if ($templateKey && $authTypeKey) {
-                    $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
-                    $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
-
-                    if ($template && $schema) {
-                        // Find or create the config
-                        $apiConfig = \App\Models\DeviceApiConfig::firstOrNew([
-                            'device_id' => $device->device_id,
-                        ]);
-
-                        // Update config fields
-                        $apiConfig->template_id = $template->id;
-                        $apiConfig->schema_id = $schema->id;
-                        $apiConfig->base_url = $request->input('rest_base_url') ?? '';
-                        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
-
-                        // Parse extra headers
-                        $headersString = $request->input('rest_headers', '');
-                        $extraHeaders = [];
-                        if (!empty($headersString)) {
-                            foreach (explode("\n", $headersString) as $line) {
-                                $line = trim($line);
-                                if (empty($line)) {
-                                    continue;
-                                }
-                                $parts = explode(':', $line, 2);
-                                if (count($parts) === 2) {
-                                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
-                                }
-                            }
-                        }
-                        $apiConfig->extra_headers = $extraHeaders;
-
-                        // Save auth values - dynamically handle all schema fields
-                        foreach ($schema->fields as $field) {
-                            $fieldName = $field->name;
-                            if ($request->filled($fieldName)) {
-                                $apiConfig->setValue($fieldName, $request->input($fieldName));
-                            }
-                        }
-
-                        $apiConfig->save();
-                    }
-                }
-            }
-        }
-
-        $device->save();
-
-        // Return to the API settings page if API was being configured, otherwise legacy device page
-        if ($request->has('rest_enabled')) {
-            return redirect()->route('device.edit', ['device' => $device->device_id, 'section' => 'api'])
-                ->with('status', 'Device API settings updated successfully');
-        }
-
-        // Return to the legacy device page
-        return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
-    }
+//    public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
+//    {
+//        if (! auth()->user()->hasGlobalAdmin()) {
+//            abort(403, 'Insufficient Privileges');
+//        }
+//
+//        // Optional: basic device fields
+//        if ($request->filled('hostname')) {
+//            $device->hostname = $request->input('hostname');
+//        }
+//        if ($request->filled('display')) {
+//            $device->display = $request->input('display');
+//        }
+//        if ($request->filled('overwrite_ip')) {
+//            $device->overwrite_ip = $request->input('overwrite_ip');
+//        }
+//
+//        // Device API configuration - save to database
+//        if ($request->has('rest_enabled')) {
+//            // Check if API is being disabled
+//            if (!$request->boolean('rest_enabled')) {
+//                // Delete the config if it exists
+//                \App\Models\DeviceApiConfig::where('device_id', $device->device_id)->delete();
+//            } else {
+//                // Get template and schema IDs
+//                $templateKey = $request->input('rest_template');
+//                $authTypeKey = $request->input('rest_auth_type');
+//
+//                if ($templateKey && $authTypeKey) {
+//                    $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
+//                    $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
+//
+//                    if ($template && $schema) {
+//                        // Find or create the config
+//                        $apiConfig = \App\Models\DeviceApiConfig::firstOrNew([
+//                            'device_id' => $device->device_id,
+//                        ]);
+//
+//                        // Update config fields
+//                        $apiConfig->template_id = $template->id;
+//                        $apiConfig->schema_id = $schema->id;
+//                        $apiConfig->base_url = $request->input('rest_base_url') ?? '';
+//                        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+//
+//                        // Parse extra headers
+//                        $headersString = $request->input('rest_headers', '');
+//                        $extraHeaders = [];
+//                        if (!empty($headersString)) {
+//                            foreach (explode("\n", $headersString) as $line) {
+//                                $line = trim($line);
+//                                if (empty($line)) {
+//                                    continue;
+//                                }
+//                                $parts = explode(':', $line, 2);
+//                                if (count($parts) === 2) {
+//                                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
+//                                }
+//                            }
+//                        }
+//                        $apiConfig->extra_headers = $extraHeaders;
+//
+//                        // Save auth values - dynamically handle all schema fields
+//                        foreach ($schema->fields as $field) {
+//                            $fieldName = $field->name;
+//                            if ($request->filled($fieldName)) {
+//                                $apiConfig->setValue($fieldName, $request->input($fieldName));
+//                            }
+//                        }
+//
+//                        $apiConfig->save();
+//                    }
+//                }
+//            }
+//        }
+//
+//        $device->save();
+//
+//        // Return to the API settings page if API was being configured, otherwise legacy device page
+//        if ($request->has('rest_enabled')) {
+//            return redirect()->route('device.edit', ['device' => $device->device_id, 'section' => 'api'])
+//                ->with('status', 'Device API settings updated successfully');
+//        }
+//
+//        // Return to the legacy device page
+//        return redirect(url("device/{$device->device_id}"))->with('status', 'Device updated successfully');
+//    }
 
     /**
      * Detect the actual legacy include section for "Device Settings"
