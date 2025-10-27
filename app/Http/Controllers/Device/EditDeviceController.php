@@ -5,8 +5,8 @@
  *
  * -Description-
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
@@ -38,7 +38,6 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
@@ -47,8 +46,6 @@ use LibreNMS\Util\DeviceApiSettings;
 use LibreNMS\Util\File;
 use LibreNMS\Util\Number;
 use App\Http\Controllers\DeviceController;
-use App\Models\DeviceApiAuthSchema;
-use App\Models\DeviceApiTemplate;
 
 class EditDeviceController
 {
@@ -61,7 +58,6 @@ class EditDeviceController
 
         // Handle API section (Renders the blade partial)
         if ($section === 'api') {
-            // ... (Keep existing API loading logic)
             $templates = ApiTemplateManager::getTemplatesForOs($device->os);
             $authTypes = ApiTemplateManager::getAuthTypes();
             $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
@@ -87,7 +83,6 @@ class EditDeviceController
 
         // Handle the primary 'device' settings tab (currently Blade-based partial)
         if ($section === 'device') {
-            // ... (Keep existing Device Settings loading logic)
             $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
             if (! $types->has($device->type)) {
                 $types->put($device->type, [
@@ -220,9 +215,11 @@ class EditDeviceController
             $device->forgetAttrib('rest_template_key');
             $device->forgetAttrib('rest_auth_type');
             $device->forgetAttrib('rest_base_url');
-            // Clear headers and TLS verify flags too
             $device->forgetAttrib('rest_headers');
             $device->forgetAttrib('rest_verify_tls');
+            $device->forgetAttrib('rest_endpoints');
+            $device->forgetAttrib('rest_timeout_ms');
+            $device->forgetAttrib('rest_proxy');
 
             return;
         }
@@ -232,6 +229,7 @@ class EditDeviceController
         $authTypeKey = $request->input('rest_auth_type');
 
         if (!$templateKey || !$authTypeKey) {
+            toast()->error(__('Template and authentication type are required'));
             return;
         }
 
@@ -239,6 +237,7 @@ class EditDeviceController
         $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
 
         if (!$template || !$schema) {
+            toast()->error(__('Selected template or authentication schema not found'));
             return;
         }
 
@@ -248,18 +247,60 @@ class EditDeviceController
         $device->setAttrib('rest_enabled', 1);
 
         // Base URL override from form or resolve from template pattern
-        $overrideBase = $request->input('rest_base_url');
+        $overrideBase = trim((string) $request->input('rest_base_url'));
         if (!empty($overrideBase)) {
-            $device->setAttrib('rest_base_url', rtrim((string) $overrideBase, '/'));
+            $overrideBase = rtrim($overrideBase, '/');
+            // basic URL validation
+            if (! filter_var($overrideBase, FILTER_VALIDATE_URL)) {
+                toast()->error(__('Invalid base URL'));
+                return;
+            }
+            $device->setAttrib('rest_base_url', $overrideBase);
         } else {
             // Resolve and persist base_url from template's base_url_pattern
-            \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($device); // << DeviceApiSettings ensures base_url resolution <sup><a href="LibreNMS\Util\DeviceApiSettings.php" class="markdown-link" target="_blank">1</a></sup>
+            DeviceApiSettings::ensureResolvedBaseUrl($device);
         }
 
-        // Persist TLS verification flag in device attribs for httpOptions()
-        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0); // << used by httpOptions() <sup><a href="LibreNMS\Util\DeviceApiSettings.php" class="markdown-link" target="_blank">1</a></sup>
+        // Persist TLS verification and connection options in device attribs for httpOptions()
+        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
+        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
+        $device->setAttrib('rest_proxy', (string) $request->input('rest_proxy', ''));
 
-        // Find or create the config
+        // Save endpoints configuration (as JSON string)
+        if ($request->has('rest_endpoints')) {
+            $endpoints = $request->input('rest_endpoints');
+            if (is_string($endpoints)) {
+                $device->setAttrib('rest_endpoints', $endpoints);
+            } elseif (is_array($endpoints)) {
+                $device->setAttrib('rest_endpoints', json_encode($endpoints));
+            }
+        }
+
+        // Parse extra headers (one per line "Header: value"), minimal validation
+        $headersString = (string) $request->input('rest_headers', '');
+        $extraHeaders = [];
+        if (!empty($headersString)) {
+            foreach (explode("\n", $headersString) as $line) {
+                $line = trim($line);
+                if ($line === '' || !str_contains($line, ':')) {
+                    continue; // reject invalid lines
+                }
+                [$name, $value] = array_map('trim', explode(':', $line, 2));
+                if ($name === '') {
+                    continue;
+                }
+                // coalesce duplicates by last write
+                $extraHeaders[$name] = $value;
+            }
+        }
+
+        // Persist headers to device attribs as JSON for DeviceApiSettings::httpOptions()
+        $device->setAttrib('rest_headers', json_encode($extraHeaders));
+
+        // Ensure base url is resolved after setting rest_template_key
+        DeviceApiSettings::ensureResolvedBaseUrl($device);
+
+        // Persist DeviceApiConfig row (for UI/config viewing)
         $apiConfig = DeviceApiConfig::firstOrNew([
             'device_id' => $device->device_id,
         ]);
@@ -272,29 +313,9 @@ class EditDeviceController
         $apiConfig->schema_id = $schema->id;
         $apiConfig->base_url = $request->input('rest_base_url') ?? ($device->getAttrib('rest_base_url') ?? '');
         $apiConfig->verify_ssl = $request->has('rest_verify_tls');
-
-        // Parse extra headers (one per line "Header: value")
-        $headersString = $request->input('rest_headers', '');
-        $extraHeaders = [];
-        if (!empty($headersString)) {
-            foreach (explode("\n", $headersString) as $line) {
-                $line = trim($line);
-                if ($line === '') {
-                    continue;
-                }
-                $parts = explode(':', $line, 2);
-                if (count($parts) === 2) {
-                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
-                }
-            }
-        }
         $apiConfig->extra_headers = $extraHeaders;
 
-        // ALSO persist headers to device attribs as JSON for DeviceApiSettings::httpOptions()
-        $device->setAttrib('rest_headers', json_encode($extraHeaders)); // << httpOptions() reads rest_headers JSON <sup><a href="LibreNMS\Util\DeviceApiSettings.php" class="markdown-link" target="_blank">1</a></sup>
-
         // Save auth values dynamically from schema fields
-        $values = [];
         foreach ($schema->fields as $field) {
             $fieldName = $field->name;
             $inputValue = $request->input($fieldName);
@@ -311,15 +332,24 @@ class EditDeviceController
         }
 
         $apiConfig->save();
+
+        // Notify user if schema changed and password fields were cleared
+        if ($schemaChanged) {
+            toast()->info(__('Authentication schema changed; please re-enter secrets if required.'));
+        }
     }
 
-    public function testConnection(Device $device)
+    public function testConnection(Device $device): JsonResponse
     {
         $tplKey = request('template_key');
-        $tpl = \LibreNMS\Util\ApiTemplateManager::loadTemplate($tplKey);
-        if (!$tpl) return response()->json(['ok' => false, 'error' => 'Template not found'], 404);
+        $tpl = ApiTemplateManager::loadTemplate($tplKey);
+        if (!$tpl) {
+            return response()->json(['ok' => false, 'error' => 'Template not found'], 404);
+        }
 
-        \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($device);
+        DeviceApiSettings::ensureResolvedBaseUrl($device);
+
+        $start = microtime(true);
 
         try {
             $client = $this->makeClient($device, $tpl);
@@ -332,11 +362,42 @@ class EditDeviceController
             };
             $path = \LibreNMS\Util\EndpointPathResolver::resolve($device, $path);
             $data = $client->get($path);
-            return response()->json(['ok' => true, 'sample' => array_slice($data, 0, 10)]);
+
+            // record success and latency
+            $latencyMs = (int) ((microtime(true) - $start) * 1000);
+            DeviceApiSettings::recordSuccess($device, $latencyMs);
+
+            return response()->json([
+                'ok' => true,
+                'message' => 'Connection successful',
+                'sample' => is_array($data) ? array_slice($data, 0, 10) : $data,
+                'latency_ms' => $latencyMs,
+            ]);
         } catch (\Throwable $e) {
-            // map common causes to friendly messages
             $msg = $e->getMessage();
-            if (str_contains($msg, 'SSL')) $msg .= ' (Tip: check TLS verification settings)';
+            // Friendly 4xx handling: treat as connected
+            if (preg_match('/returned\s+(\d{3})/', $msg, $m)) {
+                $code = (int) $m[1];
+                if ($code >= 400 && $code < 500) {
+                    $messages = [
+                        401 => 'Connection successful - Authentication required (check credentials)',
+                        403 => 'Connection successful - Authenticated but insufficient permissions',
+                        404 => 'Connection successful - Endpoint not found (expected for some APIs)',
+                    ];
+                    return response()->json([
+                        'ok' => true,
+                        'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
+                        'http_code' => $code,
+                    ]);
+                }
+            }
+
+            // record error for UI health display
+            DeviceApiSettings::recordError($device, $msg);
+            if (str_contains($msg, 'SSL')) {
+                $msg .= ' (Tip: check TLS verification settings)';
+            }
+
             return response()->json(['ok' => false, 'error' => $msg], 400);
         }
     }
@@ -371,7 +432,7 @@ class EditDeviceController
     public function showApiConfig(Device $device)
     {
         $os = $device->os ?? 'generic';
-        $templates = \LibreNMS\Util\ApiTemplateManager::getTemplatesForOs($os);
+        $templates = ApiTemplateManager::getTemplatesForOs($os);
 
         $recommended = reset($templates); // first candidate
         // Autofill Pure defaults if recommended is Pure
@@ -389,75 +450,6 @@ class EditDeviceController
 
     public function edit(Device $device, Request $request)
     {
-        $section = $request->get('section', 'device');
-
-        // Handle the REST API settings tab
-        if ($section === 'api') {
-            $templates = ApiTemplateManager::getTemplatesForOs($device->os);
-            $authTypes = ApiTemplateManager::getAuthSchemasForOs($device->os);
-
-            $apiConfig = DeviceApiConfig::where('device_id', $device->device_id)->first();
-            $selectedTemplate = $request->old('rest_template', $apiConfig?->template?->key ?? null);
-            $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
-
-            return view('device.edit', [
-                'device' => $device,
-                'section' => 'api',
-                'templates' => $templates,
-                'authTypes' => $authTypes,
-                'apiConfig' => $apiConfig,
-                'selectedTemplate' => $selectedTemplate,
-                'templateData' => $templateData,
-                'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
-            ]);
-        }
-
-        // Handle the primary 'device' settings tab (Blade-based partial)
-        $types = collect(\App\Facades\LibrenmsConfig::get('device_types'))->keyBy('type');
-        if (!$types->has($device->type)) {
-            $types->put($device->type, [
-                'icon' => null,
-                'text' => ucfirst($device->type),
-                'type' => $device->type,
-            ]);
-        }
-
-        [$rrd_size, $rrd_num] = \LibreNMS\Data\Store\Rrd::dirFromHost($device->hostname)
-            ? \LibreNMS\Util\File::getFolderSize(\LibreNMS\Data\Store\Rrd::dirFromHost($device->hostname))
-            : [0, 0];
-
-        $alertSchedules = $device->alertSchedules()->isActive()->get();
-        $isUnderMaintenance = $alertSchedules->isNotEmpty();
-        $exclusiveSchedules = $alertSchedules->filter(function ($schedule) {
-            $totalMappings = DB::table('alert_schedulables')
-                ->where('schedule_id', $schedule->schedule_id)
-                ->count();
-
-            return $totalMappings === 1; // only exclusive schedules
-        });
-        $exclusive_schedule_id = $exclusiveSchedules->count() === 1 ? $exclusiveSchedules->first()->schedule_id : 0;
-
-        [$static_show, $static_groups] = DeviceGroup::where('type', 'static')->exists()
-            ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
-            : [false, []];
-
-        return view('device.edit', [
-            'device' => $device,
-            'section' => $section,
-            'show_static_groups' => $static_show,
-            'static_groups' => $static_groups,
-            'types' => $types,
-            'default_type' => \App\Facades\LibrenmsConfig::getOsSetting($device->os, 'type'),
-            'parents' => $device->parents()->pluck('hostname', 'device_id'),
-            'poller_groups' => PollerGroup::orderBy('group_name')->pluck('group_name', 'id'),
-            'default_poller_group' => \App\Facades\LibrenmsConfig::get('distributed_poller_group'),
-            'override_sysContact_bool' => $device->getAttrib('override_sysContact_bool'),
-            'override_sysContact_string' => $device->getAttrib('override_sysContact_string'),
-            'maintenance' => $isUnderMaintenance,
-            'default_maintenance_behavior' => \LibreNMS\Enum\MaintenanceBehavior::from((int) \App\Facades\LibrenmsConfig::get('alert.scheduled_maintenance_default_behavior'))->value,
-            'exclusive_maintenance_id' => $exclusive_schedule_id,
-            'rrd_size' => Number::formatBi($rrd_size),
-            'rrd_num' => $rrd_num,
-        ]);
+        return $this->index($device);
     }
 }

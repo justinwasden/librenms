@@ -4,7 +4,9 @@
     $templates = is_array($templates ?? null) ? $templates : [];
     $authTypes = is_array($authTypes ?? null) ? $authTypes : [];
     $autoSelectTemplate = isset($autoSelectTemplate) ? (bool) $autoSelectTemplate : false;
-    $apiEnabled = $apiConfig ? true : false;
+
+    // API enabled state from existing config (unchecked by default if no config)
+    $apiEnabled = (bool) ($apiConfig ? true : false);
     $currentAuthType = $apiConfig?->schema?->key ?? '';
 @endphp
 
@@ -26,176 +28,194 @@
                 <strong>Enable REST API discovery/polling</strong>
             </label>
         </div>
+        <small class="text-muted">Enable to configure vendor API polling and discovery.</small>
     </div>
 </div>
 
-{{-- Template Selector --}}
-<div class="form-group">
-    <label for="rest_template" class="col-sm-2 control-label">Template</label>
-    <div class="col-sm-6">
-        @php $selectedTemplate = old('rest_template', $selectedTemplate ?? ''); @endphp
-        <select class="form-control" id="rest_template" name="rest_template">
-            <option value="">Custom (no template)</option>
-            @foreach($templates as $vendor => $template)
-                <option value="{{ $vendor }}" {{ $selectedTemplate === $vendor ? 'selected' : '' }}>
-                    {{ $template['name'] ?? ucfirst((string) $vendor) }}
-                </option>
-            @endforeach
-        </select>
-        <small class="text-muted">
-            @if(empty($templates))
-                No templates available for {{ $device->os }}. Use custom configuration.
-            @elseif(count($templates) === 1)
-                Template auto-selected for {{ $device->os }} devices.
-            @else
-                Select a pre-configured template or configure manually.
-            @endif
-        </small>
+{{-- All other API settings are hidden until enabled --}}
+<div id="api-settings-content" style="{{ old('rest_enabled', $apiEnabled) ? '' : 'display:none;' }}">
+    {{-- Template Selector --}}
+    <div class="form-group">
+        <label for="rest_template" class="col-sm-2 control-label">Template</label>
+        <div class="col-sm-6">
+            @php $selectedTemplate = old('rest_template', $selectedTemplate ?? ''); @endphp
+            <select class="form-control" id="rest_template" name="rest_template">
+                <option value="">Custom (no template)</option>
+                @foreach($templates as $vendor => $template)
+                    <option value="{{ $vendor }}" {{ $selectedTemplate === $vendor ? 'selected' : '' }}>
+                        {{ $template['name'] ?? ucfirst((string) $vendor) }}
+                    </option>
+                @endforeach
+            </select>
+            <small class="text-muted">
+                @if(empty($templates))
+                    No templates available for {{ $device->os }}. Use custom configuration.
+                @elseif(count($templates) === 1)
+                    Template auto-selected for {{ $device->os }} devices.
+                @else
+                    Select a pre-configured template or configure manually.
+                @endif
+            </small>
+        </div>
     </div>
-</div>
 
-{{-- Hidden vendor field (auto-populated from template) --}}
-<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $apiConfig?->template?->key ?? '') }}">
-
-{{-- Authentication Type Selector --}}
-<div class="form-group">
-    <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
-    <div class="col-sm-6">
-        @php $authType = old('rest_auth_type', $currentAuthType); @endphp
-        <select class="form-control" id="rest_auth_type" name="rest_auth_type">
-            <option value="">Select authentication type...</option>
-            @foreach($authTypes as $type => $config)
-                <option value="{{ $type }}" {{ $authType === $type ? 'selected' : '' }}>
-                    {{ $config['name'] ?? ucfirst((string) $type) }}
-                </option>
-            @endforeach
-        </select>
-        <small class="text-muted auth-description"></small>
+    {{-- Authentication Type Selector --}}
+    <div class="form-group">
+        <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
+        <div class="col-sm-6">
+            @php $authType = old('rest_auth_type', $currentAuthType); @endphp
+            <select class="form-control" id="rest_auth_type" name="rest_auth_type">
+                <option value="">Select authentication type...</option>
+                @foreach($authTypes as $type => $config)
+                    <option value="{{ $type }}" {{ $authType === $type ? 'selected' : '' }}>
+                        {{ $config['name'] ?? ucfirst((string) $type) }}
+                    </option>
+                @endforeach
+            </select>
+            <small class="text-muted auth-description"></small>
+        </div>
     </div>
-</div>
 
-{{-- Base URL --}}
-<div class="form-group">
-    <label for="rest_base_url" class="col-sm-2 control-label">Base URL <span class="text-danger">*</span></label>
-    <div class="col-sm-6">
-        <input type="url" id="rest_base_url" class="form-control" name="rest_base_url"
-               value="{{ old('rest_base_url', $apiConfig?->base_url ?? '') }}"
-               placeholder="https://device.example/api">
-        <small class="text-muted base-url-hint"></small>
+    {{-- Base URL --}}
+    <div class="form-group">
+        <label for="rest_base_url" class="col-sm-2 control-label">Base URL <span class="text-danger">*</span></label>
+        <div class="col-sm-6">
+            <input type="url" id="rest_base_url" class="form-control" name="rest_base_url"
+                   value="{{ old('rest_base_url', $apiConfig?->base_url ?? '') }}"
+                   placeholder="https://device.example/api">
+            <small class="text-muted base-url-hint"></small>
+        </div>
     </div>
-</div>
 
-{{-- Dynamic Auth Fields (rendered based on auth schemas from database) --}}
-@foreach($authTypes as $authKey => $authSchema)
-    @if(isset($authSchema['fields']) && is_array($authSchema['fields']))
-        @foreach($authSchema['fields'] as $field)
-            <div class="form-group auth-field auth-{{ $authKey }}" style="display: none;">
-                <label for="{{ $field['name'] }}" class="col-sm-2 control-label">
-                    {{ $field['label'] }}
-                    @if($field['required'] ?? false)
-                        <span class="text-danger">*</span>
-                    @endif
-                </label>
-                <div class="col-sm-6">
-                    @if($field['type'] === 'password')
-                        <input type="password"
-                               id="{{ $field['name'] }}"
-                               class="form-control"
-                               name="{{ $field['name'] }}"
-                               placeholder="{{ $field['placeholder'] ?? 'Enter to set or replace' }}"
-                               value="">
-                        @if($apiConfig && $apiConfig->schema_id === $authSchema['id'] && $apiConfig->getValue($field['name']))
-                            <small class="text-muted">A value is stored. Enter a new value to replace.</small>
+    {{-- Dynamic Auth Fields (rendered based on auth schemas from database) --}}
+    @foreach($authTypes as $authKey => $authSchema)
+        @if(isset($authSchema['fields']) && is_array($authSchema['fields']))
+            @foreach($authSchema['fields'] as $field)
+                <div class="form-group auth-field auth-{{ $authKey }}" style="display: none;">
+                    <label for="{{ $field['name'] }}" class="col-sm-2 control-label">
+                        {{ $field['label'] }}
+                        @if($field['required'] ?? false)
+                            <span class="text-danger">*</span>
                         @endif
-                    @elseif($field['type'] === 'select' && isset($field['options']))
-                        <select id="{{ $field['name'] }}"
-                                class="form-control"
-                                name="{{ $field['name'] }}">
-                            @foreach($field['options'] as $optValue => $optLabel)
-                                @php
-                                    $currentValue = old($field['name'],
-                                        $apiConfig && $apiConfig->schema_id === $authSchema['id']
-                                            ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
-                                            : ($field['default'] ?? '')
-                                    );
-                                @endphp
-                                <option value="{{ $optValue }}" {{ $currentValue == $optValue ? 'selected' : '' }}>
-                                    {{ $optLabel }}
-                                </option>
-                            @endforeach
-                        </select>
-                    @else
-                        @php
-                            $currentValue = old($field['name'],
-                                $apiConfig && $apiConfig->schema_id === $authSchema['id']
-                                    ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
-                                    : ($field['default'] ?? '')
-                            );
-                        @endphp
-                        <input type="{{ $field['type'] ?? 'text' }}"
-                               id="{{ $field['name'] }}"
-                               class="form-control"
-                               name="{{ $field['name'] }}"
-                               value="{{ $currentValue }}"
-                               placeholder="{{ $field['placeholder'] ?? '' }}">
-                    @endif
+                    </label>
+                    <div class="col-sm-6">
+                        @if($field['type'] === 'password')
+                            <input type="password"
+                                   id="{{ $field['name'] }}"
+                                   class="form-control"
+                                   name="{{ $field['name'] }}"
+                                   placeholder="{{ $field['placeholder'] ?? 'Enter to set or replace' }}"
+                                   value="">
+                            @if($apiConfig && $apiConfig->schema_id === $authSchema['id'] && $apiConfig->getValue($field['name']))
+                                <small class="text-muted">A value is stored. Enter a new value to replace.</small>
+                            @endif
+                        @elseif($field['type'] === 'select' && isset($field['options']))
+                            <select id="{{ $field['name'] }}"
+                                    class="form-control"
+                                    name="{{ $field['name'] }}">
+                                @foreach($field['options'] as $optValue => $optLabel)
+                                    @php
+                                        $currentValue = old($field['name'],
+                                            $apiConfig && $apiConfig->schema_id === $authSchema['id']
+                                                ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
+                                                : ($field['default'] ?? '')
+                                        );
+                                    @endphp
+                                    <option value="{{ $optValue }}" {{ $currentValue == $optValue ? 'selected' : '' }}>
+                                        {{ $optLabel }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        @else
+                            @php
+                                $currentValue = old($field['name'],
+                                    $apiConfig && $apiConfig->schema_id === $authSchema['id']
+                                        ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
+                                        : ($field['default'] ?? '')
+                                );
+                            @endphp
+                            <input type="{{ $field['type'] ?? 'text' }}"
+                                   id="{{ $field['name'] }}"
+                                   class="form-control"
+                                   name="{{ $field['name'] }}"
+                                   value="{{ $currentValue }}"
+                                   placeholder="{{ $field['placeholder'] ?? '' }}">
+                        @endif
+                    </div>
                 </div>
-            </div>
-        @endforeach
-    @endif
-@endforeach
+            @endforeach
+        @endif
+    @endforeach
 
-{{-- Other Settings --}}
-<div class="form-group">
-    <label for="rest_headers" class="col-sm-2 control-label">Extra Headers</label>
-    <div class="col-sm-6">
-        @php
-            $headers = old('rest_headers', '');
-            if (!$headers && $apiConfig && $apiConfig->extra_headers) {
-                $headers = implode("\n", array_map(fn($k, $v) => "$k: $v", array_keys($apiConfig->extra_headers), $apiConfig->extra_headers));
-            }
-        @endphp
-        <textarea id="rest_headers" class="form-control" name="rest_headers" rows="2"
-                  placeholder="Header-Name: value (one per line)">{{ $headers }}</textarea>
-        <small class="text-muted">One header per line in format: Header-Name: value</small>
+    {{-- Other Settings --}}
+    <div class="form-group">
+        <label for="rest_headers" class="col-sm-2 control-label">Extra Headers</label>
+        <div class="col-sm-6">
+            @php
+                $headers = old('rest_headers', '');
+                if (!$headers && $apiConfig && $apiConfig->extra_headers) {
+                    $headers = implode("\n", array_map(fn($k, $v) => "$k: $v", array_keys($apiConfig->extra_headers), $apiConfig->extra_headers));
+                }
+            @endphp
+            <textarea id="rest_headers" class="form-control" name="rest_headers" rows="2"
+                      placeholder="Header-Name: value (one per line)">{{ $headers }}</textarea>
+            <small class="text-muted">One header per line in format: Header-Name: value</small>
+        </div>
     </div>
-</div>
 
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-6">
-        <div class="checkbox">
-            <label>
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-6">
+            <div class="checkbox">
                 @php $verify = (bool) old('rest_verify_tls', $apiConfig?->verify_ssl ?? true); @endphp
-                <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
-                       {{ $verify ? 'checked' : '' }}>
-                Verify TLS/SSL certificates
-            </label>
+                <label>
+                    <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
+                           {{ $verify ? 'checked' : '' }}>
+                    Verify TLS/SSL certificates
+                </label>
+            </div>
             <small class="text-muted d-block">Uncheck to disable SSL certificate verification (not recommended for production).</small>
         </div>
     </div>
-</div>
 
-<hr>
-
-{{-- Endpoints Management Section --}}
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-10">
-        <h4>API Endpoints <small class="text-muted">Configure which endpoints to poll</small></h4>
+    {{-- Connection Options --}}
+    <div class="form-group">
+        <label for="rest_timeout_ms" class="col-sm-2 control-label">Timeout (ms)</label>
+        <div class="col-sm-6">
+            <input type="number" min="0" step="100" id="rest_timeout_ms" class="form-control" name="rest_timeout_ms"
+                   value="{{ old('rest_timeout_ms', $device->getAttrib('rest_timeout_ms') ?? 5000) }}">
+        </div>
     </div>
-</div>
 
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-10">
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                <button type="button" id="add-endpoint-btn" class="btn btn-xs btn-success pull-right">
-                    <i class="fa fa-plus"></i> Add Endpoint
-                </button>
-                Configured Endpoints
-            </div>
-            <div class="panel-body" style="max-height: 400px; overflow-y: auto;">
-                <table class="table table-condensed table-hover" id="endpoints-table">
-                    <thead>
+    <div class="form-group">
+        <label for="rest_proxy" class="col-sm-2 control-label">Proxy</label>
+        <div class="col-sm-6">
+            <input type="text" id="rest_proxy" class="form-control" name="rest_proxy"
+                   value="{{ old('rest_proxy', $device->getAttrib('rest_proxy') ?? '') }}"
+                   placeholder="http://proxy.example:3128">
+        </div>
+    </div>
+
+    <hr>
+
+    {{-- Endpoints Management Section --}}
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-10">
+            <h4>API Endpoints <small class="text-muted">Configure which endpoints to poll</small></h4>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-10">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <button type="button" id="add-endpoint-btn" class="btn btn-xs btn-success pull-right">
+                        <i class="fa fa-plus"></i> Add Endpoint
+                    </button>
+                    Configured Endpoints
+                </div>
+                <div class="panel-body" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-condensed table-hover" id="endpoints-table">
+                        <thead>
                         <tr>
                             <th style="width: 5%;"><input type="checkbox" id="toggle-all-endpoints"></th>
                             <th style="width: 20%;">Name</th>
@@ -205,57 +225,74 @@
                             <th style="width: 15%;">Poll Interval (s)</th>
                             <th style="width: 10%;">Actions</th>
                         </tr>
-                    </thead>
-                    <tbody id="endpoints-tbody">
+                        </thead>
+                        <tbody id="endpoints-tbody">
                         {{-- Endpoints will be populated via JavaScript --}}
-                    </tbody>
-                </table>
-                <p class="text-muted text-center" id="no-endpoints-msg" style="display: none;">
-                    No endpoints configured. Select a template or add endpoints manually.
-                </p>
+                        </tbody>
+                    </table>
+                    <p class="text-muted text-center" id="no-endpoints-msg" style="display: none;">
+                        No endpoints configured. Select a template or add endpoints manually.
+                    </p>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<input type="hidden" name="rest_endpoints" id="rest_endpoints" value="">
+    <input type="hidden" name="rest_endpoints" id="rest_endpoints" value="">
+    <hr>
 
-<hr>
-
-{{-- Test Connection and Health Status --}}
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-6">
-        <button type="button" id="test-api-connection" class="btn btn-info">
-            <i class="fa fa-plug"></i> Test Connection
-        </button>
-
-        @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
-        @if($errorCount > 0)
-            <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
-                <i class="fa fa-refresh"></i> Reset Error Counter
+    {{-- Test Connection and Health Status --}}
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-6">
+            <button type="button" id="test-api-connection" class="btn btn-info">
+                <i class="fa fa-plug"></i> Test Connection
             </button>
-        @endif
-    </div>
-</div>
 
-@php $lastSuccess = (int) $device->getAttrib('rest_last_success'); @endphp
-@if($lastSuccess > 0)
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-6">
-        <small class="text-muted">
-            <i class="fa fa-check-circle text-success"></i>
-            Last success: {{ \Carbon\Carbon::createFromTimestamp($lastSuccess)->diffForHumans() }}
-            @php $avgLatency = (int) $device->getAttrib('rest_avg_latency_ms'); @endphp
-            @if($avgLatency > 0)
-                (avg {{ $avgLatency }}ms)
+            @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
+            @if($errorCount > 0)
+                <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
+                    <i class="fa fa-refresh"></i> Reset Error Counter
+                </button>
             @endif
-        </small>
+        </div>
     </div>
-</div>
-@endif
+
+    @php $lastSuccess = (int) $device->getAttrib('rest_last_success'); @endphp
+    @if($lastSuccess > 0)
+        <div class="form-group">
+            <div class="col-sm-offset-2 col-sm-6">
+                <small class="text-muted">
+                    <i class="fa fa-check-circle text-success"></i>
+                    Last success: {{ \Carbon\Carbon::createFromTimestamp($lastSuccess)->diffForHumans() }}
+                    @php $avgLatency = (int) $device->getAttrib('rest_avg_latency_ms'); @endphp
+                    @if($avgLatency > 0)
+                        (avg {{ $avgLatency }}ms)
+                    @endif
+                </small>
+            </div>
+        </div>
+    @endif
+</div> {{-- #api-settings-content --}}
 
 @push('scripts')
 <script>
+// Toggle API settings visibility based on checkbox
+(function() {
+    const enabledCheckbox = document.getElementById('rest_enabled');
+    const content = document.getElementById('api-settings-content');
+
+    function toggleContent() {
+        if (!enabledCheckbox) return;
+        content.style.display = enabledCheckbox.checked ? '' : 'none';
+    }
+
+    if (enabledCheckbox) {
+        enabledCheckbox.addEventListener('change', toggleContent);
+        // Initial toggle
+        toggleContent();
+    }
+})();
+
 // Device information
 const deviceHostname = '{{ $device->hostname }}';
 const deviceSysName = '{{ $device->sysName ?? $device->hostname }}';
@@ -283,18 +320,13 @@ let endpoints = [];
 $(document).ready(function() {
     // Helper function to generate readable endpoint name
     function generateEndpointName(path, capability) {
-        // Remove leading slash and extract meaningful parts
         let name = path.replace(/^\//, '');
-        // Replace common patterns with readable names
         name = name.replace(/\{[^}]+\}/g, ''); // Remove {variables}
-        name = name.replace(/[/_-]/g, ' '); // Replace separators with spaces
-        name = name.trim();
-        // Capitalize first letter of each word
+        name = name.replace(/[/_-]/g, ' ').trim();
         name = name.split(' ')
             .filter(word => word.length > 0)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
-        // Add capability prefix for context
         if (capability) {
             name = capability.charAt(0).toUpperCase() + capability.slice(1) + ': ' + name;
         }
@@ -350,8 +382,7 @@ $('#rest_template').on('change', function() {
         // User selected a template - load and apply it
         loadTemplateData(templateName);
     } else {
-        // User selected "Custom" - clear vendor but keep existing endpoints
-        $('#rest_vendor').val('');
+        // User selected "Custom" - clear but keep existing endpoints
         toastr.info('Switched to custom configuration');
     }
 });
@@ -370,11 +401,6 @@ function loadTemplateData(templateName) {
 function applyTemplate(template) {
     if (!template || typeof template !== 'object') return;
 
-    // Set vendor name
-    if (template.vendor) {
-        $('#rest_vendor').val(template.vendor);
-    }
-
     // Build and set base URL from pattern using device hostname
     if (template.base_url_pattern) {
         const baseUrl = template.base_url_pattern.replace('{hostname}', deviceHostname);
@@ -390,18 +416,9 @@ function applyTemplate(template) {
         $('#rest_auth_type').val(template.auth_type).trigger('change');
     }
 
-    // Set default settings
-    if (template.default_settings) {
-        $('#rest_verify_tls').prop('checked', !!template.default_settings.verify_tls);
-        $('#rest_timeout_ms').val(parseInt(template.default_settings.timeout_ms ?? 5000, 10));
-        $('#rest_rate_limit_qps').val(parseInt(template.default_settings.rate_limit_qps ?? 10, 10));
-    }
-
     // Load endpoints from template (always replace when template is selected)
     if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
-        // Convert database endpoint structure to UI structure
         endpoints = template.endpoints.map(function(ep) {
-            // Generate readable name
             let name = ep.path.replace(/^\//, '');
             name = name.replace(/\{[^}]+\}/g, '');
             name = name.replace(/[/_-]/g, ' ').trim();
@@ -619,22 +636,23 @@ $('#test-api-connection').on('click', function() {
         body: JSON.stringify({
             rest_enabled: $('#rest_enabled').is(':checked'),
             rest_template: $('#rest_template').val(),
-            rest_vendor: $('#rest_vendor').val(),
             rest_base_url: $('#rest_base_url').val(),
             rest_auth_type: $('#rest_auth_type').val(),
-            rest_token: $('#rest_token').val(),
-            rest_username: $('#rest_username').val(),
-            rest_password: $('#rest_password').val(),
+            rest_headers: $('#rest_headers').val(),
             rest_verify_tls: $('#rest_verify_tls').is(':checked'),
-            rest_timeout_ms: $('#rest_timeout_ms').val()
+            rest_timeout_ms: $('#rest_timeout_ms').val(),
+            rest_proxy: $('#rest_proxy').val()
         })
     })
     .then(r => r.json())
     .then(d => {
-        if (d && d.success) {
+        if (d && (d.ok || d.success)) {
             let message = d.message || 'Connection successful!';
             if (d.test_path) {
                 message += ' (tested: ' + d.test_path + ')';
+            }
+            if (d.latency_ms) {
+                message += ' [' + d.latency_ms + 'ms]';
             }
             toastr.success(message);
         } else {
