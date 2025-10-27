@@ -210,7 +210,7 @@ class EditDeviceController
         if (!$request->boolean('rest_enabled')) {
             DeviceApiConfig::where('device_id', $device->device_id)->delete();
 
-            // Also clear REST attribs
+            // Clear legacy attribs if they exist (migration cleanup)
             $device->forgetAttrib('rest_enabled');
             $device->forgetAttrib('rest_template_key');
             $device->forgetAttrib('rest_auth_type');
@@ -220,19 +220,21 @@ class EditDeviceController
             $device->forgetAttrib('rest_endpoints');
             $device->forgetAttrib('rest_timeout_ms');
             $device->forgetAttrib('rest_proxy');
-
-            // Clear legacy credential attribs (both plain and encrypted)
             $device->forgetAttrib('rest_token');
             $device->forgetAttrib('rest_token_enc');
             $device->forgetAttrib('rest_username');
             $device->forgetAttrib('rest_password');
             $device->forgetAttrib('rest_password_enc');
+            $device->forgetAttrib('proxmox_base_url');
             $device->forgetAttrib('proxmox_token_user');
             $device->forgetAttrib('proxmox_token_id');
             $device->forgetAttrib('proxmox_token');
             $device->forgetAttrib('proxmox_token_enc');
             $device->forgetAttrib('proxmox_username');
             $device->forgetAttrib('proxmox_password_enc');
+            $device->forgetAttrib('proxmox_verify_tls');
+            $device->forgetAttrib('proxmox_timeout_ms');
+            $device->forgetAttrib('proxmox_proxy');
 
             return;
         }
@@ -254,66 +256,35 @@ class EditDeviceController
             return;
         }
 
-        // Persist selected template and auth type to device attribs
-        $device->setAttrib('rest_template_key', $template->key);
-        $device->setAttrib('rest_auth_type', $schema->key);
-        $device->setAttrib('rest_enabled', 1);
-
-        // Base URL override from form or resolve from template pattern
-        $overrideBase = trim((string) $request->input('rest_base_url'));
-        if (!empty($overrideBase)) {
-            $overrideBase = rtrim($overrideBase, '/');
-            // basic URL validation
-            if (! filter_var($overrideBase, FILTER_VALIDATE_URL)) {
-                toast()->error(__('Invalid base URL'));
-                return;
-            }
-            $device->setAttrib('rest_base_url', $overrideBase);
-        } else {
-            // Resolve and persist base_url from template's base_url_pattern
-            DeviceApiSettings::ensureResolvedBaseUrl($device);
+        // Base URL validation
+        $baseUrl = trim((string) $request->input('rest_base_url'));
+        if (empty($baseUrl)) {
+            toast()->error(__('Base URL is required'));
+            return;
+        }
+        $baseUrl = rtrim($baseUrl, '/');
+        if (!filter_var($baseUrl, FILTER_VALIDATE_URL)) {
+            toast()->error(__('Invalid base URL'));
+            return;
         }
 
-        // Persist TLS verification and connection options in device attribs for httpOptions()
-        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
-        $device->setAttrib('rest_timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
-        $device->setAttrib('rest_proxy', (string) $request->input('rest_proxy', ''));
-
-        // Save endpoints configuration (as JSON string)
-        if ($request->has('rest_endpoints')) {
-            $endpoints = $request->input('rest_endpoints');
-            if (is_string($endpoints)) {
-                $device->setAttrib('rest_endpoints', $endpoints);
-            } elseif (is_array($endpoints)) {
-                $device->setAttrib('rest_endpoints', json_encode($endpoints));
-            }
-        }
-
-        // Parse extra headers (one per line "Header: value"), minimal validation
+        // Parse extra headers (one per line "Header: value")
         $headersString = (string) $request->input('rest_headers', '');
         $extraHeaders = [];
         if (!empty($headersString)) {
             foreach (explode("\n", $headersString) as $line) {
                 $line = trim($line);
                 if ($line === '' || !str_contains($line, ':')) {
-                    continue; // reject invalid lines
-                }
-                [$name, $value] = array_map('trim', explode(':', $line, 2));
-                if ($name === '') {
                     continue;
                 }
-                // coalesce duplicates by last write
-                $extraHeaders[$name] = $value;
+                [$name, $value] = array_map('trim', explode(':', $line, 2));
+                if ($name !== '') {
+                    $extraHeaders[$name] = $value;
+                }
             }
         }
 
-        // Persist headers to device attribs as JSON for DeviceApiSettings::httpOptions()
-        $device->setAttrib('rest_headers', json_encode($extraHeaders));
-
-        // Ensure base url is resolved after setting rest_template_key
-        DeviceApiSettings::ensureResolvedBaseUrl($device);
-
-        // Persist DeviceApiConfig row (for UI/config viewing)
+        // Create or update DeviceApiConfig
         $apiConfig = DeviceApiConfig::firstOrNew([
             'device_id' => $device->device_id,
         ]);
@@ -321,27 +292,16 @@ class EditDeviceController
         // Detect schema change for password field handling
         $schemaChanged = $apiConfig->schema_id !== $schema->id;
 
-        // If schema changed, clear old credential attribs to prevent mismatched auth
-        if ($schemaChanged) {
-            $device->forgetAttrib('rest_token');
-            $device->forgetAttrib('rest_token_enc');
-            $device->forgetAttrib('rest_username');
-            $device->forgetAttrib('rest_password');
-            $device->forgetAttrib('rest_password_enc');
-            $device->forgetAttrib('proxmox_token_user');
-            $device->forgetAttrib('proxmox_token_id');
-            $device->forgetAttrib('proxmox_token');
-            $device->forgetAttrib('proxmox_token_enc');
-            $device->forgetAttrib('proxmox_username');
-            $device->forgetAttrib('proxmox_password_enc');
-        }
-
         // Update config fields
         $apiConfig->template_id = $template->id;
         $apiConfig->schema_id = $schema->id;
-        $apiConfig->base_url = $request->input('rest_base_url') ?? ($device->getAttrib('rest_base_url') ?? '');
-        $apiConfig->verify_ssl = $request->has('rest_verify_tls');
+        $apiConfig->base_url = $baseUrl;
+        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
         $apiConfig->extra_headers = $extraHeaders;
+
+        // Store connection settings in values
+        $apiConfig->setValue('timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
+        $apiConfig->setValue('proxy', (string) $request->input('rest_proxy', ''));
 
         // Save auth values dynamically from schema fields
         foreach ($schema->fields as $field) {
@@ -356,25 +316,6 @@ class EditDeviceController
                 }
             } else {
                 $apiConfig->setValue($fieldName, $inputValue);
-            }
-
-            // Map new field names to old attribute keys for backward compatibility with legacy API clients
-            if ($request->filled($fieldName)) {
-                if ($fieldName === 'api_token' || $fieldName === 'api_key') {
-                    // Store both encrypted and plain for maximum compatibility
-                    $device->setAttrib('rest_token', $inputValue);
-                    $device->setAttrib('rest_token_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
-                } elseif ($fieldName === 'username') {
-                    $device->setAttrib('rest_username', $inputValue);
-                } elseif ($fieldName === 'password') {
-                    $device->setAttrib('rest_password_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
-                } elseif ($fieldName === 'token_user') {
-                    $device->setAttrib('proxmox_token_user', $inputValue);
-                } elseif ($fieldName === 'token_id') {
-                    $device->setAttrib('proxmox_token_id', $inputValue);
-                } elseif ($fieldName === 'token_secret') {
-                    $device->setAttrib('proxmox_token_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
-                }
             }
         }
 
@@ -486,42 +427,6 @@ class EditDeviceController
 
             // Temporarily attach config to device for API client factory
             $device->setRelation('apiConfig', $tempConfig);
-
-            // Set device attribs for compatibility with old API clients
-            if (!isset($device->attribs)) {
-                $device->attribs = [];
-            }
-            $device->attribs['rest_vendor'] = $templateKey;
-            $device->attribs['rest_enabled'] = 1;
-            $device->attribs['rest_base_url'] = $baseUrl;
-            $device->attribs['rest_auth_type'] = $authType;
-            $device->attribs['rest_verify_tls'] = $request->boolean('rest_verify_tls', true) ? 1 : 0;
-            $device->attribs['rest_timeout_ms'] = (int) $request->input('rest_timeout_ms', 5000);
-
-            // Map new field names to old attribute keys for backward compatibility
-            if ($schemaModel) {
-                foreach ($schemaModel->fields as $field) {
-                    $value = $request->input($field->name);
-                    if ($value) {
-                        // Map api_token -> rest_token, api_key -> rest_token, etc.
-                        if ($field->name === 'api_token' || $field->name === 'api_key') {
-                            // Store both encrypted and plain for maximum compatibility
-                            $device->attribs['rest_token'] = $value;
-                            $device->attribs['rest_token_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
-                        } elseif ($field->name === 'username') {
-                            $device->attribs['rest_username'] = $value;
-                        } elseif ($field->name === 'password') {
-                            $device->attribs['rest_password_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
-                        } elseif ($field->name === 'token_user') {
-                            $device->attribs['proxmox_token_user'] = $value;
-                        } elseif ($field->name === 'token_id') {
-                            $device->attribs['proxmox_token_id'] = $value;
-                        } elseif ($field->name === 'token_secret') {
-                            $device->attribs['proxmox_token_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
-                        }
-                    }
-                }
-            }
 
             // Use the API client factory to create the proper client
             $client = \App\ApiClients\DeviceApiClientFactory::make($device);

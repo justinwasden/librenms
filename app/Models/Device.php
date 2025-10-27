@@ -765,6 +765,14 @@ class Device extends BaseModel
     }
 
     /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\DeviceApiConfig, $this>
+     */
+    public function apiConfig(): HasOne
+    {
+        return $this->hasOne(DeviceApiConfig::class, 'device_id', 'device_id');
+    }
+
+    /**
      * @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\Availability, $this>
      */
     public function availability(): HasMany

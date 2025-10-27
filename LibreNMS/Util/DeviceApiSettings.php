@@ -2,129 +2,85 @@
 namespace LibreNMS\Util;
 
 use App\Models\Device;
-use Illuminate\Support\Facades\Crypt;
+use App\Models\DeviceApiConfig;
 
 class DeviceApiSettings
 {
-    protected static function read(Device $device, string $key, $default = null)
+    /**
+     * Get the API config for a device
+     */
+    protected static function getConfig(Device $device): ?DeviceApiConfig
     {
-        if (method_exists($device, 'getAttrib')) {
-            $val = $device->getAttrib($key, $default);
-            return $val !== null ? $val : $default;
-        }
-        $a = $device->attribs ?? [];
-        return array_key_exists($key, $a) ? $a[$key] : $default;
+        return $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
     }
 
     /**
-     * Resolve and persist rest_base_url from the selected template's base_url_pattern.
-     * Requires device attrib 'rest_template_key' to be set when selecting a template.
+     * Resolve and persist base_url from the selected template's base_url_pattern.
      */
     public static function ensureResolvedBaseUrl(Device $device): void
     {
-        $tplKey = self::read($device, 'rest_template_key', null);
-        if (!$tplKey) {
+        $apiConfig = self::getConfig($device);
+        if (!$apiConfig || !$apiConfig->template) {
             return;
         }
 
-        $tpl = \LibreNMS\Util\ApiTemplateManager::loadTemplate($tplKey);
+        $tpl = ApiTemplateManager::loadTemplate($apiConfig->template->key);
         if (!$tpl || empty($tpl['base_url_pattern'])) {
             return;
         }
 
-        $resolved = \LibreNMS\Util\EndpointPathResolver::resolveBaseUrl($device, $tpl['base_url_pattern']);
-        $current = self::read($device, 'rest_base_url', null);
+        $resolved = EndpointPathResolver::resolveBaseUrl($device, $tpl['base_url_pattern']);
+        $current = $apiConfig->base_url;
 
         if (!$current || $current !== $resolved) {
-            $device->setAttrib('rest_base_url', $resolved);
+            $apiConfig->base_url = $resolved;
+            $apiConfig->save();
         }
     }
 
     public static function restEnabled(Device $device): bool
     {
-        return (bool) self::read($device, 'rest_enabled', 0);
+        $apiConfig = self::getConfig($device);
+        return $apiConfig !== null;
     }
 
     public static function vendor(Device $device): ?string
     {
-        $v = self::read($device, 'rest_vendor', null);
-        return $v !== '' ? $v : null;
+        $apiConfig = self::getConfig($device);
+        return $apiConfig?->template?->key;
     }
 
     public static function httpOptions(Device $device): array
-		{
-		    self::ensureResolvedBaseUrl($device);
-
-		    $a = $device->attribs ?? [];
-		    $headers = [];
-		    if (!empty($a['rest_headers'])) {
-		        $decoded = json_decode($a['rest_headers'], true);
-		        if (is_array($decoded)) {
-		            $headers = $decoded;
-		        }
-		    }
-
-		    return [
-		        'base_url'   => rtrim(($a['rest_base_url'] ?? ($a['proxmox_base_url'] ?? '')), '/'),
-		        'verify_tls' => (bool) (($a['rest_verify_tls'] ?? ($a['proxmox_verify_tls'] ?? true))),
-		        'timeout_ms' => (int) ($a['rest_timeout_ms'] ?? ($a['proxmox_timeout_ms'] ?? 5000)),
-		        'proxy'      => $a['rest_proxy'] ?? ($a['proxmox_proxy'] ?? null),
-		        'headers'    => $headers,
-		    ];
-		}
-
-    // Pure options (unchanged)
-    public static function pureOptions(Device $device): array
     {
-        $a = $device->attribs ?? array();
-        $token = '';
-        if (!empty($a['rest_token_enc'])) {
-            $token = Crypt::decryptString($a['rest_token_enc']);
-        } elseif (!empty($a['rest_token'])) {
-            $token = $a['rest_token'];
+        self::ensureResolvedBaseUrl($device);
+
+        $apiConfig = self::getConfig($device);
+        if (!$apiConfig) {
+            // Return defaults if no config exists
+            return [
+                'base_url'   => '',
+                'verify_tls' => true,
+                'timeout_ms' => 5000,
+                'proxy'      => null,
+                'headers'    => [],
+            ];
         }
 
-        return array(
-            'auth_type' => $a['rest_auth_type'] ?? 'apikey',
-            'token'     => $token,
-        );
-    }
+        $headers = $apiConfig->extra_headers ?? [];
 
-    // Proxmox options (unchanged)
-    public static function proxmoxOptions(Device $device): array
-    {
-        $a = $device->attribs ?? array();
-        $mode = $a['proxmox_auth_type'] ?? 'token';
-
-        $opts = array('auth_type' => $mode);
-
-        if ($mode === 'token') {
-            $secret = '';
-            if (!empty($a['proxmox_token_enc'])) {
-                $secret = Crypt::decryptString($a['proxmox_token_enc']);
-            }
-            $opts = array_merge($opts, array(
-                'token_user' => $a['proxmox_token_user'] ?? '',
-                'token_id'   => $a['proxmox_token_id'] ?? '',
-                'token'      => $secret,
-            ));
-        } else {
-            $password = '';
-            if (!empty($a['proxmox_password_enc'])) {
-                $password = Crypt::decryptString($a['proxmox_password_enc']);
-            }
-            $opts = array_merge($opts, array(
-                'username' => $a['proxmox_username'] ?? '',
-                'password' => $password,
-            ));
-        }
-
-        return $opts;
+        return [
+            'base_url'   => rtrim($apiConfig->base_url ?? '', '/'),
+            'verify_tls' => (bool) $apiConfig->verify_ssl,
+            'timeout_ms' => (int) ($apiConfig->getValue('timeout_ms') ?? 5000),
+            'proxy'      => $apiConfig->getValue('proxy'),
+            'headers'    => $headers,
+        ];
     }
 
     public static function rateLimitQps(Device $device): int
     {
-        return (int) ($device->attribs['rest_rate_limit_qps'] ?? 10);
+        $apiConfig = self::getConfig($device);
+        return (int) ($apiConfig?->getValue('rate_limit_qps') ?? 10);
     }
 
     public static function recordSuccess(Device $device, int $latencyMs): void

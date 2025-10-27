@@ -2,8 +2,9 @@
 namespace App\ApiClients\Proxmox;
 
 use App\Models\Device;
+use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Crypt;
+use LibreNMS\Util\DeviceApiSettings;
 
 class ProxmoxApiClient
 {
@@ -15,31 +16,40 @@ class ProxmoxApiClient
     protected string $authType;
     protected array $headers = [];
     protected array $cookies = [];
+    protected ?DeviceApiConfig $apiConfig = null;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-        $a = $device->attribs ?? [];
-        $this->base = rtrim($a['proxmox_base_url'] ?? $a['rest_base_url'] ?? '', '/');
-        $this->timeout = (int)($a['proxmox_timeout_ms'] ?? $a['rest_timeout_ms'] ?? 5000);
-        $this->verifyTls = (bool)($a['proxmox_verify_tls'] ?? $a['rest_verify_tls'] ?? true);
-        $this->proxy = $a['proxmox_proxy'] ?? $a['rest_proxy'] ?? null;
-        $this->authType = $a['proxmox_auth_type'] ?? 'token';
+
+        // Load API config from database
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
+
+        // Get HTTP options from DeviceApiSettings
+        $http = DeviceApiSettings::httpOptions($device);
+        $this->base = rtrim($http['base_url'], '/');
+        $this->timeout = (int)$http['timeout_ms'];
+        $this->verifyTls = (bool)$http['verify_tls'];
+        $this->proxy = $http['proxy'] ?? null;
+
+        // Determine auth type from schema
+        $this->authType = $this->apiConfig?->getValue('auth_type') ?? 'token';
 
         if ($this->authType === 'token') {
-            $user = $a['proxmox_token_user'] ?? '';
-            $tokenid = $a['proxmox_token_id'] ?? '';
-            $secret = !empty($a['proxmox_token_enc']) ? Crypt::decryptString($a['proxmox_token_enc']) : '';
+            $user = $this->apiConfig?->getValue('token_user') ?? '';
+            $tokenid = $this->apiConfig?->getValue('token_id') ?? '';
+            $secret = $this->apiConfig?->getValue('token_secret') ?? '';
             $this->headers['Authorization'] = "PVEAPIToken={$user}!{$tokenid}={$secret}";
         } else {
-            $this->login($a); // sets cookie/header
+            $this->login(); // sets cookie/header
         }
     }
 
-    protected function login(array $a): void
+    protected function login(): void
     {
-        $user = $a['proxmox_username'] ?? '';
-        $password = !empty($a['proxmox_password_enc']) ? Crypt::decryptString($a['proxmox_password_enc']) : '';
+        $user = $this->apiConfig?->getValue('username') ?? '';
+        $password = $this->apiConfig?->getValue('password') ?? '';
+
         $resp = Http::timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls])
             ->post($this->base . '/access/ticket', ['username' => $user, 'password' => $password]);
