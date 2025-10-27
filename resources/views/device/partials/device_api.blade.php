@@ -359,7 +359,20 @@ function applyTemplate(template) {
 
     // Load endpoints from template (always replace when template is selected)
     if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
-        endpoints = template.endpoints.map(function(ep) { return Object.assign({}, ep); }); // Deep copy
+        // Convert database endpoint structure to UI structure
+        endpoints = template.endpoints.map(function(ep) {
+            return {
+                name: ep.path.replace(/^\//, '').replace(/\//g, ' ') || 'Endpoint',
+                path: ep.path,
+                method: ep.method || 'GET',
+                category: ep.capability || 'general',
+                poll_interval: 60,
+                enabled: ep.enabled !== false,
+                transform: ep.transform || '',
+                headers: ep.headers || {},
+                request_body: ep.request_body || null
+            };
+        });
         renderEndpointsTable();
         updateEndpointsHiddenField();
         toastr.success('Template applied with ' + endpoints.length + ' endpoint(s)');
