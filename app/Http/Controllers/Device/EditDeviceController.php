@@ -233,7 +233,7 @@ class EditDeviceController
             return;
         }
 
-// Find or create the config
+    // Find or create the config
     $apiConfig = DeviceApiConfig::firstOrNew([
         'device_id' => $device->device_id,
     ]);
@@ -245,7 +245,8 @@ class EditDeviceController
     $apiConfig->template_id = $template->id;
     $apiConfig->schema_id = $schema->id;
     $apiConfig->base_url = $request->input('rest_base_url') ?? '';
-    $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+		$apiConfig->verify_ssl = $request->has('rest_verify_tls');
+//    $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
 
         // Parse extra headers
         $headersString = $request->input('rest_headers', '');
