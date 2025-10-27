@@ -43,7 +43,9 @@
                 <p>To disable REST API polling, uncheck "Enable REST API discovery/polling" and click <b>Save</b>.</p>
             </div>
         @elseif ($section === 'device' || !isset($section))
-            @include('device.edit.device')
-        @endif
+				    @include('device.edit.device')
+				@elseif (isset($legacyContent))
+				    {!! $legacyContent !!}
+				@endif
     </x-device.page>
 @endsection
