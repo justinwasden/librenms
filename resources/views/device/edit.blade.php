@@ -24,7 +24,14 @@
             <form id="edit-api" name="edit-api" method="POST" action="{{ route('device.edit.update', $device) }}" role="form" class="form-horizontal">
                 @method('PUT')
                 @csrf
-                @include('device.partials.device_api')
+                @include('device.partials.device_api', [
+                    'templates' => $templates ?? [],
+                    'authTypes' => $authTypes ?? [],
+                    'apiConfig' => $apiConfig ?? null,
+                    'selectedTemplate' => $selectedTemplate ?? null,
+                    'templateData' => $templateData ?? null,
+                    'autoSelectTemplate' => $autoSelectTemplate ?? false,
+                ])
                 <div class="row">
                     <div class="col-md-1 col-md-offset-2">
                         <button type="submit" name="Submit" class="btn btn-default"><i class="fa fa-check"></i> Save</button>
