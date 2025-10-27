@@ -2,15 +2,14 @@
 
 namespace LibreNMS\Util;
 
-use Illuminate\Support\Facades\File;
+use App\Models\DeviceApiAuthSchema;
+use App\Models\DeviceApiTemplate;
 
 /**
  * Manages API templates for vendor device connections
  */
 class ApiTemplateManager
 {
-    protected static string $templatePath = 'config/api-templates';
-
     /**
      * Get all available templates
      *
@@ -19,26 +18,20 @@ class ApiTemplateManager
     public static function getAllTemplates(): array
     {
         $templates = [];
-        $path = base_path(self::$templatePath);
 
-        if (!File::isDirectory($path)) {
-            return [];
-        }
+        $dbTemplates = DeviceApiTemplate::with('schema')->enabled()->get();
 
-        $files = File::glob($path . '/*.json');
-
-        foreach ($files as $file) {
-            $content = File::get($file);
-            $template = json_decode($content, true);
-
-            if ($template && isset($template['vendor'])) {
-                $templates[$template['vendor']] = [
-                    'vendor' => $template['vendor'],
-                    'name' => $template['name'],
-                    'description' => $template['description'] ?? '',
-                    'os' => $template['os'] ?? [],
-                ];
-            }
+        foreach ($dbTemplates as $template) {
+            $templates[$template->key] = [
+                'id' => $template->id,
+                'vendor' => $template->key,
+                'name' => $template->label,
+                'description' => $template->description ?? '',
+                'os' => $template->os_keys ?? [],
+                'schema_id' => $template->schema_id,
+                'capabilities' => $template->capabilities ?? [],
+                'modules' => $template->modules ?? [],
+            ];
         }
 
         return $templates;
@@ -71,23 +64,45 @@ class ApiTemplateManager
     }
 
     /**
-     * Load a specific template by vendor
+     * Load a specific template by key
      *
-     * @param string $vendor
+     * @param string $key Template key
      * @return array|null
      */
-    public static function loadTemplate(string $vendor): ?array
+    public static function loadTemplate(string $key): ?array
     {
-        $filePath = base_path(self::$templatePath . '/' . $vendor . '.json');
+        $template = DeviceApiTemplate::with(['schema.fields', 'endpoints'])
+            ->where('key', $key)
+            ->enabled()
+            ->first();
 
-        if (!File::exists($filePath)) {
+        if (!$template) {
             return null;
         }
 
-        $content = File::get($filePath);
-        $template = json_decode($content, true);
-
-        return $template ?: null;
+        return [
+            'id' => $template->id,
+            'vendor' => $template->key,
+            'name' => $template->label,
+            'description' => $template->description,
+            'os' => $template->os_keys ?? [],
+            'auth_type' => $template->schema->key ?? null,
+            'schema_id' => $template->schema_id,
+            'base_url_pattern' => $template->default_values['base_url_pattern'] ?? '',
+            'capabilities' => $template->capabilities ?? [],
+            'modules' => $template->modules ?? [],
+            'endpoints' => $template->endpoints->map(function ($endpoint) {
+                return [
+                    'capability' => $endpoint->capability,
+                    'method' => $endpoint->method,
+                    'path' => $endpoint->path,
+                    'transform' => $endpoint->transform,
+                    'headers' => $endpoint->headers ?? [],
+                    'request_body' => $endpoint->request_body ?? null,
+                    'enabled' => $endpoint->enabled,
+                ];
+            })->toArray(),
+        ];
     }
 
     /**
@@ -97,45 +112,63 @@ class ApiTemplateManager
      */
     public static function getAuthTypes(): array
     {
-        return [
-            'bearer' => [
-                'name' => 'Bearer Token',
-                'fields' => ['token'],
-                'description' => 'Authorization: Bearer {token}',
-            ],
-            'apikey' => [
-                'name' => 'API Key / Token',
-                'fields' => ['token'],
-                'description' => 'X-API-Key: {token}',
-            ],
-            'basic' => [
-                'name' => 'Basic Authentication',
-                'fields' => ['username', 'password'],
-                'description' => 'Authorization: Basic base64(username:password)',
-            ],
-            'token' => [
-                'name' => 'Proxmox API Token',
-                'fields' => ['proxmox_token_user', 'proxmox_token_id', 'proxmox_token'],
-                'description' => 'PVEAPIToken=user@realm!tokenid=secret',
-            ],
-            'ticket' => [
-                'name' => 'Proxmox Ticket (Username/Password)',
-                'fields' => ['proxmox_username', 'proxmox_password'],
-                'description' => 'Username/password authentication with cookie session',
-            ],
-        ];
+        $authTypes = [];
+
+        $schemas = DeviceApiAuthSchema::with('fields')->enabled()->get();
+
+        foreach ($schemas as $schema) {
+            $authTypes[$schema->key] = [
+                'id' => $schema->id,
+                'name' => $schema->label,
+                'description' => $schema->description,
+                'vendor' => $schema->vendor,
+                'fields' => $schema->fields->map(function ($field) {
+                    return [
+                        'name' => $field->name,
+                        'label' => $field->label,
+                        'type' => $field->type,
+                        'required' => $field->required,
+                        'encrypted' => $field->encrypted,
+                        'placeholder' => $field->placeholder,
+                        'default' => $field->default,
+                        'options' => $field->options,
+                    ];
+                })->toArray(),
+            ];
+        }
+
+        return $authTypes;
     }
 
     /**
      * Get fields required for a specific auth type
      *
-     * @param string $authType
+     * @param string $authType Auth schema key
      * @return array
      */
     public static function getAuthFields(string $authType): array
     {
-        $authTypes = self::getAuthTypes();
-        return $authTypes[$authType]['fields'] ?? [];
+        $schema = DeviceApiAuthSchema::with('fields')
+            ->where('key', $authType)
+            ->enabled()
+            ->first();
+
+        if (!$schema) {
+            return [];
+        }
+
+        return $schema->fields->map(function ($field) {
+            return [
+                'name' => $field->name,
+                'label' => $field->label,
+                'type' => $field->type,
+                'required' => $field->required,
+                'encrypted' => $field->encrypted,
+                'placeholder' => $field->placeholder,
+                'default' => $field->default,
+                'options' => $field->options,
+            ];
+        })->toArray();
     }
 
     /**

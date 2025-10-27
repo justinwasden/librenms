@@ -8,9 +8,9 @@ class CreateApiAuthSchemaFieldsTable extends Migration
 {
     public function up(): void
     {
-        Schema::create('api_auth_schema_fields', function (Blueprint $table) {
+        Schema::create('device_api_auth_schema_fields', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('schema_id')->constrained('api_auth_schemas')->onDelete('cascade');
+            $table->foreignId('schema_id')->constrained('device_api_auth_schemas')->onDelete('cascade');
             $table->string('name');        // e.g., api_bearer_token, api_client_id
             $table->string('label');       // UI label
             $table->string('type');        // text, password, number, select, checkbox, json, url
@@ -28,6 +28,6 @@ class CreateApiAuthSchemaFieldsTable extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('api_auth_schema_fields');
+        Schema::dropIfExists('device_api_auth_schema_fields');
     }
 }

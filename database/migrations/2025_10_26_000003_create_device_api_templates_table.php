@@ -13,7 +13,7 @@ class CreateDeviceApiTemplatesTable extends Migration
             $table->string('key')->unique(); // e.g., pure_flasharray_default
             $table->string('label');
             $table->json('os_keys'); // ["purestorage.flasharray"], ["proxmox.ve"]
-            $table->foreignId('schema_id')->constrained('api_auth_schemas');
+            $table->foreignId('schema_id')->constrained('device_api_auth_schemas');
             $table->json('default_values')->nullable(); // field defaults (non-secret)
             $table->json('modules')->nullable(); // ["sensors","inventory","ports","ipv4"]
             $table->json('capabilities')->nullable(); // optional

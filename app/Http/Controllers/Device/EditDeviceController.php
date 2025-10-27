@@ -31,6 +31,7 @@ use App\Facades\LibrenmsConfig;
 use App\Facades\Rrd;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
+use App\Models\DeviceApiConfig;
 use App\Models\DeviceGroup;
 use App\Models\PollerGroup;
 use Illuminate\Contracts\View\View;
@@ -61,11 +62,13 @@ class EditDeviceController
             $templates = ApiTemplateManager::getTemplatesForOs($device->os);
             $authTypes = ApiTemplateManager::getAuthTypes();
 
-            // Get currently configured endpoints (or empty array if none)
-            $configuredEndpoints = json_decode($device->getAttrib('rest_endpoints', '[]'), true);
+            // Load API config from database
+            $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
+                ->where('device_id', $device->device_id)
+                ->first();
 
             // If a template is selected, load it; otherwise auto-select if only one template matches
-            $selectedTemplate = $device->getAttrib('rest_template');
+            $selectedTemplate = $apiConfig?->template?->key ?? null;
             if (!$selectedTemplate && count($templates) === 1) {
                 $selectedTemplate = array_key_first($templates);
             }
@@ -76,10 +79,10 @@ class EditDeviceController
                 'section' => 'api',
                 'templates' => $templates,
                 'authTypes' => $authTypes,
-                'configuredEndpoints' => $configuredEndpoints,
+                'apiConfig' => $apiConfig,
                 'selectedTemplate' => $selectedTemplate,
                 'templateData' => $templateData,
-                'autoSelectTemplate' => !$device->getAttrib('rest_template') && count($templates) === 1,
+                'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
             ]);
         }
 
@@ -195,55 +198,66 @@ class EditDeviceController
 
     private function updateApiSettings($request, Device $device): void
     {
-        // Device API attributes
-        $device->setAttrib('rest_enabled', $request->boolean('rest_enabled') ? 1 : 0);
-        $device->setAttrib('rest_template', $request->input('rest_template') ?? '');
-        $device->setAttrib('rest_vendor', $request->input('rest_vendor') ?? '');
-        $device->setAttrib('rest_base_url', $request->input('rest_base_url') ?? '');
-        $device->setAttrib('rest_auth_type', $request->input('rest_auth_type') ?? '');
-
-        $device->setAttrib('rest_headers', $request->input('rest_headers') ?? '');
-        $device->setAttrib('rest_verify_tls', $request->boolean('rest_verify_tls') ? 1 : 0);
-        $device->setAttrib('rest_timeout_ms', (int) ($request->input('rest_timeout_ms') ?? 5000));
-        $device->setAttrib('rest_proxy', $request->input('rest_proxy') ?? '');
-        $device->setAttrib('rest_rate_limit_qps', (int) ($request->input('rest_rate_limit_qps') ?? 10));
-
-        // Save endpoints configuration
-        if ($request->has('rest_endpoints')) {
-            $endpoints = $request->input('rest_endpoints');
-            $device->setAttrib('rest_endpoints', is_array($endpoints) ? json_encode($endpoints) : ($endpoints ?? '[]'));
+        // Check if API is being disabled
+        if (!$request->boolean('rest_enabled')) {
+            // Delete the config if it exists
+            DeviceApiConfig::where('device_id', $device->device_id)->delete();
+            return;
         }
 
-        if ($request->filled('rest_token')) {
-            $device->setAttrib('rest_token_enc', Crypt::encryptString($request->input('rest_token')));
-        }
-        if ($request->filled('rest_username')) {
-            $device->setAttrib('rest_username', $request->input('rest_username'));
-        }
-        if ($request->filled('rest_password')) {
-            $device->setAttrib('rest_password_enc', Crypt::encryptString($request->input('rest_password')));
+        // Get template and schema IDs
+        $templateKey = $request->input('rest_template');
+        $authTypeKey = $request->input('rest_auth_type');
+
+        if (!$templateKey || !$authTypeKey) {
+            return;
         }
 
-        // Proxmox token
-        if ($request->filled('proxmox_token_user')) {
-            $device->setAttrib('proxmox_token_user', $request->input('proxmox_token_user'));
-        }
-        if ($request->filled('proxmox_token_id')) {
-            $device->setAttrib('proxmox_token_id', $request->input('proxmox_token_id'));
-        }
-        if ($request->filled('proxmox_token')) {
-            $device->setAttrib('proxmox_token_enc', Crypt::encryptString($request->input('proxmox_token')));
+        $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
+        $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
+
+        if (!$template || !$schema) {
+            return;
         }
 
-        // Proxmox ticket
-        if ($request->filled('proxmox_username')) {
-            $device->setAttrib('proxmox_username', $request->input('proxmox_username'));
+        // Find or create the config
+        $apiConfig = DeviceApiConfig::firstOrNew([
+            'device_id' => $device->device_id,
+        ]);
+
+        // Update config fields
+        $apiConfig->template_id = $template->id;
+        $apiConfig->schema_id = $schema->id;
+        $apiConfig->base_url = $request->input('rest_base_url') ?? '';
+        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+
+        // Parse extra headers
+        $headersString = $request->input('rest_headers', '');
+        $extraHeaders = [];
+        if (!empty($headersString)) {
+            foreach (explode("\n", $headersString) as $line) {
+                $line = trim($line);
+                if (empty($line)) {
+                    continue;
+                }
+                $parts = explode(':', $line, 2);
+                if (count($parts) === 2) {
+                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
+                }
+            }
         }
-        if ($request->filled('proxmox_password')) {
-            $device->setAttrib('proxmox_password_enc', Crypt::encryptString($request->input('proxmox_password')));
+        $apiConfig->extra_headers = $extraHeaders;
+
+        // Save auth values - dynamically handle all schema fields
+        $values = [];
+        foreach ($schema->fields as $field) {
+            $fieldName = $field->name;
+            if ($request->filled($fieldName)) {
+                $apiConfig->setValue($fieldName, $request->input($fieldName));
+            }
         }
 
-        $device->save();
+        $apiConfig->save();
     }
 
     /**

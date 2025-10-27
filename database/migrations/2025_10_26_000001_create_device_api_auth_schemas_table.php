@@ -8,7 +8,7 @@ class CreateApiAuthSchemasTable extends Migration
 {
     public function up(): void
     {
-        Schema::create('api_auth_schemas', function (Blueprint $table) {
+        Schema::create('device_api_auth_schemas', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique(); // e.g., bearer, oauth2_client_credentials, custom_token_login
             $table->string('label');
@@ -21,6 +21,6 @@ class CreateApiAuthSchemasTable extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('api_auth_schemas');
+        Schema::dropIfExists('device_api_auth_schemas');
     }
 }

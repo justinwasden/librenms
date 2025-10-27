@@ -16,8 +16,8 @@ return new class extends Migration {
             // Match LibreNMS devices.device_id type (int unsigned)
             $table->unsignedInteger('device_id');
 
-            // Auth schema reference (if your api_auth_schemas.id is bigIncrements, this is correct)
-            $table->foreignId('schema_id')->constrained('api_auth_schemas');
+            // Auth schema reference (if your device_api_auth_schemas.id is bigIncrements, this is correct)
+            $table->foreignId('schema_id')->constrained('device_api_auth_schemas');
 
             $table->string('base_url');
             $table->boolean('verify_ssl')->default(true);

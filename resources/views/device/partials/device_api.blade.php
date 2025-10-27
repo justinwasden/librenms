@@ -3,8 +3,9 @@
     // Ensure arrays/booleans to avoid count()/foreach/JSON errors
     $templates = is_array($templates ?? null) ? $templates : [];
     $authTypes = is_array($authTypes ?? null) ? $authTypes : [];
-    $configuredEndpoints = is_array($configuredEndpoints ?? null) ? $configuredEndpoints : [];
     $autoSelectTemplate = isset($autoSelectTemplate) ? (bool) $autoSelectTemplate : false;
+    $apiEnabled = $apiConfig ? true : false;
+    $currentAuthType = $apiConfig?->schema?->key ?? '';
 @endphp
 
 @if(!empty($device->getAttrib('rest_last_error_message')))
@@ -21,7 +22,7 @@
         <div class="checkbox">
             <label>
                 <input type="checkbox" id="rest_enabled" name="rest_enabled" value="1"
-                       {{ old('rest_enabled', (int) $device->getAttrib('rest_enabled', 0)) ? 'checked' : '' }}>
+                       {{ old('rest_enabled', $apiEnabled) ? 'checked' : '' }}>
                 <strong>Enable REST API discovery/polling</strong>
             </label>
         </div>
@@ -32,7 +33,7 @@
 <div class="form-group">
     <label for="rest_template" class="col-sm-2 control-label">Template</label>
     <div class="col-sm-6">
-        @php $selectedTemplate = old('rest_template', $device->getAttrib('rest_template', '')); @endphp
+        @php $selectedTemplate = old('rest_template', $selectedTemplate ?? ''); @endphp
         <select class="form-control" id="rest_template" name="rest_template">
             <option value="">Custom (no template)</option>
             @foreach($templates as $vendor => $template)
@@ -54,13 +55,13 @@
 </div>
 
 {{-- Hidden vendor field (auto-populated from template) --}}
-<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $device->getAttrib('rest_vendor', '')) }}">
+<input type="hidden" id="rest_vendor" name="rest_vendor" value="{{ old('rest_vendor', $apiConfig?->template?->key ?? '') }}">
 
 {{-- Authentication Type Selector --}}
 <div class="form-group">
     <label for="rest_auth_type" class="col-sm-2 control-label">Authentication Type <span class="text-danger">*</span></label>
     <div class="col-sm-6">
-        @php $authType = old('rest_auth_type', $device->getAttrib('rest_auth_type', '')); @endphp
+        @php $authType = old('rest_auth_type', $currentAuthType); @endphp
         <select class="form-control" id="rest_auth_type" name="rest_auth_type">
             <option value="">Select authentication type...</option>
             @foreach($authTypes as $type => $config)
@@ -78,101 +79,85 @@
     <label for="rest_base_url" class="col-sm-2 control-label">Base URL <span class="text-danger">*</span></label>
     <div class="col-sm-6">
         <input type="url" id="rest_base_url" class="form-control" name="rest_base_url"
-               value="{{ old('rest_base_url', $device->getAttrib('rest_base_url', '')) }}"
+               value="{{ old('rest_base_url', $apiConfig?->base_url ?? '') }}"
                placeholder="https://device.example/api">
         <small class="text-muted base-url-hint"></small>
     </div>
 </div>
 
-{{-- Auth Fields (dynamically shown based on auth type) --}}
-
-{{-- Bearer Token / API Key --}}
-<div class="form-group auth-field auth-bearer auth-apikey" style="display: none;">
-    <label for="rest_token" class="col-sm-2 control-label">Token / API Key</label>
-    <div class="col-sm-6">
-        <input type="password" id="rest_token" class="form-control" name="rest_token"
-               placeholder="Enter to set or replace" value="">
-        @if(!empty($device->getAttrib('rest_token_enc')))
-            <small class="text-muted">A token is stored. Enter a new value to replace.</small>
-        @endif
-    </div>
-</div>
-
-{{-- Basic Auth --}}
-<div class="form-group auth-field auth-basic" style="display: none;">
-    <label for="rest_username" class="col-sm-2 control-label">Username</label>
-    <div class="col-sm-6">
-        <input type="text" id="rest_username" class="form-control" name="rest_username"
-               value="{{ old('rest_username', $device->getAttrib('rest_username', '')) }}">
-    </div>
-</div>
-
-<div class="form-group auth-field auth-basic" style="display: none;">
-    <label for="rest_password" class="col-sm-2 control-label">Password</label>
-    <div class="col-sm-6">
-        <input type="password" id="rest_password" class="form-control" name="rest_password" value="">
-        @if(!empty($device->getAttrib('rest_password_enc')))
-            <small class="text-muted">A password is stored. Enter a new value to replace.</small>
-        @endif
-    </div>
-</div>
-
-{{-- Proxmox Token Auth --}}
-<div class="form-group auth-field auth-token" style="display: none;">
-    <label for="proxmox_token_user" class="col-sm-2 control-label">Token User@Realm</label>
-    <div class="col-sm-6">
-        <input type="text" id="proxmox_token_user" class="form-control" name="proxmox_token_user"
-               value="{{ old('proxmox_token_user', $device->getAttrib('proxmox_token_user', '')) }}"
-               placeholder="user@pve">
-    </div>
-</div>
-
-<div class="form-group auth-field auth-token" style="display: none;">
-    <label for="proxmox_token_id" class="col-sm-2 control-label">Token ID</label>
-    <div class="col-sm-6">
-        <input type="text" id="proxmox_token_id" class="form-control" name="proxmox_token_id"
-               value="{{ old('proxmox_token_id', $device->getAttrib('proxmox_token_id', '')) }}"
-               placeholder="tokenid">
-    </div>
-</div>
-
-<div class="form-group auth-field auth-token" style="display: none;">
-    <label for="proxmox_token" class="col-sm-2 control-label">Token Secret</label>
-    <div class="col-sm-6">
-        <input type="password" id="proxmox_token" class="form-control" name="proxmox_token"
-               placeholder="Enter to set or replace" value="">
-        @if(!empty($device->getAttrib('proxmox_token_enc')))
-            <small class="text-muted">A token secret is stored. Enter a new value to replace.</small>
-        @endif
-    </div>
-</div>
-
-{{-- Proxmox Ticket Auth --}}
-<div class="form-group auth-field auth-ticket" style="display: none;">
-    <label for="proxmox_username" class="col-sm-2 control-label">Username@Realm</label>
-    <div class="col-sm-6">
-        <input type="text" id="proxmox_username" class="form-control" name="proxmox_username"
-               value="{{ old('proxmox_username', $device->getAttrib('proxmox_username', '')) }}"
-               placeholder="root@pam">
-    </div>
-</div>
-
-<div class="form-group auth-field auth-ticket" style="display: none;">
-    <label for="proxmox_password" class="col-sm-2 control-label">Password</label>
-    <div class="col-sm-6">
-        <input type="password" id="proxmox_password" class="form-control" name="proxmox_password" value="">
-        @if(!empty($device->getAttrib('proxmox_password_enc')))
-            <small class="text-muted">A password is stored. Enter a new value to replace.</small>
-        @endif
-    </div>
-</div>
+{{-- Dynamic Auth Fields (rendered based on auth schemas from database) --}}
+@foreach($authTypes as $authKey => $authSchema)
+    @if(isset($authSchema['fields']) && is_array($authSchema['fields']))
+        @foreach($authSchema['fields'] as $field)
+            <div class="form-group auth-field auth-{{ $authKey }}" style="display: none;">
+                <label for="{{ $field['name'] }}" class="col-sm-2 control-label">
+                    {{ $field['label'] }}
+                    @if($field['required'] ?? false)
+                        <span class="text-danger">*</span>
+                    @endif
+                </label>
+                <div class="col-sm-6">
+                    @if($field['type'] === 'password')
+                        <input type="password"
+                               id="{{ $field['name'] }}"
+                               class="form-control"
+                               name="{{ $field['name'] }}"
+                               placeholder="{{ $field['placeholder'] ?? 'Enter to set or replace' }}"
+                               value="">
+                        @if($apiConfig && $apiConfig->schema_id === $authSchema['id'] && $apiConfig->getValue($field['name']))
+                            <small class="text-muted">A value is stored. Enter a new value to replace.</small>
+                        @endif
+                    @elseif($field['type'] === 'select' && isset($field['options']))
+                        <select id="{{ $field['name'] }}"
+                                class="form-control"
+                                name="{{ $field['name'] }}">
+                            @foreach($field['options'] as $optValue => $optLabel)
+                                @php
+                                    $currentValue = old($field['name'],
+                                        $apiConfig && $apiConfig->schema_id === $authSchema['id']
+                                            ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
+                                            : ($field['default'] ?? '')
+                                    );
+                                @endphp
+                                <option value="{{ $optValue }}" {{ $currentValue == $optValue ? 'selected' : '' }}>
+                                    {{ $optLabel }}
+                                </option>
+                            @endforeach
+                        </select>
+                    @else
+                        @php
+                            $currentValue = old($field['name'],
+                                $apiConfig && $apiConfig->schema_id === $authSchema['id']
+                                    ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
+                                    : ($field['default'] ?? '')
+                            );
+                        @endphp
+                        <input type="{{ $field['type'] ?? 'text' }}"
+                               id="{{ $field['name'] }}"
+                               class="form-control"
+                               name="{{ $field['name'] }}"
+                               value="{{ $currentValue }}"
+                               placeholder="{{ $field['placeholder'] ?? '' }}">
+                    @endif
+                </div>
+            </div>
+        @endforeach
+    @endif
+@endforeach
 
 {{-- Other Settings --}}
 <div class="form-group">
-    <label for="rest_headers" class="col-sm-2 control-label">Extra Headers (JSON)</label>
+    <label for="rest_headers" class="col-sm-2 control-label">Extra Headers</label>
     <div class="col-sm-6">
+        @php
+            $headers = old('rest_headers', '');
+            if (!$headers && $apiConfig && $apiConfig->extra_headers) {
+                $headers = implode("\n", array_map(fn($k, $v) => "$k: $v", array_keys($apiConfig->extra_headers), $apiConfig->extra_headers));
+            }
+        @endphp
         <textarea id="rest_headers" class="form-control" name="rest_headers" rows="2"
-                  placeholder='{"X-Custom-Header":"value"}'>{{ old('rest_headers', $device->getAttrib('rest_headers', '')) }}</textarea>
+                  placeholder="Header-Name: value (one per line)">{{ $headers }}</textarea>
+        <small class="text-muted">One header per line in format: Header-Name: value</small>
     </div>
 </div>
 
@@ -180,39 +165,13 @@
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">
             <label>
-                @php $verify = (bool) old('rest_verify_tls', (int) $device->getAttrib('rest_verify_tls', 1)); @endphp
+                @php $verify = (bool) old('rest_verify_tls', $apiConfig?->verify_ssl ?? true); @endphp
                 <input type="checkbox" id="rest_verify_tls" name="rest_verify_tls" value="1"
                        {{ $verify ? 'checked' : '' }}>
                 Verify TLS/SSL certificates
             </label>
             <small class="text-muted d-block">Uncheck to disable SSL certificate verification (not recommended for production).</small>
         </div>
-    </div>
-</div>
-
-<div class="form-group">
-    <label for="rest_timeout_ms" class="col-sm-2 control-label">Timeout (ms)</label>
-    <div class="col-sm-6">
-        <input type="number" id="rest_timeout_ms" class="form-control" name="rest_timeout_ms"
-               value="{{ (int) old('rest_timeout_ms', (int) $device->getAttrib('rest_timeout_ms', 5000)) }}">
-    </div>
-</div>
-
-<div class="form-group">
-    <label for="rest_proxy" class="col-sm-2 control-label">Proxy (optional)</label>
-    <div class="col-sm-6">
-        <input type="text" id="rest_proxy" class="form-control" name="rest_proxy"
-               value="{{ old('rest_proxy', $device->getAttrib('rest_proxy', '')) }}"
-               placeholder="http://user:pass@proxy:3128">
-    </div>
-</div>
-
-<div class="form-group">
-    <label for="rest_rate_limit_qps" class="col-sm-2 control-label">Rate Limit (queries/second)</label>
-    <div class="col-sm-6">
-        <input type="number" id="rest_rate_limit_qps" class="form-control" name="rest_rate_limit_qps" min="1" max="100"
-               value="{{ (int) old('rest_rate_limit_qps', (int) $device->getAttrib('rest_rate_limit_qps', 10)) }}">
-        <small class="text-muted">Maximum API requests per second (default: 10).</small>
     </div>
 </div>
 
@@ -305,7 +264,7 @@ const autoSelectTemplate = {{ $autoSelectTemplate ? 'true' : 'false' }};
 // Template metadata and auth config (always arrays by guards above)
 const templates = @json($templates);
 const authTypes = @json($authTypes);
-const configuredEndpoints = @json($configuredEndpoints);
+const configuredEndpoints = [];
 
 // Pre-load all template data for instant switching
 const allTemplateData = {
