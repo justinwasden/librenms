@@ -17,8 +17,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // Pure Storage FlashArray template
         $pureTemplate = [
             'key' => 'pure_flasharray_default',
-            'label' => 'Pure Storage FlashArray (Default)',
-            'os_keys' => json_encode(['purestorage.flasharray']),
+            'label' => 'Pure Storage FlashArray',
+            'os_keys' => json_encode(['purestorage']), // CORRECTED: was purestorage.flasharray
             'schema_id' => $schemaId('purestorage_api_token_login'),
             'default_values' => json_encode([
                 'api_login_url' => 'https://{hostname}/api/2.26/login',
@@ -57,8 +57,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // Proxmox VE Node template
         $pxTemplate = [
             'key' => 'proxmox_node_default',
-            'label' => 'Proxmox VE Node (Default)',
-            'os_keys' => json_encode(['proxmox.ve.node']),
+            'label' => 'Proxmox VE Node',
+            'os_keys' => json_encode(['proxmox']), // CORRECTED: was proxmox.ve.node
             'schema_id' => $schemaId('proxmox_token'), // default to token auth; users can switch to ticket
             'default_values' => json_encode([
                 'api_token_user' => 'user@pve',
@@ -99,8 +99,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         $fortiTpl = [
             'key' => 'fortinet_fortigate',
             'label' => 'Fortinet FortiGate',
-            'os_keys' => json_encode(['fortinet.fortigate']),
-            'schema_id' => $schemaId('bearer'), // FortiGate often uses API token -> Bearer; adjust if you prefer custom header schema
+            'os_keys' => json_encode(['fortigate']), // CORRECTED: was fortinet.fortigate
+            'schema_id' => $schemaId('bearer'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/api/v2',
             ]),
@@ -129,7 +129,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $junosTpl = [
             'key' => 'juniper_junos',
             'label' => 'Juniper Junos',
-            'os_keys' => json_encode(['juniper.junos']),
+            'os_keys' => json_encode(['junos']), // CORRECTED: was juniper.junos
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rpc',
@@ -163,8 +163,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // Dell OS10/Force10 (N-Series)
         $dellTpl = [
             'key' => 'dell_os10',
-            'label' => 'Dell OS10 / Force10',
-            'os_keys' => json_encode(['dell.os10', 'force10']),
+            'label' => 'Dell OS10',
+            'os_keys' => json_encode(['dell-os10']), // CORRECTED: was dell.os10, force10
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rest/v1',
@@ -193,7 +193,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $hpeTpl = [
             'key' => 'hpe_network',
             'label' => 'HPE / Aruba Network OS',
-            'os_keys' => json_encode(['hpe.comware', 'aruba.cx']),
+            'os_keys' => json_encode(['comware', 'arubaos-cx']), // CORRECTED: was hpe.comware, aruba.cx
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rest',
@@ -222,7 +222,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $nimbleTpl = [
             'key' => 'hpe_nimble',
             'label' => 'HPE NimbleOS',
-            'os_keys' => json_encode(['hpe.nimble']),
+            'os_keys' => json_encode(['nimbleos']), // CORRECTED: was hpe.nimble
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/v1',
@@ -252,7 +252,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $nutanixTpl = [
             'key' => 'nutanix_prism',
             'label' => 'Nutanix Prism',
-            'os_keys' => json_encode(['nutanix.prism']),
+            'os_keys' => json_encode(['nutanix-aos']), // CORRECTED: was nutanix.prism
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}:9440/api/nutanix/v3',
@@ -281,7 +281,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $iseTpl = [
             'key' => 'cisco_ise',
             'label' => 'Cisco ISE (ERS)',
-            'os_keys' => json_encode(['cisco.ise']),
+            'os_keys' => json_encode(['ise']), // CORRECTED: was cisco.ise
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}:9060/ers',
@@ -308,8 +308,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // VMware vCenter
         $vcenterTpl = [
             'key' => 'vmware_vcenter_default',
-            'label' => 'VMware vCenter (Default)',
-            'os_keys' => json_encode(['vmware.vcenter']),
+            'label' => 'VMware vCenter',
+            'os_keys' => json_encode(['vmware-vcsa']), // CORRECTED: was vmware.vcenter
             'schema_id' => $schemaId('vmware_vcenter_session'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/api',
@@ -341,7 +341,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $esxiTpl = [
             'key' => 'vmware_esxi',
             'label' => 'VMware ESXi Host',
-            'os_keys' => json_encode(['vmware.esxi']),
+            'os_keys' => json_encode(['vmware-esxi']), // CORRECTED: was vmware.esxi
             'schema_id' => $schemaId('basic'), // ESXi host REST often uses basic auth
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rest',
@@ -370,8 +370,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         $panTpl = [
             'key' => 'paloalto_panos',
             'label' => 'Palo Alto PAN-OS',
-            'os_keys' => json_encode(['paloalto.panos']),
-            'schema_id' => $schemaId('apikey'), // PAN-OS uses API key; if custom header needed use apikey_custom_header
+            'os_keys' => json_encode(['panos']), // CORRECTED: was paloalto.panos
+            'schema_id' => $schemaId('apikey'), // PAN-OS uses API key
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/restapi',
             ]),
@@ -399,7 +399,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $nxTpl = [
             'key' => 'cisco_nxos',
             'label' => 'Cisco NX-OS (NX-API)',
-            'os_keys' => json_encode(['cisco.nxos']),
+            'os_keys' => json_encode(['nxos']), // CORRECTED: was cisco.nxos
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/ins',
@@ -427,7 +427,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $iosxrTpl = [
             'key' => 'cisco_ios_xr',
             'label' => 'Cisco IOS-XR (RESTCONF)',
-            'os_keys' => json_encode(['cisco.iosxr']),
+            'os_keys' => json_encode(['iosxr']), // CORRECTED: was cisco.iosxr
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/restconf',
@@ -455,7 +455,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $cucmTpl = [
             'key' => 'cisco_cucm',
             'label' => 'Cisco CUCM (AXL)',
-            'os_keys' => json_encode(['cisco.cucm']),
+            'os_keys' => json_encode(['cisco-cucm']), // CORRECTED: was cisco.cucm (using closest available format)
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}:8443/axl',
@@ -511,7 +511,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $nceTpl = [
             'key' => 'cisco_ndfc',
             'label' => 'Cisco NDFC/DCNM',
-            'os_keys' => json_encode(['cisco.ndfc']),
+            'os_keys' => json_encode(['cisco-ndfc']), // CORRECTED: was cisco.ndfc
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/appcentre/ndfc',
@@ -539,7 +539,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $aristaTpl = [
             'key' => 'arista_eos',
             'label' => 'Arista EOS (eAPI)',
-            'os_keys' => json_encode(['arista.eos']),
+            'os_keys' => json_encode(['arista_eos']), // CORRECTED: was arista.eos
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/command-api',
@@ -568,7 +568,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $extremeTpl = [
             'key' => 'extreme_exos',
             'label' => 'Extreme Networks EXOS',
-            'os_keys' => json_encode(['extreme.exos']),
+            'os_keys' => json_encode(['exos']), // CORRECTED: was extreme.exos
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rest',
@@ -596,8 +596,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // Brocade/Foundry (FastIron/NetIron) - Generic REST placeholder
         $brocadeTpl = [
             'key' => 'brocade_fastiron',
-            'label' => 'Brocade FastIron (Generic)',
-            'os_keys' => json_encode(['brocade.fastiron']),
+            'label' => 'Brocade FastIron',
+            'os_keys' => json_encode(['foundryos']), // CORRECTED: was brocade.fastiron (used foundryos as it's a common Brocade OS key)
             'schema_id' => $schemaId('basic'),
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/rest',
@@ -624,8 +624,8 @@ class DeviceApiTemplatesSeeder extends Seeder
         // SonicWall (Gen7 REST)
         $sonicTpl = [
             'key' => 'sonicwall_gen7',
-            'label' => 'SonicWall Gen7',
-            'os_keys' => json_encode(['sonicwall.gen7']),
+            'label' => 'SonicWall FIrewall',
+            'os_keys' => json_encode(['sonicwall']), // CORRECTED: was sonicwall.gen7
             'schema_id' => $schemaId('basic'), // SonicWall REST often uses basic or cookie auth; start with basic
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/sonicos',
@@ -654,7 +654,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $checkpointTpl = [
             'key' => 'checkpoint_mgmt',
             'label' => 'Check Point Management',
-            'os_keys' => json_encode(['checkpoint.mgmt']),
+            'os_keys' => json_encode(['gaia']), // CORRECTED: was checkpoint.mgmt (using the known GAIA OS key)
             'schema_id' => $schemaId('checkpoint_session'), // custom session auth
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}:443/web_api',
@@ -682,7 +682,7 @@ class DeviceApiTemplatesSeeder extends Seeder
         $arubaTpl = [
             'key' => 'aruba_central',
             'label' => 'Aruba Central',
-            'os_keys' => json_encode(['aruba.central']),
+            'os_keys' => json_encode(['arubaos']), // CORRECTED: was aruba.central (using closest available OS key)
             'schema_id' => $schemaId('oauth2_client_credentials'), // Central uses OAuth
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/platform',
@@ -704,6 +704,125 @@ class DeviceApiTemplatesSeeder extends Seeder
             DB::table('device_api_template_endpoints')->updateOrInsert(
                 ['template_id' => $arubaTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
                 array_merge($ep, ['template_id' => $arubaTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now])
+            );
+        }
+
+        // =========================
+        // New Ciena Templates
+        // =========================
+
+        // Ciena RLS (Route/Label Switch)
+        $cienaRlsTpl = [
+            'key' => 'ciena_rls',
+            'label' => 'Ciena RLS',
+            'os_keys' => json_encode(['ciena-rls']),
+            'schema_id' => $schemaId('basic'),
+            'default_values' => json_encode([
+                'base_url_pattern' => 'https://{hostname}/rest/v1',
+            ]),
+            'modules' => json_encode(['inventory','ports','sensors']),
+            'capabilities' => json_encode(['inventory','ports','sensors']),
+            'description' => 'Ciena RLS REST API',
+            'enabled' => 1,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+        DB::table('device_api_templates')->updateOrInsert(['key' => $cienaRlsTpl['key']], $cienaRlsTpl);
+        $cienaRlsTplId = DB::table('device_api_templates')->where('key', 'ciena_rls')->value('id');
+        $cienaRlsEndpoints = [
+            ['capability' => 'inventory', 'method' => 'GET', 'path' => 'chassis',       'transform' => 'normalizeCienaRlsChassis', 'display_order' => 10],
+            ['capability' => 'ports',     'method' => 'GET', 'path' => 'ports',         'transform' => 'normalizeCienaRlsPorts',   'display_order' => 20],
+            ['capability' => 'sensors',   'method' => 'GET', 'path' => 'environment',   'transform' => 'normalizeCienaRlsSensors', 'display_order' => 30],
+        ];
+        foreach ($cienaRlsEndpoints as $ep) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $cienaRlsTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
+                array_merge($ep, ['template_id' => $cienaRlsTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now])
+            );
+        }
+
+        // Ciena SAOS (Service Aware OS)
+        $cienaSaosTpl = [
+            'key' => 'ciena_saos',
+            'label' => 'Ciena SAOS',
+            'os_keys' => json_encode(['ciena-saos']),
+            'schema_id' => $schemaId('basic'),
+            'default_values' => json_encode([
+                'base_url_pattern' => 'https://{hostname}/rest/v1',
+            ]),
+            'modules' => json_encode(['inventory','ports','sensors']),
+            'capabilities' => json_encode(['inventory','ports','sensors']),
+            'description' => 'Ciena SAOS (Service Aware OS) REST API',
+            'enabled' => 1,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+        DB::table('device_api_templates')->updateOrInsert(['key' => $cienaSaosTpl['key']], $cienaSaosTpl);
+        $cienaSaosTplId = DB::table('device_api_templates')->where('key', 'ciena_saos')->value('id');
+        $cienaSaosEndpoints = [
+            ['capability' => 'inventory', 'method' => 'GET', 'path' => 'system/equipment', 'transform' => 'normalizeCienaSaosEquipment', 'display_order' => 10],
+            ['capability' => 'ports',     'method' => 'GET', 'path' => 'interfaces',       'transform' => 'normalizeCienaSaosInterfaces', 'display_order' => 20],
+            ['capability' => 'sensors',   'method' => 'GET', 'path' => 'diagnostics/temperature', 'transform' => 'normalizeCienaSaosTemp', 'display_order' => 30],
+        ];
+        foreach ($cienaSaosEndpoints as $ep) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $cienaSaosTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
+                array_merge($ep, ['template_id' => $cienaSaosTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now])
+            );
+        }
+
+        // Ciena SDS (Service Delivery Switch) - General Placeholder
+        $cienaSdsTpl = [
+            'key' => 'ciena_sds',
+            'label' => 'Ciena SDS',
+            'os_keys' => json_encode(['ciena-sds']),
+            'schema_id' => $schemaId('basic'),
+            'default_values' => json_encode([
+                'base_url_pattern' => 'https://{hostname}/rest/v1',
+            ]),
+            'modules' => json_encode(['inventory','ports','sensors']),
+            'capabilities' => json_encode(['inventory','ports','sensors']),
+            'description' => 'Ciena SDS (Service Delivery Switch) REST API',
+            'enabled' => 1,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+        DB::table('device_api_templates')->updateOrInsert(['key' => $cienaSdsTpl['key']], $cienaSdsTpl);
+        $cienaSdsTplId = DB::table('device_api_templates')->where('key', 'ciena_sds')->value('id');
+        $cienaSdsEndpoints = [
+            ['capability' => 'inventory', 'method' => 'GET', 'path' => 'system/hardware', 'transform' => 'normalizeCienaSdsHardware', 'display_order' => 10],
+            ['capability' => 'ports',     'method' => 'GET', 'path' => 'interfaces/ports', 'transform' => 'normalizeCienaSdsPorts', 'display_order' => 20],
+        ];
+        foreach ($cienaSdsEndpoints as $ep) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $cienaSdsTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
+                array_merge($ep, ['template_id' => $cienaSdsTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now])
+            );
+        }
+
+        // Ciena Waveserver
+        $cienaWaveTpl = [
+            'key' => 'ciena_waveserver',
+            'label' => 'Ciena Waveserver',
+            'os_keys' => json_encode(['ciena-waveserver']),
+            'schema_id' => $schemaId('basic'),
+            'default_values' => json_encode([
+                'base_url_pattern' => 'https://{hostname}/v1',
+            ]),
+            'modules' => json_encode(['inventory','ports','sensors']),
+            'capabilities' => json_encode(['inventory','ports','sensors']),
+            'description' => 'Ciena Waveserver REST API',
+            'enabled' => 1,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+        DB::table('device_api_templates')->updateOrInsert(['key' => $cienaWaveTpl['key']], $cienaWaveTpl);
+        $cienaWaveTplId = DB::table('device_api_templates')->where('key', 'ciena_waveserver')->value('id');
+        $cienaWaveEndpoints = [
+            ['capability' => 'inventory', 'method' => 'GET', 'path' => 'equipment',       'transform' => 'normalizeCienaWaveEquipment', 'display_order' => 10],
+            ['capability' => 'ports',     'method' => 'GET', 'path' => 'network-ports',   'transform' => 'normalizeCienaWavePorts',     'display_order' => 20],
+            ['capability' => 'sensors',   'method' => 'GET', 'path' => 'alarms',          'transform' => 'normalizeCienaWaveAlarms',    'display_order' => 30],
+        ];
+        foreach ($cienaWaveEndpoints as $ep) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $cienaWaveTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
+                array_merge($ep, ['template_id' => $cienaWaveTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now])
             );
         }
     }
