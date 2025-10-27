@@ -46,6 +46,8 @@ class DeviceApiTemplatesSeeder extends Seeder
             ['capability' => 'sensors',   'method' => 'GET', 'path' => 'hosts',              'transform' => 'normalizePureHosts',        'display_order' => 50],
             ['capability' => 'ports',     'method' => 'GET', 'path' => 'network-interfaces', 'transform' => 'normalizePureNetworkInterfaces', 'display_order' => 60],
             ['capability' => 'ipv4',      'method' => 'GET', 'path' => 'network-interfaces', 'transform' => 'normalizePureIpv4',         'display_order' => 70],
+            
+            
         ];
         foreach ($pureEndpoints as $ep) {
             DB::table('device_api_template_endpoints')->updateOrInsert(
