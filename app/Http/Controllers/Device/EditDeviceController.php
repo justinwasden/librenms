@@ -221,6 +221,19 @@ class EditDeviceController
             $device->forgetAttrib('rest_timeout_ms');
             $device->forgetAttrib('rest_proxy');
 
+            // Clear legacy credential attribs (both plain and encrypted)
+            $device->forgetAttrib('rest_token');
+            $device->forgetAttrib('rest_token_enc');
+            $device->forgetAttrib('rest_username');
+            $device->forgetAttrib('rest_password');
+            $device->forgetAttrib('rest_password_enc');
+            $device->forgetAttrib('proxmox_token_user');
+            $device->forgetAttrib('proxmox_token_id');
+            $device->forgetAttrib('proxmox_token');
+            $device->forgetAttrib('proxmox_token_enc');
+            $device->forgetAttrib('proxmox_username');
+            $device->forgetAttrib('proxmox_password_enc');
+
             return;
         }
 
@@ -308,6 +321,21 @@ class EditDeviceController
         // Detect schema change for password field handling
         $schemaChanged = $apiConfig->schema_id !== $schema->id;
 
+        // If schema changed, clear old credential attribs to prevent mismatched auth
+        if ($schemaChanged) {
+            $device->forgetAttrib('rest_token');
+            $device->forgetAttrib('rest_token_enc');
+            $device->forgetAttrib('rest_username');
+            $device->forgetAttrib('rest_password');
+            $device->forgetAttrib('rest_password_enc');
+            $device->forgetAttrib('proxmox_token_user');
+            $device->forgetAttrib('proxmox_token_id');
+            $device->forgetAttrib('proxmox_token');
+            $device->forgetAttrib('proxmox_token_enc');
+            $device->forgetAttrib('proxmox_username');
+            $device->forgetAttrib('proxmox_password_enc');
+        }
+
         // Update config fields
         $apiConfig->template_id = $template->id;
         $apiConfig->schema_id = $schema->id;
@@ -328,6 +356,25 @@ class EditDeviceController
                 }
             } else {
                 $apiConfig->setValue($fieldName, $inputValue);
+            }
+
+            // Map new field names to old attribute keys for backward compatibility with legacy API clients
+            if ($request->filled($fieldName)) {
+                if ($fieldName === 'api_token' || $fieldName === 'api_key') {
+                    // Store both encrypted and plain for maximum compatibility
+                    $device->setAttrib('rest_token', $inputValue);
+                    $device->setAttrib('rest_token_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
+                } elseif ($fieldName === 'username') {
+                    $device->setAttrib('rest_username', $inputValue);
+                } elseif ($fieldName === 'password') {
+                    $device->setAttrib('rest_password_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
+                } elseif ($fieldName === 'token_user') {
+                    $device->setAttrib('proxmox_token_user', $inputValue);
+                } elseif ($fieldName === 'token_id') {
+                    $device->setAttrib('proxmox_token_id', $inputValue);
+                } elseif ($fieldName === 'token_secret') {
+                    $device->setAttrib('proxmox_token_enc', \Illuminate\Support\Facades\Crypt::encryptString($inputValue));
+                }
             }
         }
 
@@ -458,17 +505,19 @@ class EditDeviceController
                     if ($value) {
                         // Map api_token -> rest_token, api_key -> rest_token, etc.
                         if ($field->name === 'api_token' || $field->name === 'api_key') {
+                            // Store both encrypted and plain for maximum compatibility
                             $device->attribs['rest_token'] = $value;
+                            $device->attribs['rest_token_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
                         } elseif ($field->name === 'username') {
                             $device->attribs['rest_username'] = $value;
                         } elseif ($field->name === 'password') {
-                            $device->attribs['rest_password'] = $value;
+                            $device->attribs['rest_password_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
                         } elseif ($field->name === 'token_user') {
                             $device->attribs['proxmox_token_user'] = $value;
                         } elseif ($field->name === 'token_id') {
                             $device->attribs['proxmox_token_id'] = $value;
                         } elseif ($field->name === 'token_secret') {
-                            $device->attribs['proxmox_token'] = $value;
+                            $device->attribs['proxmox_token_enc'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
                         }
                     }
                 }
