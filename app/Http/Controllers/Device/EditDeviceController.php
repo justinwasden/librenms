@@ -56,81 +56,81 @@ class EditDeviceController
 
         $section = request()->get('section', 'device');
 
-        // Handle API section
-        if ($section === 'api') {
-            // Load templates filtered by device OS
-            $templates = ApiTemplateManager::getTemplatesForOs($device->os);
-            $authTypes = ApiTemplateManager::getAuthTypes();
+    // Handle API section (Renders the blade partial)
+    if ($section === 'api') {
+        // Load templates filtered by device OS
+        $templates = ApiTemplateManager::getTemplatesForOs($device->os);
+        $authTypes = ApiTemplateManager::getAuthTypes();
 
-            // Load API config from database
-            $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
-                ->where('device_id', $device->device_id)
-                ->first();
+        // Load API config from database
+        $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
+            ->where('device_id', $device->device_id)
+            ->first();
 
-            // If a template is selected, load it; otherwise auto-select if only one template matches
-            $selectedTemplate = $apiConfig?->template?->key ?? null;
-            if (!$selectedTemplate && count($templates) === 1) {
-                $selectedTemplate = array_key_first($templates);
-            }
-            $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
-
-            return view('device.edit', [
-                'device' => $device,
-                'section' => 'api',
-                'templates' => $templates,
-                'authTypes' => $authTypes,
-                'apiConfig' => $apiConfig,
-                'selectedTemplate' => $selectedTemplate,
-                'templateData' => $templateData,
-                'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
-            ]);
+        // If a template is selected, load it; otherwise auto-select if only one template matches
+        $selectedTemplate = $apiConfig?->template?->key ?? null;
+        if (!$selectedTemplate && count($templates) === 1) {
+            $selectedTemplate = array_key_first($templates);
         }
-
-        // Handle device settings section (default)
-        $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
-        if (! $types->has($device->type)) {
-            $types->put($device->type, [
-                'icon' => null,
-                'text' => ucfirst($device->type),
-                'type' => $device->type,
-            ]);
-        }
-
-        [$rrd_size, $rrd_num] = File::getFolderSize(Rrd::dirFromHost($device->hostname));
-
-        $alertSchedules = $device->alertSchedules()->isActive()->get();
-        $isUnderMaintenance = $alertSchedules->isNotEmpty();
-        $exclusiveSchedules = $alertSchedules->filter(function ($schedule) {
-            $totalMappings = DB::table('alert_schedulables')
-                ->where('schedule_id', $schedule->schedule_id)
-                ->count();
-
-            return $totalMappings === 1; // only exclusive schedules
-        });
-        $exclusive_schedule_id = $exclusiveSchedules->count() === 1 ? $exclusiveSchedules->first()->schedule_id : 0;
-
-        [$static_show, $static_groups] = DeviceGroup::where('type', 'static')->exists()
-            ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
-            : [false, []];
+        $templateData = $selectedTemplate ? ApiTemplateManager::loadTemplate($selectedTemplate) : null;
 
         return view('device.edit', [
             'device' => $device,
-            'section' => $section,
-            'show_static_groups' => $static_show,
-            'static_groups' => $static_groups,
-            'types' => $types,
-            'default_type' => LibrenmsConfig::getOsSetting($device->os, 'type'),
-            'parents' => $device->parents()->pluck('hostname', 'device_id'),
-            'poller_groups' => PollerGroup::orderBy('group_name')->pluck('group_name', 'id'),
-            'default_poller_group' => LibrenmsConfig::get('distributed_poller_group'),
-            'override_sysContact_bool' => $device->getAttrib('override_sysContact_bool'),
-            'override_sysContact_string' => $device->getAttrib('override_sysContact_string'),
-            'maintenance' => $isUnderMaintenance,
-            'default_maintenance_behavior' => MaintenanceBehavior::from((int) LibrenmsConfig::get('alert.scheduled_maintenance_default_behavior'))->value,
-            'exclusive_maintenance_id' => $exclusive_schedule_id,
-            'rrd_size' => Number::formatBi($rrd_size),
-            'rrd_num' => $rrd_num,
+            'section' => 'api',
+            'templates' => $templates,
+            'authTypes' => $authTypes,
+            'apiConfig' => $apiConfig,
+            'selectedTemplate' => $selectedTemplate,
+            'templateData' => $templateData,
+            'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
         ]);
+    }
+
+		// Pass device settings data to the Blade template for the `device.edit.device` partial
+		    $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
+		    if (! $types->has($device->type)) {
+		        $types->put($device->type, [
+		            'icon' => null,
+		            'text' => ucfirst($device->type),
+		            'type' => $device->type,
+		        ]);
+		    }
+
+		    [$rrd_size, $rrd_num] = File::getFolderSize(Rrd::dirFromHost($device->hostname));
+
+		    $alertSchedules = $device->alertSchedules()->isActive()->get();
+		    $isUnderMaintenance = $alertSchedules->isNotEmpty();
+		    $exclusiveSchedules = $alertSchedules->filter(function ($schedule) {
+		        $totalMappings = DB::table('alert_schedulables')
+		            ->where('schedule_id', $schedule->schedule_id)
+		            ->count();
+
+		        return $totalMappings === 1; // only exclusive schedules
+		    });
+		    $exclusive_schedule_id = $exclusiveSchedules->count() === 1 ? $exclusiveSchedules->first()->schedule_id : 0;
+
+		    [$static_show, $static_groups] = DeviceGroup::where('type', 'static')->exists()
+		        ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
+		        : [false, []];
+
+		    return view('device.edit', [
+		        'device' => $device,
+		        'section' => $section,
+		        'show_static_groups' => $static_show,
+		        'static_groups' => $static_groups,
+		        'types' => $types,
+		        'default_type' => LibrenmsConfig::getOsSetting($device->os, 'type'),
+		        'parents' => $device->parents()->pluck('hostname', 'device_id'),
+		        'poller_groups' => PollerGroup::orderBy('group_name')->pluck('group_name', 'id'),
+		        'default_poller_group' => LibrenmsConfig::get('distributed_poller_group'),
+		        'override_sysContact_bool' => $device->getAttrib('override_sysContact_bool'),
+		        'override_sysContact_string' => $device->getAttrib('override_sysContact_string'),
+		        'maintenance' => $isUnderMaintenance,
+		        'default_maintenance_behavior' => MaintenanceBehavior::from((int) LibrenmsConfig::get('alert.scheduled_maintenance_default_behavior'))->value,
+		        'exclusive_maintenance_id' => $exclusive_schedule_id,
+		        'rrd_size' => Number::formatBi($rrd_size),
+		        'rrd_num' => $rrd_num,
+		    ]);
     }
 
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
