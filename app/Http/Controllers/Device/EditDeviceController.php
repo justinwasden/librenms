@@ -374,9 +374,16 @@ class EditDeviceController
                     ], 404);
                 }
 
-                // Pick first endpoint from template
+                // Pick first endpoint from template that doesn't have placeholders
                 if (!empty($template['endpoints'])) {
-                    $testPath = $template['endpoints'][0]['path'] ?? '/';
+                    foreach ($template['endpoints'] as $endpoint) {
+                        $path = $endpoint['path'] ?? '/';
+                        // Skip endpoints with placeholders like {node}, {id}, etc.
+                        if (!str_contains($path, '{')) {
+                            $testPath = $path;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -393,25 +400,29 @@ class EditDeviceController
             // Add auth headers based on type and get field values from request
             $schema = \App\Models\DeviceApiAuthSchema::where('key', $authType)->with('fields')->first();
             if ($schema) {
+                $authValues = [];
                 foreach ($schema->fields as $field) {
                     $value = $request->input($field->name);
                     if ($value) {
-                        // Add auth based on schema type
-                        if ($authType === 'bearer' && $field->name === 'api_token') {
-                            $options['headers']['Authorization'] = 'Bearer ' . $value;
-                        } elseif ($authType === 'apikey' && $field->name === 'api_key') {
-                            $options['headers']['X-API-Key'] = $value;
-                        } elseif ($authType === 'basic') {
-                            if ($field->name === 'username') {
-                                $username = $value;
-                            } elseif ($field->name === 'password') {
-                                $password = $value ?? '';
-                                if (isset($username)) {
-                                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($username . ':' . $password);
-                                }
-                            }
-                        }
+                        $authValues[$field->name] = $value;
                     }
+                }
+
+                // Add auth based on schema type
+                if ($authType === 'bearer' && isset($authValues['api_token'])) {
+                    $options['headers']['Authorization'] = 'Bearer ' . $authValues['api_token'];
+                } elseif ($authType === 'apikey' && isset($authValues['api_key'])) {
+                    $options['headers']['X-API-Key'] = $authValues['api_key'];
+                } elseif ($authType === 'basic' && isset($authValues['username'])) {
+                    $password = $authValues['password'] ?? '';
+                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($authValues['username'] . ':' . $password);
+                } elseif ($authType === 'proxmox_token' && isset($authValues['token_user'], $authValues['token_id'], $authValues['token_secret'])) {
+                    // Proxmox API Token format: PVEAPIToken=user@realm!tokenid=secret
+                    $options['headers']['Authorization'] = 'PVEAPIToken=' . $authValues['token_user'] . '!' . $authValues['token_id'] . '=' . $authValues['token_secret'];
+                } elseif ($authType === 'proxmox_ticket' && isset($authValues['username'], $authValues['password'])) {
+                    // For ticket auth, we would need to make a login call first to get the ticket
+                    // For now, just try basic auth as fallback
+                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($authValues['username'] . ':' . $authValues['password']);
                 }
             }
 
