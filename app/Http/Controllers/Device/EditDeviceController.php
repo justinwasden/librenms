@@ -334,6 +334,10 @@ class EditDeviceController
                     $apiConfig->setValue($fieldName, null);
                 }
             } else {
+                // Use default value if input is empty
+                if ($inputValue === null || $inputValue === '') {
+                    $inputValue = $field->default;
+                }
                 $apiConfig->setValue($fieldName, $inputValue);
             }
         }
@@ -415,6 +419,10 @@ class EditDeviceController
             if ($schemaModel) {
                 foreach ($schemaModel->fields as $field) {
                     $value = $request->input($field->name);
+                    // Use default value if input is empty and field is not password
+                    if (($value === null || $value === '') && $field->type !== 'password' && $field->default) {
+                        $value = $field->default;
+                    }
                     if ($value) {
                         $tempConfig->setValue($field->name, $value);
                     }

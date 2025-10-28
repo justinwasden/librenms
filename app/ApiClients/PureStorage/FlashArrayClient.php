@@ -109,10 +109,22 @@ class FlashArrayClient
             ];
         }
 
+        $apiToken = $this->apiConfig->getValue('api_token') ?? $this->apiConfig->getValue('api_key');
+        $authHeaderName = $this->apiConfig->getValue('auth_header_name');
+        $loginPath = $this->apiConfig->getValue('login_path');
+
+        // Handle null values explicitly
+        if (empty($authHeaderName)) {
+            $authHeaderName = 'X-Auth-Token';
+        }
+        if (empty($loginPath)) {
+            $loginPath = '/login';
+        }
+
         return [
-            'api_token' => $this->apiConfig->getValue('api_token') ?? $this->apiConfig->getValue('api_key'),
-            'auth_header_name' => $this->apiConfig->getValue('auth_header_name') ?? 'X-Auth-Token',
-            'login_path' => $this->apiConfig->getValue('login_path') ?? '/login',
+            'api_token' => $apiToken,
+            'auth_header_name' => $authHeaderName,
+            'login_path' => $loginPath,
         ];
     }
 }
