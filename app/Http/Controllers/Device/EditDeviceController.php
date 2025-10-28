@@ -430,6 +430,15 @@ class EditDeviceController
                     ->where('device_id', $device->device_id)
                     ->first();
 
+                \Log::debug('Test Connection - Schema and Config', [
+                    'device_id' => $device->device_id,
+                    'test_schema_id' => $schemaModel->id,
+                    'test_schema_key' => $authType,
+                    'existing_config_id' => $existingConfig?->id,
+                    'existing_schema_id' => $existingConfig?->schema_id,
+                    'schema_match' => $existingConfig && $existingConfig->schema_id === $schemaModel->id,
+                ]);
+
                 foreach ($schemaModel->fields as $field) {
                     $value = $request->input($field->name);
 
@@ -437,6 +446,10 @@ class EditDeviceController
                     if ($field->type === 'password' && ($value === null || $value === '')) {
                         if ($existingConfig && $existingConfig->schema_id === $schemaModel->id) {
                             $value = $existingConfig->getValue($field->name);
+                            \Log::debug("Test Connection - Using saved password for field: {$field->name}", [
+                                'has_value' => !empty($value),
+                                'value_length' => $value ? strlen($value) : 0,
+                            ]);
                         }
                     }
 
