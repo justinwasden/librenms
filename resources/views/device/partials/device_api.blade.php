@@ -33,21 +33,7 @@
         </small>
     </div>
 </div>
-    {{-- Test Connection Button (only visible when API enabled) --}}
-    <div class="form-group">
-        <div class="col-sm-offset-2 col-sm-6">
-            <button type="button" id="test-api-connection" class="btn btn-info">
-                <i class="fa fa-plug"></i> Test Connection
-            </button>
 
-            @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
-            @if($errorCount > 0)
-                <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
-                    <i class="fa fa-refresh"></i> Reset Error Counter
-                </button>
-            @endif
-        </div>
-    </div>
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <div class="checkbox">
@@ -63,6 +49,21 @@
 
 {{-- All other API settings are hidden until enabled --}}
 <div id="api-settings-content" style="{{ old('rest_enabled', $apiEnabled) ? '' : 'display:none;' }}">
+	    {{-- Test Connection Button (only visible when API enabled) --}}
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-6">
+            <button type="button" id="test-api-connection" class="btn btn-info">
+                <i class="fa fa-plug"></i> Test Connection
+            </button>
+
+            @php $errorCount = (int) $device->getAttrib('rest_error_count'); @endphp
+            @if($errorCount > 0)
+                <button type="button" id="reset-circuit-breaker" class="btn btn-warning">
+                    <i class="fa fa-refresh"></i> Reset Error Counter
+                </button>
+            @endif
+        </div>
+    </div>
     {{-- Template Selector --}}
     <div class="form-group">
         <label for="rest_template" class="col-sm-2 control-label">Template</label>
