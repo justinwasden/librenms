@@ -415,6 +415,14 @@ class EditDeviceController
                 $tempConfig->template_id = $templateModel->id;
             }
 
+            // Set the schema relationship BEFORE setting values (needed for encryption)
+            if ($schemaModel) {
+                $tempConfig->setRelation('schema', $schemaModel);
+            }
+            if ($templateModel) {
+                $tempConfig->setRelation('template', $templateModel);
+            }
+
             // Set auth field values from request
             if ($schemaModel) {
                 foreach ($schemaModel->fields as $field) {
@@ -445,12 +453,6 @@ class EditDeviceController
                 }
             }
             $tempConfig->extra_headers = $extraHeaders;
-
-            // Create a temporary relationship
-            $tempConfig->setRelation('schema', $schemaModel);
-            if ($templateModel) {
-                $tempConfig->setRelation('template', $templateModel);
-            }
 
             // Temporarily attach config to device for API client factory
             $device->setRelation('apiConfig', $tempConfig);

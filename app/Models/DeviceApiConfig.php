@@ -68,7 +68,12 @@ class DeviceApiConfig extends Model
 
         // Check if this field should be encrypted
         if ($this->schema) {
-            $field = $this->schema->fields()->where('name', $key)->first();
+            // Use loaded relationship if available, otherwise query
+            $fields = $this->schema->relationLoaded('fields')
+                ? $this->schema->fields
+                : $this->schema->fields()->get();
+
+            $field = $fields->where('name', $key)->first();
             if ($field && $field->shouldEncrypt()) {
                 try {
                     return Crypt::decryptString($value);
@@ -91,7 +96,12 @@ class DeviceApiConfig extends Model
 
         // Check if this field should be encrypted
         if ($this->schema) {
-            $field = $this->schema->fields()->where('name', $key)->first();
+            // Use loaded relationship if available, otherwise query
+            $fields = $this->schema->relationLoaded('fields')
+                ? $this->schema->fields
+                : $this->schema->fields()->get();
+
+            $field = $fields->where('name', $key)->first();
             if ($field && $field->shouldEncrypt() && !empty($value)) {
                 $value = Crypt::encryptString($value);
             }
