@@ -468,11 +468,398 @@ class RestNormalizers
 
         return ['sensors' => $sensors, 'inventory' => $inventory];
     }
-    public static function normalizeProxmoxNodeStatus(array $payload): array { /* ... existing ... */ }
-    public static function normalizeProxmoxNodeNetwork(array $payload): array { /* ... existing ... */ }
-    public static function normalizeProxmoxNodeStorage(array $payload): array { /* ... existing ... */ }
-    public static function normalizeProxmoxClusterStatus(array $payload): array { /* ... existing ... */ }
-    public static function normalizeProxmoxClusterResources(array $payload): array { /* ... existing ... */ }
+    public static function normalizeProxmoxNodeStatus(array $payload): array
+    {
+        $sensors = [];
+        $processors = [];
+        $mempools = [];
+
+        if (!isset($payload['data'])) {
+            return ['sensors' => $sensors, 'processors' => $processors, 'mempools' => $mempools];
+        }
+
+        $data = $payload['data'];
+
+        // CPU usage
+        if (isset($data['cpu'])) {
+            $cpuPercent = $data['cpu'] * 100;
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'proxmox',
+                'sensor_descr' => 'CPU Usage',
+                'sensor_index' => 'node_cpu',
+                'sensor_current' => round($cpuPercent, 2),
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+
+            $processors[] = [
+                'processor_index' => 0,
+                'processor_type' => 'proxmox-cpu',
+                'processor_descr' => 'Node CPU',
+                'processor_usage' => round($cpuPercent, 2),
+            ];
+        }
+
+        // Memory usage
+        if (isset($data['memory']) && isset($data['memory']['used']) && isset($data['memory']['total'])) {
+            $memUsed = $data['memory']['used'];
+            $memTotal = $data['memory']['total'];
+            $memPercent = ($memTotal > 0) ? ($memUsed / $memTotal) * 100 : 0;
+
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'proxmox',
+                'sensor_descr' => 'Memory Usage',
+                'sensor_index' => 'node_mem',
+                'sensor_current' => round($memPercent, 2),
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+
+            $mempools[] = [
+                'mempool_index' => 0,
+                'mempool_type' => 'proxmox',
+                'mempool_descr' => 'Node Memory',
+                'mempool_total' => $memTotal,
+                'mempool_used' => $memUsed,
+                'mempool_free' => $memTotal - $memUsed,
+                'mempool_perc' => round($memPercent, 2),
+            ];
+        }
+
+        // Swap usage
+        if (isset($data['swap']) && isset($data['swap']['used']) && isset($data['swap']['total'])) {
+            $swapUsed = $data['swap']['used'];
+            $swapTotal = $data['swap']['total'];
+            $swapPercent = ($swapTotal > 0) ? ($swapUsed / $swapTotal) * 100 : 0;
+
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'proxmox',
+                'sensor_descr' => 'Swap Usage',
+                'sensor_index' => 'node_swap',
+                'sensor_current' => round($swapPercent, 2),
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+
+            $mempools[] = [
+                'mempool_index' => 1,
+                'mempool_type' => 'proxmox-swap',
+                'mempool_descr' => 'Node Swap',
+                'mempool_total' => $swapTotal,
+                'mempool_used' => $swapUsed,
+                'mempool_free' => $swapTotal - $swapUsed,
+                'mempool_perc' => round($swapPercent, 2),
+            ];
+        }
+
+        // Uptime
+        if (isset($data['uptime'])) {
+            $sensors[] = [
+                'sensor_class' => 'runtime',
+                'sensor_type' => 'proxmox',
+                'sensor_descr' => 'Node Uptime',
+                'sensor_index' => 'node_uptime',
+                'sensor_current' => $data['uptime'],
+                'sensor_limit' => null,
+                'sensor_limit_low' => 0,
+            ];
+        }
+
+        // Load average
+        if (isset($data['loadavg']) && is_array($data['loadavg'])) {
+            if (isset($data['loadavg'][0])) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'proxmox',
+                    'sensor_descr' => 'Load Average (1min)',
+                    'sensor_index' => 'node_load1',
+                    'sensor_current' => $data['loadavg'][0],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+        }
+
+        return ['sensors' => $sensors, 'processors' => $processors, 'mempools' => $mempools];
+    }
+    public static function normalizeProxmoxNodeNetwork(array $payload): array
+    {
+        $ports = [];
+
+        if (!isset($payload['data']) || !is_array($payload['data'])) {
+            return $ports;
+        }
+
+        foreach ($payload['data'] as $idx => $iface) {
+            $name = $iface['iface'] ?? "iface_$idx";
+            $active = ($iface['active'] ?? 0) ? 'up' : 'down';
+
+            $ports[] = [
+                'ifIndex' => self::stableIndexFromName($name),
+                'ifName' => $name,
+                'ifDescr' => $iface['comments'] ?? $name,
+                'ifType' => $iface['type'] ?? 'ethernetCsmacd',
+                'ifSpeed' => 1000000000, // Default to 1Gbps
+                'ifOperStatus' => $active,
+                'ifAdminStatus' => ($iface['autostart'] ?? 1) ? 'up' : 'down',
+                'ifMtu' => 1500,
+                'ifPhysAddress' => $iface['address'] ?? '',
+                'ifAlias' => $iface['comments'] ?? '',
+                'ifLastChange' => 0,
+            ];
+        }
+
+        return $ports;
+    }
+    public static function normalizeProxmoxNodeStorage(array $payload): array
+    {
+        $sensors = [];
+        $inventory = [];
+
+        if (!isset($payload['data']) || !is_array($payload['data'])) {
+            return ['sensors' => $sensors, 'inventory' => $inventory];
+        }
+
+        foreach ($payload['data'] as $storage) {
+            $name = $storage['storage'] ?? 'unknown';
+            $index = self::stableIndexFromName($name);
+
+            // Storage inventory
+            $inventory[] = [
+                'entPhysicalIndex' => $index,
+                'entPhysicalDescr' => 'Storage: ' . $name,
+                'entPhysicalClass' => 'container',
+                'entPhysicalName' => $name,
+                'entPhysicalModelName' => $storage['type'] ?? '',
+                'entPhysicalSerialNum' => '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'Proxmox',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'storage',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => '',
+            ];
+
+            // Storage usage
+            if (isset($storage['used']) && isset($storage['total']) && $storage['total'] > 0) {
+                $usedPercent = ($storage['used'] / $storage['total']) * 100;
+                $sensors[] = [
+                    'sensor_class' => 'percent',
+                    'sensor_type' => 'proxmox',
+                    'sensor_descr' => 'Storage ' . $name . ' Usage',
+                    'sensor_index' => 'storage_' . $index,
+                    'sensor_current' => round($usedPercent, 2),
+                    'sensor_limit' => 90,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Storage capacity
+            if (isset($storage['total'])) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'proxmox',
+                    'sensor_descr' => 'Storage ' . $name . ' Total',
+                    'sensor_index' => 'storage_total_' . $index,
+                    'sensor_current' => $storage['total'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+        }
+
+        return ['sensors' => $sensors, 'inventory' => $inventory];
+    }
+    public static function normalizeProxmoxClusterStatus(array $payload): array
+    {
+        $sensors = [];
+        $inventory = [];
+
+        if (!isset($payload['data']) || !is_array($payload['data'])) {
+            return ['sensors' => $sensors, 'inventory' => $inventory];
+        }
+
+        foreach ($payload['data'] as $item) {
+            $type = $item['type'] ?? 'unknown';
+            $name = $item['name'] ?? 'unknown';
+            $index = self::stableIndexFromName($name);
+
+            if ($type === 'node') {
+                // Node inventory
+                $inventory[] = [
+                    'entPhysicalIndex' => $index,
+                    'entPhysicalDescr' => 'Node: ' . $name,
+                    'entPhysicalClass' => 'chassis',
+                    'entPhysicalName' => $name,
+                    'entPhysicalModelName' => '',
+                    'entPhysicalSerialNum' => '',
+                    'entPhysicalContainedIn' => 0,
+                    'entPhysicalMfgName' => 'Proxmox',
+                    'entPhysicalParentRelPos' => $item['nodeid'] ?? -1,
+                    'entPhysicalVendorType' => 'node',
+                    'entPhysicalHardwareRev' => '',
+                    'entPhysicalFirmwareRev' => '',
+                    'entPhysicalSoftwareRev' => '',
+                    'entPhysicalIsFRU' => 0,
+                    'entPhysicalAlias' => '',
+                    'entPhysicalAssetID' => '',
+                ];
+
+                // Node online state
+                $isOnline = ($item['online'] ?? 0) ? 2 : 0;
+                $sensors[] = [
+                    'sensor_class' => 'state',
+                    'sensor_type' => 'proxmox',
+                    'sensor_descr' => 'Node ' . $name . ' Status',
+                    'sensor_index' => 'node_online_' . $index,
+                    'sensor_current' => $isOnline,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                    'states' => [
+                        ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'offline'],
+                        ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'unknown'],
+                        ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'online'],
+                    ],
+                ];
+            } elseif ($type === 'cluster') {
+                // Cluster inventory
+                $inventory[] = [
+                    'entPhysicalIndex' => $index,
+                    'entPhysicalDescr' => 'Cluster: ' . $name,
+                    'entPhysicalClass' => 'stack',
+                    'entPhysicalName' => $name,
+                    'entPhysicalModelName' => 'Proxmox VE Cluster',
+                    'entPhysicalSerialNum' => '',
+                    'entPhysicalContainedIn' => 0,
+                    'entPhysicalMfgName' => 'Proxmox',
+                    'entPhysicalParentRelPos' => -1,
+                    'entPhysicalVendorType' => 'cluster',
+                    'entPhysicalHardwareRev' => '',
+                    'entPhysicalFirmwareRev' => '',
+                    'entPhysicalSoftwareRev' => '',
+                    'entPhysicalIsFRU' => 0,
+                    'entPhysicalAlias' => '',
+                    'entPhysicalAssetID' => '',
+                ];
+
+                // Quorum state
+                if (isset($item['quorate'])) {
+                    $isQuorate = $item['quorate'] ? 2 : 0;
+                    $sensors[] = [
+                        'sensor_class' => 'state',
+                        'sensor_type' => 'proxmox',
+                        'sensor_descr' => 'Cluster Quorum',
+                        'sensor_index' => 'cluster_quorum',
+                        'sensor_current' => $isQuorate,
+                        'sensor_limit' => null,
+                        'sensor_limit_low' => null,
+                        'states' => [
+                            ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'no-quorum'],
+                            ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'quorate'],
+                        ],
+                    ];
+                }
+
+                // Node count
+                if (isset($item['nodes'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'proxmox',
+                        'sensor_descr' => 'Cluster Nodes',
+                        'sensor_index' => 'cluster_nodes',
+                        'sensor_current' => $item['nodes'],
+                        'sensor_limit' => null,
+                        'sensor_limit_low' => 1,
+                    ];
+                }
+            }
+        }
+
+        return ['sensors' => $sensors, 'inventory' => $inventory];
+    }
+    public static function normalizeProxmoxClusterResources(array $payload): array
+    {
+        $sensors = [];
+        $inventory = [];
+
+        if (!isset($payload['data']) || !is_array($payload['data'])) {
+            return ['sensors' => $sensors, 'inventory' => $inventory];
+        }
+
+        // Count VMs and containers
+        $vmCount = 0;
+        $ctCount = 0;
+        $runningVms = 0;
+        $runningCts = 0;
+
+        foreach ($payload['data'] as $resource) {
+            $type = $resource['type'] ?? '';
+            $status = $resource['status'] ?? '';
+
+            if ($type === 'qemu') {
+                $vmCount++;
+                if ($status === 'running') {
+                    $runningVms++;
+                }
+            } elseif ($type === 'lxc') {
+                $ctCount++;
+                if ($status === 'running') {
+                    $runningCts++;
+                }
+            }
+        }
+
+        // VM count sensors
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox',
+            'sensor_descr' => 'Total VMs',
+            'sensor_index' => 'resource_vm_total',
+            'sensor_current' => $vmCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox',
+            'sensor_descr' => 'Running VMs',
+            'sensor_index' => 'resource_vm_running',
+            'sensor_current' => $runningVms,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        // Container count sensors
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox',
+            'sensor_descr' => 'Total Containers',
+            'sensor_index' => 'resource_ct_total',
+            'sensor_current' => $ctCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox',
+            'sensor_descr' => 'Running Containers',
+            'sensor_index' => 'resource_ct_running',
+            'sensor_current' => $runningCts,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        return ['sensors' => $sensors, 'inventory' => $inventory];
+    }
 
 		public static function normalizeFortigateSystemUsage(array $payload): array { return []; }
     public static function normalizeFortigateSystemStatus(array $payload): array { return []; }
