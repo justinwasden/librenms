@@ -23,7 +23,7 @@ class ProxmoxApiClient
         $this->device = $device;
 
         // Load API config from database
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema')->where('device_id', $device->device_id)->first();
 
         // Get HTTP options from DeviceApiSettings
         $http = DeviceApiSettings::httpOptions($device);
@@ -32,8 +32,9 @@ class ProxmoxApiClient
         $this->verifyTls = (bool)$http['verify_tls'];
         $this->proxy = $http['proxy'] ?? null;
 
-        // Determine auth type from schema
-        $this->authType = $this->apiConfig?->getValue('auth_type') ?? 'token';
+        // Determine auth type from schema key
+        $schemaKey = $this->apiConfig?->schema?->key ?? 'proxmox_token';
+        $this->authType = str_contains($schemaKey, 'ticket') ? 'ticket' : 'token';
 
         if ($this->authType === 'token') {
             $user = $this->apiConfig?->getValue('token_user') ?? '';
