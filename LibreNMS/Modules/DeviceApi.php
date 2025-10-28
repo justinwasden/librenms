@@ -41,17 +41,13 @@ use Illuminate\Support\Facades\Log;
 
 class DeviceApi implements Module
 {
-    /**
-     * @inheritDoc
-     */
+
     public function dependencies(): array
     {
         return [];
     }
 
-    /**
-     * Should discovery run for this device?
-     */
+
     public function shouldDiscover(OS $os, ModuleStatus $status): bool
     {
         $device = $os->getDevice();
@@ -67,10 +63,7 @@ class DeviceApi implements Module
         return $apiConfig !== null;
     }
 
-    /**
-     * Discover this module
-     * For API devices, discovery runs the same endpoints as polling
-     */
+
     public function discover(OS $os): void
     {
         $device = $os->getDevice();
@@ -85,9 +78,7 @@ class DeviceApi implements Module
         }
     }
 
-    /**
-     * Should polling run for this device?
-     */
+
     public function shouldPoll(OS $os, ModuleStatus $status): bool
     {
         $device = $os->getDevice();
@@ -113,9 +104,7 @@ class DeviceApi implements Module
         return true;
     }
 
-    /**
-     * Poll data for this module
-     */
+
     public function poll(OS $os, DataStorageInterface $datastore): void
     {
         $device = $os->getDevice();
@@ -138,9 +127,7 @@ class DeviceApi implements Module
         }
     }
 
-    /**
-     * Execute the API poll/discovery
-     */
+
     protected function executeApiPoll(Device $device): void
     {
         // Load device with relationships
@@ -175,9 +162,7 @@ class DeviceApi implements Module
         $executor->run($device, $templateKey, $client);
     }
 
-    /**
-     * Check if data exists for this module
-     */
+
     public function dataExists(Device $device): bool
     {
         $apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
@@ -185,9 +170,7 @@ class DeviceApi implements Module
         return $apiConfig !== null;
     }
 
-    /**
-     * Remove all DB data for this module
-     */
+
     public function cleanup(Device $device): int
     {
         // Delete API configuration
@@ -212,9 +195,7 @@ class DeviceApi implements Module
         return $deleted;
     }
 
-    /**
-     * Dump current module data for tests
-     */
+
     public function dump(Device $device, string $type): ?array
     {
         $apiConfig = $device->apiConfig()->with(['template', 'schema.fields'])->first();
