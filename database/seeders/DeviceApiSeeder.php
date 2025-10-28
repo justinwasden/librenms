@@ -92,6 +92,50 @@ class DeviceApiSeeder extends Seeder
             'display_order' => 2,
         ]);
 
+        // PureStorage FlashArray Schema
+        $pureStorageSchema = DeviceApiAuthSchema::create([
+            'key' => 'purestorage_api_token',
+            'label' => 'Pure Storage API Token',
+            'description' => 'Pure Storage FlashArray API Token authentication',
+            'vendor' => 'purestorage',
+            'enabled' => true,
+        ]);
+
+        DeviceApiAuthSchemaField::create([
+            'schema_id' => $pureStorageSchema->id,
+            'name' => 'api_token',
+            'label' => 'API Token',
+            'type' => 'password',
+            'required' => true,
+            'encrypted' => true,
+            'placeholder' => 'Enter your Pure Storage API token',
+            'display_order' => 1,
+        ]);
+
+        DeviceApiAuthSchemaField::create([
+            'schema_id' => $pureStorageSchema->id,
+            'name' => 'login_path',
+            'label' => 'Login Path',
+            'type' => 'text',
+            'required' => false,
+            'encrypted' => false,
+            'placeholder' => '/login',
+            'default' => '/login',
+            'display_order' => 2,
+        ]);
+
+        DeviceApiAuthSchemaField::create([
+            'schema_id' => $pureStorageSchema->id,
+            'name' => 'auth_header_name',
+            'label' => 'Auth Header Name',
+            'type' => 'text',
+            'required' => false,
+            'encrypted' => false,
+            'placeholder' => 'X-Auth-Token',
+            'default' => 'X-Auth-Token',
+            'display_order' => 3,
+        ]);
+
         // Proxmox Token Schema
         $proxmoxTokenSchema = DeviceApiAuthSchema::create([
             'key' => 'proxmox_token',
@@ -169,7 +213,7 @@ class DeviceApiSeeder extends Seeder
     private function createTemplates(): void
     {
         // PureStorage FlashArray Template
-        $pureSchema = DeviceApiAuthSchema::where('key', 'apikey')->first();
+        $pureSchema = DeviceApiAuthSchema::where('key', 'purestorage_api_token')->first();
         $pureTemplate = DeviceApiTemplate::create([
             'key' => 'purestorage_flasharray',
             'label' => 'Pure Storage FlashArray',
