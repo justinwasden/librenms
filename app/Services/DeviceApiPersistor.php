@@ -72,6 +72,7 @@ class DeviceApiPersistor
                     'sensor_type'                => $s['sensor_type'] ?? 'rest',
                     'sensor_descr'               => $s['sensor_descr'] ?? '',
                     'sensor_index'               => (string) ($s['sensor_index'] ?? ''),
+                    'sensor_oid'                 => $s['sensor_oid'] ?? '.1.3.6.1.4.1.99999.1',
                     'sensor_current'             => $s['sensor_current'] ?? null,
                     'sensor_limit'               => $s['sensor_limit'] ?? null,
                     'sensor_limit_low'           => $s['sensor_limit_low'] ?? null,
@@ -168,15 +169,23 @@ class DeviceApiPersistor
             try {
                 // Upsert entPhysical-like inventory
                 $base = [
-                    'device_id'        => $device->device_id,
-                    'entPhysicalIndex' => $e['entPhysicalIndex'] ?? null,
-                    'name'             => $e['name'] ?? ($e['entPhysicalName'] ?? ''),
-                    'descr'            => $e['descr'] ?? ($e['entPhysicalDescr'] ?? ''),
-                    'class'            => $e['class'] ?? ($e['entPhysicalClass'] ?? ''),
-                    'serial'           => $e['serial'] ?? ($e['entPhysicalSerialNum'] ?? ''),
-                    'vendor'           => $e['vendor'] ?? '',
-                    'model'            => $e['model'] ?? '',
-                    'parent'           => $e['parent'] ?? ($e['entPhysicalContainedIn'] ?? null),
+                    'device_id'                  => $device->device_id,
+                    'entPhysicalIndex'           => $e['entPhysicalIndex'] ?? null,
+                    'entPhysicalName'            => $e['name'] ?? ($e['entPhysicalName'] ?? ''),
+                    'entPhysicalDescr'           => $e['descr'] ?? ($e['entPhysicalDescr'] ?? ''),
+                    'entPhysicalClass'           => $e['class'] ?? ($e['entPhysicalClass'] ?? ''),
+                    'entPhysicalSerialNum'       => $e['serial'] ?? ($e['entPhysicalSerialNum'] ?? ''),
+                    'entPhysicalMfgName'         => $e['vendor'] ?? ($e['entPhysicalMfgName'] ?? ''),
+                    'entPhysicalModelName'       => $e['model'] ?? ($e['entPhysicalModelName'] ?? ''),
+                    'entPhysicalContainedIn'     => $e['parent'] ?? ($e['entPhysicalContainedIn'] ?? 0),
+                    'entPhysicalParentRelPos'    => $e['entPhysicalParentRelPos'] ?? -1,
+                    'entPhysicalVendorType'      => $e['entPhysicalVendorType'] ?? null,
+                    'entPhysicalHardwareRev'     => $e['entPhysicalHardwareRev'] ?? '',
+                    'entPhysicalFirmwareRev'     => $e['entPhysicalFirmwareRev'] ?? '',
+                    'entPhysicalSoftwareRev'     => $e['entPhysicalSoftwareRev'] ?? '',
+                    'entPhysicalIsFRU'           => $e['entPhysicalIsFRU'] ?? null,
+                    'entPhysicalAlias'           => $e['entPhysicalAlias'] ?? '',
+                    'entPhysicalAssetID'         => $e['entPhysicalAssetID'] ?? '',
                 ];
 
                 $existing = DB::table('entPhysical')

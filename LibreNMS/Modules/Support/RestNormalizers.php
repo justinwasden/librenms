@@ -5,7 +5,7 @@ namespace LibreNMS\Modules\Support;
 class RestNormalizers
 {
     // Existing Pure normalizers (as provided)
-    public static function normalizePureArraySensors(array $arrayPayload, array $perfPayload): array
+    public static function normalizePureArraySensors(array $arrayPayload, array $perfPayload = []): array
     {
         $sensors = [];
 
@@ -253,8 +253,9 @@ class RestNormalizers
             $enabled = ($iface['enabled'] ?? false) ? 'up' : 'down';
             $speed = $iface['speed'] ?? 0;
 
-            // Convert speed to bits per second (Pure returns in Gbps)
-            $speedBps = $speed * 1000000000;
+            // Pure Storage appears to return speed already in bits per second
+            // Cap at max BIGINT value to avoid database overflow (use 2^63-1 as safe limit)
+            $speedBps = min($speed, 9223372036854775807);
 
             $ports[] = [
                 'ifIndex' => self::stableIndexFromName($name),
