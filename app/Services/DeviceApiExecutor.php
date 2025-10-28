@@ -165,6 +165,29 @@ class DeviceApiExecutor
             return;
         }
 
+        // Check if mapped data is a structured response (contains multiple data types)
+        // Some normalizers return ['sensors' => [...], 'inventory' => [...], 'processors' => [...], etc.]
+        $isStructured = isset($mapped['sensors']) || isset($mapped['inventory']) ||
+                       isset($mapped['processors']) || isset($mapped['mempools']);
+
+        if ($isStructured) {
+            // Handle structured response by persisting each data type
+            if (!empty($mapped['sensors'])) {
+                \App\Services\DeviceApiPersistor::saveSensors($device, $mapped['sensors']);
+            }
+            if (!empty($mapped['inventory'])) {
+                \App\Services\DeviceApiPersistor::saveInventory($device, $mapped['inventory']);
+            }
+            if (!empty($mapped['processors'])) {
+                \App\Services\DeviceApiPersistor::saveProcessors($device, $mapped['processors']);
+            }
+            if (!empty($mapped['mempools'])) {
+                \App\Services\DeviceApiPersistor::saveMempools($device, $mapped['mempools']);
+            }
+            return;
+        }
+
+        // Handle flat response (direct array of items)
         switch ($capability) {
             case 'ports':
                 \App\Services\DeviceApiPersistor::savePorts($device, $mapped);
