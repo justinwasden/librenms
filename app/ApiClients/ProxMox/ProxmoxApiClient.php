@@ -45,7 +45,13 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
             // Validate required token fields
             if (empty($user) || empty($tokenid) || empty($secret)) {
-                throw new \RuntimeException('Proxmox API token authentication requires token_user, token_id, and token_secret');
+                $debugInfo = sprintf(
+                    'Proxmox API token authentication requires token_user, token_id, and token_secret. Got: user=%s, tokenid=%s, secret=%s',
+                    $user ? 'SET' : 'EMPTY',
+                    $tokenid ? 'SET' : 'EMPTY',
+                    $secret ? 'SET' : 'EMPTY'
+                );
+                throw new \RuntimeException($debugInfo);
             }
 
             $this->headers['Authorization'] = "PVEAPIToken={$user}!{$tokenid}={$secret}";
@@ -96,7 +102,8 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         if ($resp->failed()) {
             $body = $resp->body();
             $errorDetail = $body ? " - Response: $body" : '';
-            throw new \RuntimeException("Proxmox GET $path failed: " . $resp->status() . $errorDetail);
+            $authHeader = isset($this->headers['Authorization']) ? 'Auth header present' : 'No auth header';
+            throw new \RuntimeException("Proxmox GET $uri failed: " . $resp->status() . " ($authHeader)" . $errorDetail);
         }
         $json = $resp->json();
         return is_array($json) ? $json : [];
