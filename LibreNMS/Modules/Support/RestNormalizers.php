@@ -862,10 +862,161 @@ class RestNormalizers
         return ['sensors' => $sensors, 'inventory' => $inventory];
     }
 
-		public static function normalizeFortigateSystemUsage(array $payload): array { return []; }
-    public static function normalizeFortigateSystemStatus(array $payload): array { return []; }
-    public static function normalizeFortigateInterfaces(array $payload): array { return []; }
-    public static function normalizeFortigateIpv4(array $payload): array { return []; }
+		public static function normalizeFortigateSystemUsage(array $payload): array
+    {
+        $sensors = [];
+        $processors = [];
+        $mempools = [];
+
+        $results = $payload['results'] ?? $payload;
+
+        // CPU usage
+        if (isset($results['cpu'])) {
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'fortigate',
+                'sensor_descr' => 'CPU Usage',
+                'sensor_index' => 'cpu_usage',
+                'sensor_current' => $results['cpu'],
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+
+            $processors[] = [
+                'processor_index' => 0,
+                'processor_type' => 'fortigate-cpu',
+                'processor_descr' => 'System CPU',
+                'processor_usage' => $results['cpu'],
+            ];
+        }
+
+        // Memory usage
+        if (isset($results['mem'])) {
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'fortigate',
+                'sensor_descr' => 'Memory Usage',
+                'sensor_index' => 'mem_usage',
+                'sensor_current' => $results['mem'],
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+
+            // Approximate total/used based on percentage (FortiGate doesn't always provide absolute values)
+            $memTotal = 100; // placeholder
+            $memUsed = $results['mem'];
+            $mempools[] = [
+                'mempool_index' => 0,
+                'mempool_type' => 'fortigate',
+                'mempool_descr' => 'System Memory',
+                'mempool_total' => $memTotal,
+                'mempool_used' => $memUsed,
+                'mempool_free' => $memTotal - $memUsed,
+                'mempool_perc' => $results['mem'],
+            ];
+        }
+
+        return ['sensors' => $sensors, 'processors' => $processors, 'mempools' => $mempools];
+    }
+
+    public static function normalizeFortigateSystemStatus(array $payload): array
+    {
+        $inventory = [];
+        $sensors = [];
+
+        $results = $payload['results'] ?? $payload;
+
+        // System inventory
+        if (isset($results['serial'])) {
+            $inventory[] = [
+                'entPhysicalIndex' => 1,
+                'entPhysicalDescr' => ($results['hostname'] ?? 'FortiGate') . ' Chassis',
+                'entPhysicalClass' => 'chassis',
+                'entPhysicalName' => $results['hostname'] ?? 'FortiGate',
+                'entPhysicalModelName' => $results['model'] ?? '',
+                'entPhysicalSerialNum' => $results['serial'],
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'Fortinet',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'fortigate',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => $results['version'] ?? '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => '',
+            ];
+        }
+
+        return ['sensors' => $sensors, 'inventory' => $inventory];
+    }
+
+    public static function normalizeFortigateInterfaces(array $payload): array
+    {
+        $ports = [];
+
+        $results = $payload['results'] ?? $payload;
+        if (!is_array($results)) {
+            return $ports;
+        }
+
+        foreach ($results as $idx => $iface) {
+            $name = $iface['name'] ?? "port_$idx";
+            $status = strtolower($iface['status'] ?? 'down');
+
+            $ports[] = [
+                'ifIndex' => self::stableIndexFromName($name),
+                'ifName' => $name,
+                'ifDescr' => $iface['alias'] ?? $name,
+                'ifType' => $iface['type'] ?? 'ethernetCsmacd',
+                'ifSpeed' => ($iface['speed'] ?? 1000) * 1000000, // Mbps to bps
+                'ifOperStatus' => $status === 'up' ? 'up' : 'down',
+                'ifAdminStatus' => $status === 'up' ? 'up' : 'down',
+                'ifMtu' => $iface['mtu'] ?? 1500,
+                'ifPhysAddress' => $iface['macaddr'] ?? '',
+                'ifAlias' => $iface['alias'] ?? '',
+                'ifLastChange' => 0,
+            ];
+        }
+
+        return $ports;
+    }
+
+    public static function normalizeFortigateIpv4(array $payload): array
+    {
+        $addresses = [];
+
+        $results = $payload['results'] ?? $payload;
+        if (!is_array($results)) {
+            return $addresses;
+        }
+
+        foreach ($results as $iface) {
+            $ifName = $iface['name'] ?? '';
+            $ip = $iface['ip'] ?? $iface['ipv4'] ?? '';
+
+            if (!$ip || $ip === '0.0.0.0') {
+                continue;
+            }
+
+            // Parse IP/CIDR
+            if (strpos($ip, '/') !== false) {
+                [$ipAddr, $prefixLen] = explode('/', $ip, 2);
+            } else {
+                $ipAddr = $ip;
+                $prefixLen = $iface['netmask'] ? self::netmaskToCidr($iface['netmask']) : 24;
+            }
+
+            $addresses[] = [
+                'ifIndex' => self::stableIndexFromName($ifName),
+                'ipv4_address' => $ipAddr,
+                'ipv4_prefixlen' => $prefixLen,
+                'context_name' => '',
+            ];
+        }
+
+        return $addresses;
+    }
 
     public static function normalizeJunosInterfaces(array $payload): array { return []; }
     public static function normalizeJunosInventory(array $payload): array { return []; }
@@ -891,8 +1042,67 @@ class RestNormalizers
     public static function normalizeIseNetworkDevices(array $payload): array { return []; }
     public static function normalizeIseEndpoints(array $payload): array { return []; }
 
-    public static function normalizeEsxiVersion(array $payload): array { return []; }
-    public static function normalizeEsxiHealth(array $payload): array { return []; }
+    public static function normalizeEsxiVersion(array $payload): array
+    {
+        $inventory = [];
+
+        $value = $payload['value'] ?? $payload;
+
+        if (isset($value['version'])) {
+            $inventory[] = [
+                'entPhysicalIndex' => 1,
+                'entPhysicalDescr' => 'ESXi Host',
+                'entPhysicalClass' => 'chassis',
+                'entPhysicalName' => 'ESXi',
+                'entPhysicalModelName' => $value['product'] ?? 'ESXi',
+                'entPhysicalSerialNum' => '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'VMware',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'esxi',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => $value['version'] ?? '',
+                'entPhysicalSoftwareRev' => $value['build'] ?? '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => '',
+            ];
+        }
+
+        return $inventory;
+    }
+
+    public static function normalizeEsxiHealth(array $payload): array
+    {
+        $sensors = [];
+
+        $value = $payload['value'] ?? $payload;
+
+        // Overall system health
+        if (isset($value['system_health'])) {
+            $healthMap = ['green' => 2, 'yellow' => 1, 'orange' => 1, 'red' => 0, 'gray' => 3];
+            $health = strtolower($value['system_health']);
+            $healthValue = $healthMap[$health] ?? 3;
+
+            $sensors[] = [
+                'sensor_class' => 'state',
+                'sensor_type' => 'esxi',
+                'sensor_descr' => 'System Health',
+                'sensor_index' => 'system_health',
+                'sensor_current' => $healthValue,
+                'sensor_limit' => null,
+                'sensor_limit_low' => null,
+                'states' => [
+                    ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'red'],
+                    ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'yellow/orange'],
+                    ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'green'],
+                    ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'gray/unknown'],
+                ],
+            ];
+        }
+
+        return $sensors;
+    }
 
     public static function normalizePanInventory(array $payload): array { return []; }
     public static function normalizePanInterfaces(array $payload): array { return []; }
@@ -1807,5 +2017,14 @@ class RestNormalizers
         // Use CRC32 to generate a stable numeric index
         // This ensures the same name always gets the same index
         return abs(crc32($name));
+    }
+
+    protected static function netmaskToCidr(string $netmask): int
+    {
+        // Convert netmask to CIDR prefix length
+        // e.g., "255.255.255.0" => 24
+        $long = ip2long($netmask);
+        $base = ip2long('255.255.255.255');
+        return (int) (32 - log(($long ^ $base) + 1, 2));
     }
 }
