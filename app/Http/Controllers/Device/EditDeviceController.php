@@ -511,6 +511,14 @@ class EditDeviceController
         } catch (\Throwable $e) {
             $msg = $e->getMessage();
 
+            // Log full exception for debugging
+            \Log::debug('API Test Exception', [
+                'device_id' => $device->device_id,
+                'message' => $msg,
+                'class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             // Friendly 4xx handling: treat as connected
             if (preg_match('/(returned|failed):\s*(\d{3})/', $msg, $m)) {
                 $code = (int) $m[2];
@@ -540,6 +548,7 @@ class EditDeviceController
             }
 
             // Provide helpful error messages
+            $originalMsg = $msg;
             if (str_contains($msg, 'Could not resolve host')) {
                 $msg = 'Could not resolve hostname - check the URL';
             } elseif (str_contains($msg, 'Connection refused')) {
@@ -553,6 +562,8 @@ class EditDeviceController
             return response()->json([
                 'ok' => false,
                 'error' => $msg,
+                'details' => $originalMsg, // Include full original error
+                'exception_class' => get_class($e),
             ], 400);
         }
     }
