@@ -201,16 +201,7 @@
 
     <hr>
 
-    {{-- Save Settings Button --}}
-    <div class="form-group">
-        <div class="col-sm-offset-2 col-sm-6">
-            <button type="submit" name="Submit" class="btn btn-success">
-                <i class="fa fa-check"></i> Save Settings
-            </button>
-        </div>
-    </div>
-
-    {{-- Test Connection Button --}}
+    {{-- Test Connection Button (only visible when API enabled) --}}
     <div class="form-group">
         <div class="col-sm-offset-2 col-sm-6">
             <button type="button" id="test-api-connection" class="btn btn-info">
@@ -295,6 +286,20 @@
 
 </div> {{-- #api-settings-content --}}
 
+{{-- Save Settings Button - Always visible so users can save when enabling OR disabling API --}}
+<div class="form-group">
+    <div class="col-sm-offset-2 col-sm-6">
+        <button type="submit" name="Submit" class="btn btn-success">
+            <i class="fa fa-check"></i> Save Settings
+        </button>
+        <small class="text-muted" id="save-button-hint">
+            <span id="disable-hint" style="display: none;">
+                <i class="fa fa-info-circle"></i> Click to disable API polling and remove credentials.
+            </span>
+        </small>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 (function() {
@@ -312,6 +317,12 @@
         const enabled = enabledCheckbox && enabledCheckbox.checked;
         content.style.display = enabled ? '' : 'none';
         toggleInputsDisability(!enabled);
+
+        // Show hint when API is disabled (user can save to remove credentials)
+        const disableHint = document.getElementById('disable-hint');
+        if (disableHint) {
+            disableHint.style.display = enabled ? 'none' : 'inline';
+        }
     }
 
     if (enabledCheckbox) {
