@@ -1,13 +1,15 @@
 <?php
 namespace App\ApiClients\Proxmox;
 
+use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
 use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\Util\DeviceApiSettings;
 
-class ProxmoxApiClient
+class ProxmoxApiClient implements DeviceApiClientInterface
 {
+    public const VENDOR = 'proxmox';
     protected Device $device;
     protected string $base;
     protected int $timeout;
@@ -116,4 +118,76 @@ class ProxmoxApiClient
     public function getNodeStatus(string $node): array { return $this->get("nodes/{$node}/status"); }
     public function getNodeNetwork(string $node): array { return $this->get("nodes/{$node}/network"); }
     public function getClusterStatus(): array { return $this->get('cluster/status'); }
+
+    public function supports(Device $device): bool
+    {
+        return $device->os === 'proxmox' && $this->apiConfig !== null;
+    }
+
+    public function capabilities(): array
+    {
+        return ['sensors', 'ports', 'processors', 'mempools'];
+    }
+
+    public function fetchSensors(Device $device): array
+    {
+        // TODO: Implement sensor fetching
+        return [];
+    }
+
+    public function fetchPorts(Device $device): array
+    {
+        // TODO: Implement port fetching
+        return [];
+    }
+
+    public function fetchMempools(Device $device): array
+    {
+        // TODO: Implement mempool fetching
+        return [];
+    }
+
+    public function fetchProcessors(Device $device): array
+    {
+        // TODO: Implement processor fetching
+        return [];
+    }
+
+    public function fetchInventory(Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchIpv4Addresses(Device $device): array
+    {
+        return [];
+    }
+
+    public function isReachable(): bool
+    {
+        try {
+            $this->get('cluster/status');
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function getApiInfo(): array
+    {
+        try {
+            $data = $this->get('version');
+            return [
+                'vendor' => 'proxmox',
+                'api_version' => $data['data']['version'] ?? 'unknown',
+                'reachable' => true,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'vendor' => 'proxmox',
+                'reachable' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
 }

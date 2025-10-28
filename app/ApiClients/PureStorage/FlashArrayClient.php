@@ -2,6 +2,7 @@
 
 namespace App\ApiClients\PureStorage;
 
+use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\AuthStrategies\AuthStrategyFactory;
 use App\ApiClients\AuthStrategies\AuthContext;
 use App\Models\Device;
@@ -9,8 +10,9 @@ use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\Util\DeviceApiSettings;
 
-class FlashArrayClient
+class FlashArrayClient implements DeviceApiClientInterface
 {
+    public const VENDOR = 'purestorage';
     protected Device $device;
     protected array $httpBaseOpts;
     protected array $requestOpts = [];
@@ -126,5 +128,76 @@ class FlashArrayClient
             'auth_header_name' => $authHeaderName,
             'login_path' => $loginPath,
         ];
+    }
+
+    public function supports(Device $device): bool
+    {
+        return $device->os === 'purestorage' && $this->apiConfig !== null;
+    }
+
+    public function capabilities(): array
+    {
+        return ['sensors', 'ports', 'inventory'];
+    }
+
+    public function fetchSensors(Device $device): array
+    {
+        // TODO: Implement sensor fetching
+        return [];
+    }
+
+    public function fetchPorts(Device $device): array
+    {
+        // TODO: Implement port fetching
+        return [];
+    }
+
+    public function fetchMempools(Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchProcessors(Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchInventory(Device $device): array
+    {
+        // TODO: Implement inventory fetching
+        return [];
+    }
+
+    public function fetchIpv4Addresses(Device $device): array
+    {
+        return [];
+    }
+
+    public function isReachable(): bool
+    {
+        try {
+            $this->get('/arrays');
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function getApiInfo(): array
+    {
+        try {
+            $data = $this->get('/arrays');
+            return [
+                'vendor' => 'purestorage',
+                'api_version' => '2.x',
+                'reachable' => true,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'vendor' => 'purestorage',
+                'reachable' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 }
