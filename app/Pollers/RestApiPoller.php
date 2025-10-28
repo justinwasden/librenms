@@ -4,6 +4,7 @@ namespace App\Pollers;
 
 use App\ApiClients\DeviceApiClientFactory;
 use App\Models\Device;
+use LibreNMS\RRD\RrdDefinition;
 use LibreNMS\Util\DeviceApiSettings;
 
 class RestApiPoller
