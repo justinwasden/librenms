@@ -129,9 +129,8 @@ function discover_device(&$device, $force_module = false)
     DeviceCache::setPrimary($device['device_id']);
     App::forgetInstance('sensor-discovery');
 
-    if ($device['snmp_disable'] == '1') {
-        return true;
-    }
+    // Note: Removed early return for snmp_disable to allow non-SNMP modules (like device-api) to run
+    // Individual modules will check snmp_disable in their shouldDiscover() methods if needed
 
     global $valid;
 
