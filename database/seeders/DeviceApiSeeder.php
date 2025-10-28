@@ -270,8 +270,9 @@ class DeviceApiSeeder extends Seeder
         $proxmoxEndpoints = [
             ['capability' => 'sensors', 'path' => '/nodes/{node}/status', 'transform' => 'normalizeProxmoxNodeStatus', 'order' => 1],
             ['capability' => 'sensors', 'path' => '/cluster/status', 'transform' => 'normalizeProxmoxClusterStatus', 'order' => 2],
-            ['capability' => 'sensors', 'path' => '/storage', 'transform' => 'normalizeProxmoxNodeStorage', 'order' => 3],
+            ['capability' => 'sensors', 'path' => '/nodes/{node}/storage', 'transform' => 'normalizeProxmoxNodeStorage', 'order' => 3],
             ['capability' => 'ports', 'path' => '/nodes/{node}/network', 'transform' => 'normalizeProxmoxNodeNetwork', 'order' => 1],
+            ['capability' => 'sensors', 'path' => '/cluster/resources', 'transform' => 'normalizeProxmoxClusterResources', 'order' => 4],
         ];
 
         foreach ($proxmoxEndpoints as $idx => $endpoint) {

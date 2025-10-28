@@ -54,7 +54,17 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                 throw new \RuntimeException($debugInfo);
             }
 
-            $this->headers['Authorization'] = "PVEAPIToken={$user}!{$tokenid}={$secret}";
+            $authHeader = "PVEAPIToken={$user}!{$tokenid}={$secret}";
+            $this->headers['Authorization'] = $authHeader;
+
+            // Log for debugging (mask the secret)
+            $maskedSecret = substr($secret, 0, 8) . '...' . substr($secret, -4);
+            \Log::debug('Proxmox Auth Header', [
+                'user' => $user,
+                'tokenid' => $tokenid,
+                'secret_preview' => $maskedSecret,
+                'header_format' => "PVEAPIToken={$user}!{$tokenid}=[SECRET]",
+            ]);
         } else {
             $this->login(); // sets cookie/header
         }
