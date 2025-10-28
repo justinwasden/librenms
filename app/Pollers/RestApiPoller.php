@@ -231,30 +231,20 @@ class RestApiPoller
 
             d_echo("      - Port $ifIndex: $ifDescr ($ifOperStatus)\n");
 
-            // Check if port exists
+            // Check if port exists (should be created during discovery)
             $port = \App\Models\Port::where('device_id', $this->device->device_id)
                 ->where('ifIndex', $ifIndex)
                 ->first();
 
             if (!$port) {
-                // Create new port
-                $port = new \App\Models\Port();
-                $port->device_id = $this->device->device_id;
-                $port->ifIndex = $ifIndex;
-                $port->port_id = null; // Will be auto-generated
+                // Port doesn't exist - skip (discovery should create it)
+                d_echo("        Warning: Port not found in database (run discovery first)\n");
+                continue;
             }
 
-            // Update port data
-            $port->ifName = $ifName;
-            $port->ifDescr = $ifDescr;
-            $port->ifAlias = $portData['ifAlias'] ?? '';
-            $port->ifType = $portData['ifType'] ?? 'other';
+            // Update only operational status and statistics
             $port->ifOperStatus = $ifOperStatus;
             $port->ifAdminStatus = $ifAdminStatus;
-            $port->ifSpeed = $portData['ifSpeed'] ?? 0;
-            $port->ifMtu = $portData['ifMtu'] ?? 0;
-            $port->ifPhysAddress = $portData['ifPhysAddress'] ?? '';
-
             $port->save();
         }
     }
@@ -290,20 +280,15 @@ class RestApiPoller
                 ->first();
 
             if (!$mempool) {
-                // Create new mempool
-                $mempool = new \App\Models\Mempool();
-                $mempool->device_id = $this->device->device_id;
-                $mempool->mempool_index = $mempoolData['mempool_index'];
+                // Mempool doesn't exist - skip (discovery should create it)
+                d_echo("        Warning: Mempool not found in database (run discovery first)\n");
+                continue;
             }
 
-            // Update mempool data
-            $mempool->mempool_type = $mempoolData['mempool_type'] ?? 'api';
-            $mempool->mempool_descr = $mempoolData['mempool_descr'] ?? 'Memory';
-            $mempool->mempool_precision = $mempoolData['mempool_precision'] ?? 1;
+            // Update mempool usage data only
             $mempool->mempool_perc = $mempoolData['mempool_perc'] ?? 0;
             $mempool->mempool_used = $mempoolData['mempool_used'] ?? 0;
             $mempool->mempool_free = $mempoolData['mempool_free'] ?? 0;
-            $mempool->mempool_total = $mempoolData['mempool_total'] ?? 0;
 
             $mempool->save();
 
@@ -359,17 +344,13 @@ class RestApiPoller
                 ->first();
 
             if (!$processor) {
-                // Create new processor
-                $processor = new \App\Models\Processor();
-                $processor->device_id = $this->device->device_id;
-                $processor->processor_index = $processorData['processor_index'];
+                // Processor doesn't exist - skip (discovery should create it)
+                d_echo("        Warning: Processor not found in database (run discovery first)\n");
+                continue;
             }
 
-            // Update processor data
-            $processor->processor_type = $processorData['processor_type'] ?? 'api';
-            $processor->processor_descr = $processorData['processor_descr'] ?? 'CPU';
+            // Update processor usage only
             $processor->processor_usage = $processorData['processor_usage'] ?? 0;
-            $processor->processor_precision = $processorData['processor_precision'] ?? 1;
 
             $processor->save();
 
@@ -409,36 +390,19 @@ class RestApiPoller
 
             d_echo("      - $physicalDescr\n");
 
-            // Check if inventory item exists
+            // Check if inventory item exists (should be created during discovery)
             $item = \App\Models\EntPhysical::where('device_id', $this->device->device_id)
                 ->where('entPhysicalIndex', $physicalIndex)
                 ->first();
 
             if (!$item) {
-                // Create new inventory item
-                $item = new \App\Models\EntPhysical();
-                $item->device_id = $this->device->device_id;
-                $item->entPhysicalIndex = $itemData['entPhysicalIndex'];
+                // Inventory item doesn't exist - skip (discovery should create it)
+                d_echo("        Warning: Inventory item not found in database (run discovery first)\n");
+                continue;
             }
 
-            // Update inventory data
-            $item->entPhysicalDescr = $itemData['entPhysicalDescr'] ?? '';
-            $item->entPhysicalClass = $itemData['entPhysicalClass'] ?? 'other';
-            $item->entPhysicalName = $itemData['entPhysicalName'] ?? '';
-            $item->entPhysicalModelName = $itemData['entPhysicalModelName'] ?? '';
-            $item->entPhysicalSerialNum = $itemData['entPhysicalSerialNum'] ?? '';
-            $item->entPhysicalContainedIn = $itemData['entPhysicalContainedIn'] ?? 0;
-            $item->entPhysicalMfgName = $itemData['entPhysicalMfgName'] ?? '';
-            $item->entPhysicalParentRelPos = $itemData['entPhysicalParentRelPos'] ?? -1;
-            $item->entPhysicalVendorType = $itemData['entPhysicalVendorType'] ?? null;
-            $item->entPhysicalHardwareRev = $itemData['entPhysicalHardwareRev'] ?? '';
-            $item->entPhysicalFirmwareRev = $itemData['entPhysicalFirmwareRev'] ?? '';
-            $item->entPhysicalSoftwareRev = $itemData['entPhysicalSoftwareRev'] ?? '';
-            $item->entPhysicalIsFRU = $itemData['entPhysicalIsFRU'] ?? 'false';
-            $item->entPhysicalAlias = $itemData['entPhysicalAlias'] ?? '';
-            $item->entPhysicalAssetID = $itemData['entPhysicalAssetID'] ?? '';
-
-            $item->save();
+            // Inventory items are static hardware - no updates needed during polling
+            // Discovery handles creation and updates
         }
     }
 
