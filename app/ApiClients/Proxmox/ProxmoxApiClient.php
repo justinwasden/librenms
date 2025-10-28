@@ -199,7 +199,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     // Uptime
                     if (isset($resource['uptime'])) {
                         $sensors[] = [
-                            'sensor_class' => 'uptime',
+                            'sensor_class' => 'runtime',
                             'sensor_type' => 'proxmox',
                             'sensor_descr' => "$node Uptime",
                             'sensor_current' => $resource['uptime'],

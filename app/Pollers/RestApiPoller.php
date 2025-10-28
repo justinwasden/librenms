@@ -135,7 +135,7 @@ class RestApiPoller
             }
 
             // Skip sensors with 0 value unless it's a valid zero for certain classes
-            $validZeroClasses = ['state', 'uptime', 'count', 'delay'];
+            $validZeroClasses = ['state', 'runtime', 'count', 'delay'];
             if ($sensorCurrent == 0 && !in_array($sensorClass, $validZeroClasses)) {
                 d_echo("      - Skipping $sensorClass: $sensorDescr (zero value)\n");
                 continue;
