@@ -22,7 +22,7 @@ class FlashArrayClient
         $this->device = $device;
 
         // Load API config from database
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema.fields')->where('device_id', $device->device_id)->first();
 
         $http = DeviceApiSettings::httpOptions($device);
         $values = $this->resolveValues();

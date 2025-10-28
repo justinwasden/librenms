@@ -401,7 +401,7 @@ class EditDeviceController
             $tempConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
 
             // Get schema and template IDs
-            $schemaModel = \App\Models\DeviceApiAuthSchema::where('key', $authType)->first();
+            $schemaModel = \App\Models\DeviceApiAuthSchema::with('fields')->where('key', $authType)->first();
             $templateModel = !empty($templateKey) ? \App\Models\DeviceApiTemplate::where('key', $templateKey)->first() : null;
 
             if ($schemaModel) {

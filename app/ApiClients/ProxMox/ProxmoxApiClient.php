@@ -23,7 +23,7 @@ class ProxmoxApiClient
         $this->device = $device;
 
         // Load API config from database
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema')->where('device_id', $device->device_id)->first();
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema.fields')->where('device_id', $device->device_id)->first();
 
         // Get HTTP options from DeviceApiSettings
         $http = DeviceApiSettings::httpOptions($device);
@@ -40,6 +40,12 @@ class ProxmoxApiClient
             $user = $this->apiConfig?->getValue('token_user') ?? '';
             $tokenid = $this->apiConfig?->getValue('token_id') ?? '';
             $secret = $this->apiConfig?->getValue('token_secret') ?? '';
+
+            // Validate required token fields
+            if (empty($user) || empty($tokenid) || empty($secret)) {
+                throw new \RuntimeException('Proxmox API token authentication requires token_user, token_id, and token_secret');
+            }
+
             $this->headers['Authorization'] = "PVEAPIToken={$user}!{$tokenid}={$secret}";
         } else {
             $this->login(); // sets cookie/header
