@@ -19,10 +19,12 @@ class DeviceApiClientFactory
     /**
      * Register vendor client classes here for auto-detection.
      * Each must implement DeviceApiClientInterface and define a VENDOR constant.
+     * GenericDeviceApiClient should be LAST as it's the fallback for any template.
      */
     protected static array $clientClasses = [
         \App\ApiClients\PureStorage\FlashArrayClient::class,
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
+        \App\ApiClients\GenericDeviceApiClient::class, // Fallback for templates without specific clients
     ];
 
     protected static array $cache = []; // device_id => class-string
