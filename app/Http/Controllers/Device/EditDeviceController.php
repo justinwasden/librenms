@@ -425,12 +425,26 @@ class EditDeviceController
 
             // Set auth field values from request
             if ($schemaModel) {
+                // Get existing config to use saved password values if not provided in test
+                $existingConfig = DeviceApiConfig::with('schema.fields')
+                    ->where('device_id', $device->device_id)
+                    ->first();
+
                 foreach ($schemaModel->fields as $field) {
                     $value = $request->input($field->name);
+
+                    // For password fields: if empty in request, use saved value from database
+                    if ($field->type === 'password' && ($value === null || $value === '')) {
+                        if ($existingConfig && $existingConfig->schema_id === $schemaModel->id) {
+                            $value = $existingConfig->getValue($field->name);
+                        }
+                    }
+
                     // Use default value if input is empty and field is not password
                     if (($value === null || $value === '') && $field->type !== 'password' && $field->default) {
                         $value = $field->default;
                     }
+
                     if ($value) {
                         $tempConfig->setValue($field->name, $value);
                     }
