@@ -180,7 +180,7 @@ class RestApiPoller
 
             // Update RRD
             $rrd_name = get_sensor_rrd($this->device, $sensor->toArray());
-            $rrd_def = \RrdDefinition::make()->addDataset('sensor', $sensor->rrd_type, 0);
+            $rrd_def = RrdDefinition::make()->addDataset('sensor', $sensor->rrd_type, 0);
 
             $fields = [
                 'sensor' => $sensorCurrent,
@@ -309,7 +309,7 @@ class RestApiPoller
 
             // Update RRD
             $rrd_name = ['mempool', $mempool->mempool_type, $mempool->mempool_index];
-            $rrd_def = \RrdDefinition::make()
+            $rrd_def = RrdDefinition::make()
                 ->addDataset('used', 'GAUGE', 0)
                 ->addDataset('free', 'GAUGE', 0);
 
@@ -375,7 +375,7 @@ class RestApiPoller
 
             // Update RRD
             $rrd_name = ['processor', $processor->processor_type, $processor->processor_index];
-            $rrd_def = \RrdDefinition::make()->addDataset('usage', 'GAUGE', 0, 100);
+            $rrd_def = RrdDefinition::make()->addDataset('usage', 'GAUGE', 0, 100);
 
             $fields = [
                 'usage' => $processor->processor_usage,
