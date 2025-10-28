@@ -31,11 +31,11 @@ class TransformRunner
         if (is_string($transformKey) && method_exists(RestNormalizers::class, $transformKey)) {
             // Some normalizers require additional arguments, adapt as needed
             try {
-                return RestNormalizers::$transformKey($payload);
+                return RestNormalizers::{$transformKey}($payload);
             } catch (\ArgumentCountError $e) {
                 // Try alternative signatures that are common in your codebase
                 try {
-                    return RestNormalizers::$transformKey($payload, 60); // e.g. poll interval
+                    return RestNormalizers::{$transformKey}($payload, 60); // e.g. poll interval
                 } catch (\Throwable $ignored) {
                     Log::warning("Transform {$transformKey} failed: {$ignored->getMessage()}");
                 }
