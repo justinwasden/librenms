@@ -155,7 +155,7 @@ class FlashArrayClient implements DeviceApiClientInterface
                 // Capacity sensors
                 if (isset($array['capacity'])) {
                     $sensors[] = [
-                        'sensor_class' => 'storage',
+                        'sensor_class' => 'count',
                         'sensor_type' => 'purestorage',
                         'sensor_descr' => "$name Total Capacity",
                         'sensor_divisor' => 1,
@@ -179,7 +179,7 @@ class FlashArrayClient implements DeviceApiClientInterface
                 if (isset($array['space'])) {
                     $space = $array['space'];
                     $sensors[] = [
-                        'sensor_class' => 'storage',
+                        'sensor_class' => 'count',
                         'sensor_type' => 'purestorage',
                         'sensor_descr' => "$name Used Space",
                         'sensor_current' => $space['total_physical'] ?? 0,

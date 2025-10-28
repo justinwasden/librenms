@@ -176,7 +176,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     if (isset($resource['mem']) && isset($resource['maxmem'])) {
                         $usagePercent = ($resource['maxmem'] > 0) ? ($resource['mem'] / $resource['maxmem']) * 100 : 0;
                         $sensors[] = [
-                            'sensor_class' => 'percentage',
+                            'sensor_class' => 'percent',
                             'sensor_type' => 'proxmox',
                             'sensor_descr' => "$node Memory Usage",
                             'sensor_current' => $usagePercent,
@@ -188,7 +188,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     if (isset($resource['disk']) && isset($resource['maxdisk'])) {
                         $usagePercent = ($resource['maxdisk'] > 0) ? ($resource['disk'] / $resource['maxdisk']) * 100 : 0;
                         $sensors[] = [
-                            'sensor_class' => 'percentage',
+                            'sensor_class' => 'percent',
                             'sensor_type' => 'proxmox',
                             'sensor_descr' => "$node Disk Usage",
                             'sensor_current' => $usagePercent,
@@ -210,7 +210,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     if (isset($resource['disk']) && isset($resource['maxdisk'])) {
                         $usagePercent = ($resource['maxdisk'] > 0) ? ($resource['disk'] / $resource['maxdisk']) * 100 : 0;
                         $sensors[] = [
-                            'sensor_class' => 'percentage',
+                            'sensor_class' => 'percent',
                             'sensor_type' => 'proxmox',
                             'sensor_descr' => "$node Storage $name Usage",
                             'sensor_current' => $usagePercent,

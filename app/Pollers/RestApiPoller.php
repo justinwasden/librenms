@@ -194,7 +194,7 @@ class RestApiPoller
                 'rrd_def' => $rrd_def,
             ];
 
-            data_update($this->device, 'sensor', $tags, $fields);
+            app('Datastore')->put($this->device->toArray(), 'sensor', $tags, $fields);
         }
     }
 
@@ -319,7 +319,7 @@ class RestApiPoller
             ];
 
             $tags = compact('mempool_type', 'rrd_name', 'rrd_def');
-            data_update($this->device, 'mempool', $tags, $fields);
+            app('Datastore')->put($this->device->toArray(), 'mempool', $tags, $fields);
         }
     }
 
@@ -382,7 +382,7 @@ class RestApiPoller
             ];
 
             $tags = compact('rrd_name', 'rrd_def');
-            data_update($this->device, 'processor', $tags, $fields);
+            app('Datastore')->put($this->device->toArray(), 'processor', $tags, $fields);
         }
     }
 
