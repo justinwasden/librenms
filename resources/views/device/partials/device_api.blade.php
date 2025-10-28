@@ -238,6 +238,19 @@
             <div class="alert" id="test-result-message"></div>
         </div>
     </div>
+    {{-- Save Settings Button - Always visible so users can save when enabling OR disabling API --}}
+<div class="form-group">
+    <div class="col-sm-offset-2 col-sm-6">
+        <button type="submit" name="Submit" class="btn btn-success">
+            <i class="fa fa-check"></i> Save Settings
+        </button>
+        <small class="text-muted" id="save-button-hint">
+            <span id="disable-hint" style="display: none;">
+                <i class="fa fa-info-circle"></i> Click to disable API polling and remove credentials.
+            </span>
+        </small>
+    </div>
+</div>
 
     <hr>
 
@@ -286,19 +299,7 @@
 
 </div> {{-- #api-settings-content --}}
 
-{{-- Save Settings Button - Always visible so users can save when enabling OR disabling API --}}
-<div class="form-group">
-    <div class="col-sm-offset-2 col-sm-6">
-        <button type="submit" name="Submit" class="btn btn-success">
-            <i class="fa fa-check"></i> Save Settings
-        </button>
-        <small class="text-muted" id="save-button-hint">
-            <span id="disable-hint" style="display: none;">
-                <i class="fa fa-info-circle"></i> Click to disable API polling and remove credentials.
-            </span>
-        </small>
-    </div>
-</div>
+
 
 @push('scripts')
 <script>
