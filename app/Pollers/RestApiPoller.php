@@ -119,44 +119,82 @@ class RestApiPoller
 
         d_echo("    Found " . count($sensors) . " sensors\n");
 
-        // Include sensor polling functions
-        require_once base_path('includes/discovery/sensors.inc.php');
+        foreach ($sensors as $sensorData) {
+            $sensorClass = $sensorData['sensor_class'] ?? 'count';
+            $sensorType = $sensorData['sensor_type'] ?? 'api';
+            $sensorDescr = $sensorData['sensor_descr'] ?? 'Unknown';
+            $sensorCurrent = $sensorData['sensor_current'] ?? null;
+            $sensorIndex = $sensorData['sensor_index'] ?? crc32($sensorDescr);
+            $sensorOid = $sensorData['sensor_oid'] ?? ".1.3.6.1.4.1.99999.$sensorIndex";
 
-        foreach ($sensors as $sensor) {
-            $sensorClass = $sensor['sensor_class'] ?? 'count';
-            $sensorType = $sensor['sensor_type'] ?? 'api';
-            $sensorDescr = $sensor['sensor_descr'] ?? 'Unknown';
-            $sensorCurrent = $sensor['sensor_current'] ?? 0;
-            $sensorIndex = $sensor['sensor_index'] ?? crc32($sensorDescr);
+            // Skip sensors with null or invalid values
+            if ($sensorCurrent === null || $sensorCurrent === '') {
+                d_echo("      - Skipping $sensorClass: $sensorDescr (null/empty value)\n");
+                continue;
+            }
+
+            // Skip sensors with 0 value unless it's a valid zero for certain classes
+            $validZeroClasses = ['state', 'uptime', 'count', 'delay'];
+            if ($sensorCurrent == 0 && !in_array($sensorClass, $validZeroClasses)) {
+                d_echo("      - Skipping $sensorClass: $sensorDescr (zero value)\n");
+                continue;
+            }
 
             d_echo("      - $sensorClass: $sensorDescr = $sensorCurrent\n");
 
-            // Use discover_sensor to create/update sensor
-            discover_sensor(
-                $valid_sensor = null,
-                $sensorClass,
-                $this->device,
-                $sensor['sensor_oid'] ?? ".1.3.6.1.4.1.99999.$sensorIndex", // Fake OID for API sensors
-                $sensorIndex,
-                $sensorType,
-                $sensorDescr,
-                $sensor['sensor_divisor'] ?? 1,
-                $sensor['sensor_multiplier'] ?? 1,
-                $sensor['sensor_limit'] ?? null,
-                $sensor['sensor_limit_warn'] ?? null,
-                $sensor['sensor_limit_low'] ?? null,
-                $sensor['sensor_limit_low_warn'] ?? null,
-                $sensorCurrent,
-                $sensor['rrd_type'] ?? 'GAUGE',
-                $sensor['entPhysicalIndex'] ?? null,
-                $sensor['entPhysicalIndex_measured'] ?? null,
-                $sensor['user_func'] ?? null,
-                $sensor['group'] ?? null
-            );
-        }
+            // Check if sensor exists
+            $sensor = \App\Models\Sensor::where('device_id', $this->device->device_id)
+                ->where('sensor_class', $sensorClass)
+                ->where('sensor_type', $sensorType)
+                ->where('sensor_index', $sensorIndex)
+                ->first();
 
-        // Poll/update RRD values for all sensors
-        include base_path('includes/polling/sensors.inc.php');
+            if (!$sensor) {
+                // Create new sensor
+                $sensor = new \App\Models\Sensor();
+                $sensor->device_id = $this->device->device_id;
+                $sensor->sensor_class = $sensorClass;
+                $sensor->sensor_type = $sensorType;
+                $sensor->sensor_index = $sensorIndex;
+                $sensor->sensor_oid = $sensorOid;
+            }
+
+            // Update sensor data
+            $sensor->sensor_descr = $sensorDescr;
+            $sensor->sensor_divisor = $sensorData['sensor_divisor'] ?? 1;
+            $sensor->sensor_multiplier = $sensorData['sensor_multiplier'] ?? 1;
+            $sensor->sensor_limit = $sensorData['sensor_limit'] ?? null;
+            $sensor->sensor_limit_warn = $sensorData['sensor_limit_warn'] ?? null;
+            $sensor->sensor_limit_low = $sensorData['sensor_limit_low'] ?? null;
+            $sensor->sensor_limit_low_warn = $sensorData['sensor_limit_low_warn'] ?? null;
+            $sensor->sensor_current = $sensorCurrent;
+            $sensor->sensor_prev = $sensor->sensor_current ?? null;
+            $sensor->entPhysicalIndex = $sensorData['entPhysicalIndex'] ?? null;
+            $sensor->entPhysicalIndex_measured = $sensorData['entPhysicalIndex_measured'] ?? null;
+            $sensor->sensor_custom = $sensorData['sensor_custom'] ?? 'No';
+            $sensor->rrd_type = $sensorData['rrd_type'] ?? 'GAUGE';
+            $sensor->sensor_alert = $sensorData['sensor_alert'] ?? 1;
+
+            $sensor->save();
+
+            // Update RRD
+            $rrd_name = get_sensor_rrd($this->device, $sensor->toArray());
+            $rrd_def = \RrdDefinition::make()->addDataset('sensor', $sensor->rrd_type, 0);
+
+            $fields = [
+                'sensor' => $sensorCurrent,
+            ];
+
+            $tags = [
+                'sensor_class' => $sensorClass,
+                'sensor_type' => $sensorType,
+                'sensor_index' => $sensorIndex,
+                'rrd_name' => $rrd_name,
+                'rrd_def' => $rrd_def,
+            ];
+
+            data_update($this->device, 'sensor', $tags, $fields);
+        }
     }
 
     protected function pollPorts(): void
@@ -172,28 +210,46 @@ class RestApiPoller
 
         // Use LibreNMS port sync functionality
         foreach ($ports as $portData) {
-            d_echo("      - Port {$portData['ifIndex']}: {$portData['ifDescr']}\n");
+            $ifIndex = $portData['ifIndex'] ?? null;
+            $ifName = $portData['ifName'] ?? '';
+            $ifDescr = $portData['ifDescr'] ?? '';
+            $ifOperStatus = $portData['ifOperStatus'] ?? 'unknown';
+            $ifAdminStatus = $portData['ifAdminStatus'] ?? 'unknown';
+
+            // Skip ports without valid index
+            if ($ifIndex === null) {
+                d_echo("      - Skipping port: $ifDescr (no ifIndex)\n");
+                continue;
+            }
+
+            // Skip disabled ports (optional - uncomment if you want to skip down ports)
+            // if ($ifOperStatus === 'down' && $ifAdminStatus === 'down') {
+            //     d_echo("      - Skipping port $ifIndex: $ifDescr (disabled)\n");
+            //     continue;
+            // }
+
+            d_echo("      - Port $ifIndex: $ifDescr ($ifOperStatus)\n");
 
             // Check if port exists
             $port = \App\Models\Port::where('device_id', $this->device->device_id)
-                ->where('ifIndex', $portData['ifIndex'])
+                ->where('ifIndex', $ifIndex)
                 ->first();
 
             if (!$port) {
                 // Create new port
                 $port = new \App\Models\Port();
                 $port->device_id = $this->device->device_id;
-                $port->ifIndex = $portData['ifIndex'];
+                $port->ifIndex = $ifIndex;
                 $port->port_id = null; // Will be auto-generated
             }
 
             // Update port data
-            $port->ifName = $portData['ifName'] ?? '';
-            $port->ifDescr = $portData['ifDescr'] ?? '';
+            $port->ifName = $ifName;
+            $port->ifDescr = $ifDescr;
             $port->ifAlias = $portData['ifAlias'] ?? '';
             $port->ifType = $portData['ifType'] ?? 'other';
-            $port->ifOperStatus = $portData['ifOperStatus'] ?? 'unknown';
-            $port->ifAdminStatus = $portData['ifAdminStatus'] ?? 'unknown';
+            $port->ifOperStatus = $ifOperStatus;
+            $port->ifAdminStatus = $ifAdminStatus;
             $port->ifSpeed = $portData['ifSpeed'] ?? 0;
             $port->ifMtu = $portData['ifMtu'] ?? 0;
             $port->ifPhysAddress = $portData['ifPhysAddress'] ?? '';
@@ -214,11 +270,22 @@ class RestApiPoller
         d_echo("    Found " . count($mempools) . " mempools\n");
 
         foreach ($mempools as $mempoolData) {
-            d_echo("      - {$mempoolData['mempool_descr']}: {$mempoolData['mempool_used']}/{$mempoolData['mempool_total']}\n");
+            $mempoolIndex = $mempoolData['mempool_index'] ?? null;
+            $mempoolDescr = $mempoolData['mempool_descr'] ?? 'Memory';
+            $mempoolTotal = $mempoolData['mempool_total'] ?? 0;
+            $mempoolUsed = $mempoolData['mempool_used'] ?? 0;
+
+            // Skip mempools without valid index or total
+            if ($mempoolIndex === null || $mempoolTotal == 0) {
+                d_echo("      - Skipping mempool: $mempoolDescr (invalid data)\n");
+                continue;
+            }
+
+            d_echo("      - $mempoolDescr: $mempoolUsed/$mempoolTotal\n");
 
             // Check if mempool exists
             $mempool = \App\Models\Mempool::where('device_id', $this->device->device_id)
-                ->where('mempool_index', $mempoolData['mempool_index'])
+                ->where('mempool_index', $mempoolIndex)
                 ->first();
 
             if (!$mempool) {
@@ -267,11 +334,27 @@ class RestApiPoller
         d_echo("    Found " . count($processors) . " processors\n");
 
         foreach ($processors as $processorData) {
-            d_echo("      - {$processorData['processor_descr']}: {$processorData['processor_usage']}%\n");
+            $processorIndex = $processorData['processor_index'] ?? null;
+            $processorDescr = $processorData['processor_descr'] ?? 'CPU';
+            $processorUsage = $processorData['processor_usage'] ?? null;
+
+            // Skip processors without valid index
+            if ($processorIndex === null) {
+                d_echo("      - Skipping processor: $processorDescr (no index)\n");
+                continue;
+            }
+
+            // Skip processors with null usage (though 0% is valid)
+            if ($processorUsage === null) {
+                d_echo("      - Skipping processor: $processorDescr (no usage data)\n");
+                continue;
+            }
+
+            d_echo("      - $processorDescr: {$processorUsage}%\n");
 
             // Check if processor exists
             $processor = \App\Models\Processor::where('device_id', $this->device->device_id)
-                ->where('processor_index', $processorData['processor_index'])
+                ->where('processor_index', $processorIndex)
                 ->first();
 
             if (!$processor) {
@@ -314,11 +397,20 @@ class RestApiPoller
         d_echo("    Found " . count($inventory) . " inventory items\n");
 
         foreach ($inventory as $itemData) {
-            d_echo("      - {$itemData['entPhysicalDescr']}\n");
+            $physicalIndex = $itemData['entPhysicalIndex'] ?? null;
+            $physicalDescr = $itemData['entPhysicalDescr'] ?? '';
+
+            // Skip inventory items without valid index or description
+            if ($physicalIndex === null || empty($physicalDescr)) {
+                d_echo("      - Skipping inventory item (invalid data)\n");
+                continue;
+            }
+
+            d_echo("      - $physicalDescr\n");
 
             // Check if inventory item exists
             $item = \App\Models\EntityPhysical::where('device_id', $this->device->device_id)
-                ->where('entPhysicalIndex', $itemData['entPhysicalIndex'])
+                ->where('entPhysicalIndex', $physicalIndex)
                 ->first();
 
             if (!$item) {
