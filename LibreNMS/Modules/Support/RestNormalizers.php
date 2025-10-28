@@ -92,7 +92,6 @@ class RestNormalizers
 
     public static function normalizeCheckpointGateways(array $payload): array { return []; }
     public static function normalizeCheckpointInterfaces(array $payload): array { return []; }
-}
 
     // NetApp ONTAP
     public static function normalizeOntapEthernetPorts(array $payload): array
