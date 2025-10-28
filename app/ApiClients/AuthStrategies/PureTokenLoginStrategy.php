@@ -31,6 +31,10 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
 
         $apiToken = (string) ($options['values']['api_login_header_value'] ?? '');
 
+        if (empty($apiToken)) {
+            throw new \RuntimeException('PureStorage API token is required for authentication');
+        }
+
         $req = Http::withHeaders([$loginHeaderKey => $apiToken])
             ->timeout(($options['timeout_ms'] ?? 5000) / 1000)
             ->withOptions(['verify' => (bool) ($options['verify_ssl'] ?? true)]);
@@ -41,7 +45,9 @@ class PureTokenLoginStrategy implements AuthStrategyInterface
 
         $resp = $req->post($loginUrl);
         if ($resp->failed()) {
-            throw new \RuntimeException('Pure login failed: ' . $resp->status());
+            $body = $resp->body();
+            $errorDetail = $body ? " - Response: $body" : '';
+            throw new \RuntimeException('Pure login failed: ' . $resp->status() . $errorDetail);
         }
 
         $sessionToken = $resp->header($sessionHeaderKey);

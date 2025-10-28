@@ -92,7 +92,9 @@ class ProxmoxApiClient
         $uri = rtrim($this->base, '/') . '/' . ltrim($path, '/');
         $resp = $this->http()->get($uri, $query);
         if ($resp->failed()) {
-            throw new \RuntimeException("Proxmox GET $path failed: " . $resp->status());
+            $body = $resp->body();
+            $errorDetail = $body ? " - Response: $body" : '';
+            throw new \RuntimeException("Proxmox GET $path failed: " . $resp->status() . $errorDetail);
         }
         $json = $resp->json();
         return is_array($json) ? $json : [];
