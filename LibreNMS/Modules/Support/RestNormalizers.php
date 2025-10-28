@@ -47,12 +47,6 @@ class RestNormalizers
     public static function normalizeIseNetworkDevices(array $payload): array { return []; }
     public static function normalizeIseEndpoints(array $payload): array { return []; }
 
-    public static function vcHostsToInventory(array $payload): array { return []; }
-    public static function vcNetworksToPortsInventory(array $payload): array { return []; }
-    public static function vcDatastoresToStorageSensors(array $payload): array { return []; }
-    public static function vcClustersToInventory(array $payload): array { return []; }
-    public static function vcHostSummaryToProcessorsMempools(array $payload): array { return []; }
-
     public static function normalizeEsxiVersion(array $payload): array { return []; }
     public static function normalizeEsxiHealth(array $payload): array { return []; }
 
