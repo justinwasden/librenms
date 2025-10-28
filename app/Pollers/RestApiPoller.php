@@ -410,13 +410,13 @@ class RestApiPoller
             d_echo("      - $physicalDescr\n");
 
             // Check if inventory item exists
-            $item = \App\Models\EntityPhysical::where('device_id', $this->device->device_id)
+            $item = \App\Models\EntPhysical::where('device_id', $this->device->device_id)
                 ->where('entPhysicalIndex', $physicalIndex)
                 ->first();
 
             if (!$item) {
                 // Create new inventory item
-                $item = new \App\Models\EntityPhysical();
+                $item = new \App\Models\EntPhysical();
                 $item->device_id = $this->device->device_id;
                 $item->entPhysicalIndex = $itemData['entPhysicalIndex'];
             }
