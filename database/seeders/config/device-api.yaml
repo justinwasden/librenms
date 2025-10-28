@@ -1,0 +1,4 @@
+# Device API Module Configuration
+# Enable the device-api poller and discovery modules by default
+poller_modules.device-api: true
+discovery_modules.device-api: true
