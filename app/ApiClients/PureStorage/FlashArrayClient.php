@@ -142,14 +142,170 @@ class FlashArrayClient implements DeviceApiClientInterface
 
     public function fetchSensors(Device $device): array
     {
-        // TODO: Implement sensor fetching
-        return [];
+        $sensors = [];
+
+        try {
+            // Get array information
+            $arrayData = $this->get('/arrays');
+            $items = $arrayData['items'] ?? [$arrayData];
+
+            foreach ($items as $array) {
+                $name = $array['name'] ?? 'array';
+
+                // Capacity sensors
+                if (isset($array['capacity'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'storage',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Total Capacity",
+                        'sensor_divisor' => 1,
+                        'sensor_multiplier' => 1,
+                        'sensor_current' => $array['capacity'] ?? 0,
+                        'sensor_limit' => null,
+                        'sensor_limit_warn' => null,
+                        'sensor_limit_low' => null,
+                        'sensor_limit_low_warn' => null,
+                        'sensor_alert' => 1,
+                        'sensor_custom' => 'No',
+                        'entPhysicalIndex' => null,
+                        'entPhysicalIndex_measured' => null,
+                        'sensor_prev' => null,
+                        'user_func' => null,
+                        'rrd_type' => 'GAUGE',
+                    ];
+                }
+
+                // Space usage
+                if (isset($array['space'])) {
+                    $space = $array['space'];
+                    $sensors[] = [
+                        'sensor_class' => 'storage',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Used Space",
+                        'sensor_current' => $space['total_physical'] ?? 0,
+                        'sensor_limit' => $array['capacity'] ?? null,
+                    ];
+                }
+            }
+
+            // Get array performance
+            $perfData = $this->get('/arrays/performance');
+            $perfItems = $perfData['items'] ?? [$perfData];
+
+            foreach ($perfItems as $perf) {
+                $name = $perf['name'] ?? 'array';
+
+                // Read bandwidth
+                if (isset($perf['reads_per_sec'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Read IOPS",
+                        'sensor_current' => $perf['reads_per_sec'],
+                    ];
+                }
+
+                // Write bandwidth
+                if (isset($perf['writes_per_sec'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Write IOPS",
+                        'sensor_current' => $perf['writes_per_sec'],
+                    ];
+                }
+
+                // Latency
+                if (isset($perf['usec_per_read_op'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'delay',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Read Latency",
+                        'sensor_current' => $perf['usec_per_read_op'],
+                    ];
+                }
+            }
+
+            // Get hardware status
+            $hwData = $this->get('/hardware');
+            $hwItems = $hwData['items'] ?? [];
+
+            foreach ($hwItems as $hw) {
+                $name = $hw['name'] ?? 'unknown';
+                $type = $hw['type'] ?? 'unknown';
+
+                // Temperature sensors
+                if (isset($hw['temperature']) && $hw['temperature'] !== null) {
+                    $sensors[] = [
+                        'sensor_class' => 'temperature',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Temperature",
+                        'sensor_current' => $hw['temperature'],
+                    ];
+                }
+
+                // Voltage sensors
+                if (isset($hw['voltage']) && $hw['voltage'] !== null) {
+                    $sensors[] = [
+                        'sensor_class' => 'voltage',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Voltage",
+                        'sensor_current' => $hw['voltage'],
+                    ];
+                }
+
+                // Status as state sensor
+                if (isset($hw['status'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'state',
+                        'sensor_type' => 'purestorage',
+                        'sensor_descr' => "$name Status",
+                        'sensor_current' => $hw['status'] === 'ok' ? 1 : 0,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchSensors failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $sensors;
     }
 
     public function fetchPorts(Device $device): array
     {
-        // TODO: Implement port fetching
-        return [];
+        $ports = [];
+
+        try {
+            $data = $this->get('/network-interfaces');
+            $items = $data['items'] ?? [];
+
+            foreach ($items as $idx => $interface) {
+                $ports[] = [
+                    'ifIndex' => $idx + 1,
+                    'ifName' => $interface['name'] ?? "port$idx",
+                    'ifDescr' => $interface['name'] ?? "port$idx",
+                    'ifAlias' => '',
+                    'ifType' => 'ethernetCsmacd',
+                    'ifOperStatus' => isset($interface['enabled']) && $interface['enabled'] ? 'up' : 'down',
+                    'ifAdminStatus' => isset($interface['enabled']) && $interface['enabled'] ? 'up' : 'down',
+                    'ifSpeed' => $interface['speed'] ?? 0,
+                    'ifMtu' => $interface['mtu'] ?? 1500,
+                    'ifPhysAddress' => $interface['hwaddr'] ?? '',
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchPorts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $ports;
     }
 
     public function fetchMempools(Device $device): array
@@ -164,8 +320,42 @@ class FlashArrayClient implements DeviceApiClientInterface
 
     public function fetchInventory(Device $device): array
     {
-        // TODO: Implement inventory fetching
-        return [];
+        $inventory = [];
+
+        try {
+            // Get hardware components
+            $hwData = $this->get('/hardware');
+            $items = $hwData['items'] ?? [];
+
+            foreach ($items as $idx => $hw) {
+                $inventory[] = [
+                    'entPhysicalIndex' => $idx + 1,
+                    'entPhysicalDescr' => $hw['name'] ?? 'Unknown',
+                    'entPhysicalClass' => $hw['type'] ?? 'other',
+                    'entPhysicalName' => $hw['name'] ?? '',
+                    'entPhysicalModelName' => $hw['model'] ?? '',
+                    'entPhysicalSerialNum' => $hw['serial'] ?? '',
+                    'entPhysicalContainedIn' => 0,
+                    'entPhysicalMfgName' => 'Pure Storage',
+                    'entPhysicalParentRelPos' => -1,
+                    'entPhysicalVendorType' => null,
+                    'entPhysicalHardwareRev' => $hw['version'] ?? '',
+                    'entPhysicalFirmwareRev' => '',
+                    'entPhysicalSoftwareRev' => '',
+                    'entPhysicalIsFRU' => 'true',
+                    'entPhysicalAlias' => '',
+                    'entPhysicalAssetID' => '',
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchInventory failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $inventory;
     }
 
     public function fetchIpv4Addresses(Device $device): array

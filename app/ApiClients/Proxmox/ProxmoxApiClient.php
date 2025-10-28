@@ -148,26 +148,208 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     public function fetchSensors(Device $device): array
     {
-        // TODO: Implement sensor fetching
-        return [];
+        $sensors = [];
+
+        try {
+            // Get cluster resources for overall stats
+            $resources = $this->get('cluster/resources');
+            $data = $resources['data'] ?? [];
+
+            foreach ($data as $resource) {
+                $type = $resource['type'] ?? '';
+                $node = $resource['node'] ?? 'unknown';
+                $name = $resource['name'] ?? $resource['id'] ?? 'unknown';
+
+                if ($type === 'node') {
+                    // CPU usage
+                    if (isset($resource['cpu'])) {
+                        $sensors[] = [
+                            'sensor_class' => 'load',
+                            'sensor_type' => 'proxmox',
+                            'sensor_descr' => "$node CPU Usage",
+                            'sensor_current' => $resource['cpu'] * 100,
+                            'sensor_limit' => 100,
+                        ];
+                    }
+
+                    // Memory usage
+                    if (isset($resource['mem']) && isset($resource['maxmem'])) {
+                        $usagePercent = ($resource['maxmem'] > 0) ? ($resource['mem'] / $resource['maxmem']) * 100 : 0;
+                        $sensors[] = [
+                            'sensor_class' => 'percentage',
+                            'sensor_type' => 'proxmox',
+                            'sensor_descr' => "$node Memory Usage",
+                            'sensor_current' => $usagePercent,
+                            'sensor_limit' => 100,
+                        ];
+                    }
+
+                    // Disk usage
+                    if (isset($resource['disk']) && isset($resource['maxdisk'])) {
+                        $usagePercent = ($resource['maxdisk'] > 0) ? ($resource['disk'] / $resource['maxdisk']) * 100 : 0;
+                        $sensors[] = [
+                            'sensor_class' => 'percentage',
+                            'sensor_type' => 'proxmox',
+                            'sensor_descr' => "$node Disk Usage",
+                            'sensor_current' => $usagePercent,
+                            'sensor_limit' => 100,
+                        ];
+                    }
+
+                    // Uptime
+                    if (isset($resource['uptime'])) {
+                        $sensors[] = [
+                            'sensor_class' => 'uptime',
+                            'sensor_type' => 'proxmox',
+                            'sensor_descr' => "$node Uptime",
+                            'sensor_current' => $resource['uptime'],
+                        ];
+                    }
+                } elseif ($type === 'storage') {
+                    // Storage usage
+                    if (isset($resource['disk']) && isset($resource['maxdisk'])) {
+                        $usagePercent = ($resource['maxdisk'] > 0) ? ($resource['disk'] / $resource['maxdisk']) * 100 : 0;
+                        $sensors[] = [
+                            'sensor_class' => 'percentage',
+                            'sensor_type' => 'proxmox',
+                            'sensor_descr' => "$node Storage $name Usage",
+                            'sensor_current' => $usagePercent,
+                            'sensor_limit' => 100,
+                        ];
+                    }
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchSensors failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $sensors;
     }
 
     public function fetchPorts(Device $device): array
     {
-        // TODO: Implement port fetching
-        return [];
+        $ports = [];
+
+        try {
+            // Get node name from cluster resources
+            $resources = $this->get('cluster/resources');
+            $nodes = array_filter($resources['data'] ?? [], fn($r) => ($r['type'] ?? '') === 'node');
+
+            if (empty($nodes)) {
+                return [];
+            }
+
+            $node = reset($nodes)['node'] ?? null;
+            if (!$node) {
+                return [];
+            }
+
+            // Get network interfaces for the node
+            $network = $this->get("nodes/$node/network");
+            $interfaces = $network['data'] ?? [];
+
+            foreach ($interfaces as $idx => $interface) {
+                $ifName = $interface['iface'] ?? "port$idx";
+                $type = $interface['type'] ?? 'unknown';
+
+                // Skip loopback
+                if ($ifName === 'lo') {
+                    continue;
+                }
+
+                $ports[] = [
+                    'ifIndex' => $idx + 1,
+                    'ifName' => $ifName,
+                    'ifDescr' => $ifName,
+                    'ifAlias' => $interface['comments'] ?? '',
+                    'ifType' => $type === 'bridge' ? 'bridge' : 'ethernetCsmacd',
+                    'ifOperStatus' => (isset($interface['active']) && $interface['active']) ? 'up' : 'down',
+                    'ifAdminStatus' => (isset($interface['autostart']) && $interface['autostart']) ? 'up' : 'down',
+                    'ifSpeed' => 1000000000, // Default to 1Gbps
+                    'ifMtu' => $interface['mtu'] ?? 1500,
+                    'ifPhysAddress' => '',
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchPorts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $ports;
     }
 
     public function fetchMempools(Device $device): array
     {
-        // TODO: Implement mempool fetching
-        return [];
+        $mempools = [];
+
+        try {
+            $resources = $this->get('cluster/resources');
+            $nodes = array_filter($resources['data'] ?? [], fn($r) => ($r['type'] ?? '') === 'node');
+
+            foreach ($nodes as $idx => $node) {
+                $nodeName = $node['node'] ?? "node$idx";
+
+                if (isset($node['mem']) && isset($node['maxmem'])) {
+                    $mempools[] = [
+                        'mempool_index' => $idx,
+                        'mempool_type' => 'proxmox',
+                        'mempool_descr' => "$nodeName Memory",
+                        'mempool_precision' => 1,
+                        'mempool_used' => $node['mem'],
+                        'mempool_total' => $node['maxmem'],
+                        'mempool_free' => $node['maxmem'] - $node['mem'],
+                        'mempool_perc' => ($node['maxmem'] > 0) ? ($node['mem'] / $node['maxmem']) * 100 : 0,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchMempools failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $mempools;
     }
 
     public function fetchProcessors(Device $device): array
     {
-        // TODO: Implement processor fetching
-        return [];
+        $processors = [];
+
+        try {
+            $resources = $this->get('cluster/resources');
+            $nodes = array_filter($resources['data'] ?? [], fn($r) => ($r['type'] ?? '') === 'node');
+
+            foreach ($nodes as $idx => $node) {
+                $nodeName = $node['node'] ?? "node$idx";
+
+                if (isset($node['cpu']) && isset($node['maxcpu'])) {
+                    $processors[] = [
+                        'processor_index' => $idx,
+                        'processor_type' => 'proxmox',
+                        'processor_descr' => "$nodeName CPU",
+                        'processor_usage' => $node['cpu'] * 100,
+                        'processor_precision' => 1,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchProcessors failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $processors;
     }
 
     public function fetchInventory(Device $device): array
