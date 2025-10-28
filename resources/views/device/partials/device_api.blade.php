@@ -272,7 +272,7 @@
                     </button>
                     Configured Endpoints
                 </div>
-                <div class="form-horizonta" style="max-height: 400px; overflow-y: auto;">
+                <div class="panel-body" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-condensed table-hover" id="endpoints-table">
                         <thead>
                         <tr>
