@@ -268,11 +268,16 @@ class DeviceApiSeeder extends Seeder
 
         // Proxmox Endpoints
         $proxmoxEndpoints = [
-            ['capability' => 'sensors', 'path' => '/nodes/{node}/status', 'transform' => 'normalizeProxmoxNodeStatus', 'order' => 1],
+            // Cluster endpoints (no placeholders - good for testing)
+            ['capability' => 'sensors', 'path' => '/cluster/resources', 'transform' => 'normalizeProxmoxClusterResources', 'order' => 1],
             ['capability' => 'sensors', 'path' => '/cluster/status', 'transform' => 'normalizeProxmoxClusterStatus', 'order' => 2],
-            ['capability' => 'sensors', 'path' => '/nodes/{node}/storage', 'transform' => 'normalizeProxmoxNodeStorage', 'order' => 3],
-            ['capability' => 'ports', 'path' => '/nodes/{node}/network', 'transform' => 'normalizeProxmoxNodeNetwork', 'order' => 1],
-            ['capability' => 'sensors', 'path' => '/cluster/resources', 'transform' => 'normalizeProxmoxClusterResources', 'order' => 4],
+            // Node-specific endpoints (require {node} placeholder)
+            ['capability' => 'sensors', 'path' => '/nodes/{node}/status', 'transform' => 'normalizeProxmoxNodeStatus', 'order' => 3],
+            ['capability' => 'sensors', 'path' => '/nodes/{node}/version', 'transform' => 'normalizeProxmoxNodeVersion', 'order' => 4],
+            ['capability' => 'storage', 'path' => '/nodes/{node}/storage', 'transform' => 'normalizeProxmoxNodeStorage', 'order' => 5],
+            ['capability' => 'ports', 'path' => '/nodes/{node}/network', 'transform' => 'normalizeProxmoxNodeNetwork', 'order' => 6],
+            ['capability' => 'vm', 'path' => '/nodes/{node}/qemu', 'transform' => 'normalizeProxmoxQemu', 'order' => 7],
+            ['capability' => 'vm', 'path' => '/nodes/{node}/lxc', 'transform' => 'normalizeProxmoxLxc', 'order' => 8],
         ];
 
         foreach ($proxmoxEndpoints as $idx => $endpoint) {
