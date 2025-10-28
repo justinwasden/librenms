@@ -696,6 +696,9 @@ $('#test-api-connection').on('click', function() {
     })
     .then(r => r.json())
     .then(d => {
+        // Always log full response to console for debugging
+        console.log('API Connection Test Response:', d);
+
         if (d && (d.ok || d.success)) {
             let message = d.message || 'Connection successful!';
             if (d.test_path) {
@@ -704,9 +707,18 @@ $('#test-api-connection').on('click', function() {
             if (d.latency_ms) {
                 message += ' [' + d.latency_ms + 'ms]';
             }
+
+            // If there are debug details, also log them prominently
+            if (d.details) {
+                console.warn('Connection Test Details:', d.details);
+            }
+
             toastr.success(message);
         } else {
             toastr.error('Connection failed: ' + ((d && d.error) || 'Unknown error'));
+            if (d.details) {
+                console.error('Connection Failure Details:', d.details);
+            }
         }
     })
     .catch(e => {

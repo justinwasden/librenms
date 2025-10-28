@@ -512,19 +512,29 @@ class EditDeviceController
             $msg = $e->getMessage();
 
             // Friendly 4xx handling: treat as connected
-            if (preg_match('/returned\s+(\d{3})/', $msg, $m)) {
-                $code = (int) $m[1];
+            if (preg_match('/(returned|failed):\s*(\d{3})/', $msg, $m)) {
+                $code = (int) $m[2];
                 if ($code >= 400 && $code < 500) {
                     $messages = [
                         401 => 'Connection successful - Authentication required (check credentials)',
                         403 => 'Connection successful - Authenticated but insufficient permissions',
                         404 => 'Connection successful - Endpoint not found (expected for some APIs)',
                     ];
+
+                    // Include additional debug info from the detailed error message
+                    $debugInfo = '';
+                    if (str_contains($msg, 'No auth header')) {
+                        $debugInfo = ' [DEBUG: Authorization header not set - check credentials are being sent]';
+                    } elseif (str_contains($msg, 'Auth header present')) {
+                        $debugInfo = ' [DEBUG: Credentials sent but rejected by API]';
+                    }
+
                     return response()->json([
                         'ok' => true,
                         'success' => true,
-                        'message' => $messages[$code] ?? "Connection successful (HTTP $code)",
+                        'message' => ($messages[$code] ?? "Connection successful (HTTP $code)") . $debugInfo,
                         'http_code' => $code,
+                        'details' => $msg, // Include full error for debugging
                     ]);
                 }
             }
