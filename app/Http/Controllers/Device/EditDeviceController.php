@@ -253,17 +253,26 @@ class EditDeviceController
         $templateKey = $request->input('rest_template');
         $authTypeKey = $request->input('rest_auth_type');
 
-        if (!$templateKey || !$authTypeKey) {
-            toast()->error(__('Template and authentication type are required'));
+        // Auth type is required, template is optional
+        if (!$authTypeKey) {
+            toast()->error(__('Authentication type is required'));
             return;
         }
 
-        $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
         $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
-
-        if (!$template || !$schema) {
-            toast()->error(__('Selected template or authentication schema not found'));
+        if (!$schema) {
+            toast()->error(__('Selected authentication schema not found'));
             return;
+        }
+
+        // Template is optional
+        $template = null;
+        if ($templateKey) {
+            $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
+            if (!$template) {
+                toast()->error(__('Selected template not found'));
+                return;
+            }
         }
 
         // Base URL validation
@@ -303,7 +312,7 @@ class EditDeviceController
         $schemaChanged = $apiConfig->schema_id !== $schema->id;
 
         // Update config fields
-        $apiConfig->template_id = $template->id;
+        $apiConfig->template_id = $template?->id;
         $apiConfig->schema_id = $schema->id;
         $apiConfig->base_url = $baseUrl;
         $apiConfig->verify_ssl = $request->boolean('rest_verify_tls');
