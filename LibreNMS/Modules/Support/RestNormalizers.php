@@ -144,7 +144,85 @@ class RestNormalizers
             }
         }
 
-        return $sensors;
+        // Also extract storage and mempool data from Pure Storage arrays
+        $storage = [];
+        $mempools = [];
+
+        \Illuminate\Support\Facades\Log::debug('normalizePureArraySensors - extracting storage', [
+            'has_items' => isset($arrayPayload['items']),
+            'items_count' => is_array($arrayPayload['items'] ?? null) ? count($arrayPayload['items']) : 0,
+        ]);
+
+        if (isset($arrayPayload['items']) && is_array($arrayPayload['items'])) {
+            foreach ($arrayPayload['items'] as $array) {
+                $arrayName = $array['name'] ?? 'array';
+
+                \Illuminate\Support\Facades\Log::debug('Processing array for storage', [
+                    'array_name' => $arrayName,
+                    'has_capacity' => isset($array['capacity']),
+                    'has_space' => isset($array['space']),
+                ]);
+
+                // Storage data from capacity and space
+                if (isset($array['capacity']) && isset($array['space'])) {
+                    $totalCapacity = $array['capacity'];
+                    $totalPhysical = $array['space']['total_physical'] ?? 0;
+                    $free = $totalCapacity - $totalPhysical;
+
+                    $storageEntry = [
+                        'storage_index' => 'array_' . ($array['id'] ?? '0'),
+                        'storage_descr' => $arrayName . ' Capacity',
+                        'storage_type' => 'flasharray',
+                        'storage_size' => $totalCapacity,
+                        'storage_used' => $totalPhysical,
+                        'storage_free' => $free > 0 ? $free : 0,
+                        'storage_units' => 1,
+                        'storage_perc' => $totalCapacity > 0 ? round(($totalPhysical / $totalCapacity) * 100, 2) : 0,
+                    ];
+                    $storage[] = $storageEntry;
+
+                    \Illuminate\Support\Facades\Log::debug('Created storage entry', $storageEntry);
+                }
+            }
+        }
+
+        \Illuminate\Support\Facades\Log::debug('normalizePureArraySensors - final counts', [
+            'sensors' => count($sensors),
+            'storage' => count($storage),
+            'mempools' => count($mempools),
+        ]);
+
+        // Extract mempool data from performance metrics if available
+        if (isset($perfPayload['items']) && is_array($perfPayload['items'])) {
+            foreach ($perfPayload['items'] as $perf) {
+                $arrayName = $perf['name'] ?? 'array';
+
+                // Queue depth can indicate memory pressure
+                if (isset($perf['queue_depth'])) {
+                    $queueDepth = $perf['queue_depth'];
+                    // Assume max queue depth of 1000 for percentage calculation
+                    $maxQueue = 1000;
+                    $usedPerc = min(($queueDepth / $maxQueue) * 100, 100);
+
+                    $mempools[] = [
+                        'mempool_index' => 'array_queue_' . substr(md5($arrayName), 0, 8),
+                        'mempool_descr' => $arrayName . ' Queue Depth',
+                        'mempool_type' => 'purestorage',
+                        'mempool_class' => 'system',
+                        'mempool_used' => $queueDepth,
+                        'mempool_free' => max($maxQueue - $queueDepth, 0),
+                        'mempool_total' => $maxQueue,
+                        'mempool_perc' => round($usedPerc, 2),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'sensors' => $sensors,
+            'storage' => $storage,
+            'mempools' => $mempools,
+        ];
     }
     public static function normalizePureHardware(array $payload): array
     {
