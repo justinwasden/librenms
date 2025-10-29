@@ -169,7 +169,8 @@ class DeviceApiExecutor
         // Some normalizers return ['sensors' => [...], 'inventory' => [...], 'processors' => [...], etc.]
         $isStructured = isset($mapped['sensors']) || isset($mapped['inventory']) ||
                        isset($mapped['processors']) || isset($mapped['mempools']) ||
-                       isset($mapped['transceivers']) || isset($mapped['storage']);
+                       isset($mapped['transceivers']) || isset($mapped['storage']) ||
+                       isset($mapped['ports_statistics']);
 
         if ($isStructured) {
             // Handle structured response by persisting each data type
@@ -190,6 +191,9 @@ class DeviceApiExecutor
             }
             if (!empty($mapped['storage'])) {
                 \App\Services\DeviceApiPersistor::saveStorage($device, $mapped['storage']);
+            }
+            if (!empty($mapped['ports_statistics'])) {
+                \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped['ports_statistics']);
             }
             return;
         }
@@ -216,6 +220,9 @@ class DeviceApiExecutor
                 break;
             case 'storage':
                 \App\Services\DeviceApiPersistor::saveStorage($device, $mapped);
+                break;
+            case 'ports_statistics':
+                \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped);
                 break;
             default:
                 // general or unknown: log and ignore, or extend with custom capability persistor

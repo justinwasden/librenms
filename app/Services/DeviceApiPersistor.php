@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Data\Store\Rrd\RrdDefinition;
 
 /**
  * DeviceApiPersistor
@@ -122,8 +123,28 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('processors')->where('processor_id', $existing->processor_id)->update($base);
+                    $processorId = $existing->processor_id;
                 } else {
-                    DB::table('processors')->insert($base);
+                    $processorId = DB::table('processors')->insertGetId($base);
+                }
+
+                // Create RRD file for processor usage
+                if (!empty($base['processor_usage']) && $processorId) {
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('usage', 'GAUGE', 0, 100);
+
+                    $tags = [
+                        'processor_type' => $base['processor_type'],
+                        'processor_index' => $base['processor_index'],
+                        'rrd_name' => ['processor', $base['processor_type'], $base['processor_index']],
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'usage' => $base['processor_usage'],
+                    ];
+
+                    app('Datastore')->put($device->toArray(), 'processor', $tags, $fields);
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveProcessors failed for device {$device->device_id}: {$e->getMessage()}");
@@ -154,8 +175,31 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('mempools')->where('mempool_id', $existing->mempool_id)->update($base);
+                    $mempoolId = $existing->mempool_id;
                 } else {
-                    DB::table('mempools')->insert($base);
+                    $mempoolId = DB::table('mempools')->insertGetId($base);
+                }
+
+                // Create RRD file for memory usage
+                if ($mempoolId && isset($base['mempool_used'], $base['mempool_free'])) {
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('used', 'GAUGE', 0)
+                        ->addDataset('free', 'GAUGE', 0);
+
+                    $tags = [
+                        'mempool_type' => $base['mempool_type'],
+                        'mempool_class' => $mp['mempool_class'] ?? 'system',
+                        'mempool_index' => $base['mempool_index'],
+                        'rrd_name' => ['mempool', $base['mempool_type'], $mp['mempool_class'] ?? 'system', $base['mempool_index']],
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'used' => $base['mempool_used'],
+                        'free' => $base['mempool_free'],
+                    ];
+
+                    app('Datastore')->put($device->toArray(), 'mempool', $tags, $fields);
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveMempools failed for device {$device->device_id}: {$e->getMessage()}");
@@ -306,8 +350,31 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('storage')->where('storage_id', $existing->storage_id)->update($base);
+                    $storageId = $existing->storage_id;
                 } else {
-                    DB::table('storage')->insert($base);
+                    $storageId = DB::table('storage')->insertGetId($base);
+                }
+
+                // Create RRD file for storage metrics
+                if ($storageId && isset($base['storage_used'], $base['storage_free'])) {
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('used', 'GAUGE', 0)
+                        ->addDataset('free', 'GAUGE', 0);
+
+                    $tags = [
+                        'storage_type' => $base['storage_type'],
+                        'storage_index' => $base['storage_index'],
+                        'storage_descr' => $base['storage_descr'],
+                        'rrd_name' => ['storage', $base['storage_type'], $base['storage_index']],
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'used' => $base['storage_used'],
+                        'free' => $base['storage_free'],
+                    ];
+
+                    app('Datastore')->put($device->toArray(), 'storage', $tags, $fields);
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveStorage failed for device {$device->device_id}: {$e->getMessage()}");
@@ -402,6 +469,189 @@ class DeviceApiPersistor
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveIpv4Mac failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
+     * Save port traffic statistics (traffic counters and metrics)
+     * Updates ports table with current counters and calculates rates/deltas
+     */
+    public static function savePortsStatistics(Device $device, array $statistics): void
+    {
+        foreach ($statistics as $stat) {
+            try {
+                // Find port_id from ifIndex, ifName, or direct port_id
+                $portId = self::findPortId($device, $stat);
+                if (!$portId) {
+                    Log::debug("Skipping port statistics - no port_id found", [
+                        'device_id' => $device->device_id,
+                        'ifIndex' => $stat['ifIndex'] ?? 'unknown',
+                    ]);
+                    continue;
+                }
+
+                // Get existing port data for delta/rate calculations
+                $existingPort = DB::table('ports')->where('port_id', $portId)->first();
+                if (!$existingPort) {
+                    Log::debug("Port not found for statistics update", ['port_id' => $portId]);
+                    continue;
+                }
+
+                $now = time();
+                $poll_period = $stat['poll_period'] ?? ($existingPort->poll_time ? ($now - $existingPort->poll_time) : 300);
+
+                // Ensure minimum poll period to avoid division by zero
+                if ($poll_period < 1) {
+                    $poll_period = 300;
+                }
+
+                // Build update array with traffic counters
+                $updates = [
+                    'poll_time' => $now,
+                    'poll_period' => $poll_period,
+                ];
+
+                // Traffic counters - handle both raw values and deltas from API
+                $counterFields = [
+                    'ifInOctets', 'ifOutOctets',
+                    'ifInUcastPkts', 'ifOutUcastPkts',
+                    'ifInNUcastPkts', 'ifOutNUcastPkts',
+                    'ifInDiscards', 'ifOutDiscards',
+                    'ifInErrors', 'ifOutErrors',
+                    'ifInBroadcastPkts', 'ifOutBroadcastPkts',
+                    'ifInMulticastPkts', 'ifOutMulticastPkts',
+                ];
+
+                foreach ($counterFields as $field) {
+                    if (isset($stat[$field])) {
+                        $currentValue = (int) $stat[$field];
+                        $prevField = $field . '_prev';
+                        $deltaField = $field . '_delta';
+                        $rateField = $field . '_rate';
+
+                        // Calculate delta if we have previous value
+                        $previousValue = $existingPort->$field ?? null;
+                        $delta = 0;
+                        $rate = 0;
+
+                        if ($previousValue !== null) {
+                            // Handle counter wrap (32-bit or 64-bit)
+                            if ($currentValue >= $previousValue) {
+                                $delta = $currentValue - $previousValue;
+                            } else {
+                                // Counter wrapped - assume 64-bit counter
+                                $maxCounter = PHP_INT_MAX; // Typically 64-bit
+                                $delta = ($maxCounter - $previousValue) + $currentValue;
+                            }
+
+                            // Calculate rate (per second)
+                            if ($poll_period > 0) {
+                                $rate = $delta / $poll_period;
+                            }
+                        }
+
+                        // Update all fields
+                        $updates[$prevField] = $previousValue; // Store previous value
+                        $updates[$field] = $currentValue;       // Store current value
+                        $updates[$deltaField] = $delta;         // Store delta
+                        $updates[$rateField] = $rate;           // Store rate
+                    }
+                }
+
+                // Update the ports table
+                DB::table('ports')->where('port_id', $portId)->update($updates);
+
+                // Create RRD file for port traffic statistics
+                if (isset($updates['ifInOctets'], $updates['ifOutOctets'])) {
+                    $port = DB::table('ports')->where('port_id', $portId)->first();
+
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('INOCTETS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTOCTETS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INERRORS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTERRORS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INUCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTUCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INNUCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTNUCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INDISCARDS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTDISCARDS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INBROADCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTBROADCASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('INMULTICASTPKTS', 'DERIVE', 0, 12500000000)
+                        ->addDataset('OUTMULTICASTPKTS', 'DERIVE', 0, 12500000000);
+
+                    $rrd_name = ['port', 'port-id' . $portId];
+
+                    $tags = [
+                        'ifName' => $port->ifName ?? '',
+                        'ifAlias' => $port->ifAlias ?? '',
+                        'ifIndex' => $port->ifIndex ?? 0,
+                        'port_descr_type' => $port->port_descr_type ?? 'ifAlias',
+                        'rrd_name' => $rrd_name,
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'INOCTETS' => $updates['ifInOctets'],
+                        'OUTOCTETS' => $updates['ifOutOctets'],
+                        'INERRORS' => $updates['ifInErrors'] ?? null,
+                        'OUTERRORS' => $updates['ifOutErrors'] ?? null,
+                        'INUCASTPKTS' => $updates['ifInUcastPkts'] ?? null,
+                        'OUTUCASTPKTS' => $updates['ifOutUcastPkts'] ?? null,
+                        'INNUCASTPKTS' => $updates['ifInNUcastPkts'] ?? null,
+                        'OUTNUCASTPKTS' => $updates['ifOutNUcastPkts'] ?? null,
+                        'INDISCARDS' => $updates['ifInDiscards'] ?? null,
+                        'OUTDISCARDS' => $updates['ifOutDiscards'] ?? null,
+                        'INBROADCASTPKTS' => $updates['ifInBroadcastPkts'] ?? null,
+                        'OUTBROADCASTPKTS' => $updates['ifOutBroadcastPkts'] ?? null,
+                        'INMULTICASTPKTS' => $updates['ifInMulticastPkts'] ?? null,
+                        'OUTMULTICASTPKTS' => $updates['ifOutMulticastPkts'] ?? null,
+                    ];
+
+                    // Add rate fields for dashboard display (not stored in RRD)
+                    $fields['ifInOctets_rate'] = $updates['ifInOctets_rate'] ?? 0;
+                    $fields['ifOutOctets_rate'] = $updates['ifOutOctets_rate'] ?? 0;
+                    $fields['ifInUcastPkts_rate'] = $updates['ifInUcastPkts_rate'] ?? 0;
+                    $fields['ifOutUcastPkts_rate'] = $updates['ifOutUcastPkts_rate'] ?? 0;
+                    $fields['ifInErrors_rate'] = $updates['ifInErrors_rate'] ?? 0;
+                    $fields['ifOutErrors_rate'] = $updates['ifOutErrors_rate'] ?? 0;
+                    $fields['ifInBits_rate'] = isset($updates['ifInOctets_rate']) ? $updates['ifInOctets_rate'] * 8 : 0;
+                    $fields['ifOutBits_rate'] = isset($updates['ifOutOctets_rate']) ? $updates['ifOutOctets_rate'] * 8 : 0;
+
+                    app('Datastore')->put($device->toArray(), 'ports', $tags, $fields);
+                }
+
+                // Optionally store historical data in ports_statistics table
+                if (!empty($stat['store_history']) || !empty($stat['save_to_statistics'])) {
+                    $statsRecord = [
+                        'port_id' => $portId,
+                        'timestamp' => now(),
+                    ];
+
+                    // Copy relevant counter fields to statistics record
+                    foreach ($counterFields as $field) {
+                        if (isset($updates[$field])) {
+                            $statsRecord[$field] = $updates[$field];
+                        }
+                        $rateField = $field . '_rate';
+                        if (isset($updates[$rateField])) {
+                            $statsRecord[$rateField] = $updates[$rateField];
+                        }
+                    }
+
+                    // Insert into ports_statistics (if table exists and is being used)
+                    try {
+                        DB::table('ports_statistics')->insert($statsRecord);
+                    } catch (\Throwable $e) {
+                        // ports_statistics table may not exist or may not be in use
+                        Log::debug("Could not insert into ports_statistics: {$e->getMessage()}");
+                    }
+                }
+
+            } catch (\Throwable $e) {
+                Log::warning("savePortsStatistics failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
     }
