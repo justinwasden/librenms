@@ -233,6 +233,22 @@ class DeviceHttpClient
     }
 
     /**
+     * Set a single header (mutates current instance for session management)
+     */
+    public function setHeader(string $name, string $value): void
+    {
+        $this->headers[$name] = $value;
+    }
+
+    /**
+     * Get the base URL
+     */
+    public function getBaseUrl(): string
+    {
+        return $this->baseUrl;
+    }
+
+    /**
      * Helper to set cookies, e.g., Proxmox ticket auth.
      * Usage: $client->withCookies(['PVEAuthCookie' => $ticket])
      */

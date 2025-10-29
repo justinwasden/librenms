@@ -43,6 +43,62 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
             'verify_tls' => DeviceApiSettings::getVerifyTls($device),
             'timeout_ms' => DeviceApiSettings::getTimeout($device),
         ], $device);
+
+        // Initialize session-based auth if needed
+        if ($this->apiConfig->authSchema?->key === 'vmware_vcenter_session') {
+            $this->initializeVmwareSession();
+        }
+    }
+
+    /**
+     * Initialize VMware vCenter session authentication
+     * Creates a session and updates the HTTP client headers with the session ID
+     */
+    protected function initializeVmwareSession(): void
+    {
+        $username = $this->apiConfig->getValue('username');
+        $password = $this->apiConfig->getValue('password');
+
+        if (!$username || !$password) {
+            throw new \RuntimeException("Username and password required for VMware vCenter session auth");
+        }
+
+        // Create a temporary HTTP client with Basic auth for session creation
+        $tempClient = new DeviceHttpClient([
+            'base_url' => $this->httpClient->getBaseUrl(),
+            'headers' => [
+                'Authorization' => 'Basic ' . base64_encode("$username:$password"),
+            ],
+            'verify_tls' => DeviceApiSettings::getVerifyTls($this->device),
+            'timeout_ms' => DeviceApiSettings::getTimeout($this->device),
+        ], $this->device);
+
+        try {
+            // POST to session endpoint to create session
+            $response = $tempClient->post('/com/vmware/cis/session', []);
+
+            // Extract session ID from response
+            $sessionId = $response['value'] ?? $response['session_id'] ?? null;
+
+            if (!$sessionId) {
+                throw new \RuntimeException("Failed to get session ID from VMware vCenter response");
+            }
+
+            // Update main HTTP client with session header
+            $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
+
+            \Illuminate\Support\Facades\Log::debug("VMware vCenter session created", [
+                'device_id' => $this->device->device_id,
+                'session_id_length' => strlen($sessionId),
+            ]);
+
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to create VMware vCenter session", [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \RuntimeException("VMware vCenter session creation failed: " . $e->getMessage());
+        }
     }
 
     public function supports(Device $device): bool
@@ -153,14 +209,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
             case 'vmware_vcenter_session':
                 // VMware vCenter session-based auth
-                // Note: This requires login first to get session token
-                // For now, use basic auth and let the auth strategy handle session creation
-                $username = $this->apiConfig->getValue('username') ?? '';
-                $password = $this->apiConfig->getValue('password') ?? '';
-                if ($username && $password) {
-                    $encoded = base64_encode("$username:$password");
-                    $headers['Authorization'] = "Basic $encoded";
-                }
+                // Session is initialized in constructor via initializeVmwareSession()
+                // No auth headers needed here - session ID is set after login
                 break;
 
             case 'custom_header':
