@@ -27,7 +27,7 @@ class FortiGateClient implements DeviceApiClientInterface
         $this->device = $device;
 
         // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template', 'authSchema')
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')
             ->where('device_id', $device->device_id)
             ->firstOrFail();
 
@@ -37,8 +37,10 @@ class FortiGateClient implements DeviceApiClientInterface
             throw new \RuntimeException("No base URL configured for FortiGate device {$device->device_id}");
         }
 
-        // Get API token from config
-        $apiToken = $this->apiConfig->getValue('api_token') ?? $this->apiConfig->getValue('token');
+        // Get API token from config (try multiple field names for compatibility)
+        $apiToken = $this->apiConfig->getValue('api_token')
+                 ?? $this->apiConfig->getValue('token')
+                 ?? $this->apiConfig->getValue('access_token');
         if (!$apiToken) {
             throw new \RuntimeException("API token required for FortiGate authentication");
         }

@@ -30,7 +30,7 @@ class VCenterClient implements DeviceApiClientInterface
         $this->device = $device;
 
         // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template', 'authSchema')
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')
             ->where('device_id', $device->device_id)
             ->firstOrFail();
 
