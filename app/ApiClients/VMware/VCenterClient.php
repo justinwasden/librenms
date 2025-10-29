@@ -85,7 +85,7 @@ class VCenterClient implements DeviceApiClientInterface
 
             // POST to session endpoint (vCenter 8.x uses /api/session)
             // For vCenter 8.x, the response is a plain string (the session ID)
-            $response = $tempClient->post('/api/session', []);
+            $response = $tempClient->post('/rest/com/vmware/cis/session', []);
 
             // vCenter 8.x returns the session ID as a string value
             // It could be in 'value' field or the entire response could be the string

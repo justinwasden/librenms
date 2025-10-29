@@ -168,7 +168,8 @@ class DeviceApiExecutor
         // Check if mapped data is a structured response (contains multiple data types)
         // Some normalizers return ['sensors' => [...], 'inventory' => [...], 'processors' => [...], etc.]
         $isStructured = isset($mapped['sensors']) || isset($mapped['inventory']) ||
-                       isset($mapped['processors']) || isset($mapped['mempools']);
+                       isset($mapped['processors']) || isset($mapped['mempools']) ||
+                       isset($mapped['transceivers']) || isset($mapped['storage']);
 
         if ($isStructured) {
             // Handle structured response by persisting each data type
@@ -183,6 +184,12 @@ class DeviceApiExecutor
             }
             if (!empty($mapped['mempools'])) {
                 \App\Services\DeviceApiPersistor::saveMempools($device, $mapped['mempools']);
+            }
+            if (!empty($mapped['transceivers'])) {
+                \App\Services\DeviceApiPersistor::saveTransceivers($device, $mapped['transceivers']);
+            }
+            if (!empty($mapped['storage'])) {
+                \App\Services\DeviceApiPersistor::saveStorage($device, $mapped['storage']);
             }
             return;
         }
@@ -203,6 +210,12 @@ class DeviceApiExecutor
                 break;
             case 'inventory':
                 \App\Services\DeviceApiPersistor::saveInventory($device, $mapped);
+                break;
+            case 'transceivers':
+                \App\Services\DeviceApiPersistor::saveTransceivers($device, $mapped);
+                break;
+            case 'storage':
+                \App\Services\DeviceApiPersistor::saveStorage($device, $mapped);
                 break;
             default:
                 // general or unknown: log and ignore, or extend with custom capability persistor
