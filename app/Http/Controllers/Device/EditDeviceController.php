@@ -259,7 +259,7 @@ class EditDeviceController
             return;
         }
 
-        $schema = \App\Models\DeviceApiAuthSchema::where('key', $authTypeKey)->first();
+        $schema = \App\Models\DeviceApiAuthSchema::with('fields')->where('key', $authTypeKey)->first();
         if (!$schema) {
             toast()->error(__('Selected authentication schema not found'));
             return;
@@ -323,15 +323,35 @@ class EditDeviceController
         $apiConfig->setValue('proxy', (string) $request->input('rest_proxy', ''));
 
         // Save auth values dynamically from schema fields
+        \Illuminate\Support\Facades\Log::debug('Processing auth fields', [
+            'device_id' => $device->device_id,
+            'schema_key' => $schema->key,
+            'schema_fields_count' => $schema->fields->count(),
+        ]);
+
         foreach ($schema->fields as $field) {
             $fieldName = $field->name;
             $inputValue = $request->input($fieldName);
+            $hasFilled = $request->filled($fieldName);
+            $hasInput = $request->has($fieldName);
+
+            \Illuminate\Support\Facades\Log::debug('Processing field', [
+                'field_name' => $fieldName,
+                'field_type' => $field->type,
+                'has_input' => $hasInput,
+                'filled' => $hasFilled,
+                'value_length' => is_string($inputValue) ? strlen($inputValue) : 0,
+            ]);
 
             if ($field->type === 'password') {
                 if ($request->filled($fieldName)) {
                     $apiConfig->setValue($fieldName, $inputValue);
+                    \Illuminate\Support\Facades\Log::debug('Set password field', ['field' => $fieldName]);
                 } elseif ($schemaChanged) {
                     $apiConfig->setValue($fieldName, null);
+                    \Illuminate\Support\Facades\Log::debug('Cleared password field due to schema change', ['field' => $fieldName]);
+                } else {
+                    \Illuminate\Support\Facades\Log::debug('Skipped password field (empty and no schema change)', ['field' => $fieldName]);
                 }
             } else {
                 // Use default value if input is empty
@@ -339,6 +359,7 @@ class EditDeviceController
                     $inputValue = $field->default;
                 }
                 $apiConfig->setValue($fieldName, $inputValue);
+                \Illuminate\Support\Facades\Log::debug('Set non-password field', ['field' => $fieldName, 'value' => $inputValue]);
             }
         }
 

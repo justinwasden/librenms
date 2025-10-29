@@ -73,7 +73,6 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
     {
         $headers = [];
         $schema = $this->apiConfig->authSchema;
-        $credentials = $this->apiConfig->credentials ?? [];
 
         if (!$schema) {
             return $headers;
@@ -82,8 +81,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         switch ($schema->key) {
             case 'basic':
                 // Basic authentication
-                $username = $credentials['username'] ?? '';
-                $password = $credentials['password'] ?? '';
+                $username = $this->apiConfig->getValue('username') ?? '';
+                $password = $this->apiConfig->getValue('password') ?? '';
                 if ($username && $password) {
                     $encoded = base64_encode("$username:$password");
                     $headers['Authorization'] = "Basic $encoded";
@@ -92,7 +91,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
             case 'bearer':
                 // Bearer token
-                $token = $credentials['token'] ?? $credentials['api_token'] ?? '';
+                $token = $this->apiConfig->getValue('token') ?? $this->apiConfig->getValue('api_token') ?? '';
                 if ($token) {
                     $headers['Authorization'] = "Bearer $token";
                 }
@@ -102,8 +101,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
                 // VMware vCenter session-based auth
                 // Note: This requires login first to get session token
                 // For now, use basic auth and let the auth strategy handle session creation
-                $username = $credentials['username'] ?? '';
-                $password = $credentials['password'] ?? '';
+                $username = $this->apiConfig->getValue('username') ?? '';
+                $password = $this->apiConfig->getValue('password') ?? '';
                 if ($username && $password) {
                     $encoded = base64_encode("$username:$password");
                     $headers['Authorization'] = "Basic $encoded";
@@ -112,28 +111,33 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
             case 'custom_header':
                 // Custom header auth
-                $headerName = $credentials['header_name'] ?? '';
-                $headerValue = $credentials['header_value'] ?? '';
+                $headerName = $this->apiConfig->getValue('header_name') ?? '';
+                $headerValue = $this->apiConfig->getValue('header_value') ?? '';
                 if ($headerName && $headerValue) {
                     $headers[$headerName] = $headerValue;
                 }
                 break;
 
             default:
-                // Try to auto-detect from credentials
-                if (isset($credentials['token']) || isset($credentials['api_token'])) {
-                    $token = $credentials['token'] ?? $credentials['api_token'];
+                // Try to auto-detect from values
+                $token = $this->apiConfig->getValue('token') ?? $this->apiConfig->getValue('api_token');
+                if ($token) {
                     $headers['Authorization'] = "Bearer $token";
-                } elseif (isset($credentials['username']) && isset($credentials['password'])) {
-                    $encoded = base64_encode($credentials['username'] . ':' . $credentials['password']);
-                    $headers['Authorization'] = "Basic $encoded";
+                } else {
+                    $username = $this->apiConfig->getValue('username');
+                    $password = $this->apiConfig->getValue('password');
+                    if ($username && $password) {
+                        $encoded = base64_encode($username . ':' . $password);
+                        $headers['Authorization'] = "Basic $encoded";
+                    }
                 }
                 break;
         }
 
         // Add any custom headers from config
-        if (!empty($credentials['custom_headers']) && is_array($credentials['custom_headers'])) {
-            $headers = array_merge($headers, $credentials['custom_headers']);
+        $customHeaders = $this->apiConfig->getValue('custom_headers');
+        if (!empty($customHeaders) && is_array($customHeaders)) {
+            $headers = array_merge($headers, $customHeaders);
         }
 
         return $headers;
