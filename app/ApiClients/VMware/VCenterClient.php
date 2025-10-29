@@ -83,14 +83,29 @@ class VCenterClient implements DeviceApiClientInterface
                 'username' => $username,
             ]);
 
-            // POST to session endpoint
-            $response = $tempClient->post('/com/vmware/cis/session', []);
+            // POST to session endpoint (vCenter 8.x uses /api/session)
+            // For vCenter 8.x, the response is a plain string (the session ID)
+            $response = $tempClient->post('/api/session', []);
 
-            // Extract session ID (VMware returns it in 'value' field)
-            $this->sessionId = $response['value'] ?? null;
-
-            if (!$this->sessionId) {
+            // vCenter 8.x returns the session ID as a string value
+            // It could be in 'value' field or the entire response could be the string
+            if (is_string($response)) {
+                $this->sessionId = $response;
+            } elseif (isset($response['value'])) {
+                $this->sessionId = $response['value'];
+            } elseif (is_array($response) && count($response) === 1 && isset($response[0])) {
+                $this->sessionId = $response[0];
+            } else {
+                Log::error("Unexpected session response format", [
+                    'device_id' => $this->device->device_id,
+                    'response_type' => gettype($response),
+                    'response' => $response,
+                ]);
                 throw new \RuntimeException("Failed to get session ID from response: " . json_encode($response));
+            }
+
+            if (empty($this->sessionId)) {
+                throw new \RuntimeException("Session ID is empty");
             }
 
             // Set session header for all future requests
