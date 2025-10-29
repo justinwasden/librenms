@@ -125,8 +125,8 @@ class FortiGateClient implements DeviceApiClientInterface
     public function isReachable(): bool
     {
         try {
-            // Try to get system status
-            $this->get('/api/v2/monitor/system/status');
+            // Try to get system status (path relative to base_url which already includes /api/v2)
+            $this->get('/monitor/system/status');
             return true;
         } catch (\Throwable $e) {
             return false;
@@ -136,8 +136,8 @@ class FortiGateClient implements DeviceApiClientInterface
     public function getApiInfo(): array
     {
         try {
-            // Get FortiGate system info
-            $response = $this->get('/api/v2/monitor/system/status');
+            // Get FortiGate system info (path relative to base_url which already includes /api/v2)
+            $response = $this->get('/monitor/system/status');
             return [
                 'vendor' => 'fortinet',
                 'product' => 'fortigate',
