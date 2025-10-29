@@ -766,9 +766,25 @@ $('#reset-circuit-breaker').on('click', function() {
 // Disable hidden auth fields before form submission to avoid duplicate field name conflicts
 // Multiple schemas have fields with the same names (username, password, etc.)
 // We only want to submit the fields for the currently selected auth type
-$('#edit-api').on('submit', function() {
+$('#edit-api').on('submit', function(e) {
+    console.log('Form submit handler running');
+
+    // Log visible auth fields before disabling hidden ones
+    const visibleFields = $('.auth-field:visible input, .auth-field:visible select, .auth-field:visible textarea');
+    console.log('Visible auth fields:', visibleFields.length);
+    visibleFields.each(function() {
+        const name = $(this).attr('name');
+        const value = $(this).val();
+        const disabled = $(this).prop('disabled');
+        console.log('Field:', name, 'Value length:', value ? value.length : 0, 'Disabled:', disabled);
+    });
+
+    // Count and log hidden auth fields before disabling
+    const hiddenFields = $('.auth-field:hidden input, .auth-field:hidden select, .auth-field:hidden textarea');
+    console.log('Hidden auth fields to disable:', hiddenFields.length);
+
     // Disable all hidden auth fields
-    $('.auth-field:hidden input, .auth-field:hidden select, .auth-field:hidden textarea').each(function() {
+    hiddenFields.each(function() {
         $(this).prop('disabled', true);
     });
 

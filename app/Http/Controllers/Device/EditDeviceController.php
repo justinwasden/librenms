@@ -327,6 +327,11 @@ class EditDeviceController
             'device_id' => $device->device_id,
             'schema_key' => $schema->key,
             'schema_fields_count' => $schema->fields->count(),
+            'all_request_keys' => array_keys($request->all()),
+            'username_in_request' => $request->has('username'),
+            'password_in_request' => $request->has('password'),
+            'username_raw' => $request->input('username'),
+            'password_length' => strlen((string) $request->input('password')),
         ]);
 
         foreach ($schema->fields as $field) {
