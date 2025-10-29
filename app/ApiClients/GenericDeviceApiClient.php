@@ -69,6 +69,60 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         return $this->httpClient->post($path, $body);
     }
 
+    /**
+     * GenericDeviceApiClient uses template-driven polling via DeviceApiExecutor.
+     * These fetch methods are not used - they exist only to satisfy the interface.
+     */
+    public function fetchSensors(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchPorts(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchMempools(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchProcessors(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchInventory(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function fetchIpv4Addresses(\App\Models\Device $device): array
+    {
+        return [];
+    }
+
+    public function isReachable(): bool
+    {
+        try {
+            // Try a simple GET to the base URL
+            $this->httpClient->get('/');
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    public function getApiInfo(): array
+    {
+        return [
+            'vendor' => 'generic',
+            'client' => 'GenericDeviceApiClient',
+            'template_key' => $this->apiConfig->template?->key ?? null,
+        ];
+    }
+
     protected function buildAuthHeaders(): array
     {
         $headers = [];
