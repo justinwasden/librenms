@@ -762,5 +762,18 @@ $('#reset-circuit-breaker').on('click', function() {
         btn.prop('disabled', false);
     });
 });
+
+// Disable hidden auth fields before form submission to avoid duplicate field name conflicts
+// Multiple schemas have fields with the same names (username, password, etc.)
+// We only want to submit the fields for the currently selected auth type
+$('#edit-api').on('submit', function() {
+    // Disable all hidden auth fields
+    $('.auth-field:hidden input, .auth-field:hidden select, .auth-field:hidden textarea').each(function() {
+        $(this).prop('disabled', true);
+    });
+
+    // The visible auth fields will be submitted normally
+    return true;
+});
 </script>
 @endpush
