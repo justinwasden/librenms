@@ -30,18 +30,19 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
             ->firstOrFail();
 
         // Build HTTP client with auth
-        $baseUrl = DeviceApiSettings::getResolvedBaseUrl($device);
-        if (!$baseUrl) {
+        $httpOptions = DeviceApiSettings::httpOptions($device);
+        if (empty($httpOptions['base_url'])) {
             throw new \RuntimeException("No base URL configured for device {$device->device_id}");
         }
 
         $headers = $this->buildAuthHeaders();
 
         $this->httpClient = new DeviceHttpClient([
-            'base_url' => $baseUrl,
-            'headers' => $headers,
-            'verify_tls' => DeviceApiSettings::getVerifyTls($device),
-            'timeout_ms' => DeviceApiSettings::getTimeout($device),
+            'base_url' => $httpOptions['base_url'],
+            'headers' => array_merge($httpOptions['headers'] ?? [], $headers),
+            'verify_tls' => $httpOptions['verify_tls'] ?? true,
+            'timeout_ms' => $httpOptions['timeout_ms'] ?? 5000,
+            'proxy' => $httpOptions['proxy'] ?? null,
         ], $device);
 
         // Initialize session-based auth if needed
@@ -64,30 +65,44 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         }
 
         // Create a temporary HTTP client with Basic auth for session creation
+        $httpOptions = DeviceApiSettings::httpOptions($this->device);
         $tempClient = new DeviceHttpClient([
             'base_url' => $this->httpClient->getBaseUrl(),
             'headers' => [
                 'Authorization' => 'Basic ' . base64_encode("$username:$password"),
             ],
-            'verify_tls' => DeviceApiSettings::getVerifyTls($this->device),
-            'timeout_ms' => DeviceApiSettings::getTimeout($this->device),
+            'verify_tls' => $httpOptions['verify_tls'] ?? true,
+            'timeout_ms' => $httpOptions['timeout_ms'] ?? 5000,
         ], $this->device);
 
         try {
+            \Illuminate\Support\Facades\Log::debug("Attempting VMware vCenter session creation", [
+                'device_id' => $this->device->device_id,
+                'base_url' => $this->httpClient->getBaseUrl(),
+                'session_endpoint' => '/com/vmware/cis/session',
+                'username' => $username,
+            ]);
+
             // POST to session endpoint to create session
             $response = $tempClient->post('/com/vmware/cis/session', []);
+
+            \Illuminate\Support\Facades\Log::debug("VMware session response received", [
+                'device_id' => $this->device->device_id,
+                'response_keys' => array_keys($response),
+                'response' => $response,
+            ]);
 
             // Extract session ID from response
             $sessionId = $response['value'] ?? $response['session_id'] ?? null;
 
             if (!$sessionId) {
-                throw new \RuntimeException("Failed to get session ID from VMware vCenter response");
+                throw new \RuntimeException("Failed to get session ID from VMware vCenter response: " . json_encode($response));
             }
 
             // Update main HTTP client with session header
             $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
 
-            \Illuminate\Support\Facades\Log::debug("VMware vCenter session created", [
+            \Illuminate\Support\Facades\Log::debug("VMware vCenter session created successfully", [
                 'device_id' => $this->device->device_id,
                 'session_id_length' => strlen($sessionId),
             ]);
@@ -96,6 +111,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
             \Illuminate\Support\Facades\Log::error("Failed to create VMware vCenter session", [
                 'device_id' => $this->device->device_id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             throw new \RuntimeException("VMware vCenter session creation failed: " . $e->getMessage());
         }
