@@ -62,6 +62,9 @@ class PollDevice implements ShouldQueue
 
         $this->pollModules();
 
+				// NEW: run REST API polling for devices with API enabled
+				$this->pollRestApiIfEnabled();
+
         $measurement->end();
 
         // if modules are not overridden, record performance
@@ -258,4 +261,41 @@ EOH, $this->device->hostname, $group ? "($group)" : '', $this->device->status ? 
 
         return isset($this->module_overrides[$module]);
     }
+
+    private function pollRestApiIfEnabled(): void
+		{
+		    // Check if device has REST configured via Eloquent relation or legacy attribs
+		    $apiConfig = $this->device->apiConfig()->with('template')->first();
+		    $restEnabledAttrib = (int) $this->device->getAttrib('rest_enabled', 0);
+
+		    if (!$apiConfig || $restEnabledAttrib !== 1) {
+		        return; // nothing to do
+		    }
+
+		    $templateKey = $apiConfig->template?->key ?? (string) $this->device->getAttrib('rest_template_key');
+		    if ($templateKey === '') {
+		        \Log::debug("REST API polling skipped for device {$this->device->device_id}: no template");
+		        return;
+		    }
+
+		    try {
+		        // Resolve base URL and construct client
+		        \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($this->device);
+		        $client = \App\ApiClients\DeviceApiClientFactory::make($this->device);
+		        if (!$client) {
+		            \Log::warning("REST API polling skipped for device {$this->device->device_id}: no client");
+		            return;
+		        }
+
+		        $executor = new \App\Services\DeviceApiExecutor();
+		        $executor->run($this->device, $templateKey, $client);
+
+		        // Record success for circuit breaker / latency tracking
+		        \LibreNMS\Util\DeviceApiSettings::recordSuccess($this->device, 0);
+		        \Log::info("REST API polling successful for device {$this->device->device_id}");
+		    } catch (\Throwable $e) {
+		        \Log::warning("REST API polling failed for device {$this->device->device_id}: " . $e->getMessage());
+		        \LibreNMS\Util\DeviceApiSettings::recordError($this->device, $e->getMessage());
+		    }
+		}
 }

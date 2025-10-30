@@ -13,10 +13,33 @@ class Ipv4MacObserver
     public function updated(Ipv4Mac $arp): void
     {
         // log mac changes
-        if ($arp->isDirty('mac_address')) {
+        if ($arp->wasChanged('mac_address')) {
             $old_mac = $arp->getOriginal('mac_address');
-            Log::debug("Changed mac address for $arp->ipv4_address from $old_mac to $arp->mac_address");
-            Eventlog::log("MAC change: $arp->ipv4_address : " . Mac::parse($old_mac)->readable() . ' -> ' . Mac::parse($arp->mac_address)->readable(), $arp->device_id, 'interface', Severity::Warning, $arp->port_id);
+            $new_mac = $arp->mac_address;
+
+            Log::debug("Changed mac address for {$arp->ipv4_address} from {$old_mac} to {$new_mac}");
+
+            $old_readable = $old_mac;
+            $new_readable = $new_mac;
+
+            try {
+                $old_readable = Mac::parse($old_mac)->readable();
+            } catch (\Throwable $e) {
+                // leave as raw if parsing fails
+            }
+
+            try {
+                $new_readable = Mac::parse($new_mac)->readable();
+            } catch (\Throwable $e) {
+            }
+
+            Eventlog::log(
+                "MAC change: {$arp->ipv4_address} : {$old_readable} -> {$new_readable}",
+                $arp->device_id,
+                'interface',
+                Severity::Warning,
+                $arp->port_id
+            );
         }
     }
 }

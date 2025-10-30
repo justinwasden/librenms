@@ -8,17 +8,8 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\HTTP\RateLimiter;
 use LibreNMS\Util\DeviceApiSettings;
+use Illuminate\Support\Facades\Log;
 
-/**
- * Generic HTTP client for device APIs.
- * - Base URL handling
- * - Common headers (auth, custom)
- * - TLS verification, timeout, proxy
- * - Retries with exponential backoff
- * - JSON parsing and error normalization
- *
- * Compose this inside vendor-specific clients (e.g., PureStorage, Proxmox).
- */
 class DeviceHttpClient
 {
     protected string $baseUrl;
@@ -33,6 +24,7 @@ class DeviceHttpClient
     protected int $rateLimitQps;
     protected bool $enableCircuitBreaker;
     protected int $circuitBreakerThreshold;
+    protected array $curlOptions = [];
 
     public function __construct(array $options, ?Device $device = null)
     {
@@ -48,6 +40,7 @@ class DeviceHttpClient
         $this->rateLimitQps = (int)($options['rate_limit_qps'] ?? 10);
         $this->enableCircuitBreaker = (bool)($options['enable_circuit_breaker'] ?? true);
         $this->circuitBreakerThreshold = (int)($options['circuit_breaker_threshold'] ?? 5);
+        $this->curlOptions = $options['curl_options'] ?? [];
 
         if ($this->baseUrl === '') {
             throw new \InvalidArgumentException('DeviceHttpClient requires base_url');
@@ -76,7 +69,6 @@ class DeviceHttpClient
 
     /**
      * HTTP POST returning decoded JSON array.
-     * $body is sent as JSON by default.
      */
     public function post(string $path, array $body = [], array $query = []): array
     {
@@ -104,14 +96,13 @@ class DeviceHttpClient
 
         $req = Http::withHeaders($this->headers)
             ->timeout($this->timeoutMs / 1000)
-            ->withOptions(['verify' => $this->verifyTls]);
+            ->withOptions(array_merge(
+                ['verify' => $this->verifyTls],
+                $this->proxy ? ['proxy' => $this->proxy] : [],
+                $this->curlOptions ?? []
+            ));
 
-        if ($this->proxy) {
-            $req = $req->withOptions(['proxy' => $this->proxy]);
-        }
-
-        // Attach cookies if provided in headers via special key
-        // Example: $options['cookies'] = ['Name' => 'Value'] set in headers via setCookies()
+        // Attach cookies if provided via special header key
         if (!empty($this->headers['_cookies']) && is_array($this->headers['_cookies'])) {
             $host = parse_url($this->baseUrl, PHP_URL_HOST) ?: '';
             $req = $req->withCookies($this->headers['_cookies'], $host);
@@ -159,7 +150,8 @@ class DeviceHttpClient
         }
 
         if ($json !== null) {
-            return $req->withHeaders(['Content-Type' => 'application/json'])->post($url . $this->querySuffix($query), $json);
+            return $req->withHeaders(['Content-Type' => 'application/json'])
+                ->post($url . $this->querySuffix($query), $json);
         }
 
         if ($form !== null) {
@@ -181,7 +173,6 @@ class DeviceHttpClient
         $data = $resp->json();
 
         if (is_null($data)) {
-            // Non-JSON or empty body; treat as empty array
             return [];
         }
         if (!is_array($data)) {
@@ -210,14 +201,12 @@ class DeviceHttpClient
         if ($code === 429) {
             return true;
         }
-        // Retry on 5xx server errors
         return $code >= 500 && $code <= 599;
     }
 
     protected function safeBodyPreview(Response $resp, int $maxLen = 256): string
     {
         $raw = (string) $resp->body();
-        // Avoid logging secrets; truncate and strip newlines
         $raw = preg_replace('/\s+/', ' ', $raw);
         return mb_substr($raw, 0, $maxLen);
     }
@@ -250,7 +239,6 @@ class DeviceHttpClient
 
     /**
      * Helper to set cookies, e.g., Proxmox ticket auth.
-     * Usage: $client->withCookies(['PVEAuthCookie' => $ticket])
      */
     public function withCookies(array $cookies): self
     {
@@ -259,27 +247,11 @@ class DeviceHttpClient
         return $clone;
     }
 
-    /**
-     * Factory convenience to build client from a generic options array.
-     * Expected keys:
-     *  - base_url (string)
-     *  - headers (array)
-     *  - verify_tls (bool)
-     *  - timeout_ms (int)
-     *  - proxy (string|null)
-     *  - max_retries (int)
-     *  - retry_initial_delay_ms (int)
-     */
     public static function fromOptions(array $options, ?Device $device = null): self
     {
         return new self($options, $device);
     }
 
-    /**
-     * Check circuit breaker state before making requests
-     *
-     * @throws \RuntimeException If circuit breaker is tripped
-     */
     protected function checkCircuitBreaker(): void
     {
         if (!$this->enableCircuitBreaker || !$this->device) {
@@ -291,9 +263,6 @@ class DeviceHttpClient
         }
     }
 
-    /**
-     * Apply rate limiting before making requests
-     */
     protected function applyRateLimit(): void
     {
         if (!$this->rateLimiter) {
@@ -306,9 +275,6 @@ class DeviceHttpClient
         }
     }
 
-    /**
-     * Record successful API call with latency tracking
-     */
     protected function recordSuccess(float $start): void
     {
         if (!$this->device) {
@@ -319,9 +285,6 @@ class DeviceHttpClient
         DeviceApiSettings::recordSuccess($this->device, $latencyMs);
     }
 
-    /**
-     * Record failed API call
-     */
     protected function recordError(string $error): void
     {
         if (!$this->device) {
@@ -331,15 +294,9 @@ class DeviceHttpClient
         DeviceApiSettings::recordError($this->device, $error);
     }
 
-    /**
-     * Test if the API is reachable with a simple request
-     *
-     * @return bool True if API is reachable and returns valid response
-     */
     public function isReachable(): bool
     {
         try {
-            // Try a simple GET to the base URL or a known lightweight endpoint
             $this->get('/');
             return true;
         } catch (\Throwable $e) {
@@ -347,11 +304,6 @@ class DeviceHttpClient
         }
     }
 
-    /**
-     * Get API information (override in vendor-specific clients)
-     *
-     * @return array Basic info about the API
-     */
     public function getApiInfo(): array
     {
         return [
@@ -361,17 +313,43 @@ class DeviceHttpClient
         ];
     }
 
-    /**
-     * Factory method to create client from Device model
-     *
-     * @param Device $device
-     * @return static
-     */
     public static function fromDevice(Device $device): self
     {
         $options = DeviceApiSettings::httpOptions($device);
         $options['rate_limit_qps'] = DeviceApiSettings::rateLimitQps($device);
 
         return new self($options, $device);
+    }
+
+    public function withOptions(array $options): self
+    {
+        $clone = clone $this;
+        $clone->curlOptions = $options;
+        return $clone;
+    }
+
+    /**
+     * Raw helpers to access headers and status for endpoints that return auth data in headers.
+     */
+    public function rawGet(string $path, array $query = []): array
+    {
+        $resp = $this->send('GET', $path, ['query' => $query]);
+        return [
+            'status'  => $resp->status(),
+            'headers' => $resp->headers(),
+            'json'    => $this->parseJson($resp, $path),
+            'body'    => $this->safeBodyPreview($resp),
+        ];
+    }
+
+    public function rawPost(string $path, array $body = [], array $query = []): array
+    {
+        $resp = $this->send('POST', $path, ['json' => $body, 'query' => $query]);
+        return [
+            'status'  => $resp->status(),
+            'headers' => $resp->headers(),
+            'json'    => $this->parseJson($resp, $path),
+            'body'    => $this->safeBodyPreview($resp),
+        ];
     }
 }

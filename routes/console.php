@@ -46,6 +46,8 @@ Artisan::command('poller:discovery
     {--t|type= : ' . __('Only devices with the specified type') . '}
     {--m|modules= : ' . __('Specify single module to be run. Comma separate modules, submodules may be added with /') . '}
 ', function (): void {
+    /** @var Illuminate\Console\Command $this */
+    // Legacy discovery execution (currently used; slated for deprecation)
     $command = [base_path('discovery.php'), '-h', $this->argument('device spec')];
     if ($this->option('os')) {
         $command[] = '-o';
@@ -66,6 +68,50 @@ Artisan::command('poller:discovery
         }
     }
     (new Process($command))->setTimeout(null)->setIdleTimeout(null)->setTty(true)->run();
+
+    // FUTUREPROOF: REST API discovery sweep after legacy discovery completes
+    // This will continue to run as part of poller:discovery even after discovery.php is removed.
+    try {
+        $spec = $this->argument('device spec');
+
+        // Build the device query to match spec and optional filters
+        $query = \App\Models\Device::whereDeviceSpec($spec)->with('apiConfig.template');
+
+        if ($this->option('os')) {
+            $query->where('os', $this->option('os'));
+        }
+        if ($this->option('type')) {
+            $query->where('type', $this->option('type'));
+        }
+
+        $devices = $query->get();
+
+        foreach ($devices as $device) {
+            // Check if REST API discovery should run
+            $restEnabled = (int) $device->getAttrib('rest_enabled', 0) === 1;
+            $tplKey = $device->apiConfig?->template?->key ?? (string) $device->getAttrib('rest_template_key', '');
+
+            if (! $restEnabled || $tplKey === '') {
+                continue;
+            }
+
+            try {
+                \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($device);
+                $client = \App\ApiClients\DeviceApiClientFactory::make($device);
+                if (! $client) {
+                    \Log::warning("REST API discovery skipped for device {$device->device_id}: no client");
+                    continue;
+                }
+
+                (new \App\Services\DeviceApiExecutor())->run($device, $tplKey, $client);
+                \Log::info("REST API discovery executed for device {$device->device_id}");
+            } catch (\Throwable $e) {
+                \Log::warning("REST API discovery failed for device {$device->device_id}: " . $e->getMessage());
+            }
+        }
+    } catch (\Throwable $e) {
+        \Log::warning("REST API discovery sweep failed: " . $e->getMessage());
+    }
 })->purpose(__('Discover information about existing devices, defines what will be polled'));
 
 Artisan::command('poller:alerts', function (): void {

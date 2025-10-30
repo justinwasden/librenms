@@ -228,16 +228,46 @@ class RestNormalizers
     {
         $sensors = [];
         $inventory = [];
+        $parentIndices = []; // Track parent device indices for hierarchy
 
         if (!isset($payload['items']) || !is_array($payload['items'])) {
             return ['sensors' => $sensors, 'inventory' => $inventory];
         }
 
+        // First pass: Identify all potential parent devices and build index map
+        // A parent device is one that doesn't contain a dot (not a child component)
+        // Examples: CT0, CT1, CH0, CH1, SH0, SH1, NODE0, etc.
+        foreach ($payload['items'] as $hw) {
+            $name = $hw['name'] ?? 'unknown';
+
+            // If name doesn't contain a dot, it's a potential parent
+            if (strpos($name, '.') === false) {
+                $index = self::stableIndexFromName($name);
+                // Store with case-insensitive key for matching
+                $parentIndices[strtoupper($name)] = $index;
+            }
+        }
+
+        // Second pass: Create all inventory items with proper hierarchy
         foreach ($payload['items'] as $hw) {
             $name = $hw['name'] ?? 'unknown';
             $type = $hw['type'] ?? 'unknown';
             $status = $hw['status'] ?? 'unknown';
             $index = self::stableIndexFromName($name);
+
+            // Determine parent device
+            $parentIndex = 0;
+            // Check if name contains a dot (e.g., "CT0.FC0", "CH1.PSU0", "SH0.DISK1")
+            if (strpos($name, '.') !== false) {
+                // Extract parent name (everything before the first dot)
+                $parts = explode('.', $name, 2);
+                $parentName = strtoupper($parts[0]);
+
+                // Look up parent index
+                if (isset($parentIndices[$parentName])) {
+                    $parentIndex = $parentIndices[$parentName];
+                }
+            }
 
             // Inventory entry
             $inventory[] = [
@@ -247,7 +277,7 @@ class RestNormalizers
                 'entPhysicalName' => $name,
                 'entPhysicalModelName' => $hw['model'] ?? '',
                 'entPhysicalSerialNum' => $hw['serial'] ?? '',
-                'entPhysicalContainedIn' => 0,
+                'entPhysicalContainedIn' => $parentIndex,
                 'entPhysicalMfgName' => 'Pure Storage',
                 'entPhysicalParentRelPos' => $hw['slot'] ?? -1,
                 'entPhysicalVendorType' => $type,
@@ -364,18 +394,37 @@ class RestNormalizers
             $name = $perf['name'] ?? '';
             $ifIndex = self::stableIndexFromName($name);
 
-            // Convert bytes/sec to counter (multiply by poll interval)
-            $rxBytes = ($perf['received_bytes_per_sec'] ?? 0) * $pollIntervalSec;
-            $txBytes = ($perf['transmitted_bytes_per_sec'] ?? 0) * $pollIntervalSec;
+            // Pure Storage API v2.x nests statistics inside 'eth' or 'fc' objects based on interface_type
+            $interfaceType = $perf['interface_type'] ?? 'eth';
+            $data = $perf[$interfaceType] ?? [];
 
-            $stats[$ifIndex] = [
+            // Skip if no data for this interface type
+            if (empty($data)) {
+                continue;
+            }
+
+            // Pure Storage returns rates (*_per_sec), convert to counters by multiplying by poll interval
+            $rxBytes = ($data['received_bytes_per_sec'] ?? 0) * $pollIntervalSec;
+            $txBytes = ($data['transmitted_bytes_per_sec'] ?? 0) * $pollIntervalSec;
+
+            // For Fibre Channel, use frames instead of packets
+            $rxPackets = $interfaceType === 'fc'
+                ? ($data['received_frames_per_sec'] ?? 0) * $pollIntervalSec
+                : ($data['received_packets_per_sec'] ?? 0) * $pollIntervalSec;
+            $txPackets = $interfaceType === 'fc'
+                ? ($data['transmitted_frames_per_sec'] ?? 0) * $pollIntervalSec
+                : ($data['transmitted_packets_per_sec'] ?? 0) * $pollIntervalSec;
+
+            $stat = [
+                'ifIndex' => $ifIndex,
                 'ifInOctets' => $rxBytes,
                 'ifOutOctets' => $txBytes,
-                'ifInErrors' => $perf['received_errors_per_sec'] ?? 0,
-                'ifOutErrors' => $perf['transmitted_errors_per_sec'] ?? 0,
-                'ifInUcastPkts' => $perf['received_packets_per_sec'] ?? 0,
-                'ifOutUcastPkts' => $perf['transmitted_packets_per_sec'] ?? 0,
+                'ifInErrors' => ($data['received_crc_errors_per_sec'] ?? 0) + ($data['received_frame_errors_per_sec'] ?? 0),
+                'ifOutErrors' => ($data['transmitted_carrier_errors_per_sec'] ?? 0) + ($data['transmitted_dropped_errors_per_sec'] ?? 0),
+                'ifInUcastPkts' => $rxPackets,
+                'ifOutUcastPkts' => $txPackets,
             ];
+            $stats[] = $stat;
         }
 
         return $stats;
@@ -392,7 +441,7 @@ class RestNormalizers
             $name = $port['name'] ?? 'unknown';
             $index = self::stableIndexFromName($name);
 
-            // Optical power sensors (dBm)
+            // Optical power sensors (dBm) - only if this is an FC/optical port
             if (isset($port['wwn'])) {
                 if (isset($port['rx_power']) && is_numeric($port['rx_power'])) {
                     $sensors[] = [
@@ -547,6 +596,315 @@ class RestNormalizers
 
         return ['sensors' => $sensors, 'inventory' => $inventory];
     }
+
+    public static function normalizePureAlerts(array $payload): array
+    {
+        $sensors = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $sensors;
+        }
+
+        // Count alerts by severity
+        $critical = 0;
+        $warning = 0;
+        $info = 0;
+
+        foreach ($payload['items'] as $alert) {
+            $severity = strtolower($alert['severity'] ?? 'info');
+            if ($severity === 'critical') {
+                $critical++;
+            } elseif ($severity === 'warning') {
+                $warning++;
+            } else {
+                $info++;
+            }
+        }
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'purestorage',
+            'sensor_descr' => 'Critical Alerts',
+            'sensor_index' => 'alerts_critical',
+            'sensor_current' => $critical,
+            'sensor_limit' => 10,
+            'sensor_limit_low' => null,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'purestorage',
+            'sensor_descr' => 'Warning Alerts',
+            'sensor_index' => 'alerts_warning',
+            'sensor_current' => $warning,
+            'sensor_limit' => 20,
+            'sensor_limit_low' => null,
+        ];
+
+        return $sensors;
+    }
+
+    public static function normalizePureArrayPerfByLink(array $payload): array
+    {
+        $sensors = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $sensors;
+        }
+
+        foreach ($payload['items'] as $perf) {
+            $name = $perf['name'] ?? 'array';
+            $index = self::stableIndexFromName($name);
+
+            if (isset($perf['queue_depth'])) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'purestorage',
+                    'sensor_descr' => $name . ' Queue Depth',
+                    'sensor_index' => 'queue_depth_' . $index,
+                    'sensor_current' => $perf['queue_depth'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    public static function normalizePureArrayConnections(array $payload): array
+    {
+        $inventory = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $inventory;
+        }
+
+        foreach ($payload['items'] as $idx => $conn) {
+            $name = $conn['array_name'] ?? 'connection_' . $idx;
+            $index = self::stableIndexFromName($name);
+
+            $inventory[] = [
+                'entPhysicalIndex' => $index + 10000,
+                'entPhysicalDescr' => 'Array Connection: ' . $name,
+                'entPhysicalClass' => 'other',
+                'entPhysicalName' => $name,
+                'entPhysicalModelName' => $conn['type'] ?? '',
+                'entPhysicalSerialNum' => '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'Pure Storage',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'array-connection',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => $conn['version'] ?? '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => '',
+            ];
+        }
+
+        return $inventory;
+    }
+
+    public static function normalizePureConnections(array $payload): array
+    {
+        $inventory = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $inventory;
+        }
+
+        foreach ($payload['items'] as $idx => $conn) {
+            $host = $conn['host']['name'] ?? 'host_' . $idx;
+            $volume = $conn['volume']['name'] ?? 'volume_' . $idx;
+            $name = $host . '_' . $volume;
+            $index = self::stableIndexFromName($name);
+
+            $inventory[] = [
+                'entPhysicalIndex' => $index + 20000,
+                'entPhysicalDescr' => 'Connection: ' . $host . ' -> ' . $volume,
+                'entPhysicalClass' => 'other',
+                'entPhysicalName' => $name,
+                'entPhysicalModelName' => $conn['protocol'] ?? '',
+                'entPhysicalSerialNum' => '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'Pure Storage',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'host-volume-connection',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => $conn['lun'] ?? '',
+            ];
+        }
+
+        return $inventory;
+    }
+
+    public static function normalizePureControllers(array $payload): array
+    {
+        $inventory = [];
+        $sensors = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return ['inventory' => $inventory, 'sensors' => $sensors];
+        }
+
+        foreach ($payload['items'] as $ctrl) {
+            $name = $ctrl['name'] ?? 'controller';
+            $index = self::stableIndexFromName($name);
+
+            $inventory[] = [
+                'entPhysicalIndex' => $index + 30000,
+                'entPhysicalDescr' => 'Controller: ' . $name,
+                'entPhysicalClass' => 'module',
+                'entPhysicalName' => $name,
+                'entPhysicalModelName' => $ctrl['model'] ?? '',
+                'entPhysicalSerialNum' => $ctrl['serial'] ?? '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'Pure Storage',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'controller',
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => $ctrl['version'] ?? '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 1,
+                'entPhysicalAlias' => '',
+                'entPhysicalAssetID' => '',
+            ];
+
+            // Controller status sensor
+            if (isset($ctrl['status'])) {
+                $statusMap = ['ok' => 2, 'critical' => 0, 'warning' => 1, 'unknown' => 3];
+                $statusValue = $statusMap[strtolower($ctrl['status'])] ?? 3;
+
+                $sensors[] = [
+                    'sensor_class' => 'state',
+                    'sensor_type' => 'purestorage',
+                    'sensor_descr' => $name . ' Status',
+                    'sensor_index' => 'ctrl_status_' . $index,
+                    'sensor_current' => $statusValue,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                    'states' => [
+                        ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'critical'],
+                        ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'warning'],
+                        ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'ok'],
+                        ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
+                    ],
+                ];
+            }
+        }
+
+        return ['inventory' => $inventory, 'sensors' => $sensors];
+    }
+
+    public static function normalizePurePortDetails(array $payload): array
+    {
+        $transceivers = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $transceivers;
+        }
+
+        foreach ($payload['items'] as $port) {
+            $name = $port['name'] ?? 'unknown';
+            $ifIndex = self::stableIndexFromName($name);
+
+            // Pure Storage transceiver data is under items.static
+            $static = $port['static'] ?? [];
+
+            if (!empty($static)) {
+                // Parse distance from string like "Copper Cable: 1 m" or "Single-mode Fiber: 10 km" to integer meters
+                $distance = null;
+                if (isset($static['link_length'])) {
+                    $linkLength = $static['link_length'];
+                    if (preg_match('/(\d+(?:\.\d+)?)\s*(m|km)/i', $linkLength, $matches)) {
+                        $value = (float) $matches[1];
+                        $unit = strtolower($matches[2]);
+                        $distance = $unit === 'km' ? (int) ($value * 1000) : (int) $value;
+                    }
+                }
+
+                $trans = [
+                    'ifName' => $name,
+                    'index' => $ifIndex,
+                    'type' => $static['identifier'] ?? null,
+                    'vendor' => $static['vendor_name'] ?? null,
+                    'oui' => $static['vendor_oui'] ?? null,
+                    'model' => $static['vendor_part_number'] ?? null,
+                    'revision' => $static['vendor_revision'] ?? null,
+                    'serial' => $static['vendor_serial_number'] ?? null,
+                    'date' => $static['vendor_date_code'] ?? null,
+                    'connector' => $static['connector_type'] ?? null,
+                    'distance' => $distance,
+                    'wavelength' => $static['wavelength'] ?? null,
+                    'cable' => isset($static['cable_technology']) && is_array($static['cable_technology'])
+                        ? implode(', ', $static['cable_technology'])
+                        : ($static['cable_technology'] ?? null),
+                    'encoding' => $static['encoding'] ?? null,
+                    'channels' => $static['channels'] ?? 1,
+                ];
+                $transceivers[] = $trans;
+            }
+        }
+
+        return $transceivers;
+    }
+
+    public static function normalizePureVolumePerfByArray(array $payload): array
+    {
+        $sensors = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $sensors;
+        }
+
+        foreach ($payload['items'] as $perf) {
+            $name = $perf['name'] ?? 'volume';
+            $index = self::stableIndexFromName($name);
+
+            if (isset($perf['queue_depth'])) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'purestorage',
+                    'sensor_descr' => $name . ' Queue Depth',
+                    'sensor_index' => 'vol_queue_' . $index,
+                    'sensor_current' => $perf['queue_depth'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    public static function normalizePureSubnets(array $payload): array
+    {
+        $networks = [];
+
+        if (!isset($payload['items']) || !is_array($payload['items'])) {
+            return $networks;
+        }
+
+        foreach ($payload['items'] as $subnet) {
+            $prefix = $subnet['prefix'] ?? $subnet['subnet'] ?? null;
+
+            if ($prefix) {
+                $networks[] = [
+                    'ipv4_network' => $prefix,
+                    'context_name' => $subnet['name'] ?? null,
+                ];
+            }
+        }
+
+        return $networks;
+    }
+
     public static function normalizeProxmoxNodeStatus(array $payload): array
     {
         $sensors = [];
@@ -685,7 +1043,7 @@ class RestNormalizers
                 'ifOperStatus' => $active,
                 'ifAdminStatus' => ($iface['autostart'] ?? 1) ? 'up' : 'down',
                 'ifMtu' => 1500,
-                'ifPhysAddress' => $iface['address'] ?? '',
+                'ifPhysAddress' => $iface['hwaddress'] ?? $iface['hwaddr'] ?? '',
                 'ifAlias' => $iface['comments'] ?? '',
                 'ifLastChange' => 0,
             ];
@@ -1032,18 +1390,23 @@ class RestNormalizers
     public static function normalizeFortigateInterfaces(array $payload): array
     {
         $ports = [];
+        $ipv4_addresses = [];
+        $ipv4_mac = [];
+        $ports_statistics = [];
+        $transceivers = [];
 
         $results = $payload['results'] ?? $payload;
         if (!is_array($results)) {
-            return $ports;
+            return ['ports' => $ports];
         }
 
         foreach ($results as $idx => $iface) {
             $name = $iface['name'] ?? "port_$idx";
             $status = strtolower($iface['status'] ?? 'down');
+            $ifIndex = self::stableIndexFromName($name);
 
             $ports[] = [
-                'ifIndex' => self::stableIndexFromName($name),
+                'ifIndex' => $ifIndex,
                 'ifName' => $name,
                 'ifDescr' => $iface['alias'] ?? $name,
                 'ifType' => $iface['type'] ?? 'ethernetCsmacd',
@@ -1055,9 +1418,85 @@ class RestNormalizers
                 'ifAlias' => $iface['alias'] ?? '',
                 'ifLastChange' => 0,
             ];
+
+            // Extract IPv4 addresses if present
+            if (isset($iface['ip']) && $iface['ip'] !== '0.0.0.0') {
+                $ip = $iface['ip'];
+                if (strpos($ip, '/') !== false) {
+                    [$ipAddr, $prefixLen] = explode('/', $ip, 2);
+                } else {
+                    $ipAddr = $ip;
+                    $prefixLen = isset($iface['netmask']) ? self::netmaskToCidr($iface['netmask']) : 24;
+                }
+
+                $ipv4_addresses[] = [
+                    'ifIndex' => $ifIndex,
+                    'ipv4_address' => $ipAddr,
+                    'ipv4_prefixlen' => $prefixLen,
+                    'context_name' => '',
+                ];
+            }
+
+            // Extract MAC address mappings if present (ARP data)
+            if (isset($iface['arp']) && is_array($iface['arp'])) {
+                foreach ($iface['arp'] as $arp) {
+                    if (isset($arp['mac'], $arp['ip'])) {
+                        $ipv4_mac[] = [
+                            'ifIndex' => $ifIndex,
+                            'mac_address' => $arp['mac'],
+                            'ipv4_address' => $arp['ip'],
+                            'context_name' => '',
+                        ];
+                    }
+                }
+            }
+
+            // Extract traffic statistics if present
+            if (isset($iface['rx_bytes']) || isset($iface['tx_bytes'])) {
+                $ports_statistics[] = [
+                    'ifIndex' => $ifIndex,
+                    'ifInOctets' => $iface['rx_bytes'] ?? 0,
+                    'ifOutOctets' => $iface['tx_bytes'] ?? 0,
+                    'ifInErrors' => $iface['rx_errors'] ?? 0,
+                    'ifOutErrors' => $iface['tx_errors'] ?? 0,
+                    'ifInUcastPkts' => $iface['rx_packets'] ?? 0,
+                    'ifOutUcastPkts' => $iface['tx_packets'] ?? 0,
+                    'ifInDiscards' => $iface['rx_dropped'] ?? 0,
+                    'ifOutDiscards' => $iface['tx_dropped'] ?? 0,
+                ];
+            }
+
+            // Extract transceiver/SFP data if present
+            if (isset($iface['sfp']) && is_array($iface['sfp'])) {
+                $sfp = $iface['sfp'];
+                $transceivers[] = [
+                    'ifIndex' => $ifIndex,
+                    'index' => $ifIndex,
+                    'type' => $sfp['type'] ?? null,
+                    'vendor' => $sfp['vendor'] ?? null,
+                    'model' => $sfp['part_number'] ?? null,
+                    'serial' => $sfp['serial'] ?? null,
+                    'connector' => $sfp['connector'] ?? null,
+                ];
+            }
         }
 
-        return $ports;
+        // Return structured response with all available data
+        $response = ['ports' => $ports];
+        if (!empty($ipv4_addresses)) {
+            $response['ipv4_addresses'] = $ipv4_addresses;
+        }
+        if (!empty($ipv4_mac)) {
+            $response['ipv4_mac'] = $ipv4_mac;
+        }
+        if (!empty($ports_statistics)) {
+            $response['ports_statistics'] = $ports_statistics;
+        }
+        if (!empty($transceivers)) {
+            $response['transceivers'] = $transceivers;
+        }
+
+        return $response;
     }
 
     public static function normalizeFortigateIpv4(array $payload): array
@@ -1094,6 +1533,39 @@ class RestNormalizers
         }
 
         return $addresses;
+    }
+
+    public static function normalizeFortigateInterfaceStats(array $payload): array
+    {
+        $statistics = [];
+
+        $results = $payload['results'] ?? $payload;
+        if (!is_array($results)) {
+            return $statistics;
+        }
+
+        foreach ($results as $iface) {
+            $name = $iface['name'] ?? '';
+            if (!$name) {
+                continue;
+            }
+
+            $ifIndex = self::stableIndexFromName($name);
+
+            $statistics[] = [
+                'ifIndex' => $ifIndex,
+                'ifInOctets' => $iface['rx_bytes'] ?? $iface['link']['stats']['rx_bytes'] ?? 0,
+                'ifOutOctets' => $iface['tx_bytes'] ?? $iface['link']['stats']['tx_bytes'] ?? 0,
+                'ifInErrors' => $iface['rx_errors'] ?? $iface['link']['stats']['rx_errors'] ?? 0,
+                'ifOutErrors' => $iface['tx_errors'] ?? $iface['link']['stats']['tx_errors'] ?? 0,
+                'ifInUcastPkts' => $iface['rx_packets'] ?? $iface['link']['stats']['rx_packets'] ?? 0,
+                'ifOutUcastPkts' => $iface['tx_packets'] ?? $iface['link']['stats']['tx_packets'] ?? 0,
+                'ifInDiscards' => $iface['rx_dropped'] ?? $iface['link']['stats']['rx_dropped'] ?? 0,
+                'ifOutDiscards' => $iface['tx_dropped'] ?? $iface['link']['stats']['tx_dropped'] ?? 0,
+            ];
+        }
+
+        return $statistics;
     }
 
     public static function normalizeJunosInterfaces(array $payload): array { return []; }
@@ -2104,5 +2576,199 @@ class RestNormalizers
         $long = ip2long($netmask);
         $base = ip2long('255.255.255.255');
         return (int) (32 - log(($long ^ $base) + 1, 2));
+    }
+
+    /**
+     * Generic normalizer for hrDevice data from REST APIs
+     *
+     * Expected input: array of device objects with fields like:
+     * - index, descr/description, type, status, errors, processor_load
+     */
+    public static function normalizeGenericHrDevice(array $payload): array
+    {
+        $devices = [];
+        $items = $payload['items'] ?? $payload['devices'] ?? $payload;
+
+        foreach ($items as $device) {
+            $devices[] = [
+                'hrDeviceIndex'    => $device['index'] ?? $device['device_index'] ?? self::stableIndexFromName($device['name'] ?? 'device'),
+                'hrDeviceDescr'    => $device['descr'] ?? $device['description'] ?? $device['name'] ?? 'Unknown Device',
+                'hrDeviceType'     => $device['type'] ?? $device['device_type'] ?? 'unknown',
+                'hrDeviceStatus'   => $device['status'] ?? 'unknown',
+                'hrDeviceErrors'   => $device['errors'] ?? $device['error_count'] ?? 0,
+                'hrProcessorLoad'  => $device['processor_load'] ?? $device['cpu_load'] ?? null,
+            ];
+        }
+
+        return $devices;
+    }
+
+    /**
+     * Generic normalizer for hrSystem data from REST APIs
+     *
+     * Expected input: single object or array with one element containing:
+     * - num_users/users, processes, max_processes
+     */
+    public static function normalizeGenericHrSystem(array $payload): array
+    {
+        $data = $payload['system'] ?? $payload[0] ?? $payload;
+
+        return [
+            'hrSystemNumUsers'     => $data['num_users'] ?? $data['users'] ?? $data['user_count'] ?? 0,
+            'hrSystemProcesses'    => $data['processes'] ?? $data['process_count'] ?? 0,
+            'hrSystemMaxProcesses' => $data['max_processes'] ?? $data['process_limit'] ?? 0,
+        ];
+    }
+
+    /**
+     * Generic normalizer for IPv4 addresses from REST APIs
+     *
+     * Expected input: array of address objects with:
+     * - interface/ifName/ifIndex, address/ip, prefixlen/netmask
+     */
+    public static function normalizeGenericIpv4Addresses(array $payload): array
+    {
+        $addresses = [];
+        $items = $payload['items'] ?? $payload['addresses'] ?? $payload;
+
+        foreach ($items as $addr) {
+            $ifIdentifier = null;
+            if (isset($addr['ifIndex'])) {
+                $ifIdentifier = ['ifIndex' => $addr['ifIndex']];
+            } elseif (isset($addr['ifName'])) {
+                $ifIdentifier = ['ifName' => $addr['ifName']];
+            } elseif (isset($addr['interface'])) {
+                $ifIdentifier = ['ifName' => $addr['interface']];
+            }
+
+            if (!$ifIdentifier || !isset($addr['address']) && !isset($addr['ip'])) {
+                continue;
+            }
+
+            $prefixlen = $addr['prefixlen'] ?? $addr['prefix_length'] ?? 24;
+            if (isset($addr['netmask']) && !is_numeric($addr['netmask'])) {
+                $prefixlen = self::netmaskToCidr($addr['netmask']);
+            }
+
+            $addresses[] = array_merge($ifIdentifier, [
+                'ipv4_address'   => $addr['address'] ?? $addr['ip'],
+                'ipv4_prefixlen' => $prefixlen,
+                'context_name'   => $addr['context'] ?? $addr['vrf'] ?? '',
+            ]);
+        }
+
+        return $addresses;
+    }
+
+    /**
+     * Generic normalizer for IPv4/MAC mappings (ARP table) from REST APIs
+     *
+     * Expected input: array of ARP entries with:
+     * - interface/ifName/ifIndex, ip/address, mac/mac_address
+     */
+    public static function normalizeGenericIpv4Mac(array $payload): array
+    {
+        $mappings = [];
+        $items = $payload['items'] ?? $payload['arp'] ?? $payload['arp_table'] ?? $payload;
+
+        foreach ($items as $entry) {
+            $ifIdentifier = null;
+            if (isset($entry['ifIndex'])) {
+                $ifIdentifier = ['ifIndex' => $entry['ifIndex']];
+            } elseif (isset($entry['ifName'])) {
+                $ifIdentifier = ['ifName' => $entry['ifName']];
+            } elseif (isset($entry['interface'])) {
+                $ifIdentifier = ['ifName' => $entry['interface']];
+            }
+
+            $mac = $entry['mac'] ?? $entry['mac_address'] ?? $entry['hwaddr'] ?? null;
+            $ip = $entry['ip'] ?? $entry['address'] ?? $entry['ipv4_address'] ?? null;
+
+            if (!$ifIdentifier || !$mac || !$ip) {
+                continue;
+            }
+
+            $mappings[] = array_merge($ifIdentifier, [
+                'mac_address'  => $mac,
+                'ipv4_address' => $ip,
+                'context_name' => $entry['context'] ?? $entry['vrf'] ?? '',
+            ]);
+        }
+
+        return $mappings;
+    }
+
+    /**
+     * Generic normalizer for IPv4 networks from REST APIs
+     *
+     * Expected input: array of network objects with:
+     * - network (CIDR notation like "192.168.1.0/24"), context/vrf
+     */
+    public static function normalizeGenericIpv4Networks(array $payload): array
+    {
+        $networks = [];
+        $items = $payload['items'] ?? $payload['networks'] ?? $payload['routes'] ?? $payload;
+
+        foreach ($items as $net) {
+            $network = $net['network'] ?? $net['subnet'] ?? $net['cidr'] ?? null;
+            if (!$network) {
+                continue;
+            }
+
+            $networks[] = [
+                'ipv4_network' => $network,
+                'context_name' => $net['context'] ?? $net['vrf'] ?? null,
+            ];
+        }
+
+        return $networks;
+    }
+
+    /**
+     * Generic normalizer for transceiver/optics data from REST APIs
+     *
+     * Expected input: array of transceiver objects with:
+     * - interface/port, type, vendor, model, serial, etc.
+     */
+    public static function normalizeGenericTransceivers(array $payload): array
+    {
+        $transceivers = [];
+        $items = $payload['items'] ?? $payload['transceivers'] ?? $payload['optics'] ?? $payload;
+
+        foreach ($items as $idx => $trans) {
+            $ifIdentifier = null;
+            if (isset($trans['ifIndex'])) {
+                $ifIdentifier = ['ifIndex' => $trans['ifIndex']];
+            } elseif (isset($trans['ifName'])) {
+                $ifIdentifier = ['ifName' => $trans['ifName']];
+            } elseif (isset($trans['interface']) || isset($trans['port'])) {
+                $ifIdentifier = ['ifName' => $trans['interface'] ?? $trans['port']];
+            }
+
+            if (!$ifIdentifier) {
+                continue;
+            }
+
+            $transceivers[] = array_merge($ifIdentifier, [
+                'index'                 => $trans['index'] ?? $idx,
+                'entity_physical_index' => $trans['entity_physical_index'] ?? null,
+                'type'                  => $trans['type'] ?? $trans['form_factor'] ?? null,
+                'vendor'                => $trans['vendor'] ?? $trans['manufacturer'] ?? null,
+                'oui'                   => $trans['oui'] ?? null,
+                'model'                 => $trans['model'] ?? $trans['part_number'] ?? null,
+                'revision'              => $trans['revision'] ?? null,
+                'serial'                => $trans['serial'] ?? $trans['serial_number'] ?? null,
+                'date'                  => $trans['date'] ?? $trans['manufacture_date'] ?? null,
+                'ddm'                   => isset($trans['ddm']) ? (bool) $trans['ddm'] : null,
+                'encoding'              => $trans['encoding'] ?? null,
+                'cable'                 => $trans['cable'] ?? $trans['cable_type'] ?? null,
+                'distance'              => $trans['distance'] ?? $trans['reach'] ?? null,
+                'wavelength'            => $trans['wavelength'] ?? null,
+                'connector'             => $trans['connector'] ?? $trans['connector_type'] ?? null,
+                'channels'              => $trans['channels'] ?? 1,
+            ]);
+        }
+
+        return $transceivers;
     }
 }

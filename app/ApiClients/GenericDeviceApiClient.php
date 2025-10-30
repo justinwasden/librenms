@@ -8,12 +8,6 @@ use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use LibreNMS\Util\DeviceApiSettings;
 
-/**
- * Generic Device API Client
- *
- * Fallback client that works with any template using configured auth schemas.
- * Supports basic auth, bearer tokens, and custom headers.
- */
 class GenericDeviceApiClient implements DeviceApiClientInterface
 {
     protected Device $device;
@@ -25,7 +19,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         $this->device = $device;
 
         // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template', 'authSchema')
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template', 'schema')
             ->where('device_id', $device->device_id)
             ->firstOrFail();
 
@@ -46,7 +40,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         ], $device);
 
         // Initialize session-based auth if needed
-        if ($this->apiConfig->authSchema?->key === 'vmware_vcenter_session') {
+        if ($this->apiConfig->schema?->key === 'vmware_vcenter_session') {
             $this->initializeVmwareSession();
         }
     }
@@ -60,7 +54,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         $username = $this->apiConfig->getValue('username');
         $password = $this->apiConfig->getValue('password');
 
-        if (!$username || !$password) {
+        if (!$username || $password === null) {
             throw new \RuntimeException("Username and password required for VMware vCenter session auth");
         }
 
@@ -70,51 +64,57 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
             'base_url' => $this->httpClient->getBaseUrl(),
             'headers' => [
                 'Authorization' => 'Basic ' . base64_encode("$username:$password"),
+                'Accept'        => 'application/json',
             ],
             'verify_tls' => $httpOptions['verify_tls'] ?? true,
             'timeout_ms' => $httpOptions['timeout_ms'] ?? 5000,
+            'proxy' => $httpOptions['proxy'] ?? null,
         ], $this->device);
 
+        // Try modern endpoint first: POST /api/session (session id in header)
         try {
-            \Illuminate\Support\Facades\Log::debug("Attempting VMware vCenter session creation", [
-                'device_id' => $this->device->device_id,
-                'base_url' => $this->httpClient->getBaseUrl(),
-                'session_endpoint' => '/com/vmware/cis/session',
-                'username' => $username,
-            ]);
+            $raw = $tempClient->rawPost('/api/session', []);
+            $headers = array_change_key_case($raw['headers'] ?? [], CASE_LOWER);
+            $sessionId = null;
 
-            // POST to session endpoint to create session
-            $response = $tempClient->post('/com/vmware/cis/session', []);
-
-            \Illuminate\Support\Facades\Log::debug("VMware session response received", [
-                'device_id' => $this->device->device_id,
-                'response_keys' => array_keys($response),
-                'response' => $response,
-            ]);
-
-            // Extract session ID from response
-            $sessionId = $response['value'] ?? $response['session_id'] ?? null;
-
-            if (!$sessionId) {
-                throw new \RuntimeException("Failed to get session ID from VMware vCenter response: " . json_encode($response));
+            if (isset($headers['vmware-api-session-id'])) {
+                $h = $headers['vmware-api-session-id'];
+                $sessionId = is_array($h) ? ($h[0] ?? null) : $h;
             }
 
-            // Update main HTTP client with session header
-            $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
+            // Some environments return JSON
+            if (!$sessionId && is_array($raw['json']) && isset($raw['json']['value'])) {
+                $sessionId = $raw['json']['value'];
+            }
 
-            \Illuminate\Support\Facades\Log::debug("VMware vCenter session created successfully", [
-                'device_id' => $this->device->device_id,
-                'session_id_length' => strlen($sessionId),
-            ]);
+            if ($sessionId) {
+                $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
+                return;
+            }
 
+            $code = (int) ($raw['status'] ?? 0);
+            if (!in_array($code, [404, 405], true)) {
+                throw new \RuntimeException('Modern /api/session did not return session id');
+            }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to create VMware vCenter session", [
-                'device_id' => $this->device->device_id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw new \RuntimeException("VMware vCenter session creation failed: " . $e->getMessage());
+            // Fall back only for clear 404/405
+            $msg = $e->getMessage();
+            $code = 0;
+            if (preg_match('/returned\s+(\d{3})/i', $msg, $m)) {
+                $code = (int) $m[1];
+            }
+            if ($code && !in_array($code, [404, 405], true)) {
+                throw new \RuntimeException("Modern /api/session failed: {$msg}", $code, $e);
+            }
         }
+
+        // Legacy: POST /rest/com/vmware/cis/session (JSON {"value": "..."} )
+        $resp = $tempClient->post('/rest/com/vmware/cis/session', []);
+        $sessionId = $resp['value'] ?? null;
+        if (!$sessionId) {
+            throw new \RuntimeException("Legacy /rest session failed or missing value: " . json_encode($resp));
+        }
+        $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
     }
 
     public function supports(Device $device): bool
@@ -127,8 +127,12 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
     public function capabilities(): array
     {
         // Return capabilities from template
-        $capabilities = $this->apiConfig->template->capabilities ?? [];
-        return is_array($capabilities) ? $capabilities : json_decode($capabilities, true) ?? [];
+        $tpl = $this->apiConfig->template;
+        if (!$tpl) {
+            return [];
+        }
+        $capabilities = $tpl->capabilities ?? [];
+        return is_array($capabilities) ? $capabilities : (json_decode($capabilities, true) ?: []);
     }
 
     public function get(string $path, array $query = []): array
@@ -141,10 +145,6 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         return $this->httpClient->post($path, $body);
     }
 
-    /**
-     * GenericDeviceApiClient uses template-driven polling via DeviceApiExecutor.
-     * These fetch methods are not used - they exist only to satisfy the interface.
-     */
     public function fetchSensors(\App\Models\Device $device): array
     {
         return [];
@@ -178,7 +178,6 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
     public function isReachable(): bool
     {
         try {
-            // Try a simple GET to the base URL
             $this->httpClient->get('/');
             return true;
         } catch (\Throwable $e) {
@@ -198,7 +197,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
     protected function buildAuthHeaders(): array
     {
         $headers = [];
-        $schema = $this->apiConfig->authSchema;
+        $schema = $this->apiConfig->schema;
 
         if (!$schema) {
             return $headers;
@@ -209,7 +208,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
                 // Basic authentication
                 $username = $this->apiConfig->getValue('username') ?? '';
                 $password = $this->apiConfig->getValue('password') ?? '';
-                if ($username && $password) {
+                if ($username !== '') {
                     $encoded = base64_encode("$username:$password");
                     $headers['Authorization'] = "Basic $encoded";
                 }
@@ -226,7 +225,6 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
             case 'vmware_vcenter_session':
                 // VMware vCenter session-based auth
                 // Session is initialized in constructor via initializeVmwareSession()
-                // No auth headers needed here - session ID is set after login
                 break;
 
             case 'custom_header':
@@ -245,8 +243,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
                     $headers['Authorization'] = "Bearer $token";
                 } else {
                     $username = $this->apiConfig->getValue('username');
-                    $password = $this->apiConfig->getValue('password');
-                    if ($username && $password) {
+                    $password = $this->apiConfig->getValue('password') ?? '';
+                    if (!empty($username)) {
                         $encoded = base64_encode($username . ':' . $password);
                         $headers['Authorization'] = "Basic $encoded";
                     }

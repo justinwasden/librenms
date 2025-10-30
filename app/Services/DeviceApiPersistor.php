@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use LibreNMS\Data\Store\Rrd\RrdDefinition;
+use LibreNMS\RRD\RrdDefinition;
 
 /**
  * DeviceApiPersistor
@@ -93,8 +93,33 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('sensors')->where('sensor_id', $existing->sensor_id)->update($base);
+                    $sensorId = $existing->sensor_id;
                 } else {
-                    DB::table('sensors')->insert($base);
+                    $sensorId = DB::table('sensors')->insertGetId($base);
+                }
+
+                // Create RRD file for sensor readings
+                if ($sensorId && $base['sensor_current'] !== null) {
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('sensor', $base['rrd_type']);
+
+                    // Use sensor_index for RRD naming (consistent with LibreNMS convention)
+                    $rrd_name = ['sensor', $base['sensor_class'], $base['sensor_type'], $base['sensor_index']];
+
+                    $tags = [
+                        'sensor_class' => $base['sensor_class'],
+                        'sensor_type' => $base['sensor_type'],
+                        'sensor_descr' => $base['sensor_descr'],
+                        'sensor_index' => $base['sensor_index'],
+                        'rrd_name' => $rrd_name,
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'sensor' => $base['sensor_current'],
+                    ];
+
+                    app('Datastore')->put($device->toArray(), 'sensor', $tags, $fields);
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveSensors failed for device {$device->device_id}: {$e->getMessage()}");
@@ -129,9 +154,9 @@ class DeviceApiPersistor
                 }
 
                 // Create RRD file for processor usage
-                if (!empty($base['processor_usage']) && $processorId) {
+                if ($processorId && isset($base['processor_usage'])) {
                     $rrd_def = RrdDefinition::make()
-                        ->addDataset('usage', 'GAUGE', 0, 100);
+                        ->addDataset('usage', 'GAUGE', 0, 125);
 
                     $tags = [
                         'processor_type' => $base['processor_type'],
@@ -365,7 +390,7 @@ class DeviceApiPersistor
                         'storage_type' => $base['storage_type'],
                         'storage_index' => $base['storage_index'],
                         'storage_descr' => $base['storage_descr'],
-                        'rrd_name' => ['storage', $base['storage_type'], $base['storage_index']],
+                        'rrd_name' => ['storage', $base['type'], $base['storage_descr']],
                         'rrd_def' => $rrd_def,
                     ];
 
@@ -469,6 +494,43 @@ class DeviceApiPersistor
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveIpv4Mac failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    public static function saveIpv4Networks(Device $device, array $networks): void
+    {
+        foreach ($networks as $network) {
+            try {
+                $ipv4Network = $network['ipv4_network'] ?? $network['network'] ?? null;
+                if (!$ipv4Network) {
+                    continue;
+                }
+
+                $base = [
+                    'ipv4_network' => $ipv4Network,
+                    'context_name' => $network['context_name'] ?? null,
+                ];
+
+                // Upsert by ipv4_network + context_name
+                $existing = DB::table('ipv4_networks')
+                    ->where('ipv4_network', $ipv4Network)
+                    ->where(function ($query) use ($base) {
+                        if ($base['context_name'] === null) {
+                            $query->whereNull('context_name');
+                        } else {
+                            $query->where('context_name', $base['context_name']);
+                        }
+                    })
+                    ->first();
+
+                if ($existing) {
+                    DB::table('ipv4_networks')->where('ipv4_network_id', $existing->ipv4_network_id)->update($base);
+                } else {
+                    DB::table('ipv4_networks')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveIpv4Networks failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
     }
@@ -653,6 +715,73 @@ class DeviceApiPersistor
             } catch (\Throwable $e) {
                 Log::warning("savePortsStatistics failed for device {$device->device_id}: {$e->getMessage()}");
             }
+        }
+    }
+
+    public static function saveHrDevice(Device $device, array $hrDevices): void
+    {
+        foreach ($hrDevices as $hrDev) {
+            try {
+                $base = [
+                    'device_id'        => $device->device_id,
+                    'hrDeviceIndex'    => $hrDev['hrDeviceIndex'] ?? $hrDev['index'] ?? null,
+                    'hrDeviceDescr'    => $hrDev['hrDeviceDescr'] ?? $hrDev['descr'] ?? '',
+                    'hrDeviceType'     => $hrDev['hrDeviceType'] ?? $hrDev['type'] ?? '',
+                    'hrDeviceErrors'   => $hrDev['hrDeviceErrors'] ?? $hrDev['errors'] ?? 0,
+                    'hrDeviceStatus'   => $hrDev['hrDeviceStatus'] ?? $hrDev['status'] ?? '',
+                    'hrProcessorLoad'  => $hrDev['hrProcessorLoad'] ?? $hrDev['processor_load'] ?? null,
+                ];
+
+                if ($base['hrDeviceIndex'] === null) {
+                    Log::debug("Skipping hrDevice - no index provided", [
+                        'device_id' => $device->device_id,
+                    ]);
+                    continue;
+                }
+
+                // Upsert by device_id + hrDeviceIndex
+                $existing = DB::table('hrDevice')
+                    ->where('device_id', $device->device_id)
+                    ->where('hrDeviceIndex', $base['hrDeviceIndex'])
+                    ->first();
+
+                if ($existing) {
+                    DB::table('hrDevice')->where('hrDevice_id', $existing->hrDevice_id)->update($base);
+                } else {
+                    DB::table('hrDevice')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveHrDevice failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    public static function saveHrSystem(Device $device, array $hrSystemData): void
+    {
+        try {
+            // hrSystem is a single record per device (not an array of items)
+            // Accept both array of single item or direct object
+            $data = is_array($hrSystemData) && isset($hrSystemData[0]) ? $hrSystemData[0] : $hrSystemData;
+
+            $base = [
+                'device_id'             => $device->device_id,
+                'hrSystemNumUsers'      => $data['hrSystemNumUsers'] ?? $data['num_users'] ?? 0,
+                'hrSystemProcesses'     => $data['hrSystemProcesses'] ?? $data['processes'] ?? 0,
+                'hrSystemMaxProcesses'  => $data['hrSystemMaxProcesses'] ?? $data['max_processes'] ?? 0,
+            ];
+
+            // Upsert by device_id (only one record per device)
+            $existing = DB::table('hrSystem')
+                ->where('device_id', $device->device_id)
+                ->first();
+
+            if ($existing) {
+                DB::table('hrSystem')->where('hrSystem_id', $existing->hrSystem_id)->update($base);
+            } else {
+                DB::table('hrSystem')->insert($base);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("saveHrSystem failed for device {$device->device_id}: {$e->getMessage()}");
         }
     }
 

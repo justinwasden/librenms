@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Device;
+use Illuminate\Support\Facades\Cache;
 use LibreNMS\Util\ApiTemplateManager;
 use LibreNMS\Util\DeviceApiSettings;
 use LibreNMS\Util\EndpointPathResolver;
@@ -76,16 +77,20 @@ class DeviceApiGateway
                 try {
                     self::$payloadCache[$payloadCacheKey] = $this->fetch($client, $method, $resolvedPath, $eps);
                 } catch (\Throwable $e) {
-                    // Proxmox {node} fallback: discover nodes and retry once
+                    // Proxmox {node} fallback: use same discovery as DeviceApiExecutor
                     if (str_contains($rawPath, '{node}')) {
-                        $nodes = $client->get('/nodes');
-                        $candidate = $this->pickProxmoxNode($device, $nodes);
-                        if ($candidate) {
-                            $device->setAttrib('proxmox_node', $candidate);
-                            $resolvedPath = EndpointPathResolver::resolve($device, $rawPath);
-                            $payloadCacheKey = $device->device_id . '|' . $method . '|' . $resolvedPath;
-                            self::$payloadCache[$payloadCacheKey] = $this->fetch($client, $method, $resolvedPath, $eps);
-                        } else {
+                        try {
+                            $cluster = $client->get('/cluster/resources');
+                            $candidate = TransformRunner::discoverProxmoxNodeName($cluster);
+                            if ($candidate) {
+                                $device->setAttrib('proxmox_node', $candidate);
+                                $resolvedPath = EndpointPathResolver::resolve($device, $rawPath);
+                                $payloadCacheKey = $device->device_id . '|' . $method . '|' . $resolvedPath;
+                                self::$payloadCache[$payloadCacheKey] = $this->fetch($client, $method, $resolvedPath, $eps);
+                            } else {
+                                self::$payloadCache[$payloadCacheKey] = [];
+                            }
+                        } catch (\Throwable $ignored) {
                             self::$payloadCache[$payloadCacheKey] = [];
                         }
                     } else {
@@ -96,7 +101,8 @@ class DeviceApiGateway
 
             $payload = self::$payloadCache[$payloadCacheKey] ?? [];
             foreach ($eps as $ep) {
-                $data = TransformRunner::run($ep['transform'] ?? null, $payload, $capability);
+                // Call TransformRunner using the same signature as DeviceApiExecutor
+                $data = TransformRunner::run($device, $tpl, $ep, $payload);
                 if (!empty($data)) {
                     // Merge results (some capability endpoints return flat lists)
                     $result = array_merge($result, $data);
@@ -133,26 +139,11 @@ class DeviceApiGateway
         };
     }
 
-    protected function pickProxmoxNode(Device $device, array $nodesPayload): ?string
-    {
-        $sysname = (string) ($device->sysName ?? $device->sysname ?? $device->hostname ?? '');
-        $list = $nodesPayload['data'] ?? $nodesPayload['nodes'] ?? $nodesPayload ?? [];
-        $first = null;
-        foreach ($list as $node) {
-            $name = $node['node'] ?? $node['name'] ?? null;
-            if (!$name) continue;
-            if ($first === null) $first = $name;
-            if ($name === $sysname) return $name;
-        }
-        return $first;
-    }
-
     /**
      * Clear caches for a new poll cycle (call once at start of per-device poll).
      */
     public function resetCycle(Device $device): void
     {
-        // Clear capability cache and payloads for this device
         foreach (array_keys(self::$capabilityCache) as $k) {
             if (str_starts_with($k, $device->device_id . '|')) {
                 unset(self::$capabilityCache[$k]);

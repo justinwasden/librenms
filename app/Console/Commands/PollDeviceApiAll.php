@@ -14,7 +14,7 @@ class PollDeviceApiAll extends Command
     {
         $query = Device::query()->with('attribs')
             ->whereHas('attribs', function ($q) {
-                $q->where('attrib_key', 'rest_enabled')->where('attrib_value', '1');
+                $q->where('attrib_type', 'rest_enabled')->where('attrib_value', '1');
             });
 
         if ($group = $this->option('group')) {
@@ -29,6 +29,7 @@ class PollDeviceApiAll extends Command
         $count = 0;
         $failed = 0;
 
+        // Specify the correct chunking column (device_id)
         $query->chunkById(100, function ($devices) use (&$count, &$failed) {
             foreach ($devices as $device) {
                 $count++;
@@ -38,7 +39,7 @@ class PollDeviceApiAll extends Command
                     $this->warn("API poll failed for device {$device->device_id}");
                 }
             }
-        });
+        }, 'device_id');
 
         $this->info("Polled {$count} devices. Failed: {$failed}");
         return $failed === 0 ? 0 : 1;

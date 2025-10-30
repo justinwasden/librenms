@@ -6,50 +6,76 @@ use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
 use App\Models\DeviceApiConfig;
-use LibreNMS\Util\DeviceApiSettings;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 /**
  * VMware vCenter REST API Client
- *
- * Implements session-based authentication per VMware vCenter API requirements:
- * 1. POST to /com/vmware/cis/session with Basic auth to create session
- * 2. Use vmware-api-session-id header for all subsequent requests
  */
 class VCenterClient implements DeviceApiClientInterface
 {
     public const VENDOR = 'vmware';
 
+    public ?string $sessionId = null;
+
     protected Device $device;
     protected DeviceHttpClient $httpClient;
-    protected DeviceApiConfig $apiConfig;
-    protected ?string $sessionId = null;
+    protected ?DeviceApiConfig $apiConfig = null;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
 
-        // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')
-            ->where('device_id', $device->device_id)
-            ->firstOrFail();
+        // Load saved API config from relation or DB
+        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
 
-        // Build HTTP client options
-        $httpOptions = DeviceApiSettings::httpOptions($device);
-        if (empty($httpOptions['base_url'])) {
-            throw new \RuntimeException("No base URL configured for VMware vCenter device {$device->device_id}");
+        if (!$this->apiConfig) {
+            throw new RuntimeException("No saved API configuration found for device {$device->device_id}");
         }
 
-        // Create HTTP client without auth headers initially
+        // Use model columns for base_url/verify_ssl and values for other fields
+        $baseUrl   = $this->apiConfig->base_url;
+        $username  = $this->apiConfig->getValue('username');
+        $password  = $this->apiConfig->getValue('password');
+        $verifyTls = (bool) ($this->apiConfig->verify_ssl ?? true);
+        $timeoutMs = (int) $this->apiConfig->getValue('timeout_ms', 5000);
+
+        // Mask password for logs
+        $maskedPassword = $password !== null ? str_repeat('*', max(4, strlen($password))) : null;
+
+        Log::debug('VCenterClient init config', [
+            'device_id'     => $this->device->device_id,
+            'base_url'      => $baseUrl,
+            'username'      => $username,
+            'password'      => $maskedPassword,
+            'verify_tls'    => $verifyTls,
+            'timeout_ms'    => $timeoutMs,
+            'extra_headers' => $this->apiConfig->extra_headers ?? [],
+        ]);
+
+        if (!$baseUrl) {
+            throw new RuntimeException("API config for device {$device->device_id} is missing base_url");
+        }
+
+        // Initialize HTTP client
+        $headers = $this->apiConfig->extra_headers ?? [];
+        if ($username && $password) {
+            $headers['Authorization'] = 'Basic ' . base64_encode("$username:$password");
+        }
+
         $this->httpClient = new DeviceHttpClient([
-            'base_url' => $httpOptions['base_url'],
-            'headers' => $httpOptions['headers'] ?? [],
-            'verify_tls' => $httpOptions['verify_tls'] ?? true,
-            'timeout_ms' => $httpOptions['timeout_ms'] ?? 5000,
-            'proxy' => $httpOptions['proxy'] ?? null,
+            'base_url'   => rtrim($baseUrl, '/'),
+            'headers'    => $headers,
+            'verify_tls' => $verifyTls,
+            'timeout_ms' => $timeoutMs,
         ], $device);
 
-        // Initialize VMware session
+        Log::debug('VCenterClient headers before session', [
+            'has_auth_header' => array_key_exists('Authorization', $headers),
+            'headers' => array_keys($headers),
+        ]);
+
+        // Initialize VMware session automatically
         $this->initializeSession();
     }
 
@@ -58,162 +84,193 @@ class VCenterClient implements DeviceApiClientInterface
      */
     protected function initializeSession(): void
     {
-        $username = $this->apiConfig->getValue('username');
-        $password = $this->apiConfig->getValue('password');
+        Log::debug('VCenterClient attempting session creation', [
+            'device_id' => $this->device->device_id,
+            'base_url' => $this->apiConfig->base_url,
+        ]);
 
-        if (!$username || !$password) {
-            throw new \RuntimeException("Username and password required for VMware vCenter authentication");
-        }
-
-        // Create temporary client with Basic auth for session creation
-        $httpOptions = DeviceApiSettings::httpOptions($this->device);
-        $tempClient = new DeviceHttpClient([
-            'base_url' => $this->httpClient->getBaseUrl(),
-            'headers' => [
-                'Authorization' => 'Basic ' . base64_encode("$username:$password"),
-            ],
-            'verify_tls' => $httpOptions['verify_tls'] ?? true,
-            'timeout_ms' => $httpOptions['timeout_ms'] ?? 5000,
-        ], $this->device);
-
+        // Try modern endpoint first: POST /api/session (session id in header)
         try {
-            Log::debug("Creating VMware vCenter session", [
-                'device_id' => $this->device->device_id,
-                'base_url' => $this->httpClient->getBaseUrl(),
-                'username' => $username,
+            $raw = $this->httpClient->rawPost('/api/session', []);
+            $headers = array_change_key_case($raw['headers'] ?? [], CASE_LOWER);
+            $sessionId = null;
+
+            if (isset($headers['vmware-api-session-id'])) {
+                $h = $headers['vmware-api-session-id'];
+                $sessionId = is_array($h) ? ($h[0] ?? null) : $h;
+            }
+
+            // Some environments return JSON with value as a fallback
+            if (!$sessionId && is_array($raw['json']) && isset($raw['json']['value'])) {
+                $sessionId = $raw['json']['value'];
+            }
+
+            Log::debug('VCenterClient /api/session result', [
+                'status' => $raw['status'] ?? null,
+                'has_session_id' => (bool) $sessionId,
             ]);
 
-            // POST to session endpoint (vCenter 8.x uses /api/session)
-            // For vCenter 8.x, the response is a plain string (the session ID)
-            $response = $tempClient->post('/rest/com/vmware/cis/session', []);
-
-            // vCenter 8.x returns the session ID as a string value
-            // It could be in 'value' field or the entire response could be the string
-            if (is_string($response)) {
-                $this->sessionId = $response;
-            } elseif (isset($response['value'])) {
-                $this->sessionId = $response['value'];
-            } elseif (is_array($response) && count($response) === 1 && isset($response[0])) {
-                $this->sessionId = $response[0];
-            } else {
-                Log::error("Unexpected session response format", [
-                    'device_id' => $this->device->device_id,
-                    'response_type' => gettype($response),
-                    'response' => $response,
+            if ($sessionId) {
+                $this->sessionId = $sessionId;
+                $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
+                Log::debug('VCenterClient session created', [
+                    'device_id'  => $this->device->device_id,
+                    'session_id' => substr($sessionId, 0, 8) . '...',
                 ]);
-                throw new \RuntimeException("Failed to get session ID from response: " . json_encode($response));
+                return;
             }
 
-            if (empty($this->sessionId)) {
-                throw new \RuntimeException("Session ID is empty");
+            // If modern endpoint did not provide a session, decide whether to fall back
+            $code = (int) ($raw['status'] ?? 0);
+            if (!in_array($code, [404, 405], true)) {
+                throw new RuntimeException('Modern /api/session did not return session id');
             }
-
-            // Set session header for all future requests
-            $this->httpClient->setHeader('vmware-api-session-id', $this->sessionId);
-
-            Log::debug("VMware vCenter session created successfully", [
-                'device_id' => $this->device->device_id,
-                'session_id_length' => strlen($this->sessionId),
-            ]);
-
         } catch (\Throwable $e) {
-            Log::error("Failed to create VMware vCenter session", [
-                'device_id' => $this->device->device_id,
-                'error' => $e->getMessage(),
+            // Fall back only for clear 404/405 errors
+            $code = 0;
+            $msg = $e->getMessage();
+            if (preg_match('/returned\s+(\d{3})/i', $msg, $m)) {
+                $code = (int) $m[1];
+            }
+            Log::debug('VCenterClient /api/session failed', [
+                'error' => $msg,
+                'code' => $code,
+                'class' => get_class($e),
             ]);
-            throw new \RuntimeException("VMware vCenter session creation failed: " . $e->getMessage());
+
+            if ($code && !in_array($code, [404, 405], true)) {
+                throw new RuntimeException("Modern /api/session failed: " . $e->getMessage(), $code, $e);
+            }
         }
+
+        // Legacy: POST /rest/com/vmware/cis/session (JSON {"value": "..."} )
+        $resp = $this->httpClient->post('/rest/com/vmware/cis/session', []);
+        $sessionId = $resp['value'] ?? null;
+        if (!$sessionId) {
+            throw new RuntimeException("Legacy /rest session failed or missing value: " . json_encode($resp));
+        }
+
+        $this->sessionId = $sessionId;
+        $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
+
+        Log::debug('VCenterClient legacy session created', [
+            'device_id'  => $this->device->device_id,
+            'session_id' => substr($sessionId, 0, 8) . '...',
+        ]);
     }
+
+    // -------- DeviceApiClientInterface required methods --------
 
     public function supports(Device $device): bool
     {
-        // Support VMware vCenter devices with API config
-        if (!in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)) {
-            return false;
-        }
-
-        $apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-        return $apiConfig !== null;
+        return in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)
+            && ($device->apiConfig !== null || $this->apiConfig !== null);
     }
 
     public function capabilities(): array
     {
-        return ['inventory', 'ports', 'sensors', 'processors', 'mempools'];
+        return ['sensors', 'ports', 'mempools', 'processors', 'inventory', 'ipv4'];
     }
 
-    public function get(string $path, array $query = []): array
-    {
-        return $this->httpClient->get($path, $query);
-    }
-
-    public function post(string $path, array $body = []): array
-    {
-        return $this->httpClient->post($path, $body);
-    }
-
-    /**
-     * VCenterClient uses template-driven polling via DeviceApiExecutor.
-     * These fetch methods are not used - they exist only to satisfy the interface.
-     */
     public function fetchSensors(Device $device): array
     {
+        Log::debug('VCenterClient fetchSensors called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
     public function fetchPorts(Device $device): array
     {
+        Log::debug('VCenterClient fetchPorts called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
     public function fetchMempools(Device $device): array
     {
+        Log::debug('VCenterClient fetchMempools called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
     public function fetchProcessors(Device $device): array
     {
+        Log::debug('VCenterClient fetchProcessors called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
     public function fetchInventory(Device $device): array
     {
+        Log::debug('VCenterClient fetchInventory called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
     public function fetchIpv4Addresses(Device $device): array
     {
+        Log::debug('VCenterClient fetchIpv4Addresses called (stub)', ['device_id' => $device->device_id]);
         return [];
     }
 
+    /**
+     * Low-level HTTP transport methods
+     */
+    public function get(string $path, array $query = []): array
+    {
+        Log::debug('VCenterClient GET', ['path' => $path, 'query' => $query]);
+        return $this->httpClient->get($path, $query);
+    }
+
+    public function post(string $path, array $body = []): array
+    {
+        Log::debug('VCenterClient POST', ['path' => $path, 'body' => $body]);
+        return $this->httpClient->post($path, $body);
+    }
+
+    /**
+     * Reachability check
+     */
     public function isReachable(): bool
     {
         try {
-            // Try to get cluster info as a simple connectivity test
-            $this->get('/vcenter/cluster');
-            return true;
+            // Lightweight ping: session endpoint
+            $raw = $this->httpClient->rawGet('/api/session');
+            return (int) ($raw['status'] ?? 0) < 500;
         } catch (\Throwable $e) {
+            Log::debug('VCenterClient reachability check failed', ['error' => $e->getMessage()]);
             return false;
         }
     }
 
+    /**
+     * Get API version and metadata
+     */
     public function getApiInfo(): array
     {
         try {
-            // Get vCenter API version info
-            $response = $this->get('/appliance/system/version');
-            return [
-                'vendor' => 'vmware',
-                'product' => 'vcenter',
-                'version' => $response['version'] ?? 'unknown',
-                'build' => $response['build'] ?? 'unknown',
-                'session_id' => $this->sessionId ? substr($this->sessionId, 0, 8) . '...' : null,
+            $info = [
+                'vendor'      => self::VENDOR,
+                'base_url'    => $this->apiConfig->base_url ?? null,
+                'api_version' => null,
+                'version'     => null,
             ];
+
+            // Attempt a version probe (may not exist on all versions)
+            try {
+                $resp = $this->get('/appliance/system/version');
+                if (is_array($resp)) {
+                    $info['version'] = $resp['version'] ?? ($resp['value']['version'] ?? null);
+                    $info['api_version'] = $resp['api_version'] ?? null;
+                }
+            } catch (\Throwable $e) {
+                Log::debug('VCenterClient getApiInfo version probe failed', ['error' => $e->getMessage()]);
+            }
+
+            return $info;
         } catch (\Throwable $e) {
+            Log::error('VCenterClient getApiInfo failed', ['error' => $e->getMessage()]);
             return [
-                'vendor' => 'vmware',
-                'product' => 'vcenter',
-                'reachable' => false,
-                'error' => $e->getMessage(),
+                'vendor'      => self::VENDOR,
+                'base_url'    => $this->apiConfig->base_url ?? null,
+                'api_version' => null,
+                'version'     => null,
+                'error'       => $e->getMessage(),
             ];
         }
     }

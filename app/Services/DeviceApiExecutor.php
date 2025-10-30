@@ -86,7 +86,7 @@ class DeviceApiExecutor
 
         foreach ($byPath as $key => $eps) {
             [$method, $rawPath] = explode(' ', $key, 2);
-            $resolvedPath = EndpointPathResolver::resolve($device, $rawPath); // {hostname}, {sysname}, {node} placeholders resolved << EndpointPathResolver.php
+            $resolvedPath = EndpointPathResolver::resolve($device, $rawPath); // {hostname}, {sysname}, {node} placeholders resolved
 
             // Inventory endpoints get cached
             $capabilities = array_unique(array_map(fn($e) => $e['capability'], $eps));
@@ -94,12 +94,19 @@ class DeviceApiExecutor
 
             // Fetch closure (single request executed once per unique path)
             $fetch = function () use ($client, $method, $resolvedPath, $eps) {
-                if ($method === 'POST') {
-                    $body = $eps[0]['request_body'] ?? [];
-                    return $client->post($resolvedPath, $body);
+                // Apply per-endpoint headers if client supports it and headers exist on the first endpoint
+                $ep = $eps[0];
+                $effectiveClient = $client;
+                if (!empty($ep['headers']) && method_exists($client, 'withHeaders')) {
+                    $effectiveClient = $client->withHeaders($ep['headers']);
                 }
-                // For GET, per-endpoint headers can be used by the client; if client supports, pass headers/options from $eps[0]
-                return $client->get($resolvedPath);
+
+                if ($method === 'POST') {
+                    $body = $ep['request_body'] ?? [];
+                    return $effectiveClient->post($resolvedPath, $body);
+                }
+
+                return $effectiveClient->get($resolvedPath);
             };
 
             // Cache key
@@ -123,7 +130,9 @@ class DeviceApiExecutor
             } catch (\Throwable $e) {
                 // Handle common 404 proxmox node fallback
                 $msg = $e->getMessage();
-                if (str_contains($msg, '404') && str_contains($resolvedPath, '/nodes/{node}') && empty($device->getAttrib('proxmox_node'))) {
+
+                // IMPORTANT: Check the rawPath for a "{node}" placeholder, not the resolved path
+                if (str_contains($msg, '404') && str_contains($rawPath, '{node}') && empty($device->getAttrib('proxmox_node'))) {
                     // discover proxmox node and persist
                     try {
                         $cluster = $client->get('/cluster/resources');
@@ -158,6 +167,14 @@ class DeviceApiExecutor
      * - processors: array [processor_index, processor_type, processor_descr, processor_usage]
      * - mempools:  array [mempool_index, mempool_type, mempool_descr, mempool_used, mempool_free, mempool_total, mempool_perc]
      * - inventory: array of entPhysical-like rows (entPhysicalIndex, name, class, description, serial, etc.)
+     * - transceivers: array [ifIndex/ifName/port_id, index, type, vendor, model, serial, etc.]
+     * - storage: array [storage_index, storage_type, storage_descr, storage_size, storage_used, storage_free, storage_perc]
+     * - ports_statistics: array [ifIndex/ifName/port_id, ifInOctets, ifOutOctets, ifInErrors, ifOutErrors, etc.]
+     * - ipv4_addresses: array [ifIndex/ifName/port_id, ipv4_address, ipv4_prefixlen]
+     * - ipv4_mac: array [ifIndex/ifName/port_id, mac_address, ipv4_address]
+     * - ipv4_networks: array [ipv4_network, context_name]
+     * - hrDevice: array [hrDeviceIndex, hrDeviceDescr, hrDeviceType, hrDeviceStatus, hrDeviceErrors, hrProcessorLoad]
+     * - hrSystem: array or single object [hrSystemNumUsers, hrSystemProcesses, hrSystemMaxProcesses]
      */
     private function persistByCapability(Device $device, string $capability, array $mapped): void
     {
@@ -166,14 +183,17 @@ class DeviceApiExecutor
         }
 
         // Check if mapped data is a structured response (contains multiple data types)
-        // Some normalizers return ['sensors' => [...], 'inventory' => [...], 'processors' => [...], etc.]
-        $isStructured = isset($mapped['sensors']) || isset($mapped['inventory']) ||
+        $isStructured = isset($mapped['ports']) || isset($mapped['sensors']) || isset($mapped['inventory']) ||
                        isset($mapped['processors']) || isset($mapped['mempools']) ||
                        isset($mapped['transceivers']) || isset($mapped['storage']) ||
-                       isset($mapped['ports_statistics']);
+                       isset($mapped['ports_statistics']) || isset($mapped['ipv4_addresses']) ||
+                       isset($mapped['ipv4_mac']) || isset($mapped['ipv4_networks']) ||
+                       isset($mapped['hrDevice']) || isset($mapped['hrSystem']);
 
         if ($isStructured) {
-            // Handle structured response by persisting each data type
+            if (!empty($mapped['ports'])) {
+                \App\Services\DeviceApiPersistor::savePorts($device, $mapped['ports']);
+            }
             if (!empty($mapped['sensors'])) {
                 \App\Services\DeviceApiPersistor::saveSensors($device, $mapped['sensors']);
             }
@@ -194,6 +214,21 @@ class DeviceApiExecutor
             }
             if (!empty($mapped['ports_statistics'])) {
                 \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped['ports_statistics']);
+            }
+            if (!empty($mapped['ipv4_addresses'])) {
+                \App\Services\DeviceApiPersistor::saveIpv4Addresses($device, $mapped['ipv4_addresses']);
+            }
+            if (!empty($mapped['ipv4_mac'])) {
+                \App\Services\DeviceApiPersistor::saveIpv4Mac($device, $mapped['ipv4_mac']);
+            }
+            if (!empty($mapped['ipv4_networks'])) {
+                \App\Services\DeviceApiPersistor::saveIpv4Networks($device, $mapped['ipv4_networks']);
+            }
+            if (!empty($mapped['hrDevice'])) {
+                \App\Services\DeviceApiPersistor::saveHrDevice($device, $mapped['hrDevice']);
+            }
+            if (!empty($mapped['hrSystem'])) {
+                \App\Services\DeviceApiPersistor::saveHrSystem($device, $mapped['hrSystem']);
             }
             return;
         }
@@ -224,8 +259,22 @@ class DeviceApiExecutor
             case 'ports_statistics':
                 \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped);
                 break;
+            case 'ipv4_addresses':
+                \App\Services\DeviceApiPersistor::saveIpv4Addresses($device, $mapped);
+                break;
+            case 'ipv4_mac':
+                \App\Services\DeviceApiPersistor::saveIpv4Mac($device, $mapped);
+                break;
+            case 'ipv4_networks':
+                \App\Services\DeviceApiPersistor::saveIpv4Networks($device, $mapped);
+                break;
+            case 'hrDevice':
+                \App\Services\DeviceApiPersistor::saveHrDevice($device, $mapped);
+                break;
+            case 'hrSystem':
+                \App\Services\DeviceApiPersistor::saveHrSystem($device, $mapped);
+                break;
             default:
-                // general or unknown: log and ignore, or extend with custom capability persistor
                 Log::debug("Unknown capability {$capability} for device {$device->device_id}, ignoring.");
         }
     }

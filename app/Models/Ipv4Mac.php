@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Builder;
 use LibreNMS\Interfaces\Models\Keyable;
 
 class Ipv4Mac extends PortRelatedModel implements Keyable
@@ -18,7 +18,16 @@ class Ipv4Mac extends PortRelatedModel implements Keyable
         'context_name',
     ];
 
+    protected $casts = [
+        'port_id' => 'int',
+        'device_id' => 'int',
+        'mac_address' => 'string',
+        'ipv4_address' => 'string',
+        'context_name' => 'string',
+    ];
+
     // ---- Define Relationships ----
+
     /**
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Device, $this>
      */
@@ -35,25 +44,30 @@ class Ipv4Mac extends PortRelatedModel implements Keyable
         return $this->belongsTo(Port::class, 'port_id');
     }
 
-    // Ports in NMS with a matching MAC address and IP address.
-    // This can match multiple ports if you have multiple sub-interfaces with the same
-    // IP address (e.g. different VRFs, or mutiple point to point links on Mikrotik)
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough<\App\Models\Port, Ipv4Mac, $this>
+     * Query ports in NMS with a matching MAC address AND IPv4 address.
+     * This can match multiple ports (e.g. sub-interfaces, VRFs).
+     *
+     * Usage: $ipv4Mac->queryRemotePortsMaybe()->get()
      */
-    public function remote_ports_maybe(): HasManyThrough
+    public function queryRemotePortsMaybe(): Builder
     {
-        // Join onto this class first because we need both the mac_address and ipv4_address columns
-        return $this->hasManyThrough(Port::class, Ipv4Mac::class, 'id', 'ifPhysAddress', 'id', 'mac_address')
-            ->join('ipv4_addresses', function ($j): void {
-                $j->on('ipv4_mac.ipv4_address', 'ipv4_addresses.ipv4_address');
-                $j->on('ports.port_id', 'ipv4_addresses.port_id');
+        // Assumes ports.ifPhysAddress stores raw hex (e.g., 001122334455)
+        return Port::query()
+            ->join('ipv4_addresses', function ($j) {
+                $j->on('ports.port_id', '=', 'ipv4_addresses.port_id');
             })
-            ->whereNotIn('mac_address', ['000000000000', 'ffffffffffff']);
+            ->where('ipv4_addresses.ipv4_address', '=', $this->ipv4_address)
+            ->where('ports.ifPhysAddress', '=', $this->mac_address)
+            ->when($this->context_name !== null, function (Builder $q) {
+                $q->where('ipv4_addresses.context_name', '=', $this->context_name);
+            })
+            ->whereNotIn('ports.ifPhysAddress', ['000000000000', 'ffffffffffff']);
     }
 
     public function getCompositeKey(): string
     {
-        return $this->getAttribute('port_id') . '_' . $this->getAttribute('ipv4_address');
+        $context = $this->context_name ?? '';
+        return "{$this->device_id}-{$this->port_id}-{$this->ipv4_address}-{$context}";
     }
 }

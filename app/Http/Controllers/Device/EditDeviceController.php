@@ -377,249 +377,179 @@ class EditDeviceController
     }
 
     public function testConnection(Request $request, Device $device): JsonResponse
-    {
-        try {
-            $baseUrl = $request->input('rest_base_url');
-            $templateKey = $request->input('rest_template');
-            $authType = $request->input('rest_auth_type');
+		{
+		    try {
+		        $baseUrl = $request->input('rest_base_url');
+		        $templateKey = $request->input('rest_template');
+		        $authType = $request->input('rest_auth_type');
 
-            // Validate required fields
-            if (empty($baseUrl)) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'Base URL is required',
-                ], 400);
-            }
+		        // Validate required fields
+		        if (empty($baseUrl)) {
+		            return response()->json([
+		                'ok' => false,
+		                'error' => 'Base URL is required',
+		            ], 400);
+		        }
 
-            if (empty($authType)) {
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'Authentication type is required',
-                ], 400);
-            }
+		        if (empty($authType)) {
+		            return response()->json([
+		                'ok' => false,
+		                'error' => 'Authentication type is required',
+		            ], 400);
+		        }
 
-            // Load template if provided to get test endpoint
-            $template = null;
-            $testPath = '/';
+		        // Load template if provided
+		        $template = null;
+		        $testPath = '/';
+		        if (!empty($templateKey)) {
+		            $template = ApiTemplateManager::loadTemplate($templateKey);
+		            if (!$template) {
+		                return response()->json([
+		                    'ok' => false,
+		                    'error' => 'Template not found',
+		                ], 404);
+		            }
 
-            if (!empty($templateKey)) {
-                $template = ApiTemplateManager::loadTemplate($templateKey);
-                if (!$template) {
-                    return response()->json([
-                        'ok' => false,
-                        'error' => 'Template not found',
-                    ], 404);
-                }
+		            if (!empty($template['endpoints'])) {
+		                foreach ($template['endpoints'] as $endpoint) {
+		                    $path = $endpoint['path'] ?? '/';
+		                    if (!str_contains($path, '{')) {
+		                        $testPath = $path;
+		                        break;
+		                    }
+		                }
+		            }
+		        }
 
-                // Pick first endpoint from template that doesn't have placeholders
-                if (!empty($template['endpoints'])) {
-                    foreach ($template['endpoints'] as $endpoint) {
-                        $path = $endpoint['path'] ?? '/';
-                        // Skip endpoints with placeholders like {node}, {id}, etc.
-                        if (!str_contains($path, '{')) {
-                            $testPath = $path;
-                            break;
-                        }
-                    }
-                }
-            }
+		        // Temporary in-memory API config for testing
+		        $tempConfig = new DeviceApiConfig();
+		        $tempConfig->device_id = $device->device_id;
+		        $tempConfig->base_url = $baseUrl;
+		        $tempConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
 
-            // Create a temporary in-memory config to use with the API client
-            $tempConfig = new DeviceApiConfig();
-            $tempConfig->device_id = $device->device_id;
-            $tempConfig->base_url = $baseUrl;
-            $tempConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
+		        // Load schema and template IDs
+		        $schemaModel = \App\Models\DeviceApiAuthSchema::with('fields')
+		            ->where('key', $authType)->first();
+		        $templateModel = !empty($templateKey)
+		            ? \App\Models\DeviceApiTemplate::where('key', $templateKey)->first()
+		            : null;
 
-            // Get schema and template IDs
-            $schemaModel = \App\Models\DeviceApiAuthSchema::with('fields')->where('key', $authType)->first();
-            $templateModel = !empty($templateKey) ? \App\Models\DeviceApiTemplate::where('key', $templateKey)->first() : null;
+		        if ($schemaModel) {
+		            $tempConfig->schema_id = $schemaModel->id;
+		            $tempConfig->setRelation('schema', $schemaModel);
+		        }
+		        if ($templateModel) {
+		            $tempConfig->template_id = $templateModel->id;
+		            $tempConfig->setRelation('template', $templateModel);
+		        }
 
-            if ($schemaModel) {
-                $tempConfig->schema_id = $schemaModel->id;
-            }
-            if ($templateModel) {
-                $tempConfig->template_id = $templateModel->id;
-            }
+		        // Fill auth fields (use saved password if not provided)
+		        if ($schemaModel) {
+		            $existingConfig = DeviceApiConfig::with('schema.fields')
+		                ->where('device_id', $device->device_id)->first();
 
-            // Set the schema relationship BEFORE setting values (needed for encryption)
-            if ($schemaModel) {
-                $tempConfig->setRelation('schema', $schemaModel);
-            }
-            if ($templateModel) {
-                $tempConfig->setRelation('template', $templateModel);
-            }
+		            foreach ($schemaModel->fields as $field) {
+		                $value = $request->input($field->name);
 
-            // Set auth field values from request
-            if ($schemaModel) {
-                // Get existing config to use saved password values if not provided in test
-                $existingConfig = DeviceApiConfig::with('schema.fields')
-                    ->where('device_id', $device->device_id)
-                    ->first();
+		                if ($field->type === 'password' && ($value === null || $value === '')) {
+		                    if ($existingConfig && $existingConfig->schema_id === $schemaModel->id) {
+		                        $value = $existingConfig->getValue($field->name);
+		                    }
+		                }
 
-                \Log::debug('Test Connection - Schema and Config', [
-                    'device_id' => $device->device_id,
-                    'test_schema_id' => $schemaModel->id,
-                    'test_schema_key' => $authType,
-                    'existing_config_id' => $existingConfig?->id,
-                    'existing_schema_id' => $existingConfig?->schema_id,
-                    'schema_match' => $existingConfig && $existingConfig->schema_id === $schemaModel->id,
-                ]);
+		                if (($value === null || $value === '') && $field->type !== 'password' && $field->default) {
+		                    $value = $field->default;
+		                }
 
-                foreach ($schemaModel->fields as $field) {
-                    $value = $request->input($field->name);
+		                if ($value) {
+		                    $tempConfig->setValue($field->name, $value);
+		                }
+		            }
+		        }
 
-                    // For password fields: if empty in request, use saved value from database
-                    if ($field->type === 'password' && ($value === null || $value === '')) {
-                        if ($existingConfig && $existingConfig->schema_id === $schemaModel->id) {
-                            $value = $existingConfig->getValue($field->name);
-                            \Log::debug("Test Connection - Using saved password for field: {$field->name}", [
-                                'has_value' => !empty($value),
-                                'value_length' => $value ? strlen($value) : 0,
-                            ]);
-                        }
-                    }
+		        // Extra headers
+		        $headersString = $request->input('rest_headers', '');
+		        $extraHeaders = [];
+		        if (!empty($headersString)) {
+		            foreach (explode("\n", $headersString) as $line) {
+		                $line = trim($line);
+		                if (empty($line)) continue;
+		                $parts = explode(':', $line, 2);
+		                if (count($parts) === 2) {
+		                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
+		                }
+		            }
+		        }
+		        $tempConfig->extra_headers = $extraHeaders;
 
-                    // Use default value if input is empty and field is not password
-                    if (($value === null || $value === '') && $field->type !== 'password' && $field->default) {
-                        $value = $field->default;
-                    }
+		        // Attach temp config to device for client factory
+		        $device->setRelation('apiConfig', $tempConfig);
 
-                    if ($value) {
-                        $tempConfig->setValue($field->name, $value);
-                    }
-                }
-            }
+		        // ---- VMware vCenter handling ----
+		        if ($authType === 'vmware_vcenter_session') {
+						    try {
+						        $client = new \App\ApiClients\VMware\VCenterClient($device);
 
-            // Parse extra headers
-            $headersString = $request->input('rest_headers', '');
-            $extraHeaders = [];
-            if (!empty($headersString)) {
-                foreach (explode("\n", $headersString) as $line) {
-                    $line = trim($line);
-                    if (empty($line)) {
-                        continue;
-                    }
-                    $parts = explode(':', $line, 2);
-                    if (count($parts) === 2) {
-                        $extraHeaders[trim($parts[0])] = trim($parts[1]);
-                    }
-                }
-            }
-            $tempConfig->extra_headers = $extraHeaders;
+						        $start = microtime(true);
 
-            // Temporarily attach config to device for API client factory
-            $device->setRelation('apiConfig', $tempConfig);
+						        // Use session endpoint instead of /vcenter/cluster to avoid JSON issues
+						        $response = $client->get('/rest/com/vmware/cis/session');
 
-            // Use the API client factory to create the proper client
-            $client = \App\ApiClients\DeviceApiClientFactory::make($device);
+						        $latencyMs = (int) ((microtime(true) - $start) * 1000);
 
-            // If factory returns null, fall back to generic HTTP client
-            if (!$client) {
-                // Use generic DeviceHttpClient as fallback
-                $options = [
-                    'base_url' => $baseUrl,
-                    'verify_tls' => $request->boolean('rest_verify_tls', true),
-                    'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
-                    'headers' => $extraHeaders,
-                ];
+						        return response()->json([
+						            'ok' => true,
+						            'message' => 'Connection successful',
+						            'session_id' => substr($client->sessionId ?? '', 0, 8) . '...',
+						            'latency_ms' => $latencyMs,
+						        ]);
 
-                // Add basic auth headers
-                if ($authType === 'bearer' && $tempConfig->getValue('api_token')) {
-                    $options['headers']['Authorization'] = 'Bearer ' . $tempConfig->getValue('api_token');
-                } elseif ($authType === 'apikey' && $tempConfig->getValue('api_key')) {
-                    $options['headers']['X-API-Key'] = $tempConfig->getValue('api_key');
-                } elseif ($authType === 'basic' && $tempConfig->getValue('username')) {
-                    $password = $tempConfig->getValue('password') ?? '';
-                    $options['headers']['Authorization'] = 'Basic ' . base64_encode($tempConfig->getValue('username') . ':' . $password);
-                }
+						    } catch (\Throwable $e) {
+						        return response()->json([
+						            'ok' => false,
+						            'error' => 'VMware vCenter connection failed: ' . $e->getMessage(),
+						            'details' => $e->getTraceAsString(),
+						        ], 400);
+						    }
+						}
 
-                $client = new \App\ApiClients\DeviceHttpClient($options);
-            }
+		        // ---- Other device types ----
+		        $client = \App\ApiClients\DeviceApiClientFactory::make($device);
+		        if (!$client) {
+		            $options = [
+		                'base_url' => $baseUrl,
+		                'verify_tls' => $request->boolean('rest_verify_tls', true),
+		                'timeout_ms' => (int) $request->input('rest_timeout_ms', 5000),
+		                'headers' => $extraHeaders,
+		            ];
 
-            $start = microtime(true);
+		            if ($authType === 'basic' && $tempConfig->getValue('username')) {
+		                $password = $tempConfig->getValue('password') ?? '';
+		                $options['headers']['Authorization'] = 'Basic ' . base64_encode($tempConfig->getValue('username') . ':' . $password);
+		            }
 
-            // Try to call a simple method or get endpoint
-            try {
-                $data = $client->get($testPath);
-            } catch (\BadMethodCallException $e) {
-                // If get() doesn't exist, try other common methods
-                if (method_exists($client, 'testConnection')) {
-                    $result = $client->testConnection();
-                    $data = $result;
-                } else {
-                    throw $e;
-                }
-            }
+		            $client = new \App\ApiClients\DeviceHttpClient($options);
+		        }
 
-            $latencyMs = (int) ((microtime(true) - $start) * 1000);
+		        $start = microtime(true);
+		        $client->get($testPath);
+		        $latencyMs = (int) ((microtime(true) - $start) * 1000);
 
-            return response()->json([
-                'ok' => true,
-                'success' => true,
-                'message' => 'Connection successful',
-                'test_path' => $testPath,
-                'latency_ms' => $latencyMs,
-            ]);
+		        return response()->json([
+		            'ok' => true,
+		            'message' => 'Connection successful',
+		            'latency_ms' => $latencyMs,
+		        ]);
 
-        } catch (\Throwable $e) {
-            $msg = $e->getMessage();
-
-            // Log full exception for debugging
-            \Log::debug('API Test Exception', [
-                'device_id' => $device->device_id,
-                'message' => $msg,
-                'class' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Friendly 4xx handling: treat as connected
-            if (preg_match('/(returned|failed):\s*(\d{3})/', $msg, $m)) {
-                $code = (int) $m[2];
-                if ($code >= 400 && $code < 500) {
-                    $messages = [
-                        401 => 'Connection successful - Authentication required (check credentials)',
-                        403 => 'Connection successful - Authenticated but insufficient permissions',
-                        404 => 'Connection successful - Endpoint not found (expected for some APIs)',
-                    ];
-
-                    // Include additional debug info from the detailed error message
-                    $debugInfo = '';
-                    if (str_contains($msg, 'No auth header')) {
-                        $debugInfo = ' [DEBUG: Authorization header not set - check credentials are being sent]';
-                    } elseif (str_contains($msg, 'Auth header present')) {
-                        $debugInfo = ' [DEBUG: Credentials sent but rejected by API]';
-                    }
-
-                    return response()->json([
-                        'ok' => true,
-                        'success' => true,
-                        'message' => ($messages[$code] ?? "Connection successful (HTTP $code)") . $debugInfo,
-                        'http_code' => $code,
-                        'details' => $msg, // Include full error for debugging
-                    ]);
-                }
-            }
-
-            // Provide helpful error messages
-            $originalMsg = $msg;
-            if (str_contains($msg, 'Could not resolve host')) {
-                $msg = 'Could not resolve hostname - check the URL';
-            } elseif (str_contains($msg, 'Connection refused')) {
-                $msg = 'Connection refused - check if the service is running';
-            } elseif (str_contains($msg, 'timed out')) {
-                $msg = 'Connection timed out - check firewall/network settings';
-            } elseif (str_contains($msg, 'SSL')) {
-                $msg .= ' (Try disabling SSL verification for testing)';
-            }
-
-            return response()->json([
-                'ok' => false,
-                'error' => $msg,
-                'details' => $originalMsg, // Include full original error
-                'exception_class' => get_class($e),
-            ], 400);
-        }
-    }
+		    } catch (\Throwable $e) {
+		        return response()->json([
+		            'ok' => false,
+		            'error' => $e->getMessage(),
+		            'details' => $e->getTraceAsString(),
+		            'exception_class' => get_class($e),
+		        ], 400);
+		    }
+		}
 
     protected function makeClient(Device $device, array $tpl)
 		{
