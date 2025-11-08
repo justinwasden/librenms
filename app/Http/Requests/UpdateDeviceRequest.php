@@ -35,6 +35,23 @@ class UpdateDeviceRequest extends FormRequest
             'disable_notify' => 'nullable|boolean',
             'ignore' => 'nullable|boolean',
             'ignore_status' => 'nullable|boolean',
+
+            // API Settings fields
+            'api_settings_form' => 'nullable|string',
+            'rest_enabled' => 'nullable|boolean',
+            'rest_template' => 'nullable|string',
+            'rest_auth_type' => 'nullable|string',
+            'rest_base_url' => 'nullable|url',
+            'rest_headers' => 'nullable|string',
+            'rest_verify_tls' => 'nullable|boolean',
+            'rest_timeout_ms' => 'nullable|integer',
+            'rest_proxy' => 'nullable|string',
+            'rest_endpoints' => 'nullable|string',
+            'username' => 'nullable|string',
+            'password' => 'nullable|string',
+            'api_token' => 'nullable|string',
+            'token_id' => 'nullable|string',
+            'token_user' => 'nullable|string',
         ];
     }
 

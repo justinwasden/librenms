@@ -49,14 +49,14 @@ class ModuleModelObserver
     public static function observe($model, string $name = ''): void
     {
         static $observed_models = []; // keep track of observed models so we don't duplicate output
-        $class = ltrim($model, '\\');
+        $class = is_string($model) ? ltrim($model, '\\') : get_class($model);
 
         if ($name) {
             Log::channel('stdout')->info(ucwords($name) . ': ', ['nlb' => true]);
         }
 
-        if (! in_array($class, $observed_models)) {
-            $model::observe(new static());
+        if (! in_array($class, $observed_models, true)) {
+            $class::observe(new static());
             $observed_models[] = $class;
         }
     }
@@ -71,7 +71,8 @@ class ModuleModelObserver
      */
     public function saving($model): void
     {
-        if (! $model->isDirty()) {
+        // Only print '.' for existing models with no changes
+        if ($model->exists && ! $model->isDirty()) {
             $this->logger->info('.', ['nlb' => true]);
         }
     }
@@ -82,7 +83,9 @@ class ModuleModelObserver
     public function updated($model): void
     {
         if (Debug::isEnabled()) {
-            $this->logger->debug('Updated data:   ' . var_export($model->getDirty(), true));
+            $changes = method_exists($model, 'getChanges') ? $model->getChanges() : [];
+            $preview = substr(var_export($changes, true), 0, 1000);
+            $this->logger->debug('Updated data:   ' . $preview);
         } else {
             $this->logger->info('U', ['nlb' => true]);
         }
@@ -94,7 +97,9 @@ class ModuleModelObserver
     public function restored($model): void
     {
         if (Debug::isEnabled()) {
-            $this->logger->debug('Restored data:   ' . var_export($model->getDirty(), true));
+            $changes = method_exists($model, 'getChanges') ? $model->getChanges() : [];
+            $preview = substr(var_export($changes, true), 0, 1000);
+            $this->logger->debug('Restored data:   ' . $preview);
         } else {
             $this->logger->info('R', ['nlb' => true]);
         }

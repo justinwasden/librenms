@@ -16,11 +16,18 @@ class DeviceApiSettings
 
     /**
      * Resolve and persist base_url from the selected template's base_url_pattern.
+     * Only auto-populates if base_url is empty - does not overwrite user customizations.
      */
     public static function ensureResolvedBaseUrl(Device $device): void
     {
         $apiConfig = self::getConfig($device);
         if (!$apiConfig || !$apiConfig->template) {
+            return;
+        }
+
+        // Only auto-populate if base_url is empty/null
+        // Do not overwrite existing base_url as it may be user-customized (e.g., custom port)
+        if (!empty($apiConfig->base_url)) {
             return;
         }
 
@@ -30,9 +37,7 @@ class DeviceApiSettings
         }
 
         $resolved = EndpointPathResolver::resolveBaseUrl($device, $tpl['base_url_pattern']);
-        $current = $apiConfig->base_url;
-
-        if (!$current || $current !== $resolved) {
+        if ($resolved) {
             $apiConfig->base_url = $resolved;
             $apiConfig->save();
         }

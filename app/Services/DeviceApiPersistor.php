@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use LibreNMS\Data\Store\Rrd\RrdDefinition;
+use LibreNMS\RRD\RrdDefinition;
 
 /**
  * DeviceApiPersistor
@@ -17,6 +17,7 @@ class DeviceApiPersistor
 {
     public static function savePorts(Device $device, array $ports): void
     {
+        Log::debug("DeviceApiPersistor::savePorts called for device {$device->device_id} with " . count($ports) . " ports");
         foreach ($ports as $p) {
             if (!isset($p['ifIndex']) && !isset($p['ifName'])) {
                 continue; // require at least one identifier
@@ -40,7 +41,8 @@ class DeviceApiPersistor
 
                 $base = [
                     'device_id'     => $device->device_id,
-                    'ifIndex'       => $p['ifIndex'] ?? ($portRow->ifIndex ?? null),
+                    // Preserve existing ifIndex if port already exists, otherwise use provided value
+                    'ifIndex'       => $portRow->ifIndex ?? ($p['ifIndex'] ?? null),
                     'ifName'        => $p['ifName'] ?? ($portRow->ifName ?? null),
                     'ifDescr'       => $p['ifDescr'] ?? ($portRow->ifDescr ?? null),
                     'ifType'        => $p['ifType'] ?? ($portRow->ifType ?? null),
@@ -67,13 +69,18 @@ class DeviceApiPersistor
     {
         foreach ($sensors as $s) {
             try {
+                // Generate deterministic sensor_oid if not provided
+                $sensorType = $s['sensor_type'] ?? 'rest';
+                $sensorIndex = (string) ($s['sensor_index'] ?? '');
+                $defaultOid = $s['sensor_oid'] ?? ($device->os . '::' . $sensorIndex);
+
                 $base = [
                     'device_id'                  => $device->device_id,
                     'sensor_class'               => $s['sensor_class'] ?? 'state',
-                    'sensor_type'                => $s['sensor_type'] ?? 'rest',
+                    'sensor_type'                => $sensorType,
                     'sensor_descr'               => $s['sensor_descr'] ?? '',
-                    'sensor_index'               => (string) ($s['sensor_index'] ?? ''),
-                    'sensor_oid'                 => $s['sensor_oid'] ?? '.1.3.6.1.4.1.99999.1',
+                    'sensor_index'               => $sensorIndex,
+                    'sensor_oid'                 => $defaultOid,
                     'sensor_current'             => $s['sensor_current'] ?? null,
                     'sensor_limit'               => $s['sensor_limit'] ?? null,
                     'sensor_limit_low'           => $s['sensor_limit_low'] ?? null,
@@ -93,8 +100,82 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('sensors')->where('sensor_id', $existing->sensor_id)->update($base);
+                    $sensorId = $existing->sensor_id;
                 } else {
-                    DB::table('sensors')->insert($base);
+                    $sensorId = DB::table('sensors')->insertGetId($base);
+                }
+
+                // Handle state sensors - create state index and translations
+                if ($base['sensor_class'] === 'state' && isset($s['states']) && is_array($s['states'])) {
+                    // Create unique state name based on sensor type and index
+                    $stateName = $base['sensor_type'] . '_' . $base['sensor_index'];
+
+                    // Get or create state_index
+                    $stateIndex = DB::table('state_indexes')
+                        ->where('state_name', $stateName)
+                        ->first();
+
+                    if (!$stateIndex) {
+                        $stateIndexId = DB::table('state_indexes')->insertGetId([
+                            'state_name' => $stateName,
+                        ]);
+                    } else {
+                        $stateIndexId = $stateIndex->state_index_id;
+                    }
+
+                    // Link sensor to state_index via sensors_to_state_indexes table
+                    $existingLink = DB::table('sensors_to_state_indexes')
+                        ->where('sensor_id', $sensorId)
+                        ->first();
+
+                    if (!$existingLink) {
+                        DB::table('sensors_to_state_indexes')->insert([
+                            'sensor_id' => $sensorId,
+                            'state_index_id' => $stateIndexId,
+                        ]);
+                    }
+
+                    // Create state translations
+                    foreach ($s['states'] as $state) {
+                        $existingTranslation = DB::table('state_translations')
+                            ->where('state_index_id', $stateIndexId)
+                            ->where('state_value', $state['value'])
+                            ->first();
+
+                        if (!$existingTranslation) {
+                            DB::table('state_translations')->insert([
+                                'state_index_id' => $stateIndexId,
+                                'state_descr' => $state['descr'],
+                                'state_draw_graph' => $state['graph'],
+                                'state_value' => $state['value'],
+                                'state_generic_value' => $state['generic'],
+                            ]);
+                        }
+                    }
+                }
+
+                // Create RRD file for sensor readings
+                if ($sensorId && $base['sensor_current'] !== null) {
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('sensor', $base['rrd_type']);
+
+                    // Use sensor_index for RRD naming (consistent with LibreNMS convention)
+                    $rrd_name = ['sensor', $base['sensor_class'], $base['sensor_type'], $base['sensor_index']];
+
+                    $tags = [
+                        'sensor_class' => $base['sensor_class'],
+                        'sensor_type' => $base['sensor_type'],
+                        'sensor_descr' => $base['sensor_descr'],
+                        'sensor_index' => $base['sensor_index'],
+                        'rrd_name' => $rrd_name,
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    $fields = [
+                        'sensor' => $base['sensor_current'],
+                    ];
+
+                    app('Datastore')->put($device->toArray(), 'sensor', $tags, $fields);
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveSensors failed for device {$device->device_id}: {$e->getMessage()}");
@@ -106,10 +187,16 @@ class DeviceApiPersistor
     {
         foreach ($processors as $pr) {
             try {
+                // Generate deterministic processor_oid if not provided
+                $processorType = $pr['processor_type'] ?? 'rest';
+                $processorIndex = (string) ($pr['processor_index'] ?? '');
+                $defaultOid = $pr['processor_oid'] ?? ($device->os . '::processor::' . $processorIndex);
+
                 $base = [
                     'device_id'        => $device->device_id,
-                    'processor_type'   => $pr['processor_type'] ?? 'rest',
-                    'processor_index'  => (string) ($pr['processor_index'] ?? ''),
+                    'processor_type'   => $processorType,
+                    'processor_oid'    => $defaultOid,
+                    'processor_index'  => $processorIndex,
                     'processor_descr'  => $pr['processor_descr'] ?? '',
                     'processor_usage'  => $pr['processor_usage'] ?? 0,
                     'processor_precision' => $pr['processor_precision'] ?? 1,
@@ -129,9 +216,9 @@ class DeviceApiPersistor
                 }
 
                 // Create RRD file for processor usage
-                if (!empty($base['processor_usage']) && $processorId) {
+                if ($processorId && isset($base['processor_usage'])) {
                     $rrd_def = RrdDefinition::make()
-                        ->addDataset('usage', 'GAUGE', 0, 100);
+                        ->addDataset('usage', 'GAUGE', 0, 125);
 
                     $tags = [
                         'processor_type' => $base['processor_type'],
@@ -365,7 +452,7 @@ class DeviceApiPersistor
                         'storage_type' => $base['storage_type'],
                         'storage_index' => $base['storage_index'],
                         'storage_descr' => $base['storage_descr'],
-                        'rrd_name' => ['storage', $base['storage_type'], $base['storage_index']],
+                        'rrd_name' => ['storage', $base['type'], $base['storage_descr']],
                         'rrd_def' => $rrd_def,
                     ];
 
@@ -384,6 +471,7 @@ class DeviceApiPersistor
 
     public static function saveIpv4Addresses(Device $device, array $addresses): void
     {
+        Log::debug("DeviceApiPersistor::saveIpv4Addresses called for device {$device->device_id} with " . count($addresses) . " addresses");
         foreach ($addresses as $addr) {
             try {
                 // Find port_id from ifIndex, ifName, or direct port_id
@@ -401,10 +489,20 @@ class DeviceApiPersistor
                     continue;
                 }
 
+                // Convert netmask to prefix length if needed
+                $prefixlen = $addr['ipv4_prefixlen'] ?? $addr['prefixlen'] ?? null;
+                if ($prefixlen === null && isset($addr['netmask'])) {
+                    // Convert dotted quad netmask to prefix length
+                    $prefixlen = self::netmaskToPrefixLength($addr['netmask']);
+                }
+                if ($prefixlen === null) {
+                    $prefixlen = 24; // default
+                }
+
                 $base = [
                     'port_id'         => $portId,
                     'ipv4_address'    => $ipv4Address,
-                    'ipv4_prefixlen'  => $addr['ipv4_prefixlen'] ?? $addr['prefixlen'] ?? $addr['netmask'] ?? 24,
+                    'ipv4_prefixlen'  => (int) $prefixlen,
                     'ipv4_network_id' => $addr['ipv4_network_id'] ?? 0,
                     'context_name'    => $addr['context_name'] ?? '',
                 ];
@@ -473,12 +571,50 @@ class DeviceApiPersistor
         }
     }
 
+    public static function saveIpv4Networks(Device $device, array $networks): void
+    {
+        foreach ($networks as $network) {
+            try {
+                $ipv4Network = $network['ipv4_network'] ?? $network['network'] ?? null;
+                if (!$ipv4Network) {
+                    continue;
+                }
+
+                $base = [
+                    'ipv4_network' => $ipv4Network,
+                    'context_name' => $network['context_name'] ?? null,
+                ];
+
+                // Upsert by ipv4_network + context_name
+                $existing = DB::table('ipv4_networks')
+                    ->where('ipv4_network', $ipv4Network)
+                    ->where(function ($query) use ($base) {
+                        if ($base['context_name'] === null) {
+                            $query->whereNull('context_name');
+                        } else {
+                            $query->where('context_name', $base['context_name']);
+                        }
+                    })
+                    ->first();
+
+                if ($existing) {
+                    DB::table('ipv4_networks')->where('ipv4_network_id', $existing->ipv4_network_id)->update($base);
+                } else {
+                    DB::table('ipv4_networks')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveIpv4Networks failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
     /**
      * Save port traffic statistics (traffic counters and metrics)
      * Updates ports table with current counters and calculates rates/deltas
      */
     public static function savePortsStatistics(Device $device, array $statistics): void
     {
+        Log::debug("DeviceApiPersistor::savePortsStatistics called for device {$device->device_id} with " . count($statistics) . " statistics records");
         foreach ($statistics as $stat) {
             try {
                 // Find port_id from ifIndex, ifName, or direct port_id
@@ -487,11 +623,12 @@ class DeviceApiPersistor
                     Log::debug("Skipping port statistics - no port_id found", [
                         'device_id' => $device->device_id,
                         'ifIndex' => $stat['ifIndex'] ?? 'unknown',
+                        'ifName'  => $stat['ifName'] ?? 'unknown',
                     ]);
                     continue;
                 }
 
-                // Get existing port data for delta/rate calculations
+                // Get existing port row
                 $existingPort = DB::table('ports')->where('port_id', $portId)->first();
                 if (!$existingPort) {
                     Log::debug("Port not found for statistics update", ['port_id' => $portId]);
@@ -499,20 +636,39 @@ class DeviceApiPersistor
                 }
 
                 $now = time();
-                $poll_period = $stat['poll_period'] ?? ($existingPort->poll_time ? ($now - $existingPort->poll_time) : 300);
-
-                // Ensure minimum poll period to avoid division by zero
+                $poll_time = isset($stat['poll_time']) ? (int) $stat['poll_time'] : $now;
+                $poll_period = isset($stat['poll_period']) ? (int) $stat['poll_period'] : ($existingPort->poll_time ? ($now - $existingPort->poll_time) : 300);
                 if ($poll_period < 1) {
                     $poll_period = 300;
                 }
 
-                // Build update array with traffic counters
                 $updates = [
-                    'poll_time' => $now,
+                    'poll_time' => $poll_time,
                     'poll_period' => $poll_period,
                 ];
 
-                // Traffic counters - handle both raw values and deltas from API
+                // Accept rate-based fields even if counters are not provided
+                $rateFields = [
+                    'ifInOctets_rate', 'ifOutOctets_rate',
+                    'ifInBits_rate', 'ifOutBits_rate',
+                    'ifInUcastPkts_rate', 'ifOutUcastPkts_rate',
+                    'ifInErrors_rate', 'ifOutErrors_rate',
+                    'ifInNUcastPkts_rate', 'ifOutNUcastPkts_rate',
+                    'ifInBroadcastPkts_rate', 'ifOutBroadcastPkts_rate',
+                    'ifInMulticastPkts_rate', 'ifOutMulticastPkts_rate',
+                    'ifInDiscards_rate', 'ifOutDiscards_rate',
+                ];
+                $hasRates = false;
+                foreach ($rateFields as $rf) {
+                    if (array_key_exists($rf, $stat)) {
+                        $updates[$rf] = $stat[$rf];
+                        if ($stat[$rf] !== null) {
+                            $hasRates = true;
+                        }
+                    }
+                }
+
+                // Traditional counters (if provided). Compute deltas + rates against previous values.
                 $counterFields = [
                     'ifInOctets', 'ifOutOctets',
                     'ifInUcastPkts', 'ifOutUcastPkts',
@@ -523,47 +679,52 @@ class DeviceApiPersistor
                     'ifInMulticastPkts', 'ifOutMulticastPkts',
                 ];
 
+                $hasCounters = false;
                 foreach ($counterFields as $field) {
                     if (isset($stat[$field])) {
+                        $hasCounters = true;
                         $currentValue = (int) $stat[$field];
                         $prevField = $field . '_prev';
                         $deltaField = $field . '_delta';
                         $rateField = $field . '_rate';
 
-                        // Calculate delta if we have previous value
                         $previousValue = $existingPort->$field ?? null;
                         $delta = 0;
                         $rate = 0;
 
                         if ($previousValue !== null) {
-                            // Handle counter wrap (32-bit or 64-bit)
                             if ($currentValue >= $previousValue) {
                                 $delta = $currentValue - $previousValue;
                             } else {
-                                // Counter wrapped - assume 64-bit counter
-                                $maxCounter = PHP_INT_MAX; // Typically 64-bit
+                                // Counter wrapped - assume 64-bit
+                                $maxCounter = PHP_INT_MAX;
                                 $delta = ($maxCounter - $previousValue) + $currentValue;
                             }
-
-                            // Calculate rate (per second)
                             if ($poll_period > 0) {
                                 $rate = $delta / $poll_period;
                             }
                         }
 
-                        // Update all fields
-                        $updates[$prevField] = $previousValue; // Store previous value
-                        $updates[$field] = $currentValue;       // Store current value
-                        $updates[$deltaField] = $delta;         // Store delta
-                        $updates[$rateField] = $rate;           // Store rate
+                        $updates[$prevField] = $previousValue;
+                        $updates[$field] = $currentValue;
+                        $updates[$deltaField] = $delta;
+                        $updates[$rateField] = $rate;
                     }
                 }
 
-                // Update the ports table
+                // If no bits rate provided but octet rates exist, derive bits rate
+                if (!isset($updates['ifInBits_rate']) && isset($updates['ifInOctets_rate']) && $updates['ifInOctets_rate'] !== null) {
+                    $updates['ifInBits_rate'] = $updates['ifInOctets_rate'] * 8;
+                }
+                if (!isset($updates['ifOutBits_rate']) && isset($updates['ifOutOctets_rate']) && $updates['ifOutOctets_rate'] !== null) {
+                    $updates['ifOutBits_rate'] = $updates['ifOutOctets_rate'] * 8;
+                }
+
+                // Update the ports table with available metrics
                 DB::table('ports')->where('port_id', $portId)->update($updates);
 
-                // Create RRD file for port traffic statistics
-                if (isset($updates['ifInOctets'], $updates['ifOutOctets'])) {
+                // If counters are provided, update or create RRD with DERIVE datasets
+                if ($hasCounters && isset($updates['ifInOctets'], $updates['ifOutOctets'])) {
                     $port = DB::table('ports')->where('port_id', $portId)->first();
 
                     $rrd_def = RrdDefinition::make()
@@ -582,14 +743,12 @@ class DeviceApiPersistor
                         ->addDataset('INMULTICASTPKTS', 'DERIVE', 0, 12500000000)
                         ->addDataset('OUTMULTICASTPKTS', 'DERIVE', 0, 12500000000);
 
-                    $rrd_name = ['port', 'port-id' . $portId];
-
                     $tags = [
                         'ifName' => $port->ifName ?? '',
                         'ifAlias' => $port->ifAlias ?? '',
                         'ifIndex' => $port->ifIndex ?? 0,
                         'port_descr_type' => $port->port_descr_type ?? 'ifAlias',
-                        'rrd_name' => $rrd_name,
+                        'rrd_name' => ['port-id' . $portId],
                         'rrd_def' => $rrd_def,
                     ];
 
@@ -610,27 +769,65 @@ class DeviceApiPersistor
                         'OUTMULTICASTPKTS' => $updates['ifOutMulticastPkts'] ?? null,
                     ];
 
-                    // Add rate fields for dashboard display (not stored in RRD)
-                    $fields['ifInOctets_rate'] = $updates['ifInOctets_rate'] ?? 0;
-                    $fields['ifOutOctets_rate'] = $updates['ifOutOctets_rate'] ?? 0;
-                    $fields['ifInUcastPkts_rate'] = $updates['ifInUcastPkts_rate'] ?? 0;
-                    $fields['ifOutUcastPkts_rate'] = $updates['ifOutUcastPkts_rate'] ?? 0;
-                    $fields['ifInErrors_rate'] = $updates['ifInErrors_rate'] ?? 0;
-                    $fields['ifOutErrors_rate'] = $updates['ifOutErrors_rate'] ?? 0;
-                    $fields['ifInBits_rate'] = isset($updates['ifInOctets_rate']) ? $updates['ifInOctets_rate'] * 8 : 0;
-                    $fields['ifOutBits_rate'] = isset($updates['ifOutOctets_rate']) ? $updates['ifOutOctets_rate'] * 8 : 0;
+                    app('Datastore')->put($device->toArray(), 'ports', $tags, $fields);
+                } elseif ($hasRates && isset($updates['ifInOctets_rate'], $updates['ifOutOctets_rate'])) {
+                    // If only rates are provided (no counters), create RRD with GAUGE datasets
+                    // This is for devices like PureStorage that only report rates
+                    $port = DB::table('ports')->where('port_id', $portId)->first();
+
+                    $rrd_def = RrdDefinition::make()
+                        ->addDataset('INOCTETS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTOCTETS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INERRORS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTERRORS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INUCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTUCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INNUCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTNUCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INDISCARDS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTDISCARDS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INBROADCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTBROADCASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('INMULTICASTPKTS', 'GAUGE', 0, 12500000000)
+                        ->addDataset('OUTMULTICASTPKTS', 'GAUGE', 0, 12500000000);
+
+                    $tags = [
+                        'ifName' => $port->ifName ?? '',
+                        'ifAlias' => $port->ifAlias ?? '',
+                        'ifIndex' => $port->ifIndex ?? 0,
+                        'port_descr_type' => $port->port_descr_type ?? 'ifAlias',
+                        'rrd_name' => ['port-id' . $portId],
+                        'rrd_def' => $rrd_def,
+                    ];
+
+                    // Store rates directly as GAUGE values (bytes/sec)
+                    $fields = [
+                        'INOCTETS' => $updates['ifInOctets_rate'] ?? null,
+                        'OUTOCTETS' => $updates['ifOutOctets_rate'] ?? null,
+                        'INERRORS' => $updates['ifInErrors_rate'] ?? null,
+                        'OUTERRORS' => $updates['ifOutErrors_rate'] ?? null,
+                        'INUCASTPKTS' => $updates['ifInUcastPkts_rate'] ?? null,
+                        'OUTUCASTPKTS' => $updates['ifOutUcastPkts_rate'] ?? null,
+                        'INNUCASTPKTS' => $updates['ifInNUcastPkts_rate'] ?? null,
+                        'OUTNUCASTPKTS' => $updates['ifOutNUcastPkts_rate'] ?? null,
+                        'INDISCARDS' => $updates['ifInDiscards_rate'] ?? null,
+                        'OUTDISCARDS' => $updates['ifOutDiscards_rate'] ?? null,
+                        'INBROADCASTPKTS' => $updates['ifInBroadcastPkts_rate'] ?? null,
+                        'OUTBROADCASTPKTS' => $updates['ifOutBroadcastPkts_rate'] ?? null,
+                        'INMULTICASTPKTS' => $updates['ifInMulticastPkts_rate'] ?? null,
+                        'OUTMULTICASTPKTS' => $updates['ifOutMulticastPkts_rate'] ?? null,
+                    ];
 
                     app('Datastore')->put($device->toArray(), 'ports', $tags, $fields);
                 }
 
-                // Optionally store historical data in ports_statistics table
+                // Optionally store historical records when provided
                 if (!empty($stat['store_history']) || !empty($stat['save_to_statistics'])) {
                     $statsRecord = [
                         'port_id' => $portId,
                         'timestamp' => now(),
                     ];
 
-                    // Copy relevant counter fields to statistics record
                     foreach ($counterFields as $field) {
                         if (isset($updates[$field])) {
                             $statsRecord[$field] = $updates[$field];
@@ -640,19 +837,88 @@ class DeviceApiPersistor
                             $statsRecord[$rateField] = $updates[$rateField];
                         }
                     }
+                    foreach ($rateFields as $rf) {
+                        if (isset($updates[$rf])) {
+                            $statsRecord[$rf] = $updates[$rf];
+                        }
+                    }
 
-                    // Insert into ports_statistics (if table exists and is being used)
                     try {
                         DB::table('ports_statistics')->insert($statsRecord);
                     } catch (\Throwable $e) {
-                        // ports_statistics table may not exist or may not be in use
                         Log::debug("Could not insert into ports_statistics: {$e->getMessage()}");
                     }
                 }
-
             } catch (\Throwable $e) {
                 Log::warning("savePortsStatistics failed for device {$device->device_id}: {$e->getMessage()}");
             }
+        }
+    }
+
+    public static function saveHrDevice(Device $device, array $hrDevices): void
+    {
+        foreach ($hrDevices as $hrDev) {
+            try {
+                $base = [
+                    'device_id'        => $device->device_id,
+                    'hrDeviceIndex'    => $hrDev['hrDeviceIndex'] ?? $hrDev['index'] ?? null,
+                    'hrDeviceDescr'    => $hrDev['hrDeviceDescr'] ?? $hrDev['descr'] ?? '',
+                    'hrDeviceType'     => $hrDev['hrDeviceType'] ?? $hrDev['type'] ?? '',
+                    'hrDeviceErrors'   => $hrDev['hrDeviceErrors'] ?? $hrDev['errors'] ?? 0,
+                    'hrDeviceStatus'   => $hrDev['hrDeviceStatus'] ?? $hrDev['status'] ?? '',
+                    'hrProcessorLoad'  => $hrDev['hrProcessorLoad'] ?? $hrDev['processor_load'] ?? null,
+                ];
+
+                if ($base['hrDeviceIndex'] === null) {
+                    Log::debug("Skipping hrDevice - no index provided", [
+                        'device_id' => $device->device_id,
+                    ]);
+                    continue;
+                }
+
+                // Upsert by device_id + hrDeviceIndex
+                $existing = DB::table('hrDevice')
+                    ->where('device_id', $device->device_id)
+                    ->where('hrDeviceIndex', $base['hrDeviceIndex'])
+                    ->first();
+
+                if ($existing) {
+                    DB::table('hrDevice')->where('hrDevice_id', $existing->hrDevice_id)->update($base);
+                } else {
+                    DB::table('hrDevice')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveHrDevice failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    public static function saveHrSystem(Device $device, array $hrSystemData): void
+    {
+        try {
+            // hrSystem is a single record per device (not an array of items)
+            // Accept both array of single item or direct object
+            $data = is_array($hrSystemData) && isset($hrSystemData[0]) ? $hrSystemData[0] : $hrSystemData;
+
+            $base = [
+                'device_id'             => $device->device_id,
+                'hrSystemNumUsers'      => $data['hrSystemNumUsers'] ?? $data['num_users'] ?? 0,
+                'hrSystemProcesses'     => $data['hrSystemProcesses'] ?? $data['processes'] ?? 0,
+                'hrSystemMaxProcesses'  => $data['hrSystemMaxProcesses'] ?? $data['max_processes'] ?? 0,
+            ];
+
+            // Upsert by device_id (only one record per device)
+            $existing = DB::table('hrSystem')
+                ->where('device_id', $device->device_id)
+                ->first();
+
+            if ($existing) {
+                DB::table('hrSystem')->where('hrSystem_id', $existing->hrSystem_id)->update($base);
+            } else {
+                DB::table('hrSystem')->insert($base);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("saveHrSystem failed for device {$device->device_id}: {$e->getMessage()}");
         }
     }
 
@@ -665,22 +931,163 @@ class DeviceApiPersistor
             return (int) $data['port_id'];
         }
 
+        // Try to find by ifIndex first
         if (isset($data['ifIndex'])) {
             $port = DB::table('ports')
                 ->where('device_id', $device->device_id)
                 ->where('ifIndex', $data['ifIndex'])
                 ->first();
-            return $port ? (int) $port->port_id : null;
+            if ($port) {
+                return (int) $port->port_id;
+            }
+            // If not found by ifIndex, fall through to try ifName
         }
 
+        // Try to find by ifName as fallback
         if (isset($data['ifName'])) {
             $port = DB::table('ports')
                 ->where('device_id', $device->device_id)
                 ->where('ifName', $data['ifName'])
                 ->first();
-            return $port ? (int) $port->port_id : null;
+            if ($port) {
+                return (int) $port->port_id;
+            }
         }
 
         return null;
+    }
+
+    /**
+     * Convert dotted quad netmask to prefix length
+     * Example: "255.255.255.0" => 24
+     */
+    protected static function netmaskToPrefixLength(string $netmask): int
+    {
+        // Handle numeric netmask already (just return it)
+        if (is_numeric($netmask)) {
+            return (int) $netmask;
+        }
+
+        // Convert dotted quad to prefix length
+        $long = ip2long($netmask);
+        if ($long === false) {
+            return 24; // default if invalid
+        }
+
+        $base = ip2long('255.255.255.255');
+        return (int) (32 - log(($long ^ $base) + 1, 2));
+    }
+
+    /**
+     * Save storage controllers
+     */
+    public static function saveControllers(Device $device, array $controllers): void
+    {
+        Log::debug("DeviceApiPersistor::saveControllers called for device {$device->device_id} with " . count($controllers) . " controllers");
+
+        foreach ($controllers as $c) {
+            try {
+                $base = [
+                    'device_id' => $device->device_id,
+                    'controller_name' => $c['controller_name'] ?? 'Unknown',
+                    'model' => $c['model'] ?? null,
+                    'status' => $c['status'] ?? null,
+                    'mode' => $c['mode'] ?? null,
+                    'version' => $c['version'] ?? null,
+                ];
+
+                // Upsert by device_id + controller_name
+                $existing = DB::table('storage_controllers')
+                    ->where('device_id', $device->device_id)
+                    ->where('controller_name', $base['controller_name'])
+                    ->first();
+
+                if ($existing) {
+                    DB::table('storage_controllers')->where('id', $existing->id)->update($base);
+                } else {
+                    DB::table('storage_controllers')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveControllers failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
+     * Save storage volumes
+     */
+    public static function saveVolumes(Device $device, array $volumes): void
+    {
+        Log::debug("DeviceApiPersistor::saveVolumes called for device {$device->device_id} with " . count($volumes) . " volumes");
+
+        foreach ($volumes as $v) {
+            try {
+                $base = [
+                    'device_id' => $device->device_id,
+                    'volume_name' => $v['volume_name'] ?? 'Unknown',
+                    'volume_id' => $v['volume_id'] ?? null,
+                    'read_bandwidth' => $v['read_bandwidth'] ?? 0,
+                    'write_bandwidth' => $v['write_bandwidth'] ?? 0,
+                    'read_iops' => $v['read_iops'] ?? 0,
+                    'write_iops' => $v['write_iops'] ?? 0,
+                    'read_latency' => $v['read_latency'] ?? null,
+                    'write_latency' => $v['write_latency'] ?? null,
+                    'size_bytes' => $v['size_bytes'] ?? 0,
+                    'used_bytes' => $v['used_bytes'] ?? 0,
+                ];
+
+                // Upsert by device_id + volume_name
+                $existing = DB::table('storage_volumes')
+                    ->where('device_id', $device->device_id)
+                    ->where('volume_name', $base['volume_name'])
+                    ->first();
+
+                if ($existing) {
+                    DB::table('storage_volumes')->where('id', $existing->id)->update($base);
+                } else {
+                    DB::table('storage_volumes')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveVolumes failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
+     * Save storage hosts
+     */
+    public static function saveHosts(Device $device, array $hosts): void
+    {
+        Log::debug("DeviceApiPersistor::saveHosts called for device {$device->device_id} with " . count($hosts) . " hosts");
+
+        foreach ($hosts as $h) {
+            try {
+                $base = [
+                    'device_id' => $device->device_id,
+                    'host_name' => $h['host_name'] ?? 'Unknown',
+                    'personality' => $h['personality'] ?? null,
+                    'host_group' => $h['host_group'] ?? null,
+                    'is_local' => $h['is_local'] ?? false,
+                    'port_connectivity_status' => $h['port_connectivity_status'] ?? null,
+                    'port_connectivity_details' => $h['port_connectivity_details'] ?? null,
+                    'iqn' => $h['iqn'] ?? null,
+                    'wwns' => $h['wwns'] ?? null,
+                ];
+
+                // Upsert by device_id + host_name
+                $existing = DB::table('storage_hosts')
+                    ->where('device_id', $device->device_id)
+                    ->where('host_name', $base['host_name'])
+                    ->first();
+
+                if ($existing) {
+                    DB::table('storage_hosts')->where('id', $existing->id)->update($base);
+                } else {
+                    DB::table('storage_hosts')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveHosts failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
     }
 }

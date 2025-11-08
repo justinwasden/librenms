@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Link extends Model
 {
@@ -14,6 +13,7 @@ class Link extends Model
     public $timestamps = false;
 
     // ---- Define Relationships ----
+
     /**
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Device, $this>
      */
@@ -31,18 +31,18 @@ class Link extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\Device, $this>
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Device, $this>
      */
-    public function remoteDevice(): HasOne
+    public function remoteDevice(): BelongsTo
     {
-        return $this->hasOne(Device::class, 'device_id', 'remote_device_id');
+        return $this->belongsTo(Device::class, 'remote_device_id', 'device_id');
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\Port, $this>
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Port, $this>
      */
-    public function remotePort(): HasOne
+    public function remotePort(): BelongsTo
     {
-        return $this->hasOne(Port::class, 'port_id', 'remote_port_id');
+        return $this->belongsTo(Port::class, 'remote_port_id', 'port_id');
     }
 }

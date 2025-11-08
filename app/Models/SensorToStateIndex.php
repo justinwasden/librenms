@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SensorToStateIndex extends Model
 {
@@ -12,19 +12,24 @@ class SensorToStateIndex extends Model
     public $timestamps = false;
     protected $fillable = ['sensor_id', 'state_index_id'];
 
+    protected $casts = [
+        'sensor_id' => 'int',
+        'state_index_id' => 'int',
+    ];
+
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\Sensor, $this>
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Sensor, $this>
      */
-    public function sensor(): HasOne
+    public function sensor(): BelongsTo
     {
-        return $this->hasOne(Sensor::class, 'sensor_id', 'sensor_id');
+        return $this->belongsTo(Sensor::class, 'sensor_id', 'sensor_id');
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\StateIndex, $this>
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\StateIndex, $this>
      */
-    public function stateIndex(): HasOne
+    public function stateIndex(): BelongsTo
     {
-        return $this->hasOne(StateIndex::class, 'state_index_id', 'state_index_id');
+        return $this->belongsTo(StateIndex::class, 'state_index_id', 'state_index_id');
     }
 }

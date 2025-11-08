@@ -24,11 +24,14 @@
 <div class="form-group">
     <div class="col-sm-offset-2 col-sm-6">
         <button type="submit" name="Submit" class="btn btn-success">
-            <i class="fa fa-check"></i> Save Settings
+            <i class="fa fa-check"></i> Save Connection Settings
         </button>
         <small class="text-muted" id="save-button-hint">
             <span id="disable-hint" style="display: none;">
                 <i class="fa fa-info-circle"></i> Click to disable API polling and remove credentials.
+            </span>
+            <span id="endpoint-hint">
+                <i class="fa fa-info-circle"></i> Endpoint changes are saved automatically via the modal. This button saves authentication and connection settings only.
             </span>
         </small>
     </div>
@@ -276,12 +279,11 @@
                     <table class="table table-condensed table-hover" id="endpoints-table">
                         <thead>
                         <tr>
-                            <th style="width: 5%;"><input type="checkbox" id="toggle-all-endpoints"></th>
-                            <th style="width: 20%;">Name</th>
-                            <th style="width: 25%;">Path</th>
+                            <th style="width: 25%;">Name</th>
+                            <th style="width: 30%;">Path</th>
                             <th style="width: 10%;">Method</th>
                             <th style="width: 15%;">Category</th>
-                            <th style="width: 15%;">Poll Interval (s)</th>
+                            <th style="width: 10%;">Status</th>
                             <th style="width: 10%;">Actions</th>
                         </tr>
                         </thead>
@@ -299,12 +301,116 @@
 
     <input type="hidden" name="rest_endpoints" id="rest_endpoints" value="">
 
+    {{-- Endpoint Edit/Add Modal --}}
+    <div class="modal fade" id="endpoint-modal" tabindex="-1" role="dialog" aria-labelledby="endpoint-modal-label">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title" id="endpoint-modal-label">Add Endpoint</h4>
+                </div>
+                <div class="modal-body" style="padding: 20px 30px;">
+                    <form id="endpoint-form">
+                        <div class="form-group">
+                            <label for="endpoint-enabled">Status</label>
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" id="endpoint-enabled" checked>
+                                    <strong>Enable this endpoint</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted">Disabled endpoints will not be polled</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-name">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="endpoint-name" placeholder="e.g., System Status" required>
+                            <small class="text-muted">Descriptive name for this endpoint</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-path">Path <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="endpoint-path" placeholder="/api/status" required>
+                            <small class="text-muted">Relative path from base URL</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-method">HTTP Method</label>
+                            <select class="form-control" id="endpoint-method">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="PATCH">PATCH</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-category">Category</label>
+                            <input type="text" class="form-control" id="endpoint-category" placeholder="general" value="general">
+                            <small class="text-muted">Capability/category for grouping</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-poll-interval">Poll Interval (seconds)</label>
+                            <input type="number" class="form-control" id="endpoint-poll-interval" min="1" value="60">
+                            <small class="text-muted">How often to poll this endpoint</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-description">Description</label>
+                            <textarea class="form-control" id="endpoint-description" rows="2" placeholder="Optional description"></textarea>
+                        </div>
+
+                        <div class="form-group" style="display: none;">
+                            <label for="endpoint-transform">Transform</label>
+                            <textarea class="form-control" id="endpoint-transform" rows="3" placeholder="Optional JSON transform configuration"></textarea>
+                            <small class="text-muted">Advanced: JSON transformation rules</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-headers">Extra Headers</label>
+                            <textarea class="form-control" id="endpoint-headers" rows="2" placeholder="Header-Name: value (one per line)"></textarea>
+                            <small class="text-muted">Additional headers for this endpoint only</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endpoint-request-body">Request Body</label>
+                            <textarea class="form-control" id="endpoint-request-body" rows="2" placeholder="JSON request body for POST/PUT requests"></textarea>
+                            <small class="text-muted">For POST/PUT/PATCH methods</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-endpoint-btn">Save Endpoint</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div> {{-- #api-settings-content --}}
 
 
 
 @push('scripts')
 <script>
+// Helper function (MUST be defined outside of $(document).ready() to be visible everywhere)
+function generateEndpointName(path, capability) {
+    let name = path.replace(/^\//, '');
+    name = name.replace(/\{[^}]+\}/g, ''); // Remove {variables}
+    name = name.replace(/[/_-]/g, ' ').trim();
+    name = name.split(' ')
+        .filter(word => word.length > 0)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    if (capability) {
+        name = capability.charAt(0).toUpperCase() + capability.slice(1) + ': ' + name;
+    }
+    return name || 'API Endpoint';
+}
+
 (function() {
     const enabledCheckbox = document.getElementById('rest_enabled');
     const content = document.getElementById('api-settings-content');
@@ -339,7 +445,7 @@ const deviceHostname = '{{ $device->hostname }}';
 const deviceSysName = '{{ $device->sysName ?? $device->hostname }}';
 const autoSelectTemplate = {{ $autoSelectTemplate ? 'true' : 'false' }};
 
-// Template metadata and auth config (always arrays by guards above)
+// Template metadata and auth config
 const templates = @json($templates);
 const authTypes = @json($authTypes);
 const selectedTemplateKey = '{{ $selectedTemplate ?? '' }}';
@@ -357,34 +463,30 @@ const allTemplateData = {
 // Endpoints storage - load from selected template if available
 let endpoints = [];
 
+// Load saved endpoints from PHP if they exist
+@if(!empty($savedEndpoints) && is_array($savedEndpoints))
+    endpoints = @json($savedEndpoints);
+    console.log('Loaded ' + endpoints.length + ' saved endpoints from database');
+@endif
+
 // Initialize on page load
 $(document).ready(function() {
-    // Helper function to generate readable endpoint name
-    function generateEndpointName(path, capability) {
-        let name = path.replace(/^\//, '');
-        name = name.replace(/\{[^}]+\}/g, ''); // Remove {variables}
-        name = name.replace(/[/_-]/g, ' ').trim();
-        name = name.split(' ')
-            .filter(word => word.length > 0)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-        if (capability) {
-            name = capability.charAt(0).toUpperCase() + capability.slice(1) + ': ' + name;
-        }
-        return name || 'API Endpoint';
-    }
 
-    // Load endpoints from selected template on page load
-    if (selectedTemplateKey && allTemplateData[selectedTemplateKey]) {
+    // --- 1. Initial Endpoint Loading (Loads saved data or template defaults if old() is present) ---
+    // This loads endpoints either from the old() input or if a template key was previously saved/selected by PHP.
+    // Only load from template if no saved custom endpoints exist
+    if (endpoints.length === 0 && selectedTemplateKey && allTemplateData[selectedTemplateKey]) {
+        console.log('Loading endpoints from template:', selectedTemplateKey);
         const template = allTemplateData[selectedTemplateKey];
         if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
             endpoints = template.endpoints.map(function(ep) {
+                // Use the shared function logic to map API model keys to JS object keys
                 return {
                     name: generateEndpointName(ep.path, ep.capability),
                     path: ep.path,
                     method: ep.method || 'GET',
                     category: ep.capability || 'general',
-                    poll_interval: 60,
+                    poll_interval: ep.poll_interval || 60,
                     enabled: ep.enabled !== false,
                     transform: ep.transform || '',
                     headers: ep.headers || {},
@@ -394,26 +496,34 @@ $(document).ready(function() {
         }
     }
 
-    // Show appropriate auth fields for saved auth type
-    updateAuthFieldVisibility();
+    // --- 2. Auto-Selection Logic (CRITICAL FIX for Auth Type and Timing) ---
+    const initialTemplateName = $('#rest_template').val();
 
-    // Render saved endpoints
-    renderEndpointsTable();
-    updateEndpointsHiddenField();
+    // Check if auto-select criteria are met (must be done AFTER initial endpoint loading attempt)
+    // The condition 'endpoints.length === 0' prevents overwriting explicitly saved/customized endpoints.
+    if (autoSelectTemplate && initialTemplateName && endpoints.length === 0) {
 
-    // Update auth description if auth type is already set
-    const authType = $('#rest_auth_type').val();
-    if (authType && authTypes[authType]) {
-        $('.auth-description').text(authTypes[authType].description || '');
+        // This ensures the URL and Auth Type/Fields are set, and re-maps the endpoints for display.
+        applyTemplate(allTemplateData[initialTemplateName]);
+        toastr.info('Template automatically selected and applied for ' + initialTemplateName);
+
+        // Note: applyTemplate handles rendering.
     }
 
-    // Auto-select and apply template if requested and nothing is configured yet
-    if (autoSelectTemplate && endpoints.length === 0) {
-        const templateName = $('#rest_template').val();
-        if (templateName) {
-            loadTemplateData(templateName);
+    // 3. Force Authentication Field Visibility if already configured by PHP
+    const initialAuthType = $('#rest_auth_type').val();
+    if (initialAuthType) {
+        // Force the visibility update immediately based on the PHP-set value
+        updateAuthFieldVisibility();
+        // Update description as well
+        if (authTypes[initialAuthType]) {
+            $('.auth-description').text(authTypes[initialAuthType].description || '');
         }
     }
+
+    // --- 4. Final Render (Always needed) ---
+    renderEndpointsTable();
+    updateEndpointsHiddenField();
 });
 
 // Template selection handler
@@ -423,8 +533,13 @@ $('#rest_template').on('change', function() {
         // User selected a template - load and apply it
         loadTemplateData(templateName);
     } else {
-        // User selected "Custom" - clear but keep existing endpoints
-        toastr.info('Switched to custom configuration');
+        // User selected "Custom" - clear endpoint list but preserve base URL
+        endpoints = [];
+        // Clear base URL hint as it's no longer template driven
+        $('.base-url-hint').text('Custom configuration - enter base URL manually');
+        renderEndpointsTable();
+        updateEndpointsHiddenField();
+        toastr.info('Switched to custom configuration. Endpoints cleared, Base URL preserved.');
     }
 });
 
@@ -438,46 +553,51 @@ function loadTemplateData(templateName) {
     }
 }
 
-// Apply template to form
+// Apply template to form (FIXED to handle Auth Type and map all endpoint fields)
 function applyTemplate(template) {
     if (!template || typeof template !== 'object') return;
 
-    // Build and set base URL from pattern using device hostname
-    if (template.base_url_pattern) {
-        const baseUrl = template.base_url_pattern.replace('{hostname}', deviceHostname);
-        $('#rest_base_url').val(baseUrl);
-        $('.base-url-hint').text('Auto-populated from device hostname');
-    } else if (template.base_url_example) {
-        $('#rest_base_url').attr('placeholder', template.base_url_example);
-        $('.base-url-hint').text('Example: ' + template.base_url_example);
+    // 1. Base URL - only auto-populate if empty (preserve user customizations)
+    const currentBaseUrl = $('#rest_base_url').val();
+    if (!currentBaseUrl || currentBaseUrl.trim() === '') {
+        if (template.base_url_pattern) {
+            const baseUrl = template.base_url_pattern.replace('{hostname}', deviceHostname);
+            $('#rest_base_url').val(baseUrl);
+            $('.base-url-hint').text('Auto-populated from device hostname');
+        } else if (template.base_url_example) {
+            $('#rest_base_url').attr('placeholder', template.base_url_example);
+            $('.base-url-hint').text('Example: ' + template.base_url_example);
+        }
+    } else {
+        // Base URL already exists (user customized or loaded from database)
+        // Just update the hint text
+        if (template.base_url_pattern) {
+            $('.base-url-hint').text('Custom Base URL (differs from template default)');
+        }
     }
 
-    // Set auth type
+    // 2. Authentication Type (FIXED)
+    // template.auth_type is correctly exposed by PHP loadTemplate function as the schema KEY string.
     if (template.auth_type) {
+        // This sets the select value and triggers the change event to show fields.
         $('#rest_auth_type').val(template.auth_type).trigger('change');
     }
 
-    // Load endpoints from template (always replace when template is selected)
-    if (Array.isArray(template.endpoints) && template.endpoints.length > 0) {
-        endpoints = template.endpoints.map(function(ep) {
-            let name = ep.path.replace(/^\//, '');
-            name = name.replace(/\{[^}]+\}/g, '');
-            name = name.replace(/[/_-]/g, ' ').trim();
-            name = name.split(' ')
-                .filter(word => word.length > 0)
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
-            if (ep.capability) {
-                name = ep.capability.charAt(0).toUpperCase() + ep.capability.slice(1) + ': ' + name;
-            }
-            name = name || 'API Endpoint';
+    // 3. Endpoints (FIXED - Ensure mapping uses correct source keys)
+    const rawEndpoints = template.endpoints;
+
+    if (Array.isArray(rawEndpoints) && rawEndpoints.length > 0) {
+        endpoints = rawEndpoints.map(function(ep) {
+            // Map fields using the correct names exposed by the PHP loadTemplate function.
+            let name = generateEndpointName(ep.path, ep.capability);
 
             return {
                 name: name,
                 path: ep.path,
                 method: ep.method || 'GET',
                 category: ep.capability || 'general',
-                poll_interval: 60,
+                // Use default if DB field is not set/exposed, otherwise use what's exposed.
+                poll_interval: ep.poll_interval || 60,
                 enabled: ep.enabled !== false,
                 transform: ep.transform || '',
                 headers: ep.headers || {},
@@ -486,7 +606,11 @@ function applyTemplate(template) {
         });
         renderEndpointsTable();
         updateEndpointsHiddenField();
-        toastr.success('Template applied with ' + endpoints.length + ' endpoint(s)');
+
+    } else {
+        endpoints = [];
+        renderEndpointsTable();
+        updateEndpointsHiddenField();
     }
 }
 
@@ -533,19 +657,19 @@ function renderEndpointsTable() {
         const safePath = escapeHtml(endpoint?.path ?? '');
         const method = (endpoint?.method || 'GET').toUpperCase();
         const category = endpoint?.category || 'general';
-        const pollInterval = parseInt(endpoint?.poll_interval ?? 60, 10);
         const enabled = endpoint?.enabled ?? true;
+
+        const statusBadge = enabled
+            ? '<span class="label label-success">Enabled</span>'
+            : '<span class="label label-default">Disabled</span>';
 
         const row = `
             <tr data-index="${index}">
-                <td>
-                    <input type="checkbox" class="endpoint-enabled" data-index="${index}" ${enabled ? 'checked' : ''}>
-                </td>
                 <td>${safeName}</td>
                 <td><code>${safePath}</code></td>
                 <td><span class="label label-info">${method}</span></td>
                 <td>${category}</td>
-                <td>${pollInterval}</td>
+                <td>${statusBadge}</td>
                 <td>
                     <button type="button" class="btn btn-xs btn-primary edit-endpoint" data-index="${index}">
                         <i class="fa fa-edit"></i>
@@ -563,32 +687,23 @@ function renderEndpointsTable() {
 // Update hidden field with endpoints JSON
 function updateEndpointsHiddenField() {
     try {
-        $('#rest_endpoints').val(JSON.stringify(endpoints || []));
+        // Only store necessary data to keep payload small
+        const serializableEndpoints = endpoints.map(ep => ({
+            name: ep.name,
+            path: ep.path,
+            method: ep.method,
+            category: ep.category,
+            poll_interval: ep.poll_interval,
+            enabled: ep.enabled,
+            transform: ep.transform,
+            headers: ep.headers,
+            request_body: ep.request_body,
+        }));
+        $('#rest_endpoints').val(JSON.stringify(serializableEndpoints || []));
     } catch (e) {
         $('#rest_endpoints').val('[]');
     }
 }
-
-// Toggle endpoint enabled status
-$(document).on('change', '.endpoint-enabled', function() {
-    const index = $(this).data('index');
-    if (endpoints[index]) {
-        endpoints[index].enabled = $(this).is(':checked');
-        updateEndpointsHiddenField();
-    }
-});
-
-// Toggle all endpoints
-$('#toggle-all-endpoints').on('change', function() {
-    const checked = $(this).is(':checked');
-    $('.endpoint-enabled').prop('checked', checked).each(function() {
-        const index = $(this).data('index');
-        if (endpoints[index]) {
-            endpoints[index].enabled = checked;
-        }
-    });
-    updateEndpointsHiddenField();
-});
 
 // Add endpoint
 $('#add-endpoint-btn').on('click', function() {
@@ -613,42 +728,214 @@ $(document).on('click', '.delete-endpoint', function() {
     updateEndpointsHiddenField();
 });
 
-// Show endpoint modal (simplified - using prompt for now)
+// Show endpoint modal
+let currentEndpointIndex = null;
+let originalEndpointState = null;
+
 function showEndpointModal(endpoint = null, index = null) {
+    currentEndpointIndex = index;
     const isEdit = endpoint !== null;
 
-    const name = prompt('Endpoint Name:', endpoint?.name || '');
-    if (!name) return;
+    // Store original state for change detection
+    originalEndpointState = isEdit ? JSON.parse(JSON.stringify(endpoint)) : null;
 
-    const path = prompt('Endpoint Path (e.g., /api/status):', endpoint?.path || '/');
-    if (!path) return;
+    // Update modal title
+    $('#endpoint-modal-label').text(isEdit ? 'Edit Endpoint' : 'Add Endpoint');
 
-    const method = prompt('HTTP Method (GET/POST):', (endpoint?.method || 'GET').toUpperCase());
-    const category = prompt('Category:', endpoint?.category || 'general');
-    const pollInterval = parseInt(prompt('Poll Interval (seconds):', endpoint?.poll_interval || 60), 10);
-    const description = prompt('Description:', endpoint?.description || '');
+    // Populate form fields
+    $('#endpoint-enabled').prop('checked', endpoint?.enabled ?? true);
+    $('#endpoint-name').val(endpoint?.name || '');
+    $('#endpoint-path').val(endpoint?.path || '');
+    $('#endpoint-method').val((endpoint?.method || 'GET').toUpperCase());
+    $('#endpoint-category').val(endpoint?.category || 'general');
+    $('#endpoint-poll-interval').val(endpoint?.poll_interval || 60);
+    $('#endpoint-description').val(endpoint?.description || '');
+    $('#endpoint-transform').val(endpoint?.transform || '');
 
-    const newEndpoint = {
-        id: endpoint?.id || ('custom_' + Date.now()),
-        name: name,
-        path: path,
-        method: method.toUpperCase(),
-        category: category,
-        poll_interval: pollInterval,
-        description: description,
-        enabled: endpoint?.enabled ?? true
-    };
-
-    if (isEdit && index !== null) {
-        endpoints[index] = newEndpoint;
+    // Handle headers - convert object to text
+    if (endpoint?.headers && typeof endpoint.headers === 'object') {
+        const headersText = Object.entries(endpoint.headers)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join('\n');
+        $('#endpoint-headers').val(headersText);
     } else {
-        endpoints.push(newEndpoint);
+        $('#endpoint-headers').val('');
     }
 
-    renderEndpointsTable();
-    updateEndpointsHiddenField();
-    toastr.success(isEdit ? 'Endpoint updated' : 'Endpoint added');
+    // Handle request body
+    if (endpoint?.request_body) {
+        const bodyText = typeof endpoint.request_body === 'string'
+            ? endpoint.request_body
+            : JSON.stringify(endpoint.request_body, null, 2);
+        $('#endpoint-request-body').val(bodyText);
+    } else {
+        $('#endpoint-request-body').val('');
+    }
+
+    // Show modal
+    $('#endpoint-modal').modal('show');
 }
+
+// Save endpoint from modal
+$('#save-endpoint-btn').on('click', function() {
+    const btn = $(this);
+    const name = $('#endpoint-name').val().trim();
+    const path = $('#endpoint-path').val().trim();
+
+    // Validation
+    if (!name) {
+        toastr.error('Endpoint name is required');
+        $('#endpoint-name').focus();
+        return;
+    }
+
+    if (!path) {
+        toastr.error('Endpoint path is required');
+        $('#endpoint-path').focus();
+        return;
+    }
+
+    // Parse headers
+    const headersText = $('#endpoint-headers').val().trim();
+    const headers = {};
+    if (headersText) {
+        headersText.split('\n').forEach(line => {
+            line = line.trim();
+            if (line && line.includes(':')) {
+                const [key, ...valueParts] = line.split(':');
+                headers[key.trim()] = valueParts.join(':').trim();
+            }
+        });
+    }
+
+    // Parse request body
+    let requestBody = $('#endpoint-request-body').val().trim();
+    if (requestBody) {
+        try {
+            // Try to parse as JSON to validate
+            requestBody = JSON.parse(requestBody);
+        } catch (e) {
+            // If not valid JSON, store as string
+        }
+    } else {
+        requestBody = null;
+    }
+
+    // Get transform value without validation (hidden field, just pass through)
+    let transform = $('#endpoint-transform').val() || '';
+
+    const newEndpoint = {
+        id: currentEndpointIndex !== null ? endpoints[currentEndpointIndex]?.id : undefined,
+        name: name,
+        path: path,
+        method: $('#endpoint-method').val().toUpperCase(),
+        category: $('#endpoint-category').val().trim() || 'general',
+        poll_interval: parseInt($('#endpoint-poll-interval').val(), 10) || 60,
+        description: $('#endpoint-description').val().trim(),
+        enabled: $('#endpoint-enabled').is(':checked'),
+        transform: transform || '',
+        headers: Object.keys(headers).length > 0 ? headers : {},
+        request_body: requestBody
+    };
+
+    const isEdit = currentEndpointIndex !== null && originalEndpointState;
+
+    // For existing endpoints with ID, send AJAX with only changed fields
+    if (isEdit && newEndpoint.id) {
+        // Detect changed fields
+        const changes = {};
+        const fieldMapping = {
+            name: 'name',
+            path: 'path',
+            method: 'method',
+            category: 'category',
+            poll_interval: 'poll_interval',
+            description: 'description',
+            enabled: 'enabled',
+            transform: 'transform',
+            headers: 'headers',
+            request_body: 'request_body'
+        };
+
+        Object.keys(fieldMapping).forEach(field => {
+            const newVal = newEndpoint[field];
+            const oldVal = originalEndpointState[field];
+
+            // Deep comparison for objects
+            if (typeof newVal === 'object' && typeof oldVal === 'object') {
+                if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
+                    changes[field] = newVal;
+                }
+            } else if (newVal !== oldVal) {
+                changes[field] = newVal;
+            }
+        });
+
+        // If no changes, just close modal
+        if (Object.keys(changes).length === 0) {
+            toastr.info('No changes detected');
+            $('#endpoint-modal').modal('hide');
+            return;
+        }
+
+        // Disable button while saving
+        btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
+
+        // Send AJAX request to update only changed fields
+        fetch('{{ route("device.update-endpoint", $device->device_id) }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                endpoint_id: newEndpoint.id,
+                changes: changes
+            })
+        })
+        .then(r => {
+            if (!r.ok) {
+                return r.json().then(err => {
+                    throw new Error(err.error || 'Server error: ' + r.status);
+                });
+            }
+            return r.json();
+        })
+        .then(d => {
+            if (d && d.success) {
+                // Update local state
+                endpoints[currentEndpointIndex] = newEndpoint;
+                renderEndpointsTable();
+                updateEndpointsHiddenField();
+                toastr.success(d.message || 'Endpoint updated');
+                $('#endpoint-modal').modal('hide');
+            } else {
+                toastr.error('Failed to update endpoint: ' + (d.error || 'Unknown error'));
+            }
+        })
+        .catch(e => {
+            console.error('Error updating endpoint:', e);
+            toastr.error('Failed to update endpoint: ' + e.message);
+        })
+        .finally(() => {
+            btn.prop('disabled', false).html('Save Endpoint');
+        });
+    } else {
+        // For new endpoints or endpoints without ID, update locally and save with form
+        if (currentEndpointIndex !== null) {
+            endpoints[currentEndpointIndex] = newEndpoint;
+            toastr.success('Endpoint updated (click "Save Settings" to persist)');
+        } else {
+            endpoints.push(newEndpoint);
+            toastr.success('Endpoint added (click "Save Settings" to persist)');
+        }
+
+        // Update UI and hide modal
+        renderEndpointsTable();
+        updateEndpointsHiddenField();
+        $('#endpoint-modal').modal('hide');
+    }
+});
 
 // Helper function
 function escapeHtml(text) {
@@ -767,7 +1054,34 @@ $('#reset-circuit-breaker').on('click', function() {
 // Multiple schemas have fields with the same names (username, password, etc.)
 // We only want to submit the fields for the currently selected auth type
 $('#edit-api').on('submit', function(e) {
-    console.log('Form submit handler running');
+    console.log('===== FORM SUBMIT HANDLER RUNNING =====');
+    console.log('Event:', e);
+    console.log('Form action:', $(this).attr('action'));
+    console.log('Form method:', $(this).attr('method'));
+
+    // Get the currently selected auth type
+    const selectedAuthType = $('#rest_auth_type').val();
+    console.log('Selected auth type:', selectedAuthType);
+
+    // Check if API is enabled
+    const apiEnabled = $('#rest_enabled').is(':checked');
+    console.log('API enabled:', apiEnabled);
+
+    // If API is disabled, disable all API fields to prevent validation errors
+    if (!apiEnabled) {
+        console.log('API disabled - disabling all API fields to bypass validation');
+        $('#api-settings-content input, #api-settings-content select, #api-settings-content textarea').prop('disabled', true);
+        return true; // Allow form to submit
+    }
+
+    // First, ensure the correct auth fields are visible (only if API is enabled)
+    if (selectedAuthType) {
+        $('.auth-field').hide(); // Hide all auth fields
+        $('.auth-' + selectedAuthType).show(); // Show only the selected auth type's fields
+
+        // Re-enable visible auth fields in case they were disabled
+        $('.auth-' + selectedAuthType + ' input, .auth-' + selectedAuthType + ' select, .auth-' + selectedAuthType + ' textarea').prop('disabled', false);
+    }
 
     // Log visible auth fields before disabling hidden ones
     const visibleFields = $('.auth-field:visible input, .auth-field:visible select, .auth-field:visible textarea');
@@ -783,7 +1097,7 @@ $('#edit-api').on('submit', function(e) {
     const hiddenFields = $('.auth-field:hidden input, .auth-field:hidden select, .auth-field:hidden textarea');
     console.log('Hidden auth fields to disable:', hiddenFields.length);
 
-    // Disable all hidden auth fields
+    // Disable all hidden auth fields to prevent validation errors
     hiddenFields.each(function() {
         $(this).prop('disabled', true);
     });
@@ -791,5 +1105,19 @@ $('#edit-api').on('submit', function(e) {
     // The visible auth fields will be submitted normally
     return true;
 });
+
+setTimeout(function () {
+    const selectedTemplate = $('#rest_template').val();
+    const selectedAuth = $('#rest_auth_type').val();
+
+    // If a template is preselected, re-apply it to re-trigger field visibility
+    if (selectedTemplate && allTemplateData[selectedTemplate]) {
+        // Ensure template's auth type is re-applied to show fields
+        applyTemplate(allTemplateData[selectedTemplate]);
+    } else if (selectedAuth) {
+        // Otherwise just ensure the proper auth fields are visible
+        $('#rest_auth_type').trigger('change');
+    }
+}, 250);
 </script>
 @endpush

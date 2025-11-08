@@ -107,6 +107,16 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     public function get(string $path, array $query = []): array
     {
+        // Extract query string from path if present (e.g., "nodes/pve/rrddata?timeframe=hour")
+        $parsedQuery = [];
+        if (str_contains($path, '?')) {
+            [$path, $queryString] = explode('?', $path, 2);
+            parse_str($queryString, $parsedQuery);
+        }
+
+        // Merge extracted query with provided query (provided takes precedence)
+        $query = array_merge($parsedQuery, $query);
+
         $uri = rtrim($this->base, '/') . '/' . ltrim($path, '/');
         $resp = $this->http()->get($uri, $query);
         if ($resp->failed()) {
@@ -143,7 +153,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     public function capabilities(): array
     {
-        return ['sensors', 'ports', 'processors', 'mempools'];
+        return ['sensors', 'ports', 'processors', 'mempools', 'storage', 'ipv4', 'ports_stats'];
     }
 
     public function fetchSensors(Device $device): array
@@ -252,6 +262,15 @@ class ProxmoxApiClient implements DeviceApiClientInterface
             $network = $this->get("nodes/$node/network");
             $interfaces = $network['data'] ?? [];
 
+            // Build a map of interface names for consistent indexing
+            $ifNameToIndex = [];
+            foreach ($interfaces as $idx => $interface) {
+                $ifName = $interface['iface'] ?? "port$idx";
+                if ($ifName !== 'lo') {
+                    $ifNameToIndex[$ifName] = $this->stableIndexFromName($ifName);
+                }
+            }
+
             foreach ($interfaces as $idx => $interface) {
                 $ifName = $interface['iface'] ?? "port$idx";
                 $type = $interface['type'] ?? 'unknown';
@@ -261,17 +280,21 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     continue;
                 }
 
+                // Proxmox /network endpoint doesn't return MAC addresses
+                // We'll need to use ifName for identification instead
+                $macAddress = '';
+
                 $ports[] = [
-                    'ifIndex' => $idx + 1,
+                    'ifIndex' => $ifNameToIndex[$ifName],
                     'ifName' => $ifName,
                     'ifDescr' => $ifName,
                     'ifAlias' => $interface['comments'] ?? '',
-                    'ifType' => $type === 'bridge' ? 'bridge' : 'ethernetCsmacd',
+                    'ifType' => $type === 'bridge' ? 'bridge' : ($type === 'bond' ? 'bond' : 'ethernetCsmacd'),
                     'ifOperStatus' => (isset($interface['active']) && $interface['active']) ? 'up' : 'down',
                     'ifAdminStatus' => (isset($interface['autostart']) && $interface['autostart']) ? 'up' : 'down',
                     'ifSpeed' => 1000000000, // Default to 1Gbps
                     'ifMtu' => $interface['mtu'] ?? 1500,
-                    'ifPhysAddress' => '',
+                    'ifPhysAddress' => $macAddress,
                 ];
             }
 
@@ -283,6 +306,14 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         }
 
         return $ports;
+    }
+
+    /**
+     * Generate stable ifIndex from interface name (same as RestNormalizers)
+     */
+    protected function stableIndexFromName(string $name): int
+    {
+        return abs(crc32($name)) % 2147483647;
     }
 
     public function fetchMempools(Device $device): array
@@ -357,9 +388,202 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return [];
     }
 
+    public function fetchStorage(Device $device): array
+    {
+        $storage = [];
+
+        try {
+            // Get cluster resources for storage information
+            $resources = $this->get('cluster/resources');
+            $data = $resources['data'] ?? [];
+
+            foreach ($data as $idx => $resource) {
+                $type = $resource['type'] ?? '';
+
+                if ($type === 'storage') {
+                    $node = $resource['node'] ?? 'unknown';
+                    $name = $resource['storage'] ?? $resource['id'] ?? "storage$idx";
+                    $disk = $resource['disk'] ?? 0;
+                    $maxdisk = $resource['maxdisk'] ?? 0;
+
+                    $storage[] = [
+                        'storage_index' => 'storage-' . $idx,
+                        'storage_descr' => "$node:$name",
+                        'storage_type' => $resource['content'] ?? 'proxmox-storage',
+                        'storage_size' => $maxdisk,
+                        'storage_used' => $disk,
+                        'storage_free' => max(0, $maxdisk - $disk),
+                        'storage_units' => 1,
+                        'storage_perc' => $maxdisk > 0 ? round(($disk / $maxdisk) * 100, 2) : 0,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchStorage failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $storage;
+    }
+
+    public function fetchTransceivers(Device $device): array
+    {
+        // Proxmox is a virtualization platform, transceivers not applicable
+        return [];
+    }
+
     public function fetchIpv4Addresses(Device $device): array
     {
-        return [];
+        $addresses = [];
+
+        try {
+            // Get cluster resources to find nodes
+            $resources = $this->get('cluster/resources');
+            $nodes = array_filter($resources['data'] ?? [], fn($r) => ($r['type'] ?? '') === 'node');
+
+            if (empty($nodes)) {
+                return [];
+            }
+
+            $node = reset($nodes)['node'] ?? null;
+            if (!$node) {
+                return [];
+            }
+
+            // Get network interfaces for the node
+            $network = $this->get("nodes/$node/network");
+            $interfaces = $network['data'] ?? [];
+
+            foreach ($interfaces as $idx => $interface) {
+                $ifName = $interface['iface'] ?? "port$idx";
+
+                // Skip loopback
+                if ($ifName === 'lo') {
+                    continue;
+                }
+
+                // Parse IP address and CIDR
+                $address = $interface['address'] ?? null;
+                $netmask = $interface['netmask'] ?? null;
+                $cidr = $interface['cidr'] ?? null;
+
+                if ($address) {
+                    // Calculate prefix length
+                    $prefixlen = 24; // default
+
+                    if ($cidr && strpos($cidr, '/') !== false) {
+                        // CIDR format: 192.168.1.1/24
+                        $parts = explode('/', $cidr);
+                        $prefixlen = (int)($parts[1] ?? 24);
+                    } elseif ($netmask) {
+                        // Check if netmask is already a number (CIDR)
+                        if (is_numeric($netmask)) {
+                            $prefixlen = (int)$netmask;
+                        } else {
+                            // Convert netmask to prefix length
+                            $prefixlen = $this->netmaskToPrefixlen($netmask);
+                        }
+                    }
+
+                    // Use ifName for lookup instead of ifIndex
+                    $addresses[] = [
+                        'ifName' => $ifName,  // Use ifName for port resolution
+                        'ipv4_address' => $address,
+                        'ipv4_prefixlen' => $prefixlen,
+                        'context_name' => 'proxmox',
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchIpv4Addresses failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $addresses;
+    }
+
+    public function fetchPortsStatistics(Device $device): array
+    {
+        $stats = [];
+
+        try {
+            // Get cluster resources to find nodes
+            $resources = $this->get('cluster/resources');
+            $nodes = array_filter($resources['data'] ?? [], fn($r) => ($r['type'] ?? '') === 'node');
+
+            if (empty($nodes)) {
+                return [];
+            }
+
+            $node = reset($nodes)['node'] ?? null;
+            if (!$node) {
+                return [];
+            }
+
+            // Get network interfaces
+            $network = $this->get("nodes/$node/network");
+            $interfaces = $network['data'] ?? [];
+
+            // Try to get RRD data for network statistics
+            foreach ($interfaces as $idx => $interface) {
+                $ifName = $interface['iface'] ?? "port$idx";
+
+                // Skip loopback
+                if ($ifName === 'lo') {
+                    continue;
+                }
+
+                // Proxmox provides netin/netout in the node status
+                // We'll use basic interface status for now
+                $active = isset($interface['active']) && $interface['active'] ? 1 : 0;
+
+                $stats[] = [
+                    'ifIndex' => $idx + 1,
+                    'ifInOctets' => 0,  // Would need RRD data
+                    'ifOutOctets' => 0, // Would need RRD data
+                    'ifInErrors' => 0,
+                    'ifOutErrors' => 0,
+                    'ifInUcastPkts' => 0,
+                    'ifOutUcastPkts' => 0,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchPortsStatistics failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Convert dotted decimal netmask to CIDR prefix length
+     */
+    protected function netmaskToPrefixlen(string $netmask): int
+    {
+        $long = ip2long($netmask);
+        if ($long === false) {
+            return 24;
+        }
+
+        $cidr = 0;
+        for ($i = 0; $i < 32; $i++) {
+            if (($long & (1 << (31 - $i))) !== 0) {
+                $cidr++;
+            } else {
+                break;
+            }
+        }
+
+        return $cidr;
     }
 
     public function isReachable(): bool

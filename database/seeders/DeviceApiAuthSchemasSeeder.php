@@ -448,6 +448,7 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             ['capability' => 'sensors', 'path' => '/volumes/performance',            'transform' => 'normalizePureVolumes',              'order' => 6],
             ['capability' => 'inventory', 'path' => '/hardware',                     'transform' => 'normalizePureHardware',             'order' => 1],
             ['capability' => 'inventory', 'path' => '/hosts',                        'transform' => 'normalizePureHosts',                'order' => 2],
+            ['capability' => 'storage', 'path' => '/volumes', 											 'transform' => 'normalizePureVolumesToStorage', 'order' => 5],
         ] as $e) { $upsertEndpoint($pureTemplate->id, $e); }
 
         // Proxmox VE (Token)

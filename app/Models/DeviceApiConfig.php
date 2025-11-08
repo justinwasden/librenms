@@ -29,33 +29,21 @@ class DeviceApiConfig extends Model
         'values' => 'array',
     ];
 
-    /**
-     * Get the device this config belongs to
-     */
     public function device(): BelongsTo
     {
         return $this->belongsTo(Device::class, 'device_id', 'device_id');
     }
 
-    /**
-     * Get the auth schema
-     */
     public function schema(): BelongsTo
     {
         return $this->belongsTo(DeviceApiAuthSchema::class, 'schema_id');
     }
 
-    /**
-     * Get the template (if used)
-     */
     public function template(): BelongsTo
     {
         return $this->belongsTo(DeviceApiTemplate::class, 'template_id');
     }
 
-    /**
-     * Get a decrypted value from the config
-     */
     public function getValue(string $key, $default = null)
     {
         $values = $this->values ?? [];
@@ -87,9 +75,6 @@ class DeviceApiConfig extends Model
         return $value;
     }
 
-    /**
-     * Set an encrypted value in the config
-     */
     public function setValue(string $key, $value): void
     {
         $values = $this->values ?? [];
@@ -111,9 +96,6 @@ class DeviceApiConfig extends Model
         $this->values = $values;
     }
 
-    /**
-     * Set multiple values at once
-     */
     public function setValues(array $keyValues): void
     {
         foreach ($keyValues as $key => $value) {

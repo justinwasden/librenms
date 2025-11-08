@@ -24,7 +24,9 @@ use LibreNMS\Enum\Severity;
 use LibreNMS\Exceptions\HostExistsException;
 use LibreNMS\Exceptions\InvalidIpException;
 use LibreNMS\OS;
+use LibreNMS\Polling\ModuleStatus;
 use LibreNMS\Util\IP;
+use LibreNMS\Util\Module;
 use LibreNMS\Util\Number;
 use LibreNMS\Util\UserFuncHelper;
 
@@ -151,6 +153,9 @@ function discover_device(&$device, $force_module = false)
     $measurements = app(\App\Polling\Measure\MeasurementManager::class);
     $measurements->checkpoint(); // don't count previous stats
 
+    // Create OS instance once for modern modules (device array is passed by reference)
+    $os = OS::make($device);
+
     foreach ($discovery_modules as $module => $module_status) {
         $os_module_status = LibrenmsConfig::getOsSetting($device['os'], "discovery_modules.$module");
         $device_module_status = DeviceCache::getPrimary()->getAttrib('discover_' . $module);
@@ -167,14 +172,37 @@ function discover_device(&$device, $force_module = false)
             echo "\n#### Load disco module $module ####\n";
 
             try {
-                include "includes/discovery/$module.inc.php";
+                // Try modern module first (matches polling pattern)
+                $moduleInstance = Module::fromName($module);
+                $should_discover = false;
+
+                // Check if it's a modern module (not LegacyModule)
+                if (! ($moduleInstance instanceof \LibreNMS\Modules\LegacyModule)) {
+                    $module_status_obj = new ModuleStatus(
+                        $module_status,
+                        $os_module_status,
+                        $device_module_status,
+                        null
+                    );
+
+                    $should_discover = $moduleInstance->shouldDiscover($os, $module_status_obj);
+
+                    if ($should_discover) {
+                        Log::debug($module_status_obj);
+                        $moduleInstance->discover($os);
+                    }
+                } else {
+                    // Fallback to legacy include for backward compatibility
+                    include "includes/discovery/$module.inc.php";
+                    $should_discover = true;
+                }
             } catch (Throwable $e) {
                 // Re-throw exception if we're in running tests
                 if (defined('PHPUNIT_RUNNING')) {
                     throw $e;
                 }
 
-                // isolate module exceptions so they don't disrupt the polling process
+                // isolate module exceptions so they don't disrupt the discovery process
                 Eventlog::log("Error discovering $module module. Check log file for more details.", $device['device_id'], 'discovery', Severity::Error);
                 report($e);
             }

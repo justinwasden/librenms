@@ -20,7 +20,7 @@
  *
  * @link       https://www.librenms.org
  *
- * @copyright 2015 Daniel Preussker, QuxLabs UG
+ * @copyright  2015 Daniel Preussker, QuxLabs UG
  * @copyright  2022 Tony Murray
  * @author    Daniel Preussker
  * @author     Tony Murray <murraytony@gmail.com>
@@ -42,7 +42,12 @@ class Notifications
         $notifications = self::fetch();
         echo '[ ' . date('r') . ' ] Updating DB ';
         foreach ($notifications as $notif) {
-            if (! Notification::where('checksum', $notif['checksum'])->exists()) {
+            // Use withoutGlobalScopes() to avoid unexpected joins/selects (e.g., users.username)
+            $exists = Notification::withoutGlobalScopes()
+                ->where('checksum', $notif['checksum'])
+                ->exists();
+
+            if (! $exists) {
                 Notification::create($notif);
                 echo '.';
             }
@@ -64,16 +69,29 @@ class Notifications
     {
         $checksum = hash('sha512', $title . $message);
 
-        return Notification::firstOrCreate([
-            'checksum' => $checksum,
-        ], [
-            'title' => $title,
-            'body' => $message,
+        // Avoid global scopes that might inject users.username into selects
+        $exists = Notification::withoutGlobalScopes()
+            ->where('checksum', $checksum)
+            ->exists();
+
+        if ($exists) {
+            return false;
+        }
+
+        // Normalize date (Y-m-d); default to today if parsing fails
+        $parsed = is_null($date) ? time() : strtotime($date);
+        $datetime = date('Y-m-d', $parsed ?: time());
+
+        Notification::create([
+            'title'    => $title,
+            'body'     => $message,
             'severity' => $severity,
-            'source' => $source,
+            'source'   => $source,
             'checksum' => $checksum,
-            'datetime' => date('Y-m-d', is_null($date) ? time() : strtotime($date)),
-        ])->wasRecentlyCreated;
+            'datetime' => $datetime,
+        ]);
+
+        return true;
     }
 
     /**
@@ -93,15 +111,36 @@ class Notifications
     protected static function fetch(): array
     {
         $notifications = [];
-        foreach (LibrenmsConfig::get('notifications') as $name => $url) {
+
+        // If no external notifications configured, return empty list
+        $sources = (array) LibrenmsConfig::get('notifications', []);
+        if (empty($sources)) {
+            return [];
+        }
+
+        foreach ($sources as $name => $url) {
             echo '[ ' . date('r') . " ] $name $url ";
 
-            $feed = json_decode(json_encode(simplexml_load_string(file_get_contents($url))), true);
-            $feed = isset($feed['channel']) ? self::parseRss($feed) : self::parseAtom($feed);
+            $xml = @file_get_contents($url);
+            if ($xml === false) {
+                echo "(0)\n";
+                continue;
+            }
+
+            $feedArray = json_decode(json_encode(@simplexml_load_string($xml)), true);
+            if (!is_array($feedArray)) {
+                echo "(0)\n";
+                continue;
+            }
+
+            $feed = isset($feedArray['channel'])
+                ? self::parseRss($feedArray)
+                : self::parseAtom($feedArray);
 
             array_walk($feed, function (&$items, $key, $url): void {
                 $items['source'] = $url;
             }, $url);
+
             $notifications = array_merge($notifications, $feed);
 
             echo '(' . count($notifications) . ')' . PHP_EOL;
@@ -118,8 +157,8 @@ class Notifications
         }
         foreach ($feed['channel']['item'] as $item) {
             $obj[] = [
-                'title' => $item['title'],
-                'body' => $item['description'],
+                'title'    => $item['title'],
+                'body'     => $item['description'],
                 'checksum' => hash('sha512', $item['title'] . $item['description']),
                 'datetime' => date('Y-m-d', strtotime($item['pubDate']) ?: time()),
             ];
@@ -142,8 +181,8 @@ class Notifications
         }
         foreach ($feed['entry'] as $item) {
             $obj[] = [
-                'title' => $item['title'],
-                'body' => $item['content'],
+                'title'    => $item['title'],
+                'body'     => $item['content'],
                 'checksum' => hash('sha512', $item['title'] . $item['content']),
                 'datetime' => date('Y-m-d', strtotime($item['updated']) ?: time()),
             ];

@@ -137,7 +137,136 @@ class FlashArrayClient implements DeviceApiClientInterface
 
     public function capabilities(): array
     {
-        return ['sensors', 'ports', 'inventory'];
+        return ['sensors', 'ports', 'inventory', 'storage', 'transceivers', 'ipv4', 'ports_stats', 'storage_details'];
+    }
+
+    /**
+     * Fetch detailed controller information
+     */
+    public function fetchControllers(Device $device): array
+    {
+        $controllers = [];
+
+        try {
+            $data = $this->get('/controllers');
+            $items = $data['items'] ?? [];
+
+            foreach ($items as $controller) {
+                $controllers[] = [
+                    'controller_name' => $controller['name'] ?? 'Unknown',
+                    'model' => $controller['model'] ?? null,
+                    'status' => $controller['status'] ?? null,
+                    'mode' => $controller['mode'] ?? null,
+                    'version' => $controller['version'] ?? null,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchControllers failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $controllers;
+    }
+
+    /**
+     * Fetch detailed volume information with performance metrics
+     */
+    public function fetchVolumes(Device $device): array
+    {
+        $volumes = [];
+
+        try {
+            // Get volume list and basic info
+            $volumeData = $this->get('/volumes');
+            $items = $volumeData['items'] ?? [];
+
+            // Get performance data for volumes
+            $perfData = $this->get('/volumes/performance');
+            $perfItems = $perfData['items'] ?? [];
+
+            // Create a map of performance data by volume name
+            $perfMap = [];
+            foreach ($perfItems as $perf) {
+                $name = $perf['name'] ?? null;
+                if ($name) {
+                    $perfMap[$name] = $perf;
+                }
+            }
+
+            foreach ($items as $volume) {
+                $name = $volume['name'] ?? 'Unknown';
+                $perf = $perfMap[$name] ?? [];
+
+                $volumes[] = [
+                    'volume_name' => $name,
+                    'volume_id' => $volume['id'] ?? null,
+                    'read_bandwidth' => $perf['read_bytes_per_sec'] ?? 0,
+                    'write_bandwidth' => $perf['write_bytes_per_sec'] ?? 0,
+                    'read_iops' => $perf['reads_per_sec'] ?? 0,
+                    'write_iops' => $perf['writes_per_sec'] ?? 0,
+                    'read_latency' => $perf['usec_per_read_op'] ?? null,
+                    'write_latency' => $perf['usec_per_write_op'] ?? null,
+                    'size_bytes' => $volume['provisioned'] ?? 0,
+                    'used_bytes' => $volume['space']['total_physical'] ?? 0,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchVolumes failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $volumes;
+    }
+
+    /**
+     * Fetch connected host information
+     */
+    public function fetchHosts(Device $device): array
+    {
+        $hosts = [];
+
+        try {
+            $data = $this->get('/hosts');
+            $items = $data['items'] ?? [];
+
+            foreach ($items as $host) {
+                $name = $host['name'] ?? 'Unknown';
+
+                // Get host connectivity details
+                $portStatus = 'unknown';
+                $portDetails = [];
+
+                if (isset($host['connection_count'])) {
+                    $portStatus = $host['connection_count'] > 0 ? 'connected' : 'offline';
+                    $portDetails[] = "Connections: {$host['connection_count']}";
+                }
+
+                $hosts[] = [
+                    'host_name' => $name,
+                    'personality' => $host['personality'] ?? null,
+                    'host_group' => $host['hgroup'] ?? null,
+                    'is_local' => $host['is_local'] ?? false,
+                    'port_connectivity_status' => $portStatus,
+                    'port_connectivity_details' => !empty($portDetails) ? implode(', ', $portDetails) : null,
+                    'iqn' => $host['iqn'][0] ?? null,
+                    'wwns' => isset($host['wwn']) ? json_encode($host['wwn']) : null,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchHosts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $hosts;
     }
 
     public function fetchSensors(Device $device): array
@@ -155,6 +284,7 @@ class FlashArrayClient implements DeviceApiClientInterface
                 // Capacity sensors
                 if (isset($array['capacity'])) {
                     $sensors[] = [
+                        'sensor_index'   => 'array-1-total-capacity',
                         'sensor_class' => 'count',
                         'sensor_type' => 'purestorage',
                         'sensor_descr' => "$name Total Capacity",
@@ -358,9 +488,132 @@ class FlashArrayClient implements DeviceApiClientInterface
         return $inventory;
     }
 
+    public function fetchStorage(Device $device): array
+    {
+        $storage = [];
+
+        try {
+            // Get volumes for storage information
+            $volumeData = $this->get('/volumes');
+            $items = $volumeData['items'] ?? [];
+
+            foreach ($items as $idx => $volume) {
+                $name = $volume['name'] ?? "volume$idx";
+                $size = $volume['provisioned'] ?? 0;
+                $used = $volume['space']['total_physical'] ?? 0;
+
+                $storage[] = [
+                    'storage_index' => 'volume-' . $idx,
+                    'storage_descr' => $name,
+                    'storage_type' => 'purestorage-volume',
+                    'storage_size' => $size,
+                    'storage_used' => $used,
+                    'storage_free' => max(0, $size - $used),
+                    'storage_units' => 1,
+                    'storage_perc' => $size > 0 ? round(($used / $size) * 100, 2) : 0,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchStorage failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $storage;
+    }
+
+    public function fetchTransceivers(Device $device): array
+    {
+        $transceivers = [];
+
+        try {
+            // Get port details which may include transceiver information
+            $portData = $this->get('/ports');
+            $items = $portData['items'] ?? [];
+
+            foreach ($items as $idx => $port) {
+                if (!empty($port['wwn'])) {
+                    // This is a Fibre Channel port
+                    $transceivers[] = [
+                        'ifIndex' => $idx + 1,
+                        'port_id' => null, // Will be resolved by persistor
+                        'port_descr_type' => $port['name'] ?? '',
+                        'port_descr_descr' => $port['wwn'] ?? '',
+                        'port_descr_speed' => '',
+                        'port_descr_circuit' => '',
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchTransceivers failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $transceivers;
+    }
+
     public function fetchIpv4Addresses(Device $device): array
     {
-        return [];
+        $addresses = [];
+
+        try {
+            $data = $this->get('/network-interfaces');
+            $items = $data['items'] ?? [];
+
+            foreach ($items as $idx => $interface) {
+                if (!empty($interface['address'])) {
+                    $addresses[] = [
+                        'ifIndex' => $idx + 1,
+                        'ipv4_address' => $interface['address'],
+                        'ipv4_prefixlen' => $interface['netmask'] ?? 24, // Convert mask if needed
+                        'context_name' => '',
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchIpv4Addresses failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $addresses;
+    }
+
+    public function fetchPortsStatistics(Device $device): array
+    {
+        $stats = [];
+
+        try {
+            $perfData = $this->get('/network-interfaces/performance');
+            $items = $perfData['items'] ?? [];
+
+            foreach ($items as $idx => $perf) {
+                $stats[] = [
+                    'ifIndex' => $idx + 1,
+                    'ifInOctets' => $perf['received_bytes_per_sec'] ?? 0,
+                    'ifOutOctets' => $perf['transmitted_bytes_per_sec'] ?? 0,
+                    'ifInErrors' => $perf['received_errors_per_sec'] ?? 0,
+                    'ifOutErrors' => $perf['transmitted_errors_per_sec'] ?? 0,
+                    'ifInUcastPkts' => $perf['received_packets_per_sec'] ?? 0,
+                    'ifOutUcastPkts' => $perf['transmitted_packets_per_sec'] ?? 0,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('PureStorage fetchPortsStatistics failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $stats;
     }
 
     public function isReachable(): bool

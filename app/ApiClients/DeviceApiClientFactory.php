@@ -17,6 +17,7 @@ class DeviceApiClientFactory
         'vmware_vcenter' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_vcenter_default' => \App\ApiClients\VMware\VCenterClient::class,
         'fortinet_fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
+        'netapp_ontap' => \App\ApiClients\NetApp\OntapClient::class,
     ];
 
     /**
@@ -29,6 +30,7 @@ class DeviceApiClientFactory
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         \App\ApiClients\VMware\VCenterClient::class,
         \App\ApiClients\Fortinet\FortiGateClient::class,
+        \App\ApiClients\NetApp\OntapClient::class,
         \App\ApiClients\GenericDeviceApiClient::class, // Fallback for templates without specific clients
     ];
 

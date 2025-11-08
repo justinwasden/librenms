@@ -22,9 +22,21 @@ interface DeviceApiClientInterface
     public function fetchProcessors(Device $device): array;
     public function fetchInventory(Device $device): array;
 
+    // Storage (optional capability)
+    // Return an array of entries with keys: storage_descr, storage_type, storage_index, storage_size, storage_used, storage_units
+    public function fetchStorage(Device $device): array;
+
+    // Transceivers (optional capability)
+    // Return an array of entries with keys: ifIndex or port_id, and optics fields
+    public function fetchTransceivers(Device $device): array;
+
     // IPv4 addresses (optional capability)
     // Return an array of entries with keys: ifIndex, ipv4_address, ipv4_prefixlen, context_name
     public function fetchIpv4Addresses(Device $device): array;
+
+    // Ports statistics (optional capability - for polling)
+    // Return an array of entries with keys: ifIndex and counter fields (ifInOctets, ifOutOctets, etc.)
+    public function fetchPortsStatistics(Device $device): array;
 
     /**
      * Low-level HTTP transport methods

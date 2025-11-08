@@ -124,6 +124,8 @@ Route::middleware(['auth'])->group(function (): void {
     // REST API actions (admin only)
     Route::post('/device/{device}/test-api-connection', [App\Http\Controllers\Device\EditDeviceController::class, 'testConnection'])->name('device.test-api-connection');
     Route::post('/device/{device}/reset-circuit-breaker', [App\Http\Controllers\Device\EditDeviceController::class, 'resetCircuitBreaker'])->name('device.reset-circuit-breaker');
+    Route::post('/device/{device}/toggle-endpoint', [App\Http\Controllers\Device\EditDeviceController::class, 'toggleEndpoint'])->name('device.toggle-endpoint');
+    Route::post('/device/{device}/update-endpoint', [App\Http\Controllers\Device\EditDeviceController::class, 'updateEndpoint'])->name('device.update-endpoint');
 		});
 
     Route::prefix('device/{device}')->name('device.')->group(function (): void {

@@ -60,7 +60,11 @@ class PollDevice implements ShouldQueue
         // check and save status
         app(CheckDeviceAvailability::class)->execute($this->device, true);
 
+        // SNMP and legacy modules
         $this->pollModules();
+
+        // NEW: run REST API polling for devices with API enabled
+        $this->pollRestApiIfEnabled();
 
         $measurement->end();
 
@@ -155,6 +159,53 @@ class PollDevice implements ShouldQueue
                 $this->saveModulePerformance($module, $module_start, $start_memory);
                 Log::info("#### Unload poller module $module ####\n");
             }
+        }
+    }
+
+    /**
+     * NEW: REST API polling integrated into normal poll cycle.
+     * Runs for devices that have REST enabled and a valid template/config.
+     */
+    private function pollRestApiIfEnabled(): void
+    {
+        try {
+            // Load fresh API config and attribs
+            $apiConfig = $this->device->apiConfig()->with('template')->first();
+            $restEnabledRaw = $this->device->getAttrib('rest_enabled', null);
+
+            // Accept common truthy forms: 1, "1", true, "true", "yes", "on"
+            $truthy = ['1', 'true', 'yes', 'on'];
+            $restEnabled = $restEnabledRaw === null
+                ? ($apiConfig !== null)
+                : in_array(strtolower((string) $restEnabledRaw), $truthy, true);
+
+            $tplKey = $apiConfig?->template?->key ?? (string) $this->device->getAttrib('rest_template_key', '');
+
+            Log::info("REST API polling check: device={$this->device->device_id} rest=" . ($restEnabled ? 'enabled' : 'disabled') . " raw='" . (string) $restEnabledRaw . "' tpl='" . ($tplKey ?: '(none)') . "'");
+
+            if (! $restEnabled || $tplKey === '') {
+                return;
+            }
+
+            // Resolve base URL and construct client
+            \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($this->device);
+            $client = \App\ApiClients\DeviceApiClientFactory::make($this->device);
+            if (! $client) {
+                Log::warning("REST API polling skipped for device {$this->device->device_id}: no client");
+                return;
+            }
+
+            $executor = new \App\Services\DeviceApiExecutor();
+
+            // Execute polling endpoints (templates may intermix poll/discovery)
+            $executor->run($this->device, $tplKey, $client);
+
+            // Record success for circuit breaker / latency tracking
+            \LibreNMS\Util\DeviceApiSettings::recordSuccess($this->device, 0);
+            Log::info("REST API polling successful for device {$this->device->device_id}");
+        } catch (\Throwable $e) {
+            Log::warning("REST API polling failed for device {$this->device->device_id}: " . $e->getMessage());
+            \LibreNMS\Util\DeviceApiSettings::recordError($this->device, $e->getMessage());
         }
     }
 

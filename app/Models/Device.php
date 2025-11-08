@@ -773,6 +773,14 @@ class Device extends BaseModel
     }
 
     /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\DeviceApiEndpoint>
+     */
+    public function apiEndpoints(): HasMany
+    {
+        return $this->hasMany(DeviceApiEndpoint::class, 'device_id', 'device_id');
+    }
+
+    /**
      * @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\Availability, $this>
      */
     public function availability(): HasMany
@@ -834,6 +842,14 @@ class Device extends BaseModel
     public function hostResourceValues(): HasOne
     {
         return $this->hasOne(HrSystem::class, 'device_id');
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\StorageArray, $this>
+     */
+    public function storageArray(): HasOne
+    {
+        return $this->hasOne(StorageArray::class, 'device_id', 'device_id');
     }
 
     /**

@@ -28,10 +28,11 @@ class SensorObserver
     public function creating(Sensor $sensor): void
     {
         // fix inverted warn limits
-        if ($sensor->sensor_limit_warn !== null && $sensor->sensor_limit_low_warn !== null && $sensor->sensor_limit_low_warn > $sensor->sensor_limit_warn) {
+        if ($sensor->sensor_limit_warn !== null
+            && $sensor->sensor_limit_low_warn !== null
+            && $sensor->sensor_limit_low_warn > $sensor->sensor_limit_warn) {
             Log::error('Fixing swapped sensor warn limits');
 
-            // Fix high/low thresholds (i.e. on negative numbers)
             [$sensor->sensor_limit_warn, $sensor->sensor_limit_low_warn] = [$sensor->sensor_limit_low_warn, $sensor->sensor_limit_warn];
         }
 
@@ -39,8 +40,10 @@ class SensorObserver
             $sensor->guessLimits($sensor->sensor_limit === null, $sensor->sensor_limit_low === null);
         }
 
-        // Fix high/low thresholds (i.e. on negative numbers)
-        if ($sensor->sensor_limit !== null && $sensor->sensor_limit_low > $sensor->sensor_limit) {
+        // Fix high/low thresholds only if both set
+        if ($sensor->sensor_limit !== null
+            && $sensor->sensor_limit_low !== null
+            && $sensor->sensor_limit_low > $sensor->sensor_limit) {
             Log::error('Fixing swapped sensor limits');
 
             [$sensor->sensor_limit, $sensor->sensor_limit_low] = [$sensor->sensor_limit_low, $sensor->sensor_limit];
@@ -55,8 +58,15 @@ class SensorObserver
      */
     public function created(Sensor $sensor): void
     {
-        Eventlog::log('Sensor Added: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr, $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
-        Log::info("$sensor->sensor_descr: Cur $sensor->sensor_current, Low: $sensor->sensor_limit_low, Low Warn: $sensor->sensor_limit_low_warn, Warn: $sensor->sensor_limit_warn, High: $sensor->sensor_limit");
+        Eventlog::log(
+            'Sensor Added: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr,
+            $sensor->device_id,
+            'sensor',
+            Severity::Notice,
+            $sensor->sensor_id
+        );
+
+        Log::info("{$sensor->sensor_descr}: Cur {$sensor->sensor_current}, Low: {$sensor->sensor_limit_low}, Low Warn: {$sensor->sensor_limit_low_warn}, Warn: {$sensor->sensor_limit_warn}, High: {$sensor->sensor_limit}");
 
         if ($this->consoleOutputEnabled) {
             echo '+';
@@ -73,13 +83,13 @@ class SensorObserver
     {
         // prevent update of limits
         if ($sensor->sensor_custom == 'Yes') {
-            // if custom is set to yes (future someone's problem to allow ui to update this with eloquent)
+            // Revert to original limits if custom is set
             $sensor->sensor_limit = $sensor->getOriginal('sensor_limit');
             $sensor->sensor_limit_warn = $sensor->getOriginal('sensor_limit_warn');
             $sensor->sensor_limit_low_warn = $sensor->getOriginal('sensor_limit_low_warn');
             $sensor->sensor_limit_low = $sensor->getOriginal('sensor_limit_low');
         } else {
-            // change unset sensor limits to current values
+            // Preserve existing values if unset
             $sensor->sensor_limit ??= $sensor->getOriginal('sensor_limit');
             $sensor->sensor_limit_warn ??= $sensor->getOriginal('sensor_limit_warn');
             $sensor->sensor_limit_low_warn ??= $sensor->getOriginal('sensor_limit_low_warn');
@@ -91,32 +101,56 @@ class SensorObserver
     {
         // log limit changes
         if ($sensor->sensor_custom == 'No') {
-            if ($sensor->isDirty('sensor_limit')) {
-                Eventlog::log('Sensor High Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit . ')', $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
+            if ($sensor->wasChanged('sensor_limit')) {
+                Eventlog::log(
+                    'Sensor High Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit . ')',
+                    $sensor->device_id,
+                    'sensor',
+                    Severity::Notice,
+                    $sensor->sensor_id
+                );
 
                 if ($this->consoleOutputEnabled) {
                     echo 'H';
                 }
             }
 
-            if ($sensor->isDirty('sensor_limit_low')) {
-                Eventlog::log('Sensor Low Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_low . ')', $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
+            if ($sensor->wasChanged('sensor_limit_low')) {
+                Eventlog::log(
+                    'Sensor Low Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_low . ')',
+                    $sensor->device_id,
+                    'sensor',
+                    Severity::Notice,
+                    $sensor->sensor_id
+                );
 
                 if ($this->consoleOutputEnabled) {
                     echo 'L';
                 }
             }
 
-            if ($sensor->isDirty('sensor_limit_warn')) {
-                Eventlog::log('Sensor Warn High Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_warn . ')', $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
+            if ($sensor->wasChanged('sensor_limit_warn')) {
+                Eventlog::log(
+                    'Sensor Warn High Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_warn . ')',
+                    $sensor->device_id,
+                    'sensor',
+                    Severity::Notice,
+                    $sensor->sensor_id
+                );
 
                 if ($this->consoleOutputEnabled) {
                     echo 'WH';
                 }
             }
 
-            if ($sensor->isDirty('sensor_limit_low_warn')) {
-                Eventlog::log('Sensor Warn Low Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_low_warn . ')', $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
+            if ($sensor->wasChanged('sensor_limit_low_warn')) {
+                Eventlog::log(
+                    'Sensor Warn Low Limit Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr . ' (' . $sensor->sensor_limit_low_warn . ')',
+                    $sensor->device_id,
+                    'sensor',
+                    Severity::Notice,
+                    $sensor->sensor_id
+                );
 
                 if ($this->consoleOutputEnabled) {
                     echo 'WL';
@@ -129,8 +163,14 @@ class SensorObserver
         }
 
         // only post eventlog when relevant columns change
-        if ($sensor->isDirty(['sensor_class', 'sensor_oid', 'sensor_index', 'sensor_type', 'sensor_descr', 'group', 'sensor_divisor', 'sensor_multiplier', 'entPhysicalIndex', 'entPhysicalIndex_measured', 'user_func'])) {
-            Eventlog::log('Sensor Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr, $sensor->device_id, 'sensor', Severity::Notice, $sensor->sensor_id);
+        if ($sensor->wasChanged(['sensor_class', 'sensor_oid', 'sensor_index', 'sensor_type', 'sensor_descr', 'group', 'sensor_divisor', 'sensor_multiplier', 'entPhysicalIndex', 'entPhysicalIndex_measured', 'user_func'])) {
+            Eventlog::log(
+                'Sensor Updated: ' . $sensor->sensor_class . ' ' . $sensor->sensor_type . ' ' . $sensor->sensor_index . ' ' . $sensor->sensor_descr,
+                $sensor->device_id,
+                'sensor',
+                Severity::Notice,
+                $sensor->sensor_id
+            );
         }
     }
 

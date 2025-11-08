@@ -11,108 +11,139 @@ use LibreNMS\Modules\Support\RestNormalizers;
  *
  * Runs payload transforms to map API responses to normalized arrays suitable for persistence.
  * Supports:
- * - Vendor-specific normalizers (existing in RestNormalizers)
+ * - Fully-qualified transform strings: "\\Namespace\\Class::method"
+ * - Vendor normalizers in RestNormalizers via short method names
  * - Generic field mapping via endpoint-provided "transform_map"
  */
 class TransformRunner
 {
     /**
-     * @param Device $device
-     * @param array $template The loaded template array
-     * @param array $endpoint The endpoint definition (capability, method, path, transform, transform_map, headers, request_body)
-     * @param mixed $payload The raw payload fetched from the endpoint
-     * @return array Mapped rows
+     * Run a transform and return mapped rows.
+     *
+     * @param mixed  $transform Fully-qualified "Class::method" or short name in RestNormalizers, or null
+     * @param Device $device    The Device model
+     * @param array  $payload   Raw payload from the endpoint (decoded JSON)
+     * @param array  $endpoint  Endpoint definition (capability, method, path, transform, transform_map, headers, request_body)
+     * @return array Mapped rows (flat or structured)
      */
-    public static function run(Device $device, array $template, array $endpoint, $payload): array
+    public static function run($transform, Device $device, array $payload, array $endpoint): array
     {
-        $transformKey = $endpoint['transform'] ?? null;
-
-        // Case 1: vendor normalizer function exists
-        if (is_string($transformKey) && method_exists(RestNormalizers::class, $transformKey)) {
-            // Some normalizers require additional arguments, adapt as needed
-            try {
-                return RestNormalizers::{$transformKey}($payload);
-            } catch (\ArgumentCountError $e) {
-                // Try alternative signatures that are common in your codebase
+        // Case 1: Fully-qualified class method "Class::method"
+        if (is_string($transform) && strpos($transform, '::') !== false) {
+            [$class, $method] = explode('::', $transform, 2);
+            if (class_exists($class) && method_exists($class, $method)) {
                 try {
-                    return RestNormalizers::{$transformKey}($payload, 60); // e.g. poll interval
-                } catch (\Throwable $ignored) {
-                    Log::warning("Transform {$transformKey} failed: {$ignored->getMessage()}");
+                    // For RestNormalizers, try old signature first: (array $payload)
+                    if ($class === RestNormalizers::class || $class === '\\LibreNMS\\Modules\\Support\\RestNormalizers') {
+                        return call_user_func([$class, $method], $payload);
+                    }
+
+                    // For other classes, prefer new signature: ($device, $payload, $endpoint)
+                    return call_user_func([$class, $method], $device, $payload, $endpoint);
+                } catch (\ArgumentCountError $e) {
+                    // Fallbacks for different signatures
+                    try {
+                        return call_user_func([$class, $method], $payload);
+                    } catch (\ArgumentCountError $e2) {
+                        try {
+                            return call_user_func([$class, $method], $payload, 60); // e.g., poll interval fallback
+                        } catch (\Throwable $e3) {
+                            Log::warning("Transform FQCN {$transform} failed: " . $e3->getMessage());
+                            return [];
+                        }
+                    } catch (\Throwable $e2t) {
+                        Log::warning("Transform FQCN {$transform} failed: " . $e2t->getMessage());
+                        return [];
+                    }
+                } catch (\TypeError $e) {
+                    // Type errors (e.g., passing Device when array expected) - try payload-only signature
+                    try {
+                        return call_user_func([$class, $method], $payload);
+                    } catch (\Throwable $e2) {
+                        Log::warning("Transform FQCN {$transform} failed: " . $e2->getMessage());
+                        return [];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Transform FQCN {$transform} failed: " . $e->getMessage() . " | File: " . $e->getFile() . ":" . $e->getLine());
+                    if ($e instanceof \ParseError) {
+                        \Log::error("ParseError trace: " . $e->getTraceAsString());
+                    }
+                    return [];
+                }
+            }
+        }
+
+        // Case 2: Short method names in RestNormalizers (legacy)
+        if (is_string($transform) && method_exists(RestNormalizers::class, $transform)) {
+            try {
+                return call_user_func([RestNormalizers::class, $transform], $payload);
+            } catch (\ArgumentCountError $e) {
+                try {
+                    return call_user_func([RestNormalizers::class, $transform], $payload, 60);
+                } catch (\ArgumentCountError $e2) {
+                    try {
+                        return call_user_func([RestNormalizers::class, $transform], $device, $payload, $endpoint);
+                    } catch (\Throwable $e3) {
+                        Log::warning("Transform {$transform} failed: " . $e3->getMessage());
+                        return [];
+                    }
+                } catch (\Throwable $e2t) {
+                    Log::warning("Transform {$transform} failed: " . $e2t->getMessage());
+                    return [];
                 }
             } catch (\Throwable $e) {
-                Log::warning("Transform {$transformKey} failed: {$e->getMessage()}");
+                Log::warning("Transform {$transform} failed: " . $e->getMessage());
+                return [];
             }
-
-            return [];
         }
 
-        // Case 2: generic mapping via transform_map
-        // Example transform_map:
-        // {
-        //   "list_path": "response.items",       // dot path where list resides
-        //   "capability": "ports",
-        //   "fields": {                          // map source->destination
-        //     "id": "ifIndex",
-        //     "name": "ifName",
-        //     "description": "ifDescr",
-        //     "type": "ifType",
-        //     "speed_bps": "ifSpeed",
-        //     "admin": "ifAdminStatus",
-        //     "oper": "ifOperStatus",
-        //     "mtu": "ifMtu",
-        //     "mac": "ifPhysAddress",
-        //     "alias": "ifAlias"
-        //   }
-        // }
+        // Case 3: Generic transform_map
         $map = $endpoint['transform_map'] ?? null;
         if (is_array($map)) {
-            $capability = $map['capability'] ?? ($endpoint['capability'] ?? 'general');
-            $listPath = $map['list_path'] ?? null;
-            $fields = $map['fields'] ?? [];
-
-            $rows = self::extractListByPath($payload, $listPath);
-            $out = [];
-
-            foreach ($rows as $row) {
-                $mappedRow = [];
-                foreach ($fields as $src => $dst) {
-                    $mappedRow[$dst] = self::dotGet($row, $src);
-                }
-
-                // Capability-specific tweaks
-                switch ($capability) {
-                    case 'ports':
-                        // Normalize MAC, status, etc. as needed
-                        $mappedRow['ifPhysAddress'] = $mappedRow['ifPhysAddress'] ?? '';
-                        $mappedRow['ifOperStatus'] = self::normalizeStatus($mappedRow['ifOperStatus'] ?? null);
-                        $mappedRow['ifAdminStatus'] = self::normalizeStatus($mappedRow['ifAdminStatus'] ?? null);
-                        break;
-                    case 'sensors':
-                        // Ensure sensor_current numeric, limits optional
-                        $mappedRow['sensor_current'] = self::extractNumber($mappedRow['sensor_current'] ?? null);
-                        break;
-                    default:
-                        // no-op
-                }
-
-                $out[] = $mappedRow;
-            }
-
-            return $out;
+            return self::applyMap($endpoint['capability'] ?? 'general', $payload, $map);
         }
 
-        // Unknown transform and no map: try to infer by capability in simple cases
-        $cap = $endpoint['capability'] ?? 'general';
-        return self::inferSimple($cap, $payload);
+        // Fallback: infer minimal mapping by capability
+        return self::inferSimple($endpoint['capability'] ?? 'general', $payload);
     }
 
-    /**
-     * Extract list from payload by dot path (e.g., "response.items").
-     */
-    private static function extractListByPath($payload, ?string $dotPath): array
+    private static function applyMap(string $capability, array $payload, array $map): array
+    {
+        $listPath = $map['list_path'] ?? null;
+        $fields = $map['fields'] ?? [];
+
+        $rows = self::extractListByPath($payload, $listPath);
+        $out = [];
+
+        foreach ($rows as $row) {
+            $mappedRow = [];
+            foreach ($fields as $src => $dst) {
+                $mappedRow[$dst] = self::dotGet($row, $src);
+            }
+
+            switch ($capability) {
+                case 'ports':
+                    $mappedRow['ifPhysAddress'] = $mappedRow['ifPhysAddress'] ?? '';
+                    $mappedRow['ifOperStatus'] = self::normalizeStatus($mappedRow['ifOperStatus'] ?? null);
+                    $mappedRow['ifAdminStatus'] = self::normalizeStatus($mappedRow['ifAdminStatus'] ?? null);
+                    break;
+                case 'sensors':
+                    $mappedRow['sensor_current'] = self::extractNumber($mappedRow['sensor_current'] ?? null);
+                    break;
+                default:
+                    // no-op
+            }
+
+            $out[] = $mappedRow;
+        }
+
+        return $out;
+    }
+
+    private static function extractListByPath(array $payload, ?string $dotPath): array
     {
         if (!$dotPath) {
-            return is_array($payload) ? $payload : [];
+            return $payload;
         }
 
         $data = $payload;
@@ -127,9 +158,6 @@ class TransformRunner
         return is_array($data) ? $data : [];
     }
 
-    /**
-     * Dot get from array.
-     */
     private static function dotGet(array $row, string $path)
     {
         $data = $row;
@@ -173,16 +201,12 @@ class TransformRunner
         return null;
     }
 
-    /**
-     * Try to infer minimal mapping by capability if payload is already close to target.
-     */
-    private static function inferSimple(string $capability, $payload): array
+    private static function inferSimple(string $capability, array $payload): array
     {
-        $rows = is_array($payload) ? $payload : [];
+        $rows = $payload;
 
         switch ($capability) {
             case 'ports':
-                // if payload already has ifIndex/ifName keys, pass through
                 return array_values(array_filter($rows, function ($r) {
                     return is_array($r) && (isset($r['ifIndex']) || isset($r['ifName']));
                 }));
@@ -202,9 +226,6 @@ class TransformRunner
         }
     }
 
-    /**
-     * Helper to discover proxmox node name from /cluster/resources payload.
-     */
     public static function discoverProxmoxNodeName(array $clusterPayload): ?string
     {
         $list = $clusterPayload['data'] ?? $clusterPayload['resources'] ?? [];

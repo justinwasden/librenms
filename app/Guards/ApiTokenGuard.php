@@ -33,7 +33,7 @@ class ApiTokenGuard extends TokenGuard
     /**
      * Get the token for the current request.
      *
-     * @return string
+     * @return string|null
      */
     public function getTokenForRequest()
     {

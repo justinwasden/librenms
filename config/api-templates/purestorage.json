@@ -116,6 +116,17 @@
             "description": "Host connectivity and space metrics",
             "poll_interval": 300,
             "category": "storage"
+        },
+        {
+            "id": "storage_details",
+            "name": "Storage Array Details",
+            "path": "/arrays",
+            "method": "GET",
+            "enabled": true,
+            "description": "Detailed storage array information including controllers, volumes, and hosts",
+            "poll_interval": 60,
+            "category": "storage",
+            "transform": "LibreNMS\\Util\\Normalizers\\PureStorageNormalizer::normalizeStorageDetails"
         }
     ]
 }
