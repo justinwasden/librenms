@@ -402,6 +402,8 @@ class DeviceApiTemplatesSeeder extends Seeder
                 'capability' => 'ports_stats',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizePortMetrics',
                 'display_order' => 60,
+                'for_each' => 'ports',
+                'for_each_options' => json_encode(['placeholder' => 'port_uuid', 'value_key' => 'uuid']),
                 'created_at' => $now, 'updated_at' => $now,
             ],
         ];
