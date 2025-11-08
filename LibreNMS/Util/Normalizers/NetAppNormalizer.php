@@ -8,7 +8,7 @@ class NetAppNormalizer
 {
     /**
      * Normalize NetApp cluster/node information to inventory
-     * Input: GET /cluster/nodes
+     * Input: GET /cluster/nodes 
      */
     public static function normalizeClusterNodes(Device $device, array $payload, array $ep = []): array
     {
