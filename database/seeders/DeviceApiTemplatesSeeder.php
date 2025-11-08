@@ -330,7 +330,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             'key' => 'netapp_ontap',
             'label' => 'NetApp ONTAP API',
             'os_keys' => json_encode(['netapp']),
-            'schema_id' => $schemaId('basic_auth'), // Assuming basic auth for NetApp ONTAP
+            'schema_id' => $schemaId('basic'), // Corrected from 'basic_auth' to 'basic'
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/api',
             ]),
