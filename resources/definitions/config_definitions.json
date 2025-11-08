@@ -1901,6 +1901,55 @@
             "default": true,
             "type": "boolean"
         },
+        "discovery_modules.device-api": {
+            "order": 100,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-ports": {
+            "order": 245,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-sensors": {
+            "order": 280,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-inventory": {
+            "order": 200,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-storage": {
+            "order": 360,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-transceivers": {
+            "order": 365,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-ipv4": {
+            "order": 175,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
         "distributed_poller": {
             "default": false,
             "group": "poller",
@@ -6065,6 +6114,62 @@
             "group": "poller",
             "section": "poller_modules",
             "default": true,
+            "type": "boolean"
+        },
+        "poller_modules.device-api": {
+            "order": 100,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ports": {
+            "order": 380,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-sensors": {
+            "order": 365,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-inventory": {
+            "order": 200,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-storage": {
+            "order": 375,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-transceivers": {
+            "order": 450,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ipv4": {
+            "order": 195,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ports-statistics": {
+            "order": 385,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
             "type": "boolean"
         },
         "poller_modules.ospf": {

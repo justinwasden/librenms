@@ -773,6 +773,27 @@ return [
             'route' => [
                 'description' => 'Route',
             ],
+            'device-api' => [
+                'description' => 'Device API',
+            ],
+            'rest-ports' => [
+                'description' => 'REST Ports',
+            ],
+            'rest-sensors' => [
+                'description' => 'REST Sensors',
+            ],
+            'rest-inventory' => [
+                'description' => 'REST Inventory',
+            ],
+            'rest-storage' => [
+                'description' => 'REST Storage',
+            ],
+            'rest-transceivers' => [
+                'description' => 'REST Transceivers',
+            ],
+            'rest-ipv4' => [
+                'description' => 'REST IPv4 Addresses',
+            ],
 
             'sensors' => [
                 'description' => 'Sensors',
@@ -1730,6 +1751,30 @@ return [
             ],
             'cisco-qfp' => [
                 'description' => 'Cisco QFP',
+            ],
+            'device-api' => [
+                'description' => 'Device API',
+            ],
+            'rest-ports' => [
+                'description' => 'REST Ports',
+            ],
+            'rest-sensors' => [
+                'description' => 'REST Sensors',
+            ],
+            'rest-inventory' => [
+                'description' => 'REST Inventory',
+            ],
+            'rest-storage' => [
+                'description' => 'REST Storage',
+            ],
+            'rest-transceivers' => [
+                'description' => 'REST Transceivers',
+            ],
+            'rest-ipv4' => [
+                'description' => 'REST IPv4 Addresses',
+            ],
+            'rest-ports-statistics' => [
+                'description' => 'REST Port Statistics',
             ],
             'cisco-vpdn' => [
                 'description' => 'Cisco VPDN',
