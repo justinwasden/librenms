@@ -96,11 +96,11 @@ class DeviceApiExecutor
                 $value_key = $options['value_key'] ?? null;
 
                 if ($placeholder && $value_key && isset($item[$value_key])) {
-                    $iteratedPath = str_replace('{' . $placeholder . '}', $item[$value_key], $path);
+                    $iterated_path = str_replace("{{$placeholder}}", $item[$value_key], $ep['path']);
                     try {
-                        Log::debug("DeviceApiExecutor GET (iterative): path={$iteratedPath}");
-                        $pathParts = parse_url($iteratedPath);
-                        $basePath = $pathParts['path'] ?? $iteratedPath;
+                        Log::debug("DeviceApiExecutor GET (iterative): path={$iterated_path}");
+                        $pathParts = parse_url($iterated_path);
+                        $basePath = $pathParts['path'] ?? $iterated_path;
                         $queryParams = [];
                         if (isset($pathParts['query'])) {
                             parse_str($pathParts['query'], $queryParams);
@@ -113,7 +113,7 @@ class DeviceApiExecutor
                             $iterativeResults = array_merge($iterativeResults, $mapped);
                         }
                     } catch (\Throwable $e) {
-                        Log::warning("REST fetch failed for device {$device->device_id} path {$iteratedPath}: {$e->getMessage()}");
+                        Log::warning("REST fetch failed for device {$device->device_id} path {$iterated_path}: {$e->getMessage()}");
                     }
                 }
             }
