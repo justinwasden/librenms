@@ -428,7 +428,7 @@ class DeviceApiTemplatesSeeder extends Seeder
 
         foreach ($endpoints as $endpoint) {
             DB::table('device_api_template_endpoints')->updateOrInsert(
-                ['template_id' => $endpoint['template_id'], 'key' => $endpoint['key']],
+                ['template_id' => $endpoint['template_id'], 'path' => $endpoint['path']],
                 $endpoint
             );
         }
