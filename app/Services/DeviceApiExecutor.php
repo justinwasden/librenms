@@ -96,7 +96,7 @@ class DeviceApiExecutor
                 $value_key = $options['value_key'] ?? null;
 
                 if ($placeholder && $value_key && isset($item[$value_key])) {
-                    $iterated_path = str_replace("{{$placeholder}}", $item[$value_key], $ep['path']);
+                    $iterated_path = str_replace('{' . $placeholder . '}', $item[$value_key], $ep['path']);
                     try {
                         Log::debug("DeviceApiExecutor GET (iterative): path={$iterated_path}");
                         $pathParts = parse_url($iterated_path);
