@@ -243,8 +243,62 @@ class DeviceApiExecutor
     }
 
     /**
+     * Save inventory data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistInventory(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveInventory($device, $mapped);
+    }
+
+    /**
+     * Save IPv4 data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistIpv4(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveIpv4Addresses($device, $mapped);
+    }
+
+    /**
+     * Save ports data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistPorts(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::savePorts($device, $mapped);
+    }
+
+    /**
      * Save sensors data
      * @param Device $device
      * @param array $mapped
      */
+    private function persistSensors(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveSensors($device, $mapped);
+    }
+
+    /**
+     * Save storage data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistStorage(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveStorage($device, $mapped);
+    }
+
+    /**
+     * Save transceivers data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistTransceivers(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveTransceivers($device, $mapped);
+    }
 }
