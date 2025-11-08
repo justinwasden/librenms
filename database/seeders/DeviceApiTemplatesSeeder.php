@@ -352,7 +352,6 @@ class DeviceApiTemplatesSeeder extends Seeder
         $endpoints = [
             [
                 'template_id' => $templateId,
-                'key' => 'inventory',
                 'path' => '/cluster/nodes',
                 'http_method' => 'GET',
                 'capability' => 'inventory',
@@ -364,7 +363,6 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'key' => 'ports',
                 'path' => '/network/ethernet/ports',
                 'http_method' => 'GET',
                 'capability' => 'ports',
@@ -376,7 +374,6 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'key' => 'ipv4',
                 'path' => '/network/ip/interfaces',
                 'http_method' => 'GET',
                 'capability' => 'ipv4',
@@ -388,7 +385,6 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'key' => 'storage',
                 'path' => '/storage/volumes',
                 'http_method' => 'GET',
                 'capability' => 'storage',
@@ -400,7 +396,6 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'key' => 'sensors',
                 'path' => '/cluster/nodes?fields=statistics.processor_utilization_raw',
                 'http_method' => 'GET',
                 'capability' => 'sensors',
@@ -412,7 +407,6 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'key' => 'ports_statistics',
                 'path' => '/network/ethernet/ports/{port_uuid}/metrics',
                 'http_method' => 'GET',
                 'capability' => 'ports_stats',
