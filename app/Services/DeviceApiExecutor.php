@@ -21,7 +21,7 @@ use LibreNMS\Util\TransformRunner;
 class DeviceApiExecutor
 {
     /**
-     * Execute all endpoints for a template against a device.
+     * Execute all endpoints for a template against a device. 
      *
      * @param Device $device
      * @param string $templateKey
