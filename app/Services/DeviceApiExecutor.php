@@ -41,67 +41,90 @@ class DeviceApiExecutor
             return;
         }
 
-        $endpointResults = []; // Store results of endpoints to be used by for_each
+        $endpointResults = []; // Cache results of fetches by path
+        $iterativeEndpoints = [];
 
-        // First pass: execute all non-iterative endpoints
+        // First pass: execute all non-iterative endpoints and collect iterative ones
         foreach ($endpoints as $ep) {
-            if (empty($ep['for_each'])) {
-                $payload = $this->fetchData($device, $client, $ep['path']);
-                if ($payload !== null) {
-                    $mapped = TransformRunner::run($ep['transform'], $device, $payload, $ep);
-                    $this->persistByCapability($device, $ep['capability'], $mapped);
-                    // Store results if another endpoint needs to iterate over them
+            if (!empty($ep['for_each'])) {
+                $iterativeEndpoints[] = $ep;
+                continue;
+            }
+
+            $path = $ep['path'];
+            if (!isset($endpointResults[$path])) {
+                try {
+                    Log::debug("DeviceApiExecutor GET: path={$path}");
+                    $pathParts = parse_url($path);
+                    $basePath = $pathParts['path'] ?? $path;
+                    $queryParams = [];
+                    if (isset($pathParts['query'])) {
+                        parse_str($pathParts['query'], $queryParams);
+                    }
+                    $endpointResults[$path] = $client->get($basePath, $queryParams);
+                } catch (\Throwable $e) {
+                    Log::warning("REST fetch failed for device {$device->device_id} path {$path}: {$e->getMessage()}");
+                    $endpointResults[$path] = null; // Cache failure
+                }
+            }
+
+            $payload = $endpointResults[$path];
+            if ($payload !== null) {
+                $mapped = TransformRunner::run($ep['transform'], $device, $payload, $ep);
+                $this->persistByCapability($device, $ep['capability'], $mapped);
+
+                // Make the normalized data available for for_each loops
+                if (!isset($endpointResults[$ep['capability']])) {
                     $endpointResults[$ep['capability']] = $mapped;
                 }
             }
         }
 
         // Second pass: execute iterative endpoints
-        foreach ($endpoints as $ep) {
-            if (!empty($ep['for_each']) && isset($endpointResults[$ep['for_each']])) {
-                $iterativeResults = [];
-                foreach ($endpointResults[$ep['for_each']] as $item) {
-                    $path = $ep['path'];
-                    $options = is_string($ep['for_each_options']) ? json_decode($ep['for_each_options'], true) : ($ep['for_each_options'] ?? []);
-                    $placeholder = $options['placeholder'] ?? null;
-                    $value_key = $options['value_key'] ?? null;
+        foreach ($iterativeEndpoints as $ep) {
+            $parentCapability = $ep['for_each'];
+            if (!isset($endpointResults[$parentCapability])) {
+                Log::warning("Could not find parent data for capability '{$parentCapability}' for a for_each loop.");
+                continue;
+            }
 
-                    if ($placeholder && $value_key && isset($item[$value_key])) {
-                        $path = str_replace('{' . $placeholder . '}', $item[$value_key], $path);
-                        $payload = $this->fetchData($device, $client, $path);
+            $iterativeResults = [];
+            foreach ($endpointResults[$parentCapability] as $item) {
+                $path = $ep['path'];
+                $options = is_string($ep['for_each_options']) ? json_decode($ep['for_each_options'], true) : ($ep['for_each_options'] ?? []);
+                $placeholder = $options['placeholder'] ?? null;
+                $value_key = $options['value_key'] ?? null;
+
+                if ($placeholder && $value_key && isset($item[$value_key])) {
+                    $iteratedPath = str_replace('{' . $placeholder . '}', $item[$value_key], $path);
+                    try {
+                        Log::debug("DeviceApiExecutor GET (iterative): path={$iteratedPath}");
+                        $pathParts = parse_url($iteratedPath);
+                        $basePath = $pathParts['path'] ?? $iteratedPath;
+                        $queryParams = [];
+                        if (isset($pathParts['query'])) {
+                            parse_str($pathParts['query'], $queryParams);
+                        }
+                        $payload = $client->get($basePath, $queryParams);
 
                         if ($payload !== null) {
-                            // Pass the parent item for context if needed by the normalizer
                             $payload['_parent_item'] = $item;
                             $mapped = TransformRunner::run($ep['transform'], $device, $payload, $ep);
                             $iterativeResults = array_merge($iterativeResults, $mapped);
                         }
+                    } catch (\Throwable $e) {
+                        Log::warning("REST fetch failed for device {$device->device_id} path {$iteratedPath}: {$e->getMessage()}");
                     }
                 }
-                if (!empty($iterativeResults)) {
-                    $this->persistByCapability($device, $ep['capability'], $iterativeResults);
-                }
+            }
+
+            if (!empty($iterativeResults)) {
+                $this->persistByCapability($device, $ep['capability'], $iterativeResults);
             }
         }
     }
 
-    private function fetchData(Device $device, $client, string $path): ?array
-    {
-        try {
-            // Here you would implement caching, path resolution, etc.
-            Log::debug("DeviceApiExecutor GET: path={$path}");
-            $pathParts = parse_url($path);
-            $basePath = $pathParts['path'] ?? $path;
-            $queryParams = [];
-            if (isset($pathParts['query'])) {
-                parse_str($pathParts['query'], $queryParams);
-            }
-            return $client->get($basePath, $queryParams);
-        } catch (\Throwable $e) {
-            Log::warning("REST fetch failed for device {$device->device_id} path {$path}: {$e->getMessage()}");
-            return null;
-        }
-    }
+    
 
     /**
      * Persist mapped records by capability.
