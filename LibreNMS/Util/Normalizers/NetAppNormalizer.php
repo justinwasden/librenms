@@ -105,6 +105,7 @@ class NetAppNormalizer
             $ifIndex = abs(crc32($uuid)) % 100000; // Keep it under 100000 for reasonable values
 
             $ports[] = [
+                'uuid' => $uuid, // Add the UUID here for for_each loops
                 'ifIndex' => $ifIndex,
                 'ifName' => $ifName,
                 'ifDescr' => $descr,
