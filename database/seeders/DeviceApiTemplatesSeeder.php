@@ -316,4 +316,121 @@ class DeviceApiTemplatesSeeder extends Seeder
         $nutanixTplId = DB::table('device_api_templates')->where('key', 'nutanix_prism')->value('id');
         $nutanixEndpoints = [
             ['capability' => 'inventory', 'method' => 'POST', 'path' => 'clusters/list',     'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeNutanixClusters', 'display_order' => 10, 'headers' => json_encode(['Content-Type' => 'application/json'])],
-            ['capability' => 'inventory', 'method' => 'POST', 'path' => 'hosts/list',        'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeNutanixHosts',    'display_order' => 20, 'headers' => json_encode(['Content-Type' => 'application/json'])
+            ['capability' => 'inventory', 'method' => 'POST', 'path' => 'hosts/list',        'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeNutanixHosts',    'display_order' => 20, 'headers' => json_encode(['Content-Type' => 'application/json'])],
+        ];
+        foreach ($nutanixEndpoints as $ep) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $nutanixTplId, 'capability' => $ep['capability'], 'path' => $ep['path']],
+                array_merge($ep, ['template_id' => $nutanixTplId, 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now, 'body' => json_encode(['kind' => 'cluster'])])
+            );
+        }
+
+        // NetApp ONTAP Template
+        $netappTemplate = [
+            'key' => 'netapp_ontap',
+            'label' => 'NetApp ONTAP API',
+            'os_keys' => json_encode(['netapp']),
+            'schema_id' => $schemaId('basic_auth'), // Assuming basic auth for NetApp ONTAP
+            'default_values' => json_encode([
+                'base_url_pattern' => 'https://{hostname}/api',
+            ]),
+            'modules' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'ports_statistics']),
+            'capabilities' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'ports_stats']),
+            'description' => 'Template for NetApp ONTAP REST API, providing discovery and metrics for ports, storage, and inventory.',
+            'enabled' => 1,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+
+        DB::table('device_api_templates')->updateOrInsert(
+            ['key' => $netappTemplate['key']],
+            $netappTemplate
+        );
+
+        $templateId = DB::table('device_api_templates')->where('key', 'netapp_ontap')->value('id');
+
+        // Define Endpoints
+        $endpoints = [
+            [
+                'template_id' => $templateId,
+                'key' => 'inventory',
+                'path' => '/cluster/nodes',
+                'http_method' => 'GET',
+                'capability' => 'inventory',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizeClusterNodes',
+                'cache_ttl_seconds' => 3600,
+                'display_order' => 10,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'key' => 'ports',
+                'path' => '/network/ethernet/ports',
+                'http_method' => 'GET',
+                'capability' => 'ports',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizeNetworkPorts',
+                'cache_ttl_seconds' => 3600,
+                'display_order' => 20,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'key' => 'ipv4',
+                'path' => '/network/ip/interfaces',
+                'http_method' => 'GET',
+                'capability' => 'ipv4',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizeIpv4',
+                'cache_ttl_seconds' => 3600,
+                'display_order' => 30,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'key' => 'storage',
+                'path' => '/storage/volumes',
+                'http_method' => 'GET',
+                'capability' => 'storage',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizeVolumes',
+                'cache_ttl_seconds' => 900,
+                'display_order' => 40,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'key' => 'sensors',
+                'path' => '/cluster/nodes?fields=statistics.processor_utilization_raw',
+                'http_method' => 'GET',
+                'capability' => 'sensors',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizeClusterMetrics',
+                'cache_ttl_seconds' => 300,
+                'display_order' => 50,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'key' => 'ports_statistics',
+                'path' => '/network/ethernet/ports/{port_uuid}/metrics',
+                'http_method' => 'GET',
+                'capability' => 'ports_stats',
+                'transform_class' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer',
+                'transform_method' => 'normalizePortMetrics',
+                'cache_ttl_seconds' => 0, // Do not cache metrics
+                'display_order' => 60,
+                'for_each' => 'ports', // Tells executor to iterate over discovered ports
+                'for_each_options' => json_encode(['placeholder' => 'port_uuid', 'value_key' => 'uuid']),
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+        ];
+
+        foreach ($endpoints as $endpoint) {
+            DB::table('device_api_template_endpoints')->updateOrInsert(
+                ['template_id' => $endpoint['template_id'], 'key' => $endpoint['key']],
+                $endpoint
+            );
+        }
+    }
+}

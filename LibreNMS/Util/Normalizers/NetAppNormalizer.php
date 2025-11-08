@@ -152,6 +152,32 @@ class NetAppNormalizer
         return $addresses;
     }
 
+    public static function normalizePortMetrics(Device $device, array $payload, array $ep = []): array
+    {
+        $metrics = [];
+        $records = $payload['records'] ?? [];
+
+        foreach ($records as $metric) {
+            $portUuid = $metric['uuid'] ?? null;
+            if (!$portUuid) {
+                continue;
+            }
+
+            // Throughput metrics are often counters, handle accordingly
+            $metrics[] = [
+                'port_id' => $portUuid, // Used to match with existing port
+                'ifInOctets' => $metric['throughput']['total'] ?? 0,
+                'ifOutOctets' => $metric['throughput']['total'] ?? 0, // Adjust if separate in/out available
+                'ifInErrors' => $metric['errors']['total'] ?? 0,
+                'ifOutErrors' => $metric['errors']['total'] ?? 0, // Adjust if separate in/out available
+                'ifHCInOctets' => $metric['throughput']['total'] ?? 0,
+                'ifHCOutOctets' => $metric['throughput']['total'] ?? 0, // Adjust if separate in/out available
+            ];
+        }
+
+        return $metrics;
+    }
+
     /**
      * Normalize NetApp storage array details (controllers, volumes, hosts)
      * Input: GET /cluster (or any endpoint - fetches what we need)

@@ -148,12 +148,12 @@ class DeviceApiExecutor
 		            // Fan-out: run each endpoint transform against the same payload
 		            foreach ($eps as $ep) {
 		                $capability = $ep['capability'] ?? 'general';
-
-		                // Ensure transforms are fully-qualified or mapped in TransformRunner
-		                // Pass correct args to normalizers: (Device $device, array $payload, array $ep)
-		                $mapped = \LibreNMS\Util\TransformRunner::run($ep['transform'], $device, $payload, $ep);
-
-		                // Persist mapped records by capability
+		                if ($capability === 'ports' && isset($payload['uuid'])) {
+		                    // Special handling for single-port metric calls
+		                    $mapped = \LibreNMS\Util\TransformRunner::run($ep['transform'], $device, $payload, $ep);
+		                } else {
+		                    $mapped = \LibreNMS\Util\TransformRunner::run($ep['transform'], $device, $payload, $ep);
+		                }
 		                $this->persistByCapability($device, $capability, $mapped);
 		            }
 		        } catch (\Throwable $e) {
@@ -203,113 +203,48 @@ class DeviceApiExecutor
      */
     private function persistByCapability(Device $device, string $capability, array $mapped): void
     {
-        if (empty($mapped)) {
-            \Log::debug("persistByCapability: empty mapped data for capability={$capability} device={$device->device_id}");
-            return;
-        }
-
-        \Log::debug("persistByCapability: capability={$capability} device={$device->device_id} data_count=" . count($mapped) . " keys=" . implode(',', array_keys($mapped)));
-
-        // Structured response support
-        $isStructured = isset($mapped['ports']) || isset($mapped['sensors']) || isset($mapped['inventory']) ||
-                        isset($mapped['processors']) || isset($mapped['mempools']) ||
-                        isset($mapped['transceivers']) || isset($mapped['storage']) ||
-                        isset($mapped['ports_statistics']) || isset($mapped['ipv4_addresses']) ||
-                        isset($mapped['controllers']) || isset($mapped['volumes']) || isset($mapped['hosts']);
-
-        if ($isStructured) {
-            \Log::debug("Structured response handler - keys present: " . implode(',', array_keys($mapped)) . " for device {$device->device_id}");
-            if (isset($mapped['ports_statistics'])) {
-                \Log::debug("ports_statistics array size: " . count($mapped['ports_statistics']));
-            }
-            if (!empty($mapped['ports'])) {
-                \Log::debug("Calling savePorts for device {$device->device_id} with " . count($mapped['ports']) . " port records from structured response");
-                \App\Services\DeviceApiPersistor::savePorts($device, $mapped['ports']);
-            }
-            if (!empty($mapped['sensors'])) {
-                \App\Services\DeviceApiPersistor::saveSensors($device, $mapped['sensors']);
-            }
-            if (!empty($mapped['inventory'])) {
-                \App\Services\DeviceApiPersistor::saveInventory($device, $mapped['inventory']);
-            }
-            if (!empty($mapped['processors'])) {
-                \App\Services\DeviceApiPersistor::saveProcessors($device, $mapped['processors']);
-            }
-            if (!empty($mapped['mempools'])) {
-                \App\Services\DeviceApiPersistor::saveMempools($device, $mapped['mempools']);
-            }
-            if (!empty($mapped['transceivers'])) {
-                \App\Services\DeviceApiPersistor::saveTransceivers($device, $mapped['transceivers']);
-            }
-            if (!empty($mapped['storage'])) {
-                \App\Services\DeviceApiPersistor::saveStorage($device, $mapped['storage']);
-            }
-            if (!empty($mapped['ports_statistics'])) {
-                echo "DEBUG: Calling savePortsStatistics for device {$device->device_id} with " . count($mapped['ports_statistics']) . " statistics records\n";
-                \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped['ports_statistics']);
-                echo "DEBUG: savePortsStatistics completed\n";
-            } else {
-                if (isset($mapped['ports_statistics'])) {
-                    echo "DEBUG: ports_statistics exists but is empty for device {$device->device_id}\n";
-                } else {
-                    echo "DEBUG: ports_statistics key does not exist\n";
-                }
-            }
-            if (!empty($mapped['ipv4_addresses'])) {
-                \App\Services\DeviceApiPersistor::saveIpv4Addresses($device, $mapped['ipv4_addresses']);
-            }
-            if (!empty($mapped['controllers'])) {
-                \App\Services\DeviceApiPersistor::saveControllers($device, $mapped['controllers']);
-            }
-            if (!empty($mapped['volumes'])) {
-                \App\Services\DeviceApiPersistor::saveVolumes($device, $mapped['volumes']);
-            }
-            if (!empty($mapped['hosts'])) {
-                \App\Services\DeviceApiPersistor::saveHosts($device, $mapped['hosts']);
-            }
-            return;
-        }
-
-        // Flat response
         switch ($capability) {
-            case 'ports':
-                \Log::debug("Calling savePorts for device {$device->device_id} with " . count($mapped) . " port records");
-                \App\Services\DeviceApiPersistor::savePorts($device, $mapped);
-                break;
-            case 'sensors':
-                \Log::debug("Calling saveSensors for device {$device->device_id} with " . count($mapped) . " sensor records");
-                \App\Services\DeviceApiPersistor::saveSensors($device, $mapped);
-                break;
-            case 'processors':
-                \Log::debug("Calling saveProcessors for device {$device->device_id} with " . count($mapped) . " processor records");
-                \App\Services\DeviceApiPersistor::saveProcessors($device, $mapped);
-                break;
-            case 'mempools':
-                \Log::debug("Calling saveMempools for device {$device->device_id} with " . count($mapped) . " mempool records");
-                \App\Services\DeviceApiPersistor::saveMempools($device, $mapped);
-                break;
             case 'inventory':
-                \Log::debug("Calling saveInventory for device {$device->device_id} with " . count($mapped) . " inventory records");
-                \App\Services\DeviceApiPersistor::saveInventory($device, $mapped);
-                break;
-            case 'transceivers':
-                \Log::debug("Calling saveTransceivers for device {$device->device_id} with " . count($mapped) . " transceiver records");
-                \App\Services\DeviceApiPersistor::saveTransceivers($device, $mapped);
-                break;
-            case 'storage':
-                \Log::debug("Calling saveStorage for device {$device->device_id} with " . count($mapped) . " storage records");
-                \App\Services\DeviceApiPersistor::saveStorage($device, $mapped);
-                break;
-            case 'ports_statistics':
-                \Log::debug("Calling savePortsStatistics for device {$device->device_id} with " . count($mapped) . " statistic records");
-                \App\Services\DeviceApiPersistor::savePortsStatistics($device, $mapped);
+                $this->persistInventory($device, $mapped);
                 break;
             case 'ipv4':
-                \Log::debug("Calling saveIpv4Addresses for device {$device->device_id} with " . count($mapped) . " IPv4 records");
-                \App\Services\DeviceApiPersistor::saveIpv4Addresses($device, $mapped);
+                $this->persistIpv4($device, $mapped);
+                break;
+            case 'ports':
+                $this->persistPorts($device, $mapped);
+                break;
+            case 'ports_stats':
+                $this->persistPortsStatistics($device, $mapped);
+                break;
+            case 'sensors':
+                $this->persistSensors($device, $mapped);
+                break;
+            case 'storage':
+                $this->persistStorage($device, $mapped);
+                break;
+            case 'transceivers':
+                $this->persistTransceivers($device, $mapped);
                 break;
             default:
-                Log::debug("Unknown capability {$capability} for device {$device->device_id}, ignoring.");
+                // Log unhandled capability for debugging
+                if (!empty($mapped)) {
+                    \Illuminate\Support\Facades\Log::debug("Unhandled capability '$capability' with mapped data", [
+                        'device_id' => $device->device_id,
+                        'data_sample' => array_slice($mapped, 0, 1),
+                    ]);
+                }
+                break;
         }
     }
+
+    private function persistPortsStatistics(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::savePortsStatistics($device, $mapped);
+    }
+
+    /**
+     * Save sensors data
+     * @param Device $device
+     * @param array $mapped
+     */
 }

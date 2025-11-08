@@ -130,34 +130,24 @@ class DeviceApi implements Module
 
     protected function executeApiPoll(Device $device): void
     {
-        // Load device with relationships
-        $device->load(['apiConfig.template', 'apiConfig.schema']);
+        $apiConfig = $device->apiConfig()->with('template')->first();
 
-        if (!$device->apiConfig) {
-            throw new \RuntimeException("Device has no API configuration");
+        if (!$apiConfig || !$apiConfig->template) {
+            Log::info("API polling skipped for device {$device->device_id}: no template assigned.");
+            return;
         }
 
-        $templateKey = $device->apiConfig->template->key ?? null;
-        if (!$templateKey) {
-            throw new \RuntimeException("Device has no template assigned");
-        }
-
-        // Ensure base URL is resolved
+        $templateKey = $apiConfig->template->key;
         DeviceApiSettings::ensureResolvedBaseUrl($device);
 
-        // Load template
-        $template = ApiTemplateManager::loadTemplate($templateKey);
-        if (!$template) {
-            throw new \RuntimeException("Template {$templateKey} not found or disabled");
-        }
-
-        // Create API client via factory
+        // Use the factory to create the appropriate client
         $client = DeviceApiClientFactory::make($device);
         if (!$client) {
-            throw new \RuntimeException("Could not create API client for device");
+            Log::warning("Could not create API client for device {$device->device_id}.");
+            return;
         }
 
-        // Execute endpoints
+        // Execute endpoints from template
         $executor = new DeviceApiExecutor();
         $executor->run($device, $templateKey, $client);
     }
