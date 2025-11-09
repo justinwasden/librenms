@@ -9,7 +9,7 @@ use LibreNMS\Util\ApiTemplateManager;
 use LibreNMS\Util\EndpointPathResolver;
 use LibreNMS\Util\TransformRunner;
 
-/** 
+/**  
  * Executes Device API templates against a device.
  * Features:
  * - Groups endpoints by method+path: single fetch, fan-out to multiple capabilities
