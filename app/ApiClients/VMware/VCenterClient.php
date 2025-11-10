@@ -171,7 +171,7 @@ class VCenterClient implements DeviceApiClientInterface
      */
     public function capabilities(): array
     {
-        return ['sensors', 'ports', 'mempools', 'processors', 'inventory', 'ipv4', 'storage', 'ports_stats'];
+        return ['sensors', 'ports', 'mempools', 'processors', 'inventory', 'ipv4', 'storage', 'ports_stats', 'vlans'];
     }
 
     /**
@@ -313,66 +313,83 @@ class VCenterClient implements DeviceApiClientInterface
         $ports = [];
 
         try {
-            // Get hosts to collect network interface information
-            $response = $this->get('vcenter/host');
-            $hosts = $response['value'] ?? $response;
+            // Get VMs to collect network adapter information
+            $response = $this->get('vcenter/vm');
+            $vms = $response['value'] ?? $response;
 
-            if (!is_array($hosts)) {
+            if (!is_array($vms)) {
                 return [];
             }
 
-            $portIndex = 0;
-            foreach ($hosts as $host) {
-                $hostId = is_array($host) ? ($host['host'] ?? null) : $host;
-                $hostName = is_array($host) ? ($host['name'] ?? 'host') : 'host';
+            foreach ($vms as $vm) {
+                $vmId = $vm['vm'] ?? null;
+                $vmName = $vm['name'] ?? 'unknown';
 
-                if (!$hostId) {
+                if (!$vmId) {
                     continue;
                 }
 
                 try {
-                    // Get host network information
-                    $network = $this->get("vcenter/host/{$hostId}/networking");
-                    $nics = $network['value'] ?? [];
+                    // Get VM network adapters
+                    $ethResponse = $this->get("vcenter/vm/{$vmId}/hardware/ethernet");
+                    $adapters = $ethResponse['value'] ?? $ethResponse;
 
-                    if (is_array($nics)) {
-                        foreach ($nics as $nic) {
-                            $nicKey = $nic['nic'] ?? "nic{$portIndex}";
-                            $nicName = $nic['device'] ?? $nicKey;
+                    if (!is_array($adapters)) {
+                        continue;
+                    }
 
-                            // Map link status
-                            $linkStatus = 'up';
-                            $ifOperStatus = 'up';
-                            if (isset($nic['link_status'])) {
-                                $linkStatus = strtolower($nic['link_status']);
-                                $ifOperStatus = ($linkStatus === 'up' || $linkStatus === 'connected') ? 'up' : 'down';
-                            }
+                    foreach ($adapters as $adapter) {
+                        $nicId = $adapter['nic'] ?? null;
+                        if (!$nicId) {
+                            continue;
+                        }
 
-                            // Get speed (convert from Mbps to bps if available)
-                            $speed = 0;
-                            if (isset($nic['speed'])) {
-                                $speed = $nic['speed'] * 1000000; // Convert Mbps to bps
-                            }
+                        // Get detailed adapter info
+                        try {
+                            $detailResponse = $this->get("vcenter/vm/{$vmId}/hardware/ethernet/{$nicId}");
+                            $nicDetails = $detailResponse['value'] ?? $detailResponse;
+
+                            $macAddress = $nicDetails['mac_address'] ?? '';
+                            $label = $nicDetails['label'] ?? "Network adapter {$nicId}";
+                            $state = $nicDetails['state'] ?? 'UNKNOWN';
+                            $backing = $nicDetails['backing'] ?? [];
+                            $networkName = $backing['network'] ?? '';
+
+                            // Generate stable index
+                            $ifName = "{$vmName}:{$label}";
+                            $index = crc32($ifName) & 0x7FFFFFFF;
+
+                            // Map state to oper status
+                            $ifOperStatus = match (strtoupper($state)) {
+                                'CONNECTED' => 'up',
+                                'DISCONNECTED' => 'down',
+                                default => 'unknown',
+                            };
 
                             $ports[] = [
-                                'ifIndex' => $portIndex,
-                                'ifName' => "{$hostName}:{$nicName}",
-                                'ifDescr' => $nic['description'] ?? "{$hostName} {$nicName}",
+                                'ifIndex' => $index,
+                                'ifName' => $ifName,
+                                'ifDescr' => "VM {$vmName} - {$label}",
                                 'ifType' => 'ethernetCsmacd',
                                 'ifOperStatus' => $ifOperStatus,
-                                'ifAdminStatus' => $ifOperStatus,
-                                'ifSpeed' => $speed,
-                                'ifMtu' => $nic['mtu'] ?? 1500,
-                                'ifPhysAddress' => $nic['mac_address'] ?? null,
+                                'ifAdminStatus' => ($nicDetails['start_connected'] ?? true) ? 'up' : 'down',
+                                'ifSpeed' => 1000000000, // 1Gbps for virtual adapters
+                                'ifMtu' => 1500,
+                                'ifPhysAddress' => $macAddress,
+                                'ifAlias' => $networkName,
                             ];
-
-                            $portIndex++;
+                        } catch (\Exception $e) {
+                            Log::debug('VCenterClient failed to get adapter details', [
+                                'vm_id' => $vmId,
+                                'nic_id' => $nicId,
+                                'error' => $e->getMessage(),
+                            ]);
                         }
                     }
 
                 } catch (\Exception $e) {
-                    Log::debug('VCenterClient failed to get host network', [
-                        'host_id' => $hostId,
+                    Log::debug('VCenterClient failed to get VM network adapters', [
+                        'vm_id' => $vmId,
                         'error' => $e->getMessage(),
                     ]);
                 }
@@ -724,8 +741,10 @@ class VCenterClient implements DeviceApiClientInterface
                 return [];
             }
 
-            foreach ($vms as $idx => $vm) {
-                $vmId = is_array($vm) ? ($vm['vm'] ?? null) : $vm;
+            foreach ($vms as $vm) {
+                $vmId = $vm['vm'] ?? null;
+                $vmName = $vm['name'] ?? 'unknown';
+
                 if (!$vmId) {
                     continue;
                 }
@@ -735,21 +754,29 @@ class VCenterClient implements DeviceApiClientInterface
                     $guestNet = $this->get("vcenter/vm/{$vmId}/guest/networking/interfaces");
                     $interfaces = $guestNet['value'] ?? [];
 
-                    foreach ($interfaces as $ifIdx => $iface) {
-                        $ip = $iface['ip']['ip_addresses'] ?? [];
+                    foreach ($interfaces as $iface) {
+                        $macAddress = $iface['mac_address'] ?? '';
+                        $nicId = $iface['nic'] ?? '';
+                        $ipData = $iface['ip'] ?? [];
+                        $ipAddresses = $ipData['ip_addresses'] ?? [];
 
-                        foreach ($ip as $ipInfo) {
-                            $ipAddr = is_array($ipInfo) ? ($ipInfo['ip_address'] ?? null) : $ipInfo;
-                            $prefixLen = is_array($ipInfo) ? ($ipInfo['prefix_length'] ?? 24) : 24;
+                        foreach ($ipAddresses as $ipInfo) {
+                            $ipAddr = $ipInfo['ip_address'] ?? null;
+                            $prefixLen = $ipInfo['prefix_length'] ?? 24;
 
-                            if ($ipAddr && filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                                $addresses[] = [
-                                    'ifIndex' => ($idx * 100) + $ifIdx,
-                                    'ipv4_address' => $ipAddr,
-                                    'ipv4_prefixlen' => $prefixLen,
-                                    'context_name' => 'vmware-' . ($vm['name'] ?? 'vm'),
-                                ];
+                            // Skip IPv6 and invalid IPs
+                            if (!$ipAddr || !filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                                continue;
                             }
+
+                            // Use MAC address to help match with port
+                            $context = $macAddress ?: $nicId;
+                            $addresses[] = [
+                                'ipv4_address' => $ipAddr,
+                                'ipv4_prefixlen' => $prefixLen,
+                                'context_name' => $macAddress, // Use MAC to match with port
+                                'port_id' => null, // Will be matched by MAC
+                            ];
                         }
                     }
                 } catch (\Exception $e) {
@@ -769,6 +796,61 @@ class VCenterClient implements DeviceApiClientInterface
         }
 
         return $addresses;
+    }
+
+    /**
+     * Fetch VLANs from vCenter port groups
+     */
+    public function fetchVlans(Device $device): array
+    {
+        $vlans = [];
+
+        try {
+            // Get port groups (networks)
+            $response = $this->get('vcenter/network');
+            $portGroups = $response['value'] ?? $response;
+
+            if (!is_array($portGroups)) {
+                return [];
+            }
+
+            foreach ($portGroups as $pg) {
+                $name = $pg['name'] ?? '';
+                $type = $pg['type'] ?? '';
+                $networkId = $pg['network'] ?? '';
+
+                if (!$name) {
+                    continue;
+                }
+
+                // Try to extract VLAN ID from name (format: "123-Name" or "Name")
+                $vlanId = null;
+                if (preg_match('/^(\d+)-/', $name, $matches)) {
+                    $vlanId = (int)$matches[1];
+                }
+
+                // If no VLAN ID found, use a hash of the name as ID
+                if ($vlanId === null) {
+                    $vlanId = (crc32($name) & 0x7FFFFFFF) % 4096; // Keep within valid VLAN range
+                }
+
+                $vlans[] = [
+                    'vlan_vlan' => $vlanId,
+                    'vlan_domain' => 1,
+                    'vlan_name' => $name,
+                    'vlan_type' => $type === 'DISTRIBUTED_PORTGROUP' ? 'ethernet' : 'ethernet',
+                    'vlan_mtu' => null,
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('VCenterClient fetchVlans failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vlans;
     }
 
     /**

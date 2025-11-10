@@ -147,9 +147,93 @@ class DeviceApi implements Module
             return;
         }
 
-        // Execute endpoints from template
+        // Check if this is a vCenter client - use direct fetch methods instead of templates
+        if ($client instanceof \App\ApiClients\VMware\VCenterClient) {
+            Log::debug("Using direct fetch methods for vCenter device {$device->device_id}");
+            $this->executeVCenterDirectPoll($device, $client);
+            return;
+        }
+
+        // Execute endpoints from template for other clients
         $executor = new DeviceApiExecutor();
         $executor->run($device, $templateKey, $client);
+    }
+
+    /**
+     * Execute direct API polling for vCenter using client fetch methods
+     * This allows multi-step API calls per VM to get network adapters properly
+     */
+    protected function executeVCenterDirectPoll(Device $device, $client): void
+    {
+        $capabilities = $client->capabilities();
+
+        foreach ($capabilities as $capability) {
+            try {
+                $data = [];
+
+                switch ($capability) {
+                    case 'sensors':
+                        $data = $client->fetchSensors($device);
+                        \App\Services\DeviceApiPersistor::saveSensors($device, $data);
+                        break;
+
+                    case 'ports':
+                        $data = $client->fetchPorts($device);
+                        \App\Services\DeviceApiPersistor::savePorts($device, $data);
+                        break;
+
+                    case 'ipv4':
+                        Log::debug("vCenter attempting to fetch IPv4 addresses for device {$device->device_id}");
+                        $data = $client->fetchIpv4Addresses($device);
+                        Log::debug("vCenter IPv4 fetch returned " . count($data) . " addresses");
+                        if (!empty($data)) {
+                            \App\Services\DeviceApiPersistor::saveIpv4Addresses($device, $data);
+                        }
+                        break;
+
+                    case 'vlans':
+                        $data = $client->fetchVlans($device);
+                        \App\Services\DeviceApiPersistor::saveVlans($device, $data);
+                        break;
+
+                    case 'inventory':
+                        $data = $client->fetchInventory($device);
+                        \App\Services\DeviceApiPersistor::saveInventory($device, $data);
+                        break;
+
+                    case 'processors':
+                        $data = $client->fetchProcessors($device);
+                        \App\Services\DeviceApiPersistor::saveProcessors($device, $data);
+                        break;
+
+                    case 'mempools':
+                        $data = $client->fetchMempools($device);
+                        \App\Services\DeviceApiPersistor::saveMempools($device, $data);
+                        break;
+
+                    case 'storage':
+                        $data = $client->fetchStorage($device);
+                        \App\Services\DeviceApiPersistor::saveStorage($device, $data);
+                        break;
+
+                    case 'ports_stats':
+                        $data = $client->fetchPortsStatistics($device);
+                        \App\Services\DeviceApiPersistor::savePortsStatistics($device, $data);
+                        break;
+
+                    default:
+                        Log::debug("Skipping unhandled capability '{$capability}' for vCenter");
+                        break;
+                }
+
+                if (!empty($data)) {
+                    Log::debug("vCenter {$capability} collected " . count($data) . " items for device {$device->device_id}");
+                }
+
+            } catch (\Throwable $e) {
+                Log::warning("vCenter {$capability} fetch failed for device {$device->device_id}: " . $e->getMessage());
+            }
+        }
     }
 
 

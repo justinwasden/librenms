@@ -339,7 +339,7 @@ class DeviceHttpClient
         return [
             'status'  => $resp->status(),
             'headers' => $resp->headers(),
-            'json'    => $this->parseJson($resp, $path),
+            'json'    => $resp->json(), // Allow any JSON type (string, array, etc.)
             'body'    => $this->safeBodyPreview($resp),
         ];
     }
@@ -350,7 +350,7 @@ class DeviceHttpClient
         return [
             'status'  => $resp->status(),
             'headers' => $resp->headers(),
-            'json'    => $this->parseJson($resp, $path),
+            'json'    => $resp->json(), // Allow any JSON type (string, array, etc.)
             'body'    => $this->safeBodyPreview($resp),
         ];
     }

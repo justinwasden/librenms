@@ -609,6 +609,146 @@ class DeviceApiPersistor
     }
 
     /**
+     * Save VLANs (port groups, VLANs, etc.)
+     */
+    public static function saveVlans(Device $device, array $vlans): void
+    {
+        Log::debug("DeviceApiPersistor::saveVlans called for device {$device->device_id} with " . count($vlans) . " VLANs");
+
+        foreach ($vlans as $vlan) {
+            try {
+                $vlanId = $vlan['vlan_vlan'] ?? null;
+                $vlanDomain = $vlan['vlan_domain'] ?? 1;
+
+                if ($vlanId === null) {
+                    continue;
+                }
+
+                $base = [
+                    'device_id' => $device->device_id,
+                    'vlan_vlan' => $vlanId,
+                    'vlan_domain' => $vlanDomain,
+                    'vlan_name' => $vlan['vlan_name'] ?? "VLAN{$vlanId}",
+                    'vlan_type' => $vlan['vlan_type'] ?? 'ethernet',
+                ];
+
+                // Check if VLAN already exists
+                $existing = DB::table('vlans')
+                    ->where('device_id', $device->device_id)
+                    ->where('vlan_vlan', $vlanId)
+                    ->where('vlan_domain', $vlanDomain)
+                    ->first();
+
+                if ($existing) {
+                    DB::table('vlans')->where('vlan_id', $existing->vlan_id)->update($base);
+                } else {
+                    DB::table('vlans')->insert($base);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveVlans failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // After saving VLANs, associate ports with VLANs for vCenter
+        self::associatePortsWithVlans($device);
+    }
+
+    /**
+     * Associate ports with VLANs for vCenter devices
+     * Matches port's ifAlias (port group ID) with VLAN names via vCenter API
+     */
+    private static function associatePortsWithVlans(Device $device): void
+    {
+        // Only do this for vCenter devices
+        if (!in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)) {
+            return;
+        }
+
+        try {
+            // Get vCenter client to fetch port groups
+            $client = \App\ApiClients\DeviceApiClientFactory::make($device);
+            if (!$client) {
+                return;
+            }
+
+            // Fetch port groups from vCenter to get the mapping
+            $portGroupsResponse = $client->get('vcenter/network');
+            $portGroups = $portGroupsResponse['value'] ?? $portGroupsResponse;
+
+            if (!is_array($portGroups)) {
+                return;
+            }
+
+            // Create mapping: port group ID -> port group name
+            $portGroupIdToName = [];
+            foreach ($portGroups as $pg) {
+                $networkId = $pg['network'] ?? null;
+                $name = $pg['name'] ?? null;
+                if ($networkId && $name) {
+                    $portGroupIdToName[$networkId] = $name;
+                }
+            }
+
+            // Get all ports and VLANs for this device
+            $ports = DB::table('ports')
+                ->where('device_id', $device->device_id)
+                ->whereNotNull('ifAlias')
+                ->where('ifAlias', '!=', '')
+                ->get();
+
+            $vlans = DB::table('vlans')
+                ->where('device_id', $device->device_id)
+                ->get()
+                ->keyBy('vlan_name'); // Key by name for easy lookup
+
+            $associated = 0;
+            foreach ($ports as $port) {
+                // ifAlias contains the port group ID (e.g., "dvportgroup-82377")
+                $portGroupId = $port->ifAlias;
+
+                // Look up the port group name from the ID
+                $portGroupName = $portGroupIdToName[$portGroupId] ?? null;
+
+                if (!$portGroupName) {
+                    continue;
+                }
+
+                // Find the VLAN with this port group name
+                $vlan = $vlans->get($portGroupName);
+
+                if (!$vlan) {
+                    continue;
+                }
+
+                // Check if association already exists
+                $existing = DB::table('ports_vlans')
+                    ->where('port_id', $port->port_id)
+                    ->where('vlan_id', $vlan->vlan_id)
+                    ->first();
+
+                if (!$existing) {
+                    DB::table('ports_vlans')->insert([
+                        'port_id' => $port->port_id,
+                        'vlan_id' => $vlan->vlan_id,
+                        'baseport' => 0,
+                        'priority' => 0,
+                        'state' => 'active',
+                        'cost' => 0,
+                    ]);
+                    $associated++;
+                }
+            }
+
+            if ($associated > 0) {
+                Log::debug("Associated {$associated} ports with VLANs for device {$device->device_id}");
+            }
+
+        } catch (\Throwable $e) {
+            Log::warning("associatePortsWithVlans failed for device {$device->device_id}: {$e->getMessage()}");
+        }
+    }
+
+    /**
      * Save port traffic statistics (traffic counters and metrics)
      * Updates ports table with current counters and calculates rates/deltas
      */
