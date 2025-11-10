@@ -462,8 +462,8 @@ class DeviceApiAuthSchemasSeeder extends Seeder
                 'default_values' => [
                     'base_url_pattern' => 'https://{hostname}:8006/api2/json',
                 ],
-                'modules'      => ['ports', 'sensors', 'processors', 'mempools', 'inventory'],
-                'capabilities' => ['ports', 'sensors', 'processors', 'mempools', 'inventory'],
+                'modules'      => ['ports', 'sensors', 'processors', 'mempools', 'inventory', 'ipv4'],
+                'capabilities' => ['ports', 'sensors', 'processors', 'mempools', 'inventory', 'ipv4'],
                 'description'  => 'Proxmox VE with API Token auth',
                 'enabled'      => true,
             ]
@@ -471,9 +471,10 @@ class DeviceApiAuthSchemasSeeder extends Seeder
         foreach ([
             ['capability' => 'sensors',    'path' => '/nodes/{node}/status',   'transform' => 'normalizeProxmoxNodeStatus',       'order' => 1],
             ['capability' => 'ports',      'path' => '/nodes/{node}/network',  'transform' => 'normalizeProxmoxNodeNetwork',       'order' => 2],
-            ['capability' => 'inventory',  'path' => '/storage',               'transform' => 'normalizeProxmoxNodeStorage',       'order' => 3],
-            ['capability' => 'sensors',    'path' => '/cluster/status',        'transform' => 'normalizeProxmoxClusterStatus',     'order' => 4],
-            ['capability' => 'sensors',    'path' => '/cluster/resources',     'transform' => 'normalizeProxmoxClusterResources',  'order' => 5],
+            ['capability' => 'ipv4',       'path' => '/nodes/{node}/network',  'transform' => 'normalizeProxmoxIpv4',              'order' => 3],
+            ['capability' => 'inventory',  'path' => '/storage',               'transform' => 'normalizeProxmoxNodeStorage',       'order' => 4],
+            ['capability' => 'sensors',    'path' => '/cluster/status',        'transform' => 'normalizeProxmoxClusterStatus',     'order' => 5],
+            ['capability' => 'sensors',    'path' => '/cluster/resources',     'transform' => 'normalizeProxmoxClusterResources',  'order' => 6],
         ] as $e) { $upsertEndpoint($pxTokenTemplate->id, $e); }
     }
 }
