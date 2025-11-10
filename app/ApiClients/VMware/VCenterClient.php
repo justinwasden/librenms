@@ -381,6 +381,12 @@ class VCenterClient implements DeviceApiClientInterface
                                 default => 'unknown',
                             };
 
+                            // Extract VLAN ID from network name (e.g., "network-3015" -> 3015)
+                            $ifVlan = null;
+                            if (preg_match('/network-(\d+)$/i', $networkName, $matches)) {
+                                $ifVlan = (int) $matches[1];
+                            }
+
                             $ports[] = [
                                 'ifIndex' => $index,
                                 'ifName' => $ifName,
@@ -392,6 +398,7 @@ class VCenterClient implements DeviceApiClientInterface
                                 'ifMtu' => 1500,
                                 'ifPhysAddress' => $macAddress,
                                 'ifAlias' => $networkName,
+                                'ifVlan' => $ifVlan,
                             ];
                         } catch (\Exception $e) {
                             Log::debug('VCenterClient failed to get adapter details', [

@@ -439,53 +439,70 @@ class EditDeviceController
         $apiConfig->save();
 
         // Save custom endpoints if provided
-        // Only save endpoints if none exist yet (initial setup) or if explicitly requested
-        // Individual endpoint updates are handled via the updateEndpoint() AJAX method
-        $existingEndpointsCount = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)->count();
-
+        // Sync device endpoint overrides with the submitted JSON from the form
         $endpointsJson = $request->input('rest_endpoints');
         if ($endpointsJson && $endpointsJson !== '[]' && $endpointsJson !== '') {
             try {
                 $endpoints = json_decode($endpointsJson, true);
-                if (is_array($endpoints)) {
-                    // Only delete/recreate if no endpoints exist yet (initial setup from template)
-                    // Or if the user explicitly removed all endpoints (would trigger the else clause below)
-                    if ($existingEndpointsCount === 0 || count($endpoints) === 0) {
-                        // Delete existing endpoints for this device
-                        \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)->delete();
+                if (is_array($endpoints) && count($endpoints) > 0) {
+                    // Create a lookup of existing endpoints by path+method
+                    $existing = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)->get();
+                    $existingByKey = $existing->keyBy(function ($ep) {
+                        return $ep->path . '::' . $ep->method;
+                    });
 
-                        // Create new endpoint records
-                        foreach ($endpoints as $index => $ep) {
-                            \App\Models\DeviceApiEndpoint::create([
-                                'device_id' => $device->device_id,
-                                'name' => $ep['name'] ?? null,
-                                'path' => $ep['path'] ?? '',
-                                'method' => $ep['method'] ?? 'GET',
-                                'capability' => $ep['category'] ?? 'general',
-                                'poll_interval' => $ep['poll_interval'] ?? 300,
-                                'enabled' => $ep['enabled'] ?? true,
-                                'transform' => $ep['transform'] ?? null,
-                                'headers' => $ep['headers'] ?? null,
-                                'request_body' => $ep['request_body'] ?? null,
-                                'display_order' => $index,
-                            ]);
+                    $processedKeys = [];
+
+                    // Update or create endpoints from the submitted JSON
+                    foreach ($endpoints as $index => $ep) {
+                        $key = ($ep['path'] ?? '') . '::' . ($ep['method'] ?? 'GET');
+                        $processedKeys[] = $key;
+
+                        $data = [
+                            'device_id' => $device->device_id,
+                            'name' => $ep['name'] ?? null,
+                            'path' => $ep['path'] ?? '',
+                            'method' => $ep['method'] ?? 'GET',
+                            'capability' => $ep['category'] ?? 'general',
+                            'poll_interval' => $ep['poll_interval'] ?? 300,
+                            'enabled' => $ep['enabled'] ?? true,
+                            'transform' => $ep['transform'] ?? null,
+                            'headers' => $ep['headers'] ?? null,
+                            'request_body' => $ep['request_body'] ?? null,
+                            'display_order' => $index,
+                        ];
+
+                        if (isset($existingByKey[$key])) {
+                            // Update existing endpoint
+                            $existingByKey[$key]->update($data);
+                        } else {
+                            // Create new endpoint override
+                            \App\Models\DeviceApiEndpoint::create($data);
                         }
-                        \Illuminate\Support\Facades\Log::info("Saved {count} endpoints for device {$device->device_id}", ['count' => count($endpoints)]);
-
-                        // Also keep in attribs for backward compatibility during migration
-                        $device->setAttrib('rest_endpoints', $endpointsJson);
-                    } else {
-                        \Illuminate\Support\Facades\Log::info("Skipped endpoint save for device {$device->device_id} - endpoints already exist and are managed via AJAX");
                     }
+
+                    // Remove endpoints that are no longer in the submitted JSON
+                    // (user removed them from the list)
+                    foreach ($existingByKey as $key => $endpoint) {
+                        if (!in_array($key, $processedKeys)) {
+                            $endpoint->delete();
+                            \Illuminate\Support\Facades\Log::info("Removed endpoint override for device {$device->device_id}: {$endpoint->path}");
+                        }
+                    }
+
+                    \Illuminate\Support\Facades\Log::info("Synced endpoints for device {$device->device_id}", ['count' => count($endpoints)]);
+
+                    // Also keep in attribs for backward compatibility
+                    $device->setAttrib('rest_endpoints', $endpointsJson);
                 }
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error("Failed to save rest_endpoints: {$e->getMessage()}");
                 toast()->error(__('Failed to save endpoints: ' . $e->getMessage()));
             }
-        } elseif ($existingEndpointsCount > 0 && (!$endpointsJson || $endpointsJson === '[]')) {
-            // Only clear endpoints if they exist and the hidden field is explicitly empty
-            // This prevents accidental deletion
-            \Illuminate\Support\Facades\Log::warning("Not clearing endpoints for device {$device->device_id} - use the delete button in the UI instead");
+        } elseif (!$endpointsJson || $endpointsJson === '[]') {
+            // If endpoints JSON is empty, it might mean the user is using a pure template without overrides
+            // Don't delete existing overrides unless explicitly requested
+            \Illuminate\Support\Facades\Log::debug("Empty endpoints JSON for device {$device->device_id} - keeping existing overrides");
         }
 
         // Notify user if schema changed and password fields were cleared

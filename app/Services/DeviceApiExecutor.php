@@ -41,6 +41,38 @@ class DeviceApiExecutor
             return;
         }
 
+        // Load device-specific endpoint overrides from device_api_endpoints table
+        $deviceOverrides = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
+            ->get()
+            ->keyBy(function ($ep) {
+                // Key by path+method to match against template endpoints
+                return $ep->path . '::' . $ep->method;
+            });
+
+        // Apply device-specific overrides to template endpoints
+        if ($deviceOverrides->isNotEmpty()) {
+            $endpoints = array_map(function ($ep) use ($deviceOverrides) {
+                $key = $ep['path'] . '::' . ($ep['method'] ?? 'GET');
+                if (isset($deviceOverrides[$key])) {
+                    $override = $deviceOverrides[$key];
+                    // Merge device override settings, allowing device settings to take precedence
+                    $ep['enabled'] = $override->enabled;
+                    // Optionally override other fields if they're set in the device override
+                    if ($override->transform) {
+                        $ep['transform'] = $override->transform;
+                    }
+                    if ($override->headers) {
+                        $ep['headers'] = array_merge($ep['headers'] ?? [], $override->headers);
+                    }
+                    if ($override->request_body) {
+                        $ep['request_body'] = $override->request_body;
+                    }
+                    Log::debug("Applied device override for endpoint {$ep['path']}: enabled={$override->enabled}");
+                }
+                return $ep;
+            }, $endpoints);
+        }
+
         $endpointResults = []; // Cache results of fetches by path
         $iterativeEndpoints = [];
 
@@ -158,11 +190,36 @@ class DeviceApiExecutor
      */
     private function persistByCapability(Device $device, string $capability, array $mapped): void
     {
+        // Check if the response is a structured response with multiple capability keys
+        // Common capability keys that normalizers might return
+        $knownCapabilities = ['ports', 'ports_statistics', 'ports_stats', 'sensors', 'storage',
+                              'inventory', 'ipv4', 'ipv4_addresses', 'ipv4_mac', 'vlans',
+                              'transceivers'];
+
+        // If the mapped data has keys that match known capabilities, it's a structured response
+        $hasCapabilityKeys = !empty(array_intersect(array_keys($mapped), $knownCapabilities));
+
+        if ($hasCapabilityKeys) {
+            // Structured response - persist each capability separately
+            foreach ($mapped as $key => $data) {
+                if (in_array($key, $knownCapabilities) && !empty($data)) {
+                    Log::debug("Processing structured response capability: {$key}", [
+                        'device_id' => $device->device_id,
+                        'count' => is_array($data) ? count($data) : 'N/A'
+                    ]);
+                    $this->persistByCapability($device, $key, $data);
+                }
+            }
+            return;
+        }
+
+        // Normal response - persist the data directly based on the capability
         switch ($capability) {
             case 'inventory':
                 $this->persistInventory($device, $mapped);
                 break;
             case 'ipv4':
+            case 'ipv4_addresses':
                 $this->persistIpv4($device, $mapped);
                 break;
             case 'ports':

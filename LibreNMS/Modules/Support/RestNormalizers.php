@@ -3818,6 +3818,18 @@ class RestNormalizers
         foreach ($list as $net) {
             $name = $net['name'] ?? 'network';
             $index = self::stableIndexFromName($name);
+
+            // Extract VLAN ID from network name
+            // Patterns: "123-Name", "vm-network-18", "network-3015"
+            $ifVlan = null;
+            if (preg_match('/^(\d+)-/', $name, $matches)) {
+                // Pattern: "123-Name" or "3015-Something"
+                $ifVlan = (int) $matches[1];
+            } elseif (preg_match('/network-(\d+)$/i', $name, $matches)) {
+                // Pattern: "vm-network-18" or "network-3015"
+                $ifVlan = (int) $matches[1];
+            }
+
             $ports[] = [
                 'ifIndex'       => $index,
                 'ifName'        => $name,
@@ -3830,6 +3842,7 @@ class RestNormalizers
                 'ifPhysAddress' => '',
                 'ifAlias'       => $net['type'] ?? '',
                 'ifLastChange'  => 0,
+                'ifVlan'        => $ifVlan,
             ];
         }
 

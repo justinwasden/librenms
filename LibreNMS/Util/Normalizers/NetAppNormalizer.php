@@ -327,4 +327,141 @@ class NetAppNormalizer
 
         return $cidr;
     }
+
+    /**
+     * Normalize NetApp volume performance statistics to sensors
+     * Input: GET /storage/volumes?fields=uuid,name,statistics
+     */
+    public static function normalizeVolumePerformance(Device $device, array $payload, array $ep = []): array
+    {
+        $sensors = [];
+        $records = $payload['records'] ?? [];
+
+        foreach ($records as $volume) {
+            $volumeName = $volume['name'] ?? 'unknown';
+            $uuid = $volume['uuid'] ?? '';
+            $stats = $volume['statistics'] ?? [];
+
+            // Skip if no statistics available or status is not ok
+            if (empty($stats) || ($stats['status'] ?? '') !== 'ok') {
+                continue;
+            }
+
+            // IOPS sensors (read, write, total)
+            $iopsRaw = $stats['iops_raw'] ?? [];
+            if (isset($iopsRaw['total']) && $iopsRaw['total'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-iops',
+                    'sensor_descr' => "{$volumeName} Total IOPS",
+                    'sensor_index' => "volume.iops.total.{$uuid}",
+                    'sensor_current' => $iopsRaw['total'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($iopsRaw['read']) && $iopsRaw['read'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-iops',
+                    'sensor_descr' => "{$volumeName} Read IOPS",
+                    'sensor_index' => "volume.iops.read.{$uuid}",
+                    'sensor_current' => $iopsRaw['read'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($iopsRaw['write']) && $iopsRaw['write'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-iops',
+                    'sensor_descr' => "{$volumeName} Write IOPS",
+                    'sensor_index' => "volume.iops.write.{$uuid}",
+                    'sensor_current' => $iopsRaw['write'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Throughput sensors (bandwidth in bytes/sec)
+            $throughputRaw = $stats['throughput_raw'] ?? [];
+            if (isset($throughputRaw['total']) && $throughputRaw['total'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-throughput',
+                    'sensor_descr' => "{$volumeName} Total Throughput",
+                    'sensor_index' => "volume.throughput.total.{$uuid}",
+                    'sensor_current' => $throughputRaw['total'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($throughputRaw['read']) && $throughputRaw['read'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-throughput',
+                    'sensor_descr' => "{$volumeName} Read Throughput",
+                    'sensor_index' => "volume.throughput.read.{$uuid}",
+                    'sensor_current' => $throughputRaw['read'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($throughputRaw['write']) && $throughputRaw['write'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'load',
+                    'sensor_type' => 'netapp-volume-throughput',
+                    'sensor_descr' => "{$volumeName} Write Throughput",
+                    'sensor_index' => "volume.throughput.write.{$uuid}",
+                    'sensor_current' => $throughputRaw['write'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Latency sensors (in microseconds)
+            $latencyRaw = $stats['latency_raw'] ?? [];
+            if (isset($latencyRaw['total']) && $latencyRaw['total'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'delay',
+                    'sensor_type' => 'netapp-volume-latency',
+                    'sensor_descr' => "{$volumeName} Total Latency",
+                    'sensor_index' => "volume.latency.total.{$uuid}",
+                    'sensor_current' => $latencyRaw['total'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($latencyRaw['read']) && $latencyRaw['read'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'delay',
+                    'sensor_type' => 'netapp-volume-latency',
+                    'sensor_descr' => "{$volumeName} Read Latency",
+                    'sensor_index' => "volume.latency.read.{$uuid}",
+                    'sensor_current' => $latencyRaw['read'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($latencyRaw['write']) && $latencyRaw['write'] >= 0) {
+                $sensors[] = [
+                    'sensor_class' => 'delay',
+                    'sensor_type' => 'netapp-volume-latency',
+                    'sensor_descr' => "{$volumeName} Write Latency",
+                    'sensor_index' => "volume.latency.write.{$uuid}",
+                    'sensor_current' => $latencyRaw['write'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
 }

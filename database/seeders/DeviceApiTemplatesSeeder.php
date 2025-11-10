@@ -394,6 +394,16 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
+                'path' => '/storage/volumes?fields=uuid,name,statistics',
+                'method' => 'GET',
+                'capability' => 'sensors',
+                'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeVolumePerformance',
+                'display_order' => 45,
+                'enabled' => 1,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
                 'path' => '/cluster/nodes?fields=name,statistics.processor_utilization,statistics.memory_size,statistics.memory_used',
                 'method' => 'GET',
                 'capability' => 'sensors',
