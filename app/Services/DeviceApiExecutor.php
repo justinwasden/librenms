@@ -168,6 +168,9 @@ class DeviceApiExecutor
             case 'transceivers':
                 $this->persistTransceivers($device, $mapped);
                 break;
+            case 'vlans':
+                $this->persistVlans($device, $mapped);
+                break;
             default:
                 // Log unhandled capability for debugging
                 if (!empty($mapped)) {
@@ -243,5 +246,15 @@ class DeviceApiExecutor
     private function persistTransceivers(Device $device, array $mapped): void
     {
         DeviceApiPersistor::saveTransceivers($device, $mapped);
+    }
+
+    /**
+     * Save VLANs data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistVlans(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveVlans($device, $mapped);
     }
 }
