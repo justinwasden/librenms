@@ -328,94 +328,12 @@ class VCenterClient implements DeviceApiClientInterface
                 'ifAlias' => 'Aggregate',
             ];
 
-            // Get VMs to collect network adapter information
-            $response = $this->get('vcenter/vm');
-            $vms = $response['value'] ?? $response;
-
-            if (!is_array($vms)) {
-                return $ports;
-            }
-
-            foreach ($vms as $vm) {
-                $vmId = $vm['vm'] ?? null;
-                $vmName = $vm['name'] ?? 'unknown';
-
-                if (!$vmId) {
-                    continue;
-                }
-
-                try {
-                    // Get VM network adapters
-                    $ethResponse = $this->get("vcenter/vm/{$vmId}/hardware/ethernet");
-                    $adapters = $ethResponse['value'] ?? $ethResponse;
-
-                    if (!is_array($adapters)) {
-                        continue;
-                    }
-
-                    foreach ($adapters as $adapter) {
-                        $nicId = $adapter['nic'] ?? null;
-                        if (!$nicId) {
-                            continue;
-                        }
-
-                        // Get detailed adapter info
-                        try {
-                            $detailResponse = $this->get("vcenter/vm/{$vmId}/hardware/ethernet/{$nicId}");
-                            $nicDetails = $detailResponse['value'] ?? $detailResponse;
-
-                            $macAddress = $nicDetails['mac_address'] ?? '';
-                            $label = $nicDetails['label'] ?? "Network adapter {$nicId}";
-                            $state = $nicDetails['state'] ?? 'UNKNOWN';
-                            $backing = $nicDetails['backing'] ?? [];
-                            $networkName = $backing['network'] ?? '';
-
-                            // Generate stable index
-                            $ifName = "{$vmName}:{$label}";
-                            $index = crc32($ifName) & 0x7FFFFFFF;
-
-                            // Map state to oper status
-                            $ifOperStatus = match (strtoupper($state)) {
-                                'CONNECTED' => 'up',
-                                'DISCONNECTED' => 'down',
-                                default => 'unknown',
-                            };
-
-                            // Extract VLAN ID from network name (e.g., "network-3015" -> 3015)
-                            $ifVlan = null;
-                            if (preg_match('/network-(\d+)$/i', $networkName, $matches)) {
-                                $ifVlan = (int) $matches[1];
-                            }
-
-                            $ports[] = [
-                                'ifIndex' => $index,
-                                'ifName' => $ifName,
-                                'ifDescr' => "VM {$vmName} - {$label}",
-                                'ifType' => 'ethernetCsmacd',
-                                'ifOperStatus' => $ifOperStatus,
-                                'ifAdminStatus' => ($nicDetails['start_connected'] ?? true) ? 'up' : 'down',
-                                'ifSpeed' => 1000000000, // 1Gbps for virtual adapters
-                                'ifMtu' => 1500,
-                                'ifPhysAddress' => $macAddress,
-                                'ifAlias' => $networkName,
-                                'ifVlan' => $ifVlan,
-                            ];
-                        } catch (\Exception $e) {
-                            Log::debug('VCenterClient failed to get adapter details', [
-                                'vm_id' => $vmId,
-                                'nic_id' => $nicId,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    }
-
-                } catch (\Exception $e) {
-                    Log::debug('VCenterClient failed to get VM network adapters', [
-                        'vm_id' => $vmId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+            // REMOVED: VM network adapter collection
+            // VM network adapters should not be listed as infrastructure ports.
+            // Only the vCenter Appliance aggregate port is shown for overall traffic monitoring.
+            //
+            // If ESXi host physical adapters (vmnic) are needed in the future, they should be
+            // collected from /vcenter/host and /vcenter/network APIs instead of VM adapters.
 
         } catch (\Exception $e) {
             Log::warning('VCenterClient fetchPorts failed', [
