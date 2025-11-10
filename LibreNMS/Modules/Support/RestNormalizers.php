@@ -1773,7 +1773,245 @@ class RestNormalizers
         return $statistics;
     }
 
-    /**     * Normalize FortiGate hardware sensor information (temperature, fan, voltage, power)     * Input: GET /monitor/system/sensor-info     */    public static function normalizeFortgateSensorInfo(array $payload): array    {        $sensors = [];        $results = $payload['results'] ?? [];                if (!is_array($results)) {            return $sensors;        }        foreach ($results as $sensor) {            $name = $sensor['name'] ?? 'Unknown';            $type = $sensor['type'] ?? 'unknown';            $value = $sensor['value'] ?? 0;            $alarm = $sensor['alarm'] ?? 0;                        // Determine sensor class based on type            $sensorClass = match ($type) {                'temperature' => 'temperature',                'fan' => 'fanspeed',                'voltage' => 'voltage',                'wattage' => 'power',                'power' => 'state',                default => null,            };                        if (!$sensorClass) {                continue; // Skip unknown sensor types            }                        // Create sensor index from name            $index = self::stableIndexFromName($name);                        if ($sensorClass === 'state') {                // Power supply status sensor                $sensors[] = [                    'sensor_class' => 'state',                    'sensor_type' => 'fortigate',                    'sensor_descr' => $name,                    'sensor_index' => 'power_' . $index,                    'sensor_current' => (int)$value,                    'sensor_limit' => null,                    'sensor_limit_low' => null,                    'states' => [                        ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'failed'],                        ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'ok'],                    ],                ];            } else {                // Regular numeric sensor                $sensors[] = [                    'sensor_class' => $sensorClass,                    'sensor_type' => 'fortigate',                    'sensor_descr' => $name,                    'sensor_index' => $type . '_' . $index,                    'sensor_current' => (float)$value,                    'sensor_limit' => null,                    'sensor_limit_low' => null,                ];            }        }        return $sensors;    }    /**     * Normalize FortiGate IPsec VPN tunnel information     * Input: GET /monitor/vpn/ipsec     */    public static function normalizeFortigateVpnIpsec(array $payload): array    {        $sensors = [];        $results = $payload['results'] ?? [];                if (!is_array($results)) {            return $sensors;        }        // Count active and total tunnels        $activeCount = 0;        $totalCount = count($results);                foreach ($results as $tunnel) {            $status = $tunnel['status'] ?? 'down';            if (in_array(strtolower($status), ['up', 'established'])) {                $activeCount++;            }        }                // Add count sensors for VPN tunnels        $sensors[] = [            'sensor_class' => 'count',            'sensor_type' => 'fortigate',            'sensor_descr' => 'IPsec VPN Tunnels Active',            'sensor_index' => 'ipsec_active',            'sensor_current' => $activeCount,            'sensor_limit' => null,            'sensor_limit_low' => 0,        ];                $sensors[] = [            'sensor_class' => 'count',            'sensor_type' => 'fortigate',            'sensor_descr' => 'IPsec VPN Tunnels Total',            'sensor_index' => 'ipsec_total',            'sensor_current' => $totalCount,            'sensor_limit' => null,            'sensor_limit_low' => 0,        ];        return $sensors;    }    /**     * Normalize FortiGate SSL VPN user information     * Input: GET /monitor/vpn/ssl     */    public static function normalizeFortigateVpnSsl(array $payload): array    {        $sensors = [];        $results = $payload['results'] ?? [];                if (!is_array($results)) {            return $sensors;        }        $userCount = count($results);                $sensors[] = [            'sensor_class' => 'count',            'sensor_type' => 'fortigate',            'sensor_descr' => 'SSL VPN Users Connected',            'sensor_index' => 'ssl_vpn_users',            'sensor_current' => $userCount,            'sensor_limit' => null,            'sensor_limit_low' => 0,        ];        return $sensors;    }    /**     * Normalize FortiGate DHCP lease information     * Input: GET /monitor/system/dhcp     */    public static function normalizeFortgateDhcp(array $payload): array    {        $sensors = [];        $results = $payload['results'] ?? [];                if (!is_array($results)) {            return $sensors;        }        $leaseCount = count($results);                $sensors[] = [            'sensor_class' => 'count',            'sensor_type' => 'fortigate',            'sensor_descr' => 'DHCP Leases Active',            'sensor_index' => 'dhcp_leases',            'sensor_current' => $leaseCount,            'sensor_limit' => null,            'sensor_limit_low' => 0,        ];        return $sensors;    }    /**     * Normalize FortiGate license status information     * Input: GET /monitor/license/status     */    public static function normalizeFortgateLicense(array $payload): array    {        $sensors = [];        $results = $payload['results'] ?? [];                if (!is_array($results)) {            return $sensors;        }        foreach ($results as $license) {            $name = $license['name'] ?? 'Unknown';            $type = $license['type'] ?? '';            $status = $license['status'] ?? 'unknown';                        // Skip if no name            if (!$name || $name === 'Unknown') {                continue;            }                        // Create sensor index from name            $index = self::stableIndexFromName($name);                        // Map status to numeric value            $statusValue = match (strtolower($status)) {                'valid', 'licensed' => 1,                'expired' => 2,                'invalid' => 3,                default => 0, // unknown            };                        // Add license status as state sensor            $sensors[] = [                'sensor_class' => 'state',                'sensor_type' => 'fortigate',                'sensor_descr' => 'License ' . $name,                'sensor_index' => 'license_' . $index,                'sensor_current' => $statusValue,                'sensor_limit' => null,                'sensor_limit_low' => null,                'states' => [                    ['value' => 0, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],                    ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'valid'],                    ['value' => 2, 'generic' => 2, 'graph' => 0, 'descr' => 'expired'],                    ['value' => 3, 'generic' => 2, 'graph' => 0, 'descr' => 'invalid'],                ],            ];                        // If there's a days remaining field, add it as count sensor            if (isset($license['days']) && is_numeric($license['days'])) {                $sensors[] = [                    'sensor_class' => 'count',                    'sensor_type' => 'fortigate',                    'sensor_descr' => 'Days left for ' . $name,                    'sensor_index' => 'license_days_' . $index,                    'sensor_current' => (int)$license['days'],                    'sensor_limit' => null,                    'sensor_limit_low' => 0,                ];            }        }        return $sensors;    }
+    /**
+     * Normalize FortiGate hardware sensor information (temperature, fan, voltage, power)
+     * Input: GET /monitor/system/sensor-info
+     */
+    public static function normalizeFortgateSensorInfo(array $payload): array
+    {
+        $sensors = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $sensors;
+        }
+
+        foreach ($results as $sensor) {
+            $name = $sensor['name'] ?? 'Unknown';
+            $type = $sensor['type'] ?? 'unknown';
+            $value = $sensor['value'] ?? 0;
+            $alarm = $sensor['alarm'] ?? 0;
+
+            // Determine sensor class based on type
+            $sensorClass = match ($type) {
+                'temperature' => 'temperature',
+                'fan' => 'fanspeed',
+                'voltage' => 'voltage',
+                'wattage' => 'power',
+                'power' => 'state',
+                default => null,
+            };
+
+            if (!$sensorClass) {
+                continue; // Skip unknown sensor types
+            }
+
+            // Create sensor index from name
+            $index = self::stableIndexFromName($name);
+
+            if ($sensorClass === 'state') {
+                // Power supply status sensor
+                $sensors[] = [
+                    'sensor_class' => 'state',
+                    'sensor_type' => 'fortigate',
+                    'sensor_descr' => $name,
+                    'sensor_index' => 'power_' . $index,
+                    'sensor_current' => (int)$value,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                    'states' => [
+                        ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'failed'],
+                        ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'ok'],
+                    ],
+                ];
+            } else {
+                // Regular numeric sensor
+                $sensors[] = [
+                    'sensor_class' => $sensorClass,
+                    'sensor_type' => 'fortigate',
+                    'sensor_descr' => $name,
+                    'sensor_index' => $type . '_' . $index,
+                    'sensor_current' => (float)$value,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize FortiGate IPsec VPN tunnel information
+     * Input: GET /monitor/vpn/ipsec
+     */
+    public static function normalizeFortigateVpnIpsec(array $payload): array
+    {
+        $sensors = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $sensors;
+        }
+
+        // Count active and total tunnels
+        $activeCount = 0;
+        $totalCount = count($results);
+
+        foreach ($results as $tunnel) {
+            $status = $tunnel['status'] ?? 'down';
+            if (in_array(strtolower($status), ['up', 'established'])) {
+                $activeCount++;
+            }
+        }
+
+        // Add count sensors for VPN tunnels
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'fortigate',
+            'sensor_descr' => 'IPsec VPN Tunnels Active',
+            'sensor_index' => 'ipsec_active',
+            'sensor_current' => $activeCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'fortigate',
+            'sensor_descr' => 'IPsec VPN Tunnels Total',
+            'sensor_index' => 'ipsec_total',
+            'sensor_current' => $totalCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize FortiGate SSL VPN user information
+     * Input: GET /monitor/vpn/ssl
+     */
+    public static function normalizeFortigateVpnSsl(array $payload): array
+    {
+        $sensors = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $sensors;
+        }
+
+        $userCount = count($results);
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'fortigate',
+            'sensor_descr' => 'SSL VPN Users Connected',
+            'sensor_index' => 'ssl_vpn_users',
+            'sensor_current' => $userCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize FortiGate DHCP lease information
+     * Input: GET /monitor/system/dhcp
+     */
+    public static function normalizeFortgateDhcp(array $payload): array
+    {
+        $sensors = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $sensors;
+        }
+
+        $leaseCount = count($results);
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'fortigate',
+            'sensor_descr' => 'DHCP Leases Active',
+            'sensor_index' => 'dhcp_leases',
+            'sensor_current' => $leaseCount,
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize FortiGate license status information
+     * Input: GET /monitor/license/status
+     */
+    public static function normalizeFortgateLicense(array $payload): array
+    {
+        $sensors = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $sensors;
+        }
+
+        foreach ($results as $license) {
+            $name = $license['name'] ?? 'Unknown';
+            $type = $license['type'] ?? '';
+            $status = $license['status'] ?? 'unknown';
+
+            // Skip if no name
+            if (!$name || $name === 'Unknown') {
+                continue;
+            }
+
+            // Create sensor index from name
+            $index = self::stableIndexFromName($name);
+
+            // Map status to numeric value
+            $statusValue = match (strtolower($status)) {
+                'valid', 'licensed' => 1,
+                'expired' => 2,
+                'invalid' => 3,
+                default => 0, // unknown
+            };
+
+            // Add license status as state sensor
+            $sensors[] = [
+                'sensor_class' => 'state',
+                'sensor_type' => 'fortigate',
+                'sensor_descr' => 'License ' . $name,
+                'sensor_index' => 'license_' . $index,
+                'sensor_current' => $statusValue,
+                'sensor_limit' => null,
+                'sensor_limit_low' => null,
+                'states' => [
+                    ['value' => 0, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
+                    ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'valid'],
+                    ['value' => 2, 'generic' => 2, 'graph' => 0, 'descr' => 'expired'],
+                    ['value' => 3, 'generic' => 2, 'graph' => 0, 'descr' => 'invalid'],
+                ],
+            ];
+
+            // If there's a days remaining field, add it as count sensor
+            if (isset($license['days']) && is_numeric($license['days'])) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'fortigate',
+                    'sensor_descr' => 'Days left for ' . $name,
+                    'sensor_index' => 'license_days_' . $index,
+                    'sensor_current' => (int)$license['days'],
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
 
     public static function normalizeJunosInterfaces(array $payload): array
     {
@@ -3703,6 +3941,168 @@ class RestNormalizers
         }
 
         return ['processors' => $processors, 'mempools' => $mempools];
+    }
+
+    /**
+     * Normalize vCenter VM list to get all VMs for further processing
+     */
+    public static function vcVmsToContext(array $payload): array
+    {
+        // This just passes through VM list for context
+        return $payload['value'] ?? $payload;
+    }
+
+    /**
+     * Normalize vCenter VM network adapters to ports with MAC/MTU
+     * Input: Array of VMs with their hardware.ethernet data
+     */
+    public static function vcVmNetworkAdaptersToPorts(array $payload): array
+    {
+        $ports = [];
+        $vms = $payload['value'] ?? $payload;
+
+        foreach ($vms as $vm) {
+            $vmName = $vm['name'] ?? $vm['vm'] ?? 'unknown';
+            $vmId = $vm['vm'] ?? null;
+
+            if (!$vmId) {
+                continue;
+            }
+
+            // VM ethernet adapters should be in 'hardware' -> 'ethernet'
+            $adapters = $vm['hardware']['ethernet'] ?? $vm['ethernet'] ?? [];
+
+            foreach ($adapters as $adapter) {
+                $nicId = $adapter['nic'] ?? null;
+                if (!$nicId) {
+                    continue;
+                }
+
+                $macAddress = $adapter['mac_address'] ?? '';
+                $label = $adapter['label'] ?? "Network adapter";
+                $state = $adapter['state'] ?? 'UNKNOWN';
+                $backing = $adapter['backing'] ?? [];
+                $networkName = $backing['network'] ?? 'unknown';
+
+                // Determine interface name
+                $ifName = "{$vmName}:{$label}";
+                $index = self::stableIndexFromName($ifName);
+
+                // Map state to oper status
+                $ifOperStatus = match (strtoupper($state)) {
+                    'CONNECTED' => 'up',
+                    'DISCONNECTED' => 'down',
+                    default => 'unknown',
+                };
+
+                $ports[] = [
+                    'ifIndex' => $index,
+                    'ifName' => $ifName,
+                    'ifDescr' => "VM {$vmName} - {$label}",
+                    'ifType' => 'ethernetCsmacd',
+                    'ifOperStatus' => $ifOperStatus,
+                    'ifAdminStatus' => ($adapter['start_connected'] ?? true) ? 'up' : 'down',
+                    'ifSpeed' => 1000000000, // Assume 1Gbps for virtual adapters
+                    'ifMtu' => 1500, // Virtual adapters typically use 1500
+                    'ifPhysAddress' => $macAddress,
+                    'ifAlias' => $networkName,
+                ];
+            }
+        }
+
+        return $ports;
+    }
+
+    /**
+     * Normalize vCenter VM guest network interfaces to IP addresses
+     * Input: Array of VMs with their guest.networking.interfaces data
+     */
+    public static function vcVmGuestNetworkingToIpv4(array $payload): array
+    {
+        $ipv4 = [];
+        $vms = $payload['value'] ?? $payload;
+
+        foreach ($vms as $vm) {
+            $vmName = $vm['name'] ?? $vm['vm'] ?? 'unknown';
+            $interfaces = $vm['guest']['networking']['interfaces'] ?? $vm['interfaces'] ?? [];
+
+            foreach ($interfaces as $iface) {
+                $macAddress = $iface['mac_address'] ?? '';
+                $nicId = $iface['nic'] ?? '';
+                $ipData = $iface['ip'] ?? [];
+                $ipAddresses = $ipData['ip_addresses'] ?? [];
+
+                foreach ($ipAddresses as $ipInfo) {
+                    $ipAddress = $ipInfo['ip_address'] ?? null;
+                    $prefixLength = $ipInfo['prefix_length'] ?? 24;
+
+                    // Skip IPv6 and invalid IPs
+                    if (!$ipAddress || strpos($ipAddress, ':') !== false) {
+                        continue;
+                    }
+
+                    // Calculate netmask from prefix length
+                    $netmask = long2ip(~((1 << (32 - $prefixLength)) - 1));
+
+                    // Use MAC address to match with port
+                    $context = $macAddress ?: $nicId;
+                    $index = self::stableIndexFromName("{$vmName}:{$context}");
+
+                    $ipv4[] = [
+                        'ipv4_address' => $ipAddress,
+                        'ipv4_prefixlen' => $prefixLength,
+                        'ipv4_network_id' => null,
+                        'context_name' => $context,
+                        'port_id' => null, // Will be matched by MAC address
+                        'ifIndex' => $index,
+                    ];
+                }
+            }
+        }
+
+        return $ipv4;
+    }
+
+    /**
+     * Normalize vCenter port groups to VLANs
+     * Input: GET /vcenter/network
+     * Extracts VLAN IDs from port group names (e.g., "5-MPS-Voice" = VLAN 5)
+     */
+    public static function vcPortGroupsToVlans(array $payload): array
+    {
+        $vlans = [];
+        $portGroups = $payload['value'] ?? $payload;
+
+        foreach ($portGroups as $pg) {
+            $name = $pg['name'] ?? '';
+            $type = $pg['type'] ?? '';
+            $networkId = $pg['network'] ?? '';
+
+            if (!$name) {
+                continue;
+            }
+
+            // Try to extract VLAN ID from name (format: "123-Name" or "Name")
+            $vlanId = null;
+            if (preg_match('/^(\d+)-/', $name, $matches)) {
+                $vlanId = (int)$matches[1];
+            }
+
+            // If no VLAN ID found, use a hash of the name as ID
+            if ($vlanId === null) {
+                $vlanId = self::stableIndexFromName($name);
+            }
+
+            $vlans[] = [
+                'vlan_vlan' => $vlanId,
+                'vlan_domain' => 1,
+                'vlan_name' => $name,
+                'vlan_type' => $type === 'DISTRIBUTED_PORTGROUP' ? 'ethernet' : 'ethernet',
+                'vlan_mtu' => null,
+            ];
+        }
+
+        return $vlans;
     }
 
     // Zabbix
