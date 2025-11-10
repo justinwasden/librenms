@@ -60,6 +60,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             // =========================================================================
             ['capability' => 'ports',     'method' => 'GET', 'path' => 'network-interfaces',                'transform' => '\LibreNMS\Util\Normalizers\PureStorageNormalizer::normalizeNetworkInterfaces', 'display_order' => 60, 'enabled' => 1],
             ['capability' => 'ipv4',      'method' => 'GET', 'path' => 'network-interfaces',                'transform' => '\LibreNMS\Util\Normalizers\PureStorageNormalizer::normalizeIpv4',               'display_order' => 70, 'enabled' => 1],
+            ['capability' => 'vlans',     'method' => 'GET', 'path' => 'network-interfaces',                'transform' => '\LibreNMS\Util\Normalizers\PureStorageNormalizer::normalizeVlans',              'display_order' => 75, 'enabled' => 1],
             // Critical: Traffic rates -> ports statistics (structured for DeviceApiPersistor::savePortsStatistics)
             ['capability' => 'ports_statistics', 'method' => 'GET', 'path' => 'network-interfaces/performance', 'transform' => '\LibreNMS\Util\Normalizers\PureStorageNormalizer::normalizeNetworkPerformanceToPortsStats', 'display_order' => 100, 'enabled' => 1],
             // New: Transceiver monitoring (temperature, power)
@@ -393,7 +394,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=statistics',
+                'path' => '/cluster/nodes?fields=name,statistics.processor_utilization,statistics.memory_size,statistics.memory_used',
                 'method' => 'GET',
                 'capability' => 'sensors',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMetrics',
@@ -403,7 +404,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=statistics',
+                'path' => '/cluster/nodes?fields=name,statistics.processor_utilization',
                 'method' => 'GET',
                 'capability' => 'processors',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterProcessors',
@@ -413,7 +414,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=statistics',
+                'path' => '/cluster/nodes?fields=name,statistics.memory_size,statistics.memory_used',
                 'method' => 'GET',
                 'capability' => 'mempools',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMempools',

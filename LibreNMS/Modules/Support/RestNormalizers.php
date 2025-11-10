@@ -289,6 +289,11 @@ class RestNormalizers
                 continue;
             }
 
+            // Also skip empty drive bays (name contains .BAY and status is unknown)
+            if (stripos($name, '.BAY') !== false && strtolower($status) === 'unknown') {
+                continue;
+            }
+
             $index = self::stableIndexFromName($name);
 
             // Determine parent device

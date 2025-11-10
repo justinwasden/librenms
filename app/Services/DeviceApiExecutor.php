@@ -169,6 +169,7 @@ class DeviceApiExecutor
                 $this->persistPorts($device, $mapped);
                 break;
             case 'ports_stats':
+            case 'ports_statistics':
                 $this->persistPortsStatistics($device, $mapped);
                 break;
             case 'sensors':

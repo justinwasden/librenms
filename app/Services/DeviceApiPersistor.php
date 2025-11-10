@@ -52,6 +52,7 @@ class DeviceApiPersistor
                     'ifMtu'         => $p['ifMtu'] ?? ($portRow->ifMtu ?? null),
                     'ifPhysAddress' => $p['ifPhysAddress'] ?? ($portRow->ifPhysAddress ?? null),
                     'ifAlias'       => $p['ifAlias'] ?? ($portRow->ifAlias ?? null),
+                    'ifVlan'        => $p['ifVlan'] ?? ($portRow->ifVlan ?? null),
                 ];
 
                 if ($portRow) {
@@ -69,6 +70,12 @@ class DeviceApiPersistor
     {
         foreach ($sensors as $s) {
             try {
+                // Skip sensors with empty description
+                if (empty($s['sensor_descr']) || trim($s['sensor_descr']) === '') {
+                    Log::debug("Skipping sensor with empty description", ['device_id' => $device->device_id, 'sensor_index' => $s['sensor_index'] ?? 'unknown']);
+                    continue;
+                }
+
                 // Generate deterministic sensor_oid if not provided
                 $sensorType = $s['sensor_type'] ?? 'rest';
                 $sensorIndex = (string) ($s['sensor_index'] ?? '');

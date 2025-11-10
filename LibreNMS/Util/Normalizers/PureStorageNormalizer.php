@@ -32,6 +32,13 @@ class PureStorageNormalizer
                 $ifType = 'fiberChannel';
             }
 
+            // Extract VLAN ID from port name if it follows pattern: ethX.VLAN or ethX.Y.VLAN
+            // Examples: ct0.eth19.315, ct1.eth18.323
+            $ifVlan = null;
+            if (preg_match('/\.(\d+)$/', $name, $matches)) {
+                $ifVlan = (int) $matches[1];
+            }
+
             $ports[] = [
                 'ifIndex'       => $idx + 1,
                 'ifName'        => $name,
@@ -43,6 +50,7 @@ class PureStorageNormalizer
                 'ifSpeed'       => $interface['speed'] ?? 0,                         // bps
                 'ifMtu'         => $eth['mtu'] ?? null,
                 'ifPhysAddress' => $eth['mac_address'] ?? '',
+                'ifVlan'        => $ifVlan,
             ];
         }
 
@@ -125,6 +133,48 @@ class PureStorageNormalizer
 		return $addresses;
 
 		}
+    /**
+     * Normalize VLANs from Pure Storage network interface names.
+     * Input payload: GET /network-interfaces
+     * Output: flat array of VLANs for DeviceApiPersistor::saveVlans()
+     */
+    public static function normalizeVlans(Device $device, array $payload, array $ep = []): array
+    {
+        $items = [];
+        if (isset($payload['items']) && is_array($payload['items'])) {
+            $items = $payload['items'];
+        } elseif (!empty($payload)) {
+            $items = is_array($payload) ? $payload : [$payload];
+        }
+
+        $vlans = [];
+        $seen_vlans = [];
+
+        foreach ($items as $idx => $interface) {
+            $name = strtolower($interface['name'] ?? '');
+            if (empty($name)) {
+                continue;
+            }
+
+            // Extract VLAN ID from port name (e.g., ct0.eth19.315 -> 315)
+            if (preg_match('/\.(\d+)$/', $name, $matches)) {
+                $vlan_id = (int) $matches[1];
+
+                // Only add each VLAN once
+                if (!isset($seen_vlans[$vlan_id])) {
+                    $vlans[] = [
+                        'vlan_vlan' => $vlan_id,
+                        'vlan_name' => "VLAN{$vlan_id}",
+                        'vlan_type' => 'ethernet',
+                    ];
+                    $seen_vlans[$vlan_id] = true;
+                }
+            }
+        }
+
+        return $vlans;
+    }
+
     /**
      * Normalize Pure Storage per-interface traffic into sensors (rates).
      * Input payload: GET /network-performance
@@ -290,7 +340,7 @@ class PureStorageNormalizer
             $stats[] = $row;
         }
 
-        return ['ports_statistics' => $stats];
+        return $stats;
     }
 
     /**

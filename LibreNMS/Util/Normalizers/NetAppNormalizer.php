@@ -222,17 +222,21 @@ class NetAppNormalizer
         foreach ($records as $idx => $node) {
             $nodeName = $node['name'] ?? "node{$idx}";
 
-            // CPU usage
-            if (isset($node['statistics']['processor_utilization_raw'])) {
+            // CPU usage - use processor_utilization (percentage) instead of processor_utilization_raw (cumulative microseconds)
+            if (isset($node['statistics']['processor_utilization'])) {
                 $sensors[] = [
                     'sensor_class' => 'load',
                     'sensor_type' => 'netapp',
                     'sensor_descr' => "{$nodeName} CPU Usage",
                     'sensor_index' => "cpu.{$nodeName}",
-                    'sensor_current' => $node['statistics']['processor_utilization_raw'],
+                    'sensor_current' => $node['statistics']['processor_utilization'],
                     'sensor_limit' => 100,
                     'sensor_limit_low' => 0,
                 ];
+            } elseif (isset($node['statistics']['processor_utilization_raw'])) {
+                // Fallback: processor_utilization_raw is a counter and shouldn't be used as-is
+                // Log warning but don't create invalid sensor
+                \Log::warning("NetApp CPU: processor_utilization not available for {$nodeName}, skipping CPU sensor");
             }
         }
 
@@ -251,9 +255,9 @@ class NetAppNormalizer
         foreach ($records as $idx => $node) {
             $nodeName = $node['name'] ?? "node{$idx}";
 
-            // CPU usage
-            if (isset($node['statistics']['processor_utilization_raw'])) {
-                $cpuUsage = $node['statistics']['processor_utilization_raw'];
+            // CPU usage - use processor_utilization (percentage) instead of processor_utilization_raw (cumulative microseconds)
+            if (isset($node['statistics']['processor_utilization'])) {
+                $cpuUsage = $node['statistics']['processor_utilization'];
 
                 $processors[] = [
                     'processor_index' => "netapp-node-{$idx}",
