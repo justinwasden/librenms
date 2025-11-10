@@ -46,6 +46,12 @@ class DeviceApiExecutor
 
         // First pass: execute all non-iterative endpoints and collect iterative ones
         foreach ($endpoints as $ep) {
+            // Skip disabled endpoints
+            if (isset($ep['enabled']) && !$ep['enabled']) {
+                Log::debug("DeviceApiExecutor skipping disabled endpoint: {$ep['path']}");
+                continue;
+            }
+
             if (!empty($ep['for_each'])) {
                 $iterativeEndpoints[] = $ep;
                 continue;
@@ -82,6 +88,12 @@ class DeviceApiExecutor
 
         // Second pass: execute iterative endpoints
         foreach ($iterativeEndpoints as $ep) {
+            // Skip disabled endpoints
+            if (isset($ep['enabled']) && !$ep['enabled']) {
+                Log::debug("DeviceApiExecutor skipping disabled iterative endpoint: {$ep['path']}");
+                continue;
+            }
+
             $parentCapability = $ep['for_each'];
             if (!isset($endpointResults[$parentCapability])) {
                 Log::warning("Could not find parent data for capability '{$parentCapability}' for a for_each loop.");

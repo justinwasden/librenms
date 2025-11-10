@@ -298,10 +298,19 @@ class DeviceApiPersistor
     {
         foreach ($inv as $e) {
             try {
+                // Skip if entPhysicalIndex is missing - it's a required field
+                $physicalIndex = $e['entPhysicalIndex'] ?? null;
+                if ($physicalIndex === null || $physicalIndex === '') {
+                    Log::debug("Skipping inventory item for device {$device->device_id}: missing entPhysicalIndex", [
+                        'item' => $e,
+                    ]);
+                    continue;
+                }
+
                 // Upsert entPhysical-like inventory
                 $base = [
                     'device_id'                  => $device->device_id,
-                    'entPhysicalIndex'           => $e['entPhysicalIndex'] ?? null,
+                    'entPhysicalIndex'           => $physicalIndex,
                     'entPhysicalName'            => $e['name'] ?? ($e['entPhysicalName'] ?? ''),
                     'entPhysicalDescr'           => $e['descr'] ?? ($e['entPhysicalDescr'] ?? ''),
                     'entPhysicalClass'           => $e['class'] ?? ($e['entPhysicalClass'] ?? ''),
@@ -651,6 +660,9 @@ class DeviceApiPersistor
 
         // After saving VLANs, associate ports with VLANs for vCenter
         self::associatePortsWithVlans($device);
+
+        // Also sync VLANs to managed ESXi hosts
+        self::syncVlansToEsxiHosts($device, $vlans);
     }
 
     /**
@@ -723,17 +735,20 @@ class DeviceApiPersistor
                 // Check if association already exists
                 $existing = DB::table('ports_vlans')
                     ->where('port_id', $port->port_id)
-                    ->where('vlan_id', $vlan->vlan_id)
+                    ->where('vlan', $vlan->vlan_vlan)
+                    ->where('device_id', $device->device_id)
                     ->first();
 
                 if (!$existing) {
                     DB::table('ports_vlans')->insert([
+                        'device_id' => $device->device_id,
                         'port_id' => $port->port_id,
-                        'vlan_id' => $vlan->vlan_id,
+                        'vlan' => $vlan->vlan_vlan,
                         'baseport' => 0,
                         'priority' => 0,
                         'state' => 'active',
                         'cost' => 0,
+                        'untagged' => 0,
                     ]);
                     $associated++;
                 }
@@ -745,6 +760,75 @@ class DeviceApiPersistor
 
         } catch (\Throwable $e) {
             Log::warning("associatePortsWithVlans failed for device {$device->device_id}: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Sync VLANs from vCenter to managed ESXi host devices
+     * This ensures ESXi hosts show the portgroups in their VLAN tab
+     */
+    private static function syncVlansToEsxiHosts(Device $device, array $vlans): void
+    {
+        // Only do this for vCenter devices
+        if (!in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)) {
+            return;
+        }
+
+        try {
+            // Find all ESXi devices to sync VLANs to
+            // All ESXi devices in LibreNMS will receive portgroups from any vCenter
+            $esxiDevices = DB::table('devices')
+                ->whereIn('os', ['esxi', 'vmware-esxi'])
+                ->get();
+
+            if ($esxiDevices->isEmpty()) {
+                return;
+            }
+
+            // Copy VLANs to each ESXi device
+            foreach ($esxiDevices as $esxiDevice) {
+                $copiedCount = 0;
+                $updatedCount = 0;
+
+                foreach ($vlans as $vlan) {
+                    $vlanId = $vlan['vlan_vlan'] ?? null;
+                    $vlanDomain = $vlan['vlan_domain'] ?? 1;
+
+                    if ($vlanId === null) {
+                        continue;
+                    }
+
+                    $base = [
+                        'device_id' => $esxiDevice->device_id,
+                        'vlan_vlan' => $vlanId,
+                        'vlan_domain' => $vlanDomain,
+                        'vlan_name' => $vlan['vlan_name'] ?? "VLAN{$vlanId}",
+                        'vlan_type' => $vlan['vlan_type'] ?? 'ethernet',
+                    ];
+
+                    // Check if VLAN already exists for this ESXi host
+                    $existing = DB::table('vlans')
+                        ->where('device_id', $esxiDevice->device_id)
+                        ->where('vlan_vlan', $vlanId)
+                        ->where('vlan_domain', $vlanDomain)
+                        ->first();
+
+                    if ($existing) {
+                        DB::table('vlans')->where('vlan_id', $existing->vlan_id)->update($base);
+                        $updatedCount++;
+                    } else {
+                        DB::table('vlans')->insert($base);
+                        $copiedCount++;
+                    }
+                }
+
+                if ($copiedCount > 0 || $updatedCount > 0) {
+                    Log::info("Synced VLANs from vCenter {$device->device_id} to ESXi host {$esxiDevice->device_id} ({$esxiDevice->hostname}): {$copiedCount} new, {$updatedCount} updated");
+                }
+            }
+
+        } catch (\Throwable $e) {
+            Log::warning("syncVlansToEsxiHosts failed for device {$device->device_id}: {$e->getMessage()}");
         }
     }
 
@@ -1063,7 +1147,7 @@ class DeviceApiPersistor
     }
 
     /**
-     * Helper to find port_id from ifIndex, ifName, or direct port_id
+     * Helper to find port_id from ifIndex, ifName, MAC address, or direct port_id
      */
     protected static function findPortId(Device $device, array $data): ?int
     {
@@ -1080,15 +1164,35 @@ class DeviceApiPersistor
             if ($port) {
                 return (int) $port->port_id;
             }
-            // If not found by ifIndex, fall through to try ifName
         }
 
-        // Try to find by ifName as fallback
+        // Try to find by ifName
         if (isset($data['ifName'])) {
             $port = DB::table('ports')
                 ->where('device_id', $device->device_id)
                 ->where('ifName', $data['ifName'])
                 ->first();
+            if ($port) {
+                return (int) $port->port_id;
+            }
+        }
+
+        // Try to find by MAC address (context_name or ifPhysAddress)
+        $macAddress = $data['context_name'] ?? $data['ifPhysAddress'] ?? null;
+        if ($macAddress) {
+            // Normalize MAC address format (remove colons, dashes, dots, make lowercase)
+            $normalizedMac = strtolower(str_replace([':', '-', '.'], '', $macAddress));
+
+            $port = DB::table('ports')
+                ->where('device_id', $device->device_id)
+                ->whereNotNull('ifPhysAddress')
+                ->where('ifPhysAddress', '!=', '')
+                ->get()
+                ->first(function ($p) use ($normalizedMac) {
+                    $portMac = strtolower(str_replace([':', '-', '.'], '', $p->ifPhysAddress ?? ''));
+                    return $portMac === $normalizedMac;
+                });
+
             if ($port) {
                 return (int) $port->port_id;
             }

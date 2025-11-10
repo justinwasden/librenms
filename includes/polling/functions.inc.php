@@ -55,6 +55,7 @@ function poll_sensor($device, $class)
 {
     $sensors = [];
     $misc_sensors = [];
+    $rest_api_sensors = [];
     $all_sensors = [];
 
     foreach (dbFetchRows('SELECT * FROM `sensors` WHERE `sensor_class` = ? AND `device_id` = ?', [$class, $device['device_id']]) as $sensor) {
@@ -62,7 +63,8 @@ function poll_sensor($device, $class)
             // Agent sensors are polled in the unix-agent
         } elseif ($sensor['poller_type'] == 'ipmi') {
             $misc_sensors[] = $sensor;
-        } elseif ($sensor['poller_type'] == 'rest-api') {
+        } elseif ($sensor['poller_type'] == 'rest' || $sensor['poller_type'] == 'rest-api') {
+            // REST API sensors are polled by the device-api module
             $rest_api_sensors[] = $sensor;
         } else {
             $sensors[] = $sensor;
@@ -136,22 +138,9 @@ function poll_sensor($device, $class)
     // Process REST API sensors
     foreach ($rest_api_sensors as $sensor) {
         Log::info('Checking (rest-api) ' . $class . ' ' . $sensor['sensor_descr'] . '... ');
-
-        $sensor_index = $sensor['sensor_index'];
-        if (isset($rest_api_data[$sensor_index])) {
-            $api_sensor = $rest_api_data[$sensor_index];
-            $sensor_value = $api_sensor['sensor_current'] ?? null;
-
-            if ($sensor_value !== null) {
-                $sensor['new_value'] = $sensor_value;
-                $all_sensors[] = $sensor;
-                Log::info("$sensor_value\n");
-            } else {
-                Log::info("no value!\n");
-            }
-        } else {
-            Log::info("not found in REST API data!\n");
-        }
+        Log::info(' already polled.');
+        // REST API sensors are polled by the device-api module, skip here
+        continue;
     }
 
     record_sensor_data($device, $all_sensors);

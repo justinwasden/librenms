@@ -127,7 +127,8 @@ class DeviceApiTemplatesSeeder extends Seeder
             ['capability' => 'ports',      'method' => 'GET', 'path' => 'nodes/{node}/network', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeProxmoxNodeNetwork',   'display_order' => 40],
             ['capability' => 'inventory',  'method' => 'GET', 'path' => 'nodes/{node}/storage', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeProxmoxNodeStorage',   'display_order' => 50],
             ['capability' => 'ipv4',       'method' => 'GET', 'path' => 'nodes/{node}/network', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeProxmoxIpv4',          'display_order' => 60],
-            ['capability' => 'ports_statistics', 'method' => 'GET', 'path' => 'nodes/{node}/rrddata?timeframe=hour', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeProxmoxNetworkStatistics', 'display_order' => 70],
+            // Note: rrddata endpoint disabled - Proxmox API doesn't accept timeframe parameter and network stats are better collected via SNMP
+            // ['capability' => 'ports_statistics', 'method' => 'GET', 'path' => 'nodes/{node}/rrddata', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeProxmoxNetworkStatistics', 'display_order' => 70, 'enabled' => 0],
         ];
         foreach ($pxEndpoints as $ep) {
             DB::table('device_api_template_endpoints')->updateOrInsert(
@@ -334,8 +335,8 @@ class DeviceApiTemplatesSeeder extends Seeder
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/api',
             ]),
-            'modules' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'ports_statistics']),
-            'capabilities' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'ports_stats']),
+            'modules' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'mempools', 'processors', 'ports_statistics']),
+            'capabilities' => json_encode(['inventory', 'ports', 'ipv4', 'storage', 'sensors', 'mempools', 'processors', 'ports_statistics']),
             'description' => 'Template for NetApp ONTAP REST API, providing discovery and metrics for ports, storage, and inventory.',
             'enabled' => 1,
             'created_at' => $now, 'updated_at' => $now,
@@ -357,6 +358,7 @@ class DeviceApiTemplatesSeeder extends Seeder
                 'capability' => 'inventory',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterNodes',
                 'display_order' => 10,
+                'enabled' => 1,
                 'created_at' => $now, 'updated_at' => $now,
             ],
             [
@@ -366,6 +368,7 @@ class DeviceApiTemplatesSeeder extends Seeder
                 'capability' => 'ports',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeNetworkPorts',
                 'display_order' => 20,
+                'enabled' => 1,
                 'created_at' => $now, 'updated_at' => $now,
             ],
             [
@@ -375,6 +378,7 @@ class DeviceApiTemplatesSeeder extends Seeder
                 'capability' => 'ipv4',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeIpv4',
                 'display_order' => 30,
+                'enabled' => 1,
                 'created_at' => $now, 'updated_at' => $now,
             ],
             [
@@ -384,24 +388,47 @@ class DeviceApiTemplatesSeeder extends Seeder
                 'capability' => 'storage',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeVolumes',
                 'display_order' => 40,
+                'enabled' => 1,
                 'created_at' => $now, 'updated_at' => $now,
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=statistics.processor_utilization_raw',
+                'path' => '/cluster/nodes?fields=statistics',
                 'method' => 'GET',
                 'capability' => 'sensors',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMetrics',
                 'display_order' => 50,
+                'enabled' => 1,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'path' => '/cluster/nodes?fields=statistics',
+                'method' => 'GET',
+                'capability' => 'processors',
+                'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterProcessors',
+                'display_order' => 55,
+                'enabled' => 1,
+                'created_at' => $now, 'updated_at' => $now,
+            ],
+            [
+                'template_id' => $templateId,
+                'path' => '/cluster/nodes?fields=statistics',
+                'method' => 'GET',
+                'capability' => 'mempools',
+                'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMempools',
+                'display_order' => 56,
+                'enabled' => 1,
                 'created_at' => $now, 'updated_at' => $now,
             ],
             [
                 'template_id' => $templateId,
                 'path' => '/network/ethernet/ports/{port_uuid}/metrics',
                 'method' => 'GET',
-                'capability' => 'ports_stats',
+                'capability' => 'ports_statistics',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizePortMetrics',
                 'display_order' => 60,
+                'enabled' => 0,
                 'for_each' => 'ports',
                 'for_each_options' => json_encode(['placeholder' => 'port_uuid', 'value_key' => 'uuid']),
                 'created_at' => $now, 'updated_at' => $now,
@@ -409,10 +436,21 @@ class DeviceApiTemplatesSeeder extends Seeder
         ];
 
         foreach ($endpoints as $endpoint) {
-            DB::table('device_api_template_endpoints')->updateOrInsert(
-                ['template_id' => $endpoint['template_id'], 'path' => $endpoint['path']],
-                $endpoint
-            );
+            // For the port metrics endpoint, match by path pattern (with or without query params)
+            $pathPattern = str_replace('?fields=statistics', '', $endpoint['path']);
+
+            $existing = DB::table('device_api_template_endpoints')
+                ->where('template_id', $endpoint['template_id'])
+                ->where('path', 'like', $pathPattern . '%')
+                ->first();
+
+            if ($existing) {
+                DB::table('device_api_template_endpoints')
+                    ->where('id', $existing->id)
+                    ->update($endpoint);
+            } else {
+                DB::table('device_api_template_endpoints')->insert($endpoint);
+            }
         }
     }
 }

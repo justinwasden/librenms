@@ -240,6 +240,69 @@ class NetAppNormalizer
     }
 
     /**
+     * Normalize NetApp cluster processors (CPU)
+     * Input: GET /cluster/nodes?fields=statistics
+     */
+    public static function normalizeClusterProcessors(Device $device, array $payload, array $ep = []): array
+    {
+        $processors = [];
+        $records = $payload['records'] ?? [];
+
+        foreach ($records as $idx => $node) {
+            $nodeName = $node['name'] ?? "node{$idx}";
+
+            // CPU usage
+            if (isset($node['statistics']['processor_utilization_raw'])) {
+                $cpuUsage = $node['statistics']['processor_utilization_raw'];
+
+                $processors[] = [
+                    'processor_index' => "netapp-node-{$idx}",
+                    'processor_type' => 'netapp-cpu',
+                    'processor_descr' => "{$nodeName} CPU",
+                    'processor_usage' => $cpuUsage,
+                ];
+            }
+        }
+
+        return $processors;
+    }
+
+    /**
+     * Normalize NetApp cluster memory
+     * Input: GET /cluster/nodes?fields=statistics
+     */
+    public static function normalizeClusterMempools(Device $device, array $payload, array $ep = []): array
+    {
+        $mempools = [];
+        $records = $payload['records'] ?? [];
+
+        foreach ($records as $idx => $node) {
+            $nodeName = $node['name'] ?? "node{$idx}";
+
+            // Memory statistics
+            $memTotal = $node['statistics']['memory_size'] ?? 0; // in bytes
+            $memUsed = $node['statistics']['memory_used'] ?? 0; // in bytes
+
+            if ($memTotal > 0) {
+                $memFree = $memTotal - $memUsed;
+                $memPerc = ($memUsed / $memTotal) * 100;
+
+                $mempools[] = [
+                    'mempool_index' => "netapp-node-{$idx}",
+                    'mempool_type' => 'netapp-memory',
+                    'mempool_descr' => "{$nodeName} Memory",
+                    'mempool_total' => $memTotal,
+                    'mempool_used' => $memUsed,
+                    'mempool_free' => $memFree,
+                    'mempool_perc' => $memPerc,
+                ];
+            }
+        }
+
+        return $mempools;
+    }
+
+    /**
      * Convert dotted decimal netmask to CIDR prefix length
      */
     protected static function netmaskToCidr(string $netmask): int

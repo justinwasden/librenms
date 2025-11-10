@@ -6,6 +6,7 @@ use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
 use App\Models\DeviceApiConfig;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -313,12 +314,26 @@ class VCenterClient implements DeviceApiClientInterface
         $ports = [];
 
         try {
+            // Add vCenter appliance aggregate port for overall traffic
+            $ports[] = [
+                'ifIndex' => 99999,
+                'ifName' => 'vCenter Appliance',
+                'ifDescr' => 'vCenter Appliance Aggregate Traffic',
+                'ifType' => 'ethernetCsmacd',
+                'ifOperStatus' => 'up',
+                'ifAdminStatus' => 'up',
+                'ifSpeed' => 10000000000, // 10Gbps
+                'ifMtu' => 1500,
+                'ifPhysAddress' => '',
+                'ifAlias' => 'Aggregate',
+            ];
+
             // Get VMs to collect network adapter information
             $response = $this->get('vcenter/vm');
             $vms = $response['value'] ?? $response;
 
             if (!is_array($vms)) {
-                return [];
+                return $ports;
             }
 
             foreach ($vms as $vm) {
@@ -413,12 +428,62 @@ class VCenterClient implements DeviceApiClientInterface
         $mempools = [];
 
         try {
+            // Try to get vCenter appliance memory stats first
+            // Note: This endpoint may not be available on all vCenter versions
+            try {
+                $monitoringData = $this->get('appliance/monitoring/query', [
+                    'item.names' => ['mem.util', 'mem.total'],
+                    'item.interval' => 'MINUTES5',
+                    'item.function' => 'AVG',
+                    'item.start_time' => date('c', strtotime('-5 minutes')),
+                    'item.end_time' => date('c'),
+                ]);
+
+                $stats = $monitoringData['value'] ?? $monitoringData;
+                $memUtil = null;
+                $memTotal = null;
+
+                if (is_array($stats)) {
+                    foreach ($stats as $stat) {
+                        $name = $stat['name'] ?? '';
+                        $data = $stat['data'] ?? [];
+
+                        if ($name === 'mem.util' && !empty($data)) {
+                            $memUtil = end($data); // Get last value
+                        } elseif ($name === 'mem.total' && !empty($data)) {
+                            $memTotal = end($data); // Get last value in MB
+                        }
+                    }
+                }
+
+                if ($memTotal > 0) {
+                    $memUsedMB = $memUtil > 0 ? ($memTotal * $memUtil / 100) : 0;
+                    $memFreeMB = $memTotal - $memUsedMB;
+
+                    $mempools[] = [
+                        'mempool_index' => 'vcenter-appliance',
+                        'mempool_type' => 'vmware-vcenter',
+                        'mempool_descr' => 'vCenter Appliance Memory',
+                        'mempool_total' => $memTotal * 1024 * 1024, // Convert MB to bytes
+                        'mempool_used' => $memUsedMB * 1024 * 1024,
+                        'mempool_free' => $memFreeMB * 1024 * 1024,
+                        'mempool_perc' => $memUtil ?: 0,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // Monitoring API may not be available or may have different format in older vCenter versions
+                Log::debug('VCenterClient appliance monitoring not available (this is normal for some vCenter versions)', [
+                    'device_id' => $device->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Get hosts to collect memory information
             $response = $this->get('vcenter/host');
             $hosts = $response['value'] ?? $response;
 
             if (!is_array($hosts)) {
-                return [];
+                return $mempools;
             }
 
             foreach ($hosts as $idx => $host) {
@@ -434,11 +499,9 @@ class VCenterClient implements DeviceApiClientInterface
                     $summary = $this->get("vcenter/host/{$hostId}");
                     $hostInfo = $summary['value'] ?? $summary;
 
-                    // Memory usage (vCenter provides in MB typically)
+                    // Memory usage (vCenter provides in MiB)
                     $memTotal = $hostInfo['memory_size_MiB'] ?? 0;
 
-                    // Get detailed stats if available (would need performance API for actual usage)
-                    // For now, we'll create the mempool structure with available info
                     if ($memTotal > 0) {
                         $mempools[] = [
                             'mempool_index' => "vcenter-host-{$idx}",
@@ -477,12 +540,54 @@ class VCenterClient implements DeviceApiClientInterface
         $processors = [];
 
         try {
+            // Try to get vCenter appliance CPU stats first
+            // Note: This endpoint may not be available on all vCenter versions
+            try {
+                $monitoringData = $this->get('appliance/monitoring/query', [
+                    'item.names' => ['cpu.util'],
+                    'item.interval' => 'MINUTES5',
+                    'item.function' => 'AVG',
+                    'item.start_time' => date('c', strtotime('-5 minutes')),
+                    'item.end_time' => date('c'),
+                ]);
+
+                $stats = $monitoringData['value'] ?? $monitoringData;
+                $cpuUtil = null;
+
+                if (is_array($stats)) {
+                    foreach ($stats as $stat) {
+                        $name = $stat['name'] ?? '';
+                        $data = $stat['data'] ?? [];
+
+                        if ($name === 'cpu.util' && !empty($data)) {
+                            $cpuUtil = end($data); // Get last value
+                            break;
+                        }
+                    }
+                }
+
+                if ($cpuUtil !== null) {
+                    $processors[] = [
+                        'processor_index' => 'vcenter-appliance',
+                        'processor_type' => 'vmware-vcenter-cpu',
+                        'processor_descr' => 'vCenter Appliance CPU',
+                        'processor_usage' => $cpuUtil,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // Monitoring API may not be available or may have different format in older vCenter versions
+                Log::debug('VCenterClient appliance monitoring not available (this is normal for some vCenter versions)', [
+                    'device_id' => $device->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Get hosts to collect processor information
             $response = $this->get('vcenter/host');
             $hosts = $response['value'] ?? $response;
 
             if (!is_array($hosts)) {
-                return [];
+                return $processors;
             }
 
             foreach ($hosts as $idx => $host) {
@@ -539,12 +644,13 @@ class VCenterClient implements DeviceApiClientInterface
 
         try {
             // Get vCenter appliance info as the main chassis
+            $chassisIndex = $entPhysicalIndex++;
             try {
                 $appVersion = $this->get('appliance/system/version');
                 $versionInfo = $appVersion['value'] ?? $appVersion;
 
                 $inventory[] = [
-                    'entPhysicalIndex' => $entPhysicalIndex++,
+                    'entPhysicalIndex' => $chassisIndex,
                     'entPhysicalDescr' => 'vCenter Server Appliance',
                     'entPhysicalClass' => 'chassis',
                     'entPhysicalName' => 'vCenter',
@@ -565,7 +671,49 @@ class VCenterClient implements DeviceApiClientInterface
                 Log::debug('VCenterClient failed to get appliance version', ['error' => $e->getMessage()]);
             }
 
-            // Get hosts as modules
+            // Get clusters first (if available)
+            $clusters = [];
+            $clusterIndexMap = [];
+            try {
+                $clusterResponse = $this->get('vcenter/cluster');
+                $clusterList = $clusterResponse['value'] ?? $clusterResponse;
+
+                if (is_array($clusterList)) {
+                    foreach ($clusterList as $cluster) {
+                        $clusterId = is_array($cluster) ? ($cluster['cluster'] ?? null) : $cluster;
+                        $clusterName = is_array($cluster) ? ($cluster['name'] ?? 'cluster') : 'cluster';
+
+                        if ($clusterId) {
+                            $clusterPhysicalIndex = $entPhysicalIndex++;
+                            $clusterIndexMap[$clusterId] = $clusterPhysicalIndex;
+
+                            $inventory[] = [
+                                'entPhysicalIndex' => $clusterPhysicalIndex,
+                                'entPhysicalDescr' => "Cluster: {$clusterName}",
+                                'entPhysicalClass' => 'module',
+                                'entPhysicalName' => $clusterName,
+                                'entPhysicalModelName' => 'vSphere Cluster',
+                                'entPhysicalSerialNum' => $clusterId,
+                                'entPhysicalContainedIn' => $chassisIndex,
+                                'entPhysicalMfgName' => 'VMware',
+                                'entPhysicalParentRelPos' => -1,
+                                'entPhysicalVendorType' => 'vmware-cluster',
+                                'entPhysicalHardwareRev' => '',
+                                'entPhysicalFirmwareRev' => '',
+                                'entPhysicalSoftwareRev' => '',
+                                'entPhysicalIsFRU' => 0,
+                                'entPhysicalAlias' => '',
+                                'entPhysicalAssetID' => '',
+                            ];
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('VCenterClient failed to get clusters', ['error' => $e->getMessage()]);
+            }
+
+            // Get hosts and map them to their clusters
+            $hostIndexMap = [];
             $response = $this->get('vcenter/host');
             $hosts = $response['value'] ?? $response;
 
@@ -583,16 +731,25 @@ class VCenterClient implements DeviceApiClientInterface
                         $summary = $this->get("vcenter/host/{$hostId}");
                         $hostInfo = $summary['value'] ?? $summary;
 
+                        // Determine parent (cluster or chassis)
+                        $clusterId = $host['cluster'] ?? null;
+                        $parentIndex = $clusterId && isset($clusterIndexMap[$clusterId])
+                            ? $clusterIndexMap[$clusterId]
+                            : $chassisIndex;
+
+                        $hostPhysicalIndex = $entPhysicalIndex++;
+                        $hostIndexMap[$hostId] = $hostPhysicalIndex;
+
                         $inventory[] = [
-                            'entPhysicalIndex' => $entPhysicalIndex++,
+                            'entPhysicalIndex' => $hostPhysicalIndex,
                             'entPhysicalDescr' => "ESXi Host: {$hostName}",
                             'entPhysicalClass' => 'module',
                             'entPhysicalName' => $hostName,
                             'entPhysicalModelName' => $hostInfo['cpu_model'] ?? 'ESXi Host',
                             'entPhysicalSerialNum' => '',
-                            'entPhysicalContainedIn' => 1,
+                            'entPhysicalContainedIn' => $parentIndex,
                             'entPhysicalMfgName' => 'VMware',
-                            'entPhysicalParentRelPos' => $entPhysicalIndex - 1,
+                            'entPhysicalParentRelPos' => -1,
                             'entPhysicalVendorType' => 'vmware-esxi',
                             'entPhysicalHardwareRev' => '',
                             'entPhysicalFirmwareRev' => $hostInfo['version'] ?? '',
@@ -611,7 +768,7 @@ class VCenterClient implements DeviceApiClientInterface
                 }
             }
 
-            // Get VMs as components
+            // Get VMs and place them under their host
             $vmResponse = $this->get('vcenter/vm');
             $vms = $vmResponse['value'] ?? $vmResponse;
 
@@ -620,10 +777,16 @@ class VCenterClient implements DeviceApiClientInterface
                     $vmId = is_array($vm) ? ($vm['vm'] ?? null) : $vm;
                     $vmName = is_array($vm) ? ($vm['name'] ?? 'vm') : 'vm';
                     $powerState = is_array($vm) ? ($vm['power_state'] ?? 'UNKNOWN') : 'UNKNOWN';
+                    $vmHost = is_array($vm) ? ($vm['host'] ?? null) : null;
 
                     if (!$vmId) {
                         continue;
                     }
+
+                    // Determine parent (host if known, otherwise chassis)
+                    $parentIndex = $vmHost && isset($hostIndexMap[$vmHost])
+                        ? $hostIndexMap[$vmHost]
+                        : $chassisIndex;
 
                     $inventory[] = [
                         'entPhysicalIndex' => $entPhysicalIndex++,
@@ -632,9 +795,9 @@ class VCenterClient implements DeviceApiClientInterface
                         'entPhysicalName' => $vmName,
                         'entPhysicalModelName' => 'Virtual Machine',
                         'entPhysicalSerialNum' => $vmId,
-                        'entPhysicalContainedIn' => 1,
+                        'entPhysicalContainedIn' => $parentIndex,
                         'entPhysicalMfgName' => 'VMware',
-                        'entPhysicalParentRelPos' => $entPhysicalIndex - 1,
+                        'entPhysicalParentRelPos' => -1,
                         'entPhysicalVendorType' => 'vmware-vm',
                         'entPhysicalHardwareRev' => '',
                         'entPhysicalFirmwareRev' => '',
@@ -861,46 +1024,49 @@ class VCenterClient implements DeviceApiClientInterface
         $stats = [];
 
         try {
-            // Get hosts to collect network statistics
-            $response = $this->get('vcenter/host');
-            $hosts = $response['value'] ?? $response;
+            // Try to get vCenter appliance network stats
+            // Note: This endpoint may not be available on all vCenter versions
+            try {
+                $monitoringData = $this->get('appliance/monitoring/query', [
+                    'item.names' => ['net.rx.rate', 'net.tx.rate'],
+                    'item.interval' => 'MINUTES5',
+                    'item.function' => 'AVG',
+                    'item.start_time' => date('c', strtotime('-5 minutes')),
+                    'item.end_time' => date('c'),
+                ]);
 
-            if (!is_array($hosts)) {
-                return [];
-            }
+                $monStats = $monitoringData['value'] ?? $monitoringData;
+                $rxRate = null;
+                $txRate = null;
 
-            foreach ($hosts as $idx => $host) {
-                $hostId = is_array($host) ? ($host['host'] ?? null) : $host;
-                if (!$hostId) {
-                    continue;
-                }
+                if (is_array($monStats)) {
+                    foreach ($monStats as $stat) {
+                        $name = $stat['name'] ?? '';
+                        $data = $stat['data'] ?? [];
 
-                try {
-                    // Get host network information
-                    $network = $this->get("vcenter/host/{$hostId}/networking");
-                    $interfaces = $network['value'] ?? [];
-
-                    foreach ($interfaces as $ifIdx => $iface) {
-                        $nicKey = $iface['nic'] ?? "nic$ifIdx";
-
-                        // vCenter doesn't expose raw counters directly via REST API
-                        // Would need to use Performance Manager API for detailed stats
-                        $stats[] = [
-                            'ifIndex' => ($idx * 100) + $ifIdx,
-                            'ifInOctets' => 0,
-                            'ifOutOctets' => 0,
-                            'ifInErrors' => 0,
-                            'ifOutErrors' => 0,
-                            'ifInUcastPkts' => 0,
-                            'ifOutUcastPkts' => 0,
-                        ];
+                        if ($name === 'net.rx.rate' && !empty($data)) {
+                            $rxRate = end($data); // KB/s
+                        } elseif ($name === 'net.tx.rate' && !empty($data)) {
+                            $txRate = end($data); // KB/s
+                        }
                     }
-                } catch (\Exception $e) {
-                    Log::debug('VCenterClient failed to get host network', [
-                        'host_id' => $hostId,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
+
+                if ($rxRate !== null || $txRate !== null) {
+                    $stats[] = [
+                        'ifIndex' => 99999, // Matches the aggregate port created in fetchPorts
+                        'ifInOctets_rate' => ($rxRate ?? 0) * 1024, // Convert KB/s to B/s
+                        'ifOutOctets_rate' => ($txRate ?? 0) * 1024,
+                        'ifInBits_rate' => ($rxRate ?? 0) * 1024 * 8,
+                        'ifOutBits_rate' => ($txRate ?? 0) * 1024 * 8,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // Monitoring API may not be available or may have different format in older vCenter versions
+                Log::debug('VCenterClient appliance monitoring not available (this is normal for some vCenter versions)', [
+                    'device_id' => $device->device_id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
         } catch (\Exception $e) {
