@@ -194,7 +194,7 @@ class DeviceApiExecutor
         // Common capability keys that normalizers might return
         $knownCapabilities = ['ports', 'ports_statistics', 'ports_stats', 'sensors', 'storage',
                               'inventory', 'ipv4', 'ipv4_addresses', 'ipv4_mac', 'vlans',
-                              'transceivers'];
+                              'transceivers', 'processors', 'mempools'];
 
         // If the mapped data has keys that match known capabilities, it's a structured response
         $hasCapabilityKeys = !empty(array_intersect(array_keys($mapped), $knownCapabilities));
@@ -240,6 +240,12 @@ class DeviceApiExecutor
                 break;
             case 'vlans':
                 $this->persistVlans($device, $mapped);
+                break;
+            case 'processors':
+                $this->persistProcessors($device, $mapped);
+                break;
+            case 'mempools':
+                $this->persistMempools($device, $mapped);
                 break;
             default:
                 // Log unhandled capability for debugging
@@ -326,5 +332,25 @@ class DeviceApiExecutor
     private function persistVlans(Device $device, array $mapped): void
     {
         DeviceApiPersistor::saveVlans($device, $mapped);
+    }
+
+    /**
+     * Save processors data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistProcessors(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveProcessors($device, $mapped);
+    }
+
+    /**
+     * Save mempools data
+     * @param Device $device
+     * @param array $mapped
+     */
+    private function persistMempools(Device $device, array $mapped): void
+    {
+        DeviceApiPersistor::saveMempools($device, $mapped);
     }
 }
