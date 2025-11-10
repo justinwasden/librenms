@@ -364,7 +364,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/network/ethernet/ports',
+                'path' => '/network/ethernet/ports?fields=uuid,name,node.name,speed,state,enabled,type,mtu,mac_address,broadcast_domain.name',
                 'method' => 'GET',
                 'capability' => 'ports',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeNetworkPorts',
@@ -404,7 +404,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=name,statistics.processor_utilization,statistics.memory_size,statistics.memory_used',
+                'path' => '/cluster/nodes?fields=name,statistics',
                 'method' => 'GET',
                 'capability' => 'sensors',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMetrics',
@@ -414,7 +414,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=name,statistics.processor_utilization',
+                'path' => '/cluster/nodes?fields=name,statistics',
                 'method' => 'GET',
                 'capability' => 'processors',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterProcessors',
@@ -424,7 +424,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ],
             [
                 'template_id' => $templateId,
-                'path' => '/cluster/nodes?fields=name,statistics.memory_size,statistics.memory_used',
+                'path' => '/cluster/nodes?fields=name,statistics',
                 'method' => 'GET',
                 'capability' => 'mempools',
                 'transform' => 'LibreNMS\\Util\\Normalizers\\NetAppNormalizer::normalizeClusterMempools',

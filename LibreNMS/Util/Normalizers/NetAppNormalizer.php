@@ -221,22 +221,26 @@ class NetAppNormalizer
 
         foreach ($records as $idx => $node) {
             $nodeName = $node['name'] ?? "node{$idx}";
+            $stats = $node['statistics'] ?? [];
 
-            // CPU usage - use processor_utilization (percentage) instead of processor_utilization_raw (cumulative microseconds)
-            if (isset($node['statistics']['processor_utilization'])) {
-                $sensors[] = [
-                    'sensor_class' => 'load',
-                    'sensor_type' => 'netapp',
-                    'sensor_descr' => "{$nodeName} CPU Usage",
-                    'sensor_index' => "cpu.{$nodeName}",
-                    'sensor_current' => $node['statistics']['processor_utilization'],
-                    'sensor_limit' => 100,
-                    'sensor_limit_low' => 0,
-                ];
-            } elseif (isset($node['statistics']['processor_utilization_raw'])) {
-                // Fallback: processor_utilization_raw is a counter and shouldn't be used as-is
-                // Log warning but don't create invalid sensor
-                \Log::warning("NetApp CPU: processor_utilization not available for {$nodeName}, skipping CPU sensor");
+            // Calculate CPU percentage from raw counters
+            // processor_utilization_raw / processor_utilization_base * 100 = percentage
+            if (isset($stats['processor_utilization_raw'], $stats['processor_utilization_base'])) {
+                $raw = (float) $stats['processor_utilization_raw'];
+                $base = (float) $stats['processor_utilization_base'];
+
+                if ($base > 0) {
+                    $cpuPercent = ($raw / $base) * 100;
+                    $sensors[] = [
+                        'sensor_class' => 'load',
+                        'sensor_type' => 'netapp',
+                        'sensor_descr' => "{$nodeName} CPU Usage",
+                        'sensor_index' => "cpu.{$nodeName}",
+                        'sensor_current' => round($cpuPercent, 2),
+                        'sensor_limit' => 100,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
             }
         }
 
@@ -254,17 +258,22 @@ class NetAppNormalizer
 
         foreach ($records as $idx => $node) {
             $nodeName = $node['name'] ?? "node{$idx}";
+            $stats = $node['statistics'] ?? [];
 
-            // CPU usage - use processor_utilization (percentage) instead of processor_utilization_raw (cumulative microseconds)
-            if (isset($node['statistics']['processor_utilization'])) {
-                $cpuUsage = $node['statistics']['processor_utilization'];
+            // Calculate CPU percentage from raw counters
+            if (isset($stats['processor_utilization_raw'], $stats['processor_utilization_base'])) {
+                $raw = (float) $stats['processor_utilization_raw'];
+                $base = (float) $stats['processor_utilization_base'];
 
-                $processors[] = [
-                    'processor_index' => "netapp-node-{$idx}",
-                    'processor_type' => 'netapp-cpu',
-                    'processor_descr' => "{$nodeName} CPU",
-                    'processor_usage' => $cpuUsage,
-                ];
+                if ($base > 0) {
+                    $cpuPercent = ($raw / $base) * 100;
+                    $processors[] = [
+                        'processor_index' => "netapp-node-{$idx}",
+                        'processor_type' => 'netapp-cpu',
+                        'processor_descr' => "{$nodeName} CPU",
+                        'processor_usage' => round($cpuPercent, 2),
+                    ];
+                }
             }
         }
 
