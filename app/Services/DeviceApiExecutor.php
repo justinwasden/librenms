@@ -92,9 +92,11 @@ class DeviceApiExecutor
             $path = $ep['path'];
             if (!isset($endpointResults[$path])) {
                 try {
-                    Log::debug("DeviceApiExecutor GET: path={$path}");
-                    $pathParts = parse_url($path);
-                    $basePath = $pathParts['path'] ?? $path;
+                    // Resolve placeholders like {hostname}, {node}, etc.
+                    $resolvedPath = EndpointPathResolver::resolve($device, $path);
+                    Log::debug("DeviceApiExecutor GET: path={$path} resolved={$resolvedPath}");
+                    $pathParts = parse_url($resolvedPath);
+                    $basePath = $pathParts['path'] ?? $resolvedPath;
                     $queryParams = [];
                     if (isset($pathParts['query'])) {
                         parse_str($pathParts['query'], $queryParams);
