@@ -3845,7 +3845,8 @@ class RestNormalizers
             $name = $ds['name'] ?? 'datastore';
             $index = self::stableIndexFromName($name);
             $cap = (int)($ds['capacity'] ?? 0);
-            $free = (int)($ds['freeSpace'] ?? 0);
+            // Support both freeSpace (old API) and free_space (current API)
+            $free = (int)($ds['free_space'] ?? $ds['freeSpace'] ?? 0);
             $used = $cap > 0 ? $cap - $free : 0;
 
             if ($cap > 0) {

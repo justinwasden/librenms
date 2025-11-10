@@ -836,25 +836,22 @@ class VCenterClient implements DeviceApiClientInterface
             }
 
             foreach ($datastores as $idx => $ds) {
-                // Get detailed datastore information
-                $datastoreId = is_array($ds) ? ($ds['datastore'] ?? null) : $ds;
-                if (!$datastoreId) {
+                // Use data from list endpoint which includes capacity
+                // (detailed endpoint only returns free_space without capacity)
+                if (!is_array($ds)) {
                     continue;
                 }
 
                 try {
-                    $details = $this->get("vcenter/datastore/{$datastoreId}");
-                    $dsInfo = $details['value'] ?? $details;
-
-                    $name = $dsInfo['name'] ?? "datastore-$idx";
-                    $capacity = $dsInfo['capacity'] ?? 0;
-                    $freeSpace = $dsInfo['free_space'] ?? 0;
+                    $name = $ds['name'] ?? "datastore-$idx";
+                    $capacity = $ds['capacity'] ?? 0;
+                    $freeSpace = $ds['free_space'] ?? 0;
                     $used = $capacity - $freeSpace;
 
                     $storage[] = [
                         'storage_index' => "ds-$idx",
                         'storage_descr' => $name,
-                        'storage_type' => $dsInfo['type'] ?? 'vmware-datastore',
+                        'storage_type' => $ds['type'] ?? 'vmware-datastore',
                         'storage_size' => $capacity,
                         'storage_used' => $used,
                         'storage_free' => $freeSpace,
@@ -862,8 +859,8 @@ class VCenterClient implements DeviceApiClientInterface
                         'storage_perc' => $capacity > 0 ? round(($used / $capacity) * 100, 2) : 0,
                     ];
                 } catch (\Exception $e) {
-                    Log::debug('VCenterClient failed to get datastore details', [
-                        'datastore_id' => $datastoreId,
+                    Log::debug('VCenterClient failed to process datastore', [
+                        'datastore' => $ds,
                         'error' => $e->getMessage(),
                     ]);
                 }
