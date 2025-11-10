@@ -244,7 +244,7 @@ class FlashArrayClient implements DeviceApiClientInterface
 
                 if (isset($host['connection_count'])) {
                     $portStatus = $host['connection_count'] > 0 ? 'connected' : 'offline';
-                    $portDetails[] = "Connections: {$host['connection_count']}";
+                    $portDetails[] = "{$host['connection_count']}";
                 }
 
                 $hosts[] = [
