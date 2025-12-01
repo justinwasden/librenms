@@ -142,7 +142,8 @@ class VCenterClient implements DeviceApiClientInterface
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('VCenterClient session creation failed completely', ['error' => $e->getMessage()]);
+            // Log as debug since this is expected when probing non-vCenter devices
+            Log::debug('VCenterClient session creation failed', ['error' => $e->getMessage()]);
             throw new RuntimeException("VCenter session initialization failed: " . $e->getMessage(), (int) $e->getCode(), $e);
         }
     }
@@ -172,7 +173,42 @@ class VCenterClient implements DeviceApiClientInterface
      */
     public function capabilities(): array
     {
-        return ['sensors', 'ports', 'mempools', 'processors', 'inventory', 'ipv4', 'storage', 'ports_stats', 'vlans'];
+        return ['device_info', 'sensors', 'ports', 'mempools', 'processors', 'inventory', 'ipv4', 'storage', 'ports_stats', 'vlans', 'vminfo', 'clusters', 'hypervisor_hosts'];
+    }
+
+    /**
+     * Fetch device information including hostname
+     *
+     * @param Device $device
+     * @return array Device info (version, hostname, etc.)
+     */
+    public function fetchDeviceInfo(Device $device): array
+    {
+        $info = [];
+
+        try {
+            // Get vCenter appliance version
+            $versionResp = $this->get('appliance/system/version');
+            if (is_array($versionResp)) {
+                $info['version'] = $versionResp['version'] ?? ($versionResp['value']['version'] ?? null);
+                $info['build'] = $versionResp['build'] ?? ($versionResp['value']['build'] ?? null);
+                $info['product'] = $versionResp['product'] ?? ($versionResp['value']['product'] ?? null);
+            }
+        } catch (\Throwable $e) {
+            Log::debug('VCenterClient fetchDeviceInfo version failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            // Get hostname from networking configuration
+            $hostnameResp = $this->get('appliance/networking/dns/hostname');
+            if (is_array($hostnameResp)) {
+                $info['hostname'] = $hostnameResp['value'] ?? $hostnameResp['hostname'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            Log::debug('VCenterClient fetchDeviceInfo hostname failed', ['error' => $e->getMessage()]);
+        }
+
+        return $info;
     }
 
     /**
@@ -356,13 +392,17 @@ class VCenterClient implements DeviceApiClientInterface
             // Try to get vCenter appliance memory stats first
             // Note: This endpoint may not be available on all vCenter versions
             try {
-                $monitoringData = $this->get('appliance/monitoring/query', [
-                    'item.names' => ['mem.util', 'mem.total'],
+                // Build query string with repeated item.names parameter manually
+                // (vCenter API requires ?item.names=mem.util&item.names=mem.total format)
+                $queryString = http_build_query([
+                    'item.names' => 'mem.util',
                     'item.interval' => 'MINUTES5',
                     'item.function' => 'AVG',
                     'item.start_time' => date('c', strtotime('-5 minutes')),
                     'item.end_time' => date('c'),
-                ]);
+                ]) . '&item.names=mem.total';
+
+                $monitoringData = $this->httpClient->rawGet($this->getFullApiPath('appliance/monitoring/query') . '?' . $queryString)['json'] ?? [];
 
                 $stats = $monitoringData['value'] ?? $monitoringData;
                 $memUtil = null;
@@ -427,15 +467,39 @@ class VCenterClient implements DeviceApiClientInterface
                     // Memory usage (vCenter provides in MiB)
                     $memTotal = $hostInfo['memory_size_MiB'] ?? 0;
 
+                    // Get memory usage from hardware endpoint if available
+                    $memUsed = 0;
+                    $memPerc = 0;
+                    try {
+                        $hardware = $this->get("vcenter/host/{$hostId}/hardware");
+                        $hwInfo = $hardware['value'] ?? $hardware;
+                        $memoryInfo = $hwInfo['memory'] ?? [];
+
+                        // Memory used in MiB
+                        if (isset($memoryInfo['used_MiB'])) {
+                            $memUsed = $memoryInfo['used_MiB'];
+                        }
+                    } catch (\Exception $perfEx) {
+                        Log::debug('VCenterClient hardware endpoint not available for host memory', [
+                            'host_id' => $hostId,
+                            'error' => $perfEx->getMessage(),
+                        ]);
+                    }
+
                     if ($memTotal > 0) {
+                        $memUsedBytes = $memUsed * 1024 * 1024;
+                        $memTotalBytes = $memTotal * 1024 * 1024;
+                        $memFreeBytes = $memTotalBytes - $memUsedBytes;
+                        $memPerc = $memTotal > 0 ? round(($memUsed / $memTotal) * 100, 2) : 0;
+
                         $mempools[] = [
                             'mempool_index' => "vcenter-host-{$idx}",
                             'mempool_type' => 'vmware-host',
                             'mempool_descr' => "{$hostName} Memory",
-                            'mempool_total' => $memTotal * 1024 * 1024, // Convert MiB to bytes
-                            'mempool_used' => 0, // Would need performance stats API
-                            'mempool_free' => $memTotal * 1024 * 1024,
-                            'mempool_perc' => 0,
+                            'mempool_total' => $memTotalBytes,
+                            'mempool_used' => $memUsedBytes,
+                            'mempool_free' => $memFreeBytes,
+                            'mempool_perc' => $memPerc,
                         ];
                     }
 
@@ -468,13 +532,16 @@ class VCenterClient implements DeviceApiClientInterface
             // Try to get vCenter appliance CPU stats first
             // Note: This endpoint may not be available on all vCenter versions
             try {
-                $monitoringData = $this->get('appliance/monitoring/query', [
-                    'item.names' => ['cpu.util'],
+                // Build query string manually for vCenter API format
+                $queryString = http_build_query([
+                    'item.names' => 'cpu.util',
                     'item.interval' => 'MINUTES5',
                     'item.function' => 'AVG',
                     'item.start_time' => date('c', strtotime('-5 minutes')),
                     'item.end_time' => date('c'),
                 ]);
+
+                $monitoringData = $this->httpClient->rawGet($this->getFullApiPath('appliance/monitoring/query') . '?' . $queryString)['json'] ?? [];
 
                 $stats = $monitoringData['value'] ?? $monitoringData;
                 $cpuUtil = null;
@@ -532,13 +599,31 @@ class VCenterClient implements DeviceApiClientInterface
                     $cpuCount = $hostInfo['cpu_count'] ?? 1;
                     $cpuModel = $hostInfo['cpu_model'] ?? 'VMware CPU';
 
-                    // vCenter REST API doesn't provide real-time CPU usage in summary
-                    // Would need Performance Manager API for actual usage
+                    // Get CPU usage from hardware endpoint if available
+                    $cpuUsage = 0;
+                    try {
+                        $hardware = $this->get("vcenter/host/{$hostId}/hardware");
+                        $hwInfo = $hardware['value'] ?? $hardware;
+                        $cpuInfo = $hwInfo['cpu'] ?? [];
+
+                        // CPU usage percentage
+                        if (isset($cpuInfo['usage_percent'])) {
+                            $cpuUsage = round($cpuInfo['usage_percent'], 2);
+                        } elseif (isset($cpuInfo['used_Hz']) && isset($cpuInfo['capacity_Hz']) && $cpuInfo['capacity_Hz'] > 0) {
+                            $cpuUsage = round(($cpuInfo['used_Hz'] / $cpuInfo['capacity_Hz']) * 100, 2);
+                        }
+                    } catch (\Exception $perfEx) {
+                        Log::debug('VCenterClient hardware endpoint not available for host CPU', [
+                            'host_id' => $hostId,
+                            'error' => $perfEx->getMessage(),
+                        ]);
+                    }
+
                     $processors[] = [
                         'processor_index' => "vcenter-host-{$idx}",
                         'processor_type' => 'vmware-host-cpu',
                         'processor_descr' => "{$hostName} - {$cpuModel} ({$cpuCount} cores)",
-                        'processor_usage' => 0, // Would need performance stats API
+                        'processor_usage' => $cpuUsage,
                     ];
 
                 } catch (\Exception $e) {
@@ -949,13 +1034,16 @@ class VCenterClient implements DeviceApiClientInterface
             // Try to get vCenter appliance network stats
             // Note: This endpoint may not be available on all vCenter versions
             try {
-                $monitoringData = $this->get('appliance/monitoring/query', [
-                    'item.names' => ['net.rx.rate', 'net.tx.rate'],
+                // Build query string with repeated parameters manually
+                $queryString = http_build_query([
+                    'item.names' => 'net.rx.rate',
                     'item.interval' => 'MINUTES5',
                     'item.function' => 'AVG',
                     'item.start_time' => date('c', strtotime('-5 minutes')),
                     'item.end_time' => date('c'),
-                ]);
+                ]) . '&item.names=net.tx.rate';
+
+                $monitoringData = $this->httpClient->rawGet($this->getFullApiPath('appliance/monitoring/query') . '?' . $queryString)['json'] ?? [];
 
                 $monStats = $monitoringData['value'] ?? $monitoringData;
                 $rxRate = null;
@@ -1067,5 +1155,281 @@ class VCenterClient implements DeviceApiClientInterface
                 'error'       => $e->getMessage(),
             ];
         }
+    }
+
+    public function fetchVms(Device $device): array
+    {
+        $vms = [];
+
+        try {
+            // Get all VMs from vCenter
+            $vmResponse = $this->get('vcenter/vm');
+            $vmList = $vmResponse['value'] ?? $vmResponse;
+
+            if (!is_array($vmList)) {
+                Log::warning('VCenterClient fetchVms: Invalid response format');
+                return [];
+            }
+
+            foreach ($vmList as $vm) {
+                if (!is_array($vm)) {
+                    continue;
+                }
+
+                $vmId = $vm['vm'] ?? null;
+                if (!$vmId) {
+                    continue;
+                }
+
+                // Map vCenter power states to LibreNMS PowerState integer values
+                // PowerState: OFF = 0, ON = 1, SUSPENDED = 2, UNKNOWN = 3
+                $powerState = $vm['power_state'] ?? 'UNKNOWN';
+                $vmState = match(strtoupper($powerState)) {
+                    'POWERED_ON' => 1,  // PowerState::ON
+                    'POWERED_OFF' => 0, // PowerState::OFF
+                    'SUSPENDED' => 2,   // PowerState::SUSPENDED
+                    default => 3,       // PowerState::UNKNOWN
+                };
+
+                // Try to get more detailed VM information
+                $vmDetails = null;
+                try {
+                    $vmDetailsResponse = $this->get("vcenter/vm/{$vmId}");
+                    $vmDetails = $vmDetailsResponse['value'] ?? $vmDetailsResponse;
+                } catch (\Exception $e) {
+                    Log::debug("VCenterClient: Could not fetch details for VM {$vmId}: {$e->getMessage()}");
+                }
+
+                // Extract guest OS information
+                $guestOS = 'Other';
+                if ($vmDetails && isset($vmDetails['guest_OS'])) {
+                    $guestOS = $vmDetails['guest_OS'];
+                } elseif (isset($vm['guest_OS'])) {
+                    $guestOS = $vm['guest_OS'];
+                }
+
+                // Extract memory size (in MB)
+                $memSize = null;
+                if ($vmDetails && isset($vmDetails['memory'])) {
+                    $memSize = isset($vmDetails['memory']['size_MiB']) ? (int) $vmDetails['memory']['size_MiB'] : null;
+                } elseif (isset($vm['memory_size_MiB'])) {
+                    $memSize = (int) $vm['memory_size_MiB'];
+                }
+
+                // Extract CPU count
+                $cpuCount = null;
+                if ($vmDetails && isset($vmDetails['cpu'])) {
+                    $cpuCount = isset($vmDetails['cpu']['count']) ? (int) $vmDetails['cpu']['count'] : null;
+                } elseif (isset($vm['cpu_count'])) {
+                    $cpuCount = (int) $vm['cpu_count'];
+                }
+
+                // Extract numeric ID from vCenter VM identifier (e.g., "vm-101531" -> 101531)
+                $numericId = $vmId;
+                if (preg_match('/^vm-(\d+)$/', $vmId, $matches)) {
+                    $numericId = $matches[1];
+                }
+
+                $vms[] = [
+                    'vm_type' => 'vmware',
+                    'vmwVmVMID' => (int) $numericId,
+                    'vmwVmDisplayName' => $vm['name'] ?? "VM-{$vmId}",
+                    'vmwVmGuestOS' => $guestOS,
+                    'vmwVmMemSize' => $memSize,
+                    'vmwVmCpus' => $cpuCount,
+                    'vmwVmState' => $vmState,
+                    'vmwVmHostId' => $vm['host'] ?? null, // Capture the ESXi host where VM is running
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('VCenterClient fetchVms failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vms;
+    }
+
+    /**
+     * Fetch datacenters and clusters
+     *
+     * @param Device $device
+     * @return array
+     */
+    public function fetchClusters(Device $device): array
+    {
+        $clusters = [];
+
+        try {
+            // Fetch datacenters
+            $dcResponse = $this->get('vcenter/datacenter');
+            $datacenters = $dcResponse['value'] ?? $dcResponse;
+
+            if (!is_array($datacenters)) {
+                Log::warning('VCenterClient fetchClusters: Invalid datacenter response format');
+                return [];
+            }
+
+            // Add datacenters as top-level clusters
+            foreach ($datacenters as $dc) {
+                if (!is_array($dc) || !isset($dc['datacenter'], $dc['name'])) {
+                    continue;
+                }
+
+                $clusters[] = [
+                    'cluster_type' => 'vmware',
+                    'cluster_id' => $dc['datacenter'],
+                    'cluster_name' => $dc['name'],
+                    'parent_id' => null,
+                    'parent_name' => null,
+                    'cluster_level' => 'datacenter',
+                    'metadata' => [],
+                ];
+            }
+
+            // Fetch clusters within datacenters
+            $clusterResponse = $this->get('vcenter/cluster');
+            $vcenterclusters = $clusterResponse['value'] ?? $clusterResponse;
+
+            if (is_array($vcenterclusters)) {
+                foreach ($vcenterclusters as $cluster) {
+                    if (!is_array($cluster) || !isset($cluster['cluster'], $cluster['name'])) {
+                        continue;
+                    }
+
+                    // Try to get more details about the cluster
+                    $clusterDetails = null;
+                    try {
+                        $detailsResponse = $this->get("vcenter/cluster/{$cluster['cluster']}");
+                        $clusterDetails = $detailsResponse['value'] ?? $detailsResponse;
+                    } catch (\Exception $e) {
+                        Log::debug("VCenterClient: Could not fetch cluster details for {$cluster['cluster']}: {$e->getMessage()}");
+                    }
+
+                    $metadata = [];
+                    if ($clusterDetails) {
+                        $metadata['drs_enabled'] = $clusterDetails['drs_enabled'] ?? null;
+                        $metadata['ha_enabled'] = $clusterDetails['ha_enabled'] ?? null;
+                    }
+
+                    $clusters[] = [
+                        'cluster_type' => 'vmware',
+                        'cluster_id' => $cluster['cluster'],
+                        'cluster_name' => $cluster['name'],
+                        'parent_id' => null, // vCenter API doesn't directly expose DC-cluster relationship in cluster list
+                        'parent_name' => null,
+                        'cluster_level' => 'cluster',
+                        'metadata' => $metadata,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('VCenterClient fetchClusters failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $clusters;
+    }
+
+    /**
+     * Fetch ESXi hosts managed by this vCenter
+     *
+     * @param Device $device
+     * @return array
+     */
+    public function fetchHosts(Device $device): array
+    {
+        $hosts = [];
+
+        try {
+            $hostResponse = $this->get('vcenter/host');
+            $hostList = $hostResponse['value'] ?? $hostResponse;
+
+            if (!is_array($hostList)) {
+                Log::warning('VCenterClient fetchHosts: Invalid response format');
+                return [];
+            }
+
+            foreach ($hostList as $host) {
+                if (!is_array($host) || !isset($host['host'], $host['name'])) {
+                    continue;
+                }
+
+                // Try to get detailed host information
+                $hostDetails = null;
+                try {
+                    $detailsResponse = $this->get("vcenter/host/{$host['host']}");
+                    $hostDetails = $detailsResponse['value'] ?? $detailsResponse;
+                } catch (\Exception $e) {
+                    Log::debug("VCenterClient: Could not fetch host details for {$host['host']}: {$e->getMessage()}");
+                }
+
+                // Map vCenter connection states to our status values
+                $connectionState = $host['connection_state'] ?? ($hostDetails['connection_state'] ?? 'UNKNOWN');
+                $status = match(strtoupper($connectionState)) {
+                    'CONNECTED' => 'connected',
+                    'DISCONNECTED' => 'disconnected',
+                    'NOT_RESPONDING' => 'not_responding',
+                    default => strtolower($connectionState),
+                };
+
+                // Map power state
+                $powerState = $host['power_state'] ?? ($hostDetails['power_state'] ?? null);
+                if ($powerState === 'POWERED_OFF' || $powerState === 'STANDBY') {
+                    $status = 'standby';
+                }
+
+                $cpuCores = null;
+                $cpuThreads = null;
+                $memoryTotal = null;
+                $version = null;
+
+                if ($hostDetails) {
+                    if (isset($hostDetails['hardware']['cpu']['cores'])) {
+                        $cpuCores = $hostDetails['hardware']['cpu']['cores'];
+                    }
+                    if (isset($hostDetails['hardware']['cpu']['threads'])) {
+                        $cpuThreads = $hostDetails['hardware']['cpu']['threads'];
+                    }
+                    if (isset($hostDetails['hardware']['memory']['size_MiB'])) {
+                        $memoryTotal = $hostDetails['hardware']['memory']['size_MiB'] * 1048576; // Convert to bytes
+                    }
+                    if (isset($hostDetails['version'])) {
+                        $version = $hostDetails['version'];
+                    }
+                }
+
+                $hosts[] = [
+                    'host_type' => 'esxi',
+                    'host_id' => $host['host'],
+                    'host_name' => $host['name'],
+                    'cluster_id' => null, // Will be populated if we can determine cluster membership
+                    'role' => 'node', // ESXi hosts are typically cluster nodes
+                    'status' => $status,
+                    'version' => $version,
+                    'cpu_cores' => $cpuCores,
+                    'cpu_threads' => $cpuThreads,
+                    'memory_total' => $memoryTotal,
+                    'ip_address' => null, // vCenter doesn't directly expose management IP in list
+                    'metadata' => [
+                        'connection_state' => $connectionState,
+                        'power_state' => $powerState,
+                    ],
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('VCenterClient fetchHosts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $hosts;
     }
 }

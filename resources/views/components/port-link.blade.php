@@ -1,3 +1,4 @@
+@if($port)
 <x-popup {{ $attributes }}>
     @include('components.port-link_basic')
     <x-slot name="title">
@@ -13,3 +14,6 @@
         </div>
     </x-slot>
 </x-popup>
+@else
+    <span class="text-muted">{{ $label }}</span>
+@endif

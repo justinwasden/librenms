@@ -70,6 +70,9 @@ class DeviceApi implements Module
 
         Log::info("Running API discovery for device {$device->device_id}");
 
+        // Set OS based on template if device is generic/ping-only
+        $this->detectOsFromTemplate($device);
+
         try {
             $this->executeApiPoll($device);
         } catch (\Throwable $e) {
@@ -147,6 +150,10 @@ class DeviceApi implements Module
             return;
         }
 
+        // Determine and log the device/client type
+        $clientType = $this->getClientTypeName($client, $templateKey);
+        echo "REST API client: {$clientType}\n";
+
         // Check if this is a vCenter client - use direct fetch methods instead of templates
         if ($client instanceof \App\ApiClients\VMware\VCenterClient) {
             Log::debug("Using direct fetch methods for vCenter device {$device->device_id}");
@@ -157,6 +164,33 @@ class DeviceApi implements Module
         // Execute endpoints from template for other clients
         $executor = new DeviceApiExecutor();
         $executor->run($device, $templateKey, $client);
+    }
+
+    /**
+     * Get a friendly name for the client type
+     */
+    protected function getClientTypeName($client, string $templateKey): string
+    {
+        // Check template key first for special cases like SOAP
+        if ($templateKey === 'esxi_soap') {
+            return 'VMware ESXi (SOAP)';
+        }
+
+        // Then check client instance type
+        if ($client instanceof \App\ApiClients\VMware\VCenterClient) {
+            return 'VMware vCenter';
+        } elseif ($client instanceof \App\ApiClients\Proxmox\ProxmoxApiClient) {
+            return 'Proxmox VE';
+        } elseif ($client instanceof \App\ApiClients\PureStorage\FlashArrayClient) {
+            return 'Pure Storage FlashArray';
+        } elseif ($client instanceof \App\ApiClients\NetApp\OntapClient) {
+            return 'NetApp ONTAP';
+        } elseif ($client instanceof \App\ApiClients\Fortinet\FortiGateClient) {
+            return 'Fortinet FortiGate';
+        } else {
+            // Fallback to template key for generic clients
+            return ucwords(str_replace(['_', '-'], ' ', $templateKey));
+        }
     }
 
     /**
@@ -219,6 +253,27 @@ class DeviceApi implements Module
                     case 'ports_stats':
                         $data = $client->fetchPortsStatistics($device);
                         \App\Services\DeviceApiPersistor::savePortsStatistics($device, $data);
+                        break;
+
+                    case 'vminfo':
+                        $data = $client->fetchVms($device);
+                        \App\Services\DeviceApiPersistor::saveVminfo($device, $data);
+                        break;
+
+                    case 'clusters':
+                        $data = $client->fetchClusters($device);
+                        \App\Services\DeviceApiPersistor::saveClusters($device, $data);
+                        break;
+
+                    case 'hypervisor_hosts':
+                        $data = $client->fetchHosts($device);
+                        \App\Services\DeviceApiPersistor::saveHypervisorHosts($device, $data);
+                        break;
+
+                    case 'device_info':
+                        $data = $client->fetchDeviceInfo($device);
+                        $normalized = \LibreNMS\Modules\Support\RestNormalizers::normalizeVcenterDeviceInfo($device, $data);
+                        \App\Services\DeviceApiPersistor::saveDeviceInfo($device, $normalized);
                         break;
 
                     default:
@@ -285,5 +340,47 @@ class DeviceApi implements Module
             'verify_ssl' => $apiConfig->verify_ssl,
             'has_credentials' => !empty($apiConfig->values),
         ];
+    }
+
+    /**
+     * Detect and set OS based on API template when device is generic or ping-only
+     */
+    private function detectOsFromTemplate(Device $device): void
+    {
+        // Only override OS for generic or ping-only devices
+        if (!in_array($device->os, ['generic', 'ping'])) {
+            return;
+        }
+
+        $apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')->where('device_id', $device->device_id)->first();
+        if (!$apiConfig || !$apiConfig->template) {
+            return;
+        }
+
+        $templateKey = $apiConfig->template->key;
+
+        // Map templates to OS values
+        $templateOsMap = [
+            'cisco_ucsm_xml' => 'cisco-ucs',
+            'vmware_vcenter' => 'vmware-vcsa',
+            'vmware_vcenter_default' => 'vmware-vcsa',
+            'esxi_soap' => 'vmware-esxi',
+            'proxmox_ve' => 'proxmox',
+            'purestorage_flasharray' => 'purestorage',
+            'netapp_ontap' => 'netapp',
+            'fortinet_fortigate' => 'fortigate',
+        ];
+
+        if (isset($templateOsMap[$templateKey])) {
+            $newOs = $templateOsMap[$templateKey];
+
+            Log::info("Setting OS to '{$newOs}' for device {$device->device_id} based on template '{$templateKey}'");
+
+            $device->os = $newOs;
+            $device->save();
+
+            // Reload the device to refresh the OS instance
+            $device->refresh();
+        }
     }
 }

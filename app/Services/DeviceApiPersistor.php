@@ -18,13 +18,18 @@ class DeviceApiPersistor
     public static function savePorts(Device $device, array $ports): void
     {
         Log::debug("DeviceApiPersistor::savePorts called for device {$device->device_id} with " . count($ports) . " ports");
+
+        // Track which port IDs we've seen in this poll
+        $seenPortIds = [];
+
         foreach ($ports as $p) {
             if (!isset($p['ifIndex']) && !isset($p['ifName'])) {
                 continue; // require at least one identifier
             }
 
             try {
-                // Find existing port by ifIndex or ifName
+                // Find existing port by ifIndex + device_id (most reliable unique identifier)
+                // If ifIndex is not available, fall back to ifName
                 $portRow = null;
                 if (isset($p['ifIndex'])) {
                     $portRow = DB::table('ports')
@@ -39,12 +44,20 @@ class DeviceApiPersistor
                         ->first();
                 }
 
+                // Determine ifIndex: use provided value if available, otherwise preserve existing
+                // For API-based discovery, we should use the stable ifIndex from the normalizer
+                $ifIndex = $p['ifIndex'] ?? ($portRow->ifIndex ?? null);
+
+                // For ifName and ifDescr, prefer new values but fall back to existing if not provided
+                // This ensures we update descriptions correctly when new data is available
+                $ifName = $p['ifName'] ?? ($portRow->ifName ?? null);
+                $ifDescr = $p['ifDescr'] ?? ($ifName ?? $portRow->ifDescr ?? null);
+
                 $base = [
                     'device_id'     => $device->device_id,
-                    // Preserve existing ifIndex if port already exists, otherwise use provided value
-                    'ifIndex'       => $portRow->ifIndex ?? ($p['ifIndex'] ?? null),
-                    'ifName'        => $p['ifName'] ?? ($portRow->ifName ?? null),
-                    'ifDescr'       => $p['ifDescr'] ?? ($portRow->ifDescr ?? null),
+                    'ifIndex'       => $ifIndex,
+                    'ifName'        => $ifName,
+                    'ifDescr'       => $ifDescr,
                     'ifType'        => $p['ifType'] ?? ($portRow->ifType ?? null),
                     'ifSpeed'       => $p['ifSpeed'] ?? ($portRow->ifSpeed ?? null),
                     'ifOperStatus'  => $p['ifOperStatus'] ?? ($portRow->ifOperStatus ?? null),
@@ -53,21 +66,42 @@ class DeviceApiPersistor
                     'ifPhysAddress' => $p['ifPhysAddress'] ?? ($portRow->ifPhysAddress ?? null),
                     'ifAlias'       => $p['ifAlias'] ?? ($portRow->ifAlias ?? null),
                     'ifVlan'        => $p['ifVlan'] ?? ($portRow->ifVlan ?? null),
+                    // Ensure REST API ports are not marked as deleted when re-discovered
+                    'deleted'       => 0,
                 ];
 
                 if ($portRow) {
                     DB::table('ports')->where('port_id', $portRow->port_id)->update($base);
+                    $seenPortIds[] = $portRow->port_id;
                 } else {
-                    DB::table('ports')->insert($base);
+                    $portId = DB::table('ports')->insertGetId($base);
+                    $seenPortIds[] = $portId;
                 }
             } catch (\Throwable $e) {
                 Log::warning("savePorts failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Mark ports that weren't seen in this poll as deleted
+        // Only do this if we actually received some ports (empty response shouldn't delete everything)
+        if (!empty($seenPortIds)) {
+            $deletedCount = DB::table('ports')
+                ->where('device_id', $device->device_id)
+                ->where('deleted', 0)
+                ->whereNotIn('port_id', $seenPortIds)
+                ->update(['deleted' => 1]);
+
+            if ($deletedCount > 0) {
+                Log::info("Marked {$deletedCount} port(s) as deleted for device {$device->device_id}");
             }
         }
     }
 
     public static function saveSensors(Device $device, array $sensors): void
     {
+        $trackedSensorIds = [];
+        $sensorTypes = []; // Track which sensor types we're saving
+
         foreach ($sensors as $s) {
             try {
                 // Skip sensors with empty description
@@ -98,6 +132,9 @@ class DeviceApiPersistor
                     'rrd_type'                   => $s['rrd_type'] ?? 'GAUGE',
                 ];
 
+                // Track which sensor types we're saving for cleanup
+                $sensorTypes[$base['sensor_type']] = true;
+
                 // Upsert by device_id + sensor_class + sensor_index
                 $existing = DB::table('sensors')
                     ->where('device_id', $device->device_id)
@@ -111,6 +148,8 @@ class DeviceApiPersistor
                 } else {
                     $sensorId = DB::table('sensors')->insertGetId($base);
                 }
+
+                $trackedSensorIds[] = $sensorId;
 
                 // Handle state sensors - create state index and translations
                 if ($base['sensor_class'] === 'state' && isset($s['states']) && is_array($s['states'])) {
@@ -188,10 +227,27 @@ class DeviceApiPersistor
                 Log::warning("saveSensors failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
+
+        // Cleanup: delete sensors with poller_type='rest' that are no longer present
+        // Only delete sensors of the types we just saved to avoid cross-contamination
+        if (! empty($trackedSensorIds) && ! empty($sensorTypes)) {
+            $deleted = DB::table('sensors')
+                ->where('device_id', $device->device_id)
+                ->where('poller_type', 'rest')
+                ->whereIn('sensor_type', array_keys($sensorTypes))
+                ->whereNotIn('sensor_id', $trackedSensorIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale sensors for device {$device->device_id}");
+            }
+        }
     }
 
     public static function saveProcessors(Device $device, array $processors): void
     {
+        $trackedProcessorIds = [];
+
         foreach ($processors as $pr) {
             try {
                 // Generate deterministic processor_oid if not provided
@@ -222,6 +278,8 @@ class DeviceApiPersistor
                     $processorId = DB::table('processors')->insertGetId($base);
                 }
 
+                $trackedProcessorIds[] = $processorId;
+
                 // Create RRD file for processor usage
                 if ($processorId && isset($base['processor_usage'])) {
                     $rrd_def = RrdDefinition::make()
@@ -244,10 +302,26 @@ class DeviceApiPersistor
                 Log::warning("saveProcessors failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
+
+        // Cleanup: delete processors with processor_type='rest' that are no longer present
+        if (! empty($trackedProcessorIds)) {
+            $deleted = DB::table('processors')
+                ->where('device_id', $device->device_id)
+                ->where('processor_type', 'rest')
+                ->whereNotIn('processor_id', $trackedProcessorIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale processors for device {$device->device_id}");
+            }
+        }
+
     }
 
     public static function saveMempools(Device $device, array $mps): void
     {
+        $trackedMempoolIds = [];
+
         foreach ($mps as $mp) {
             try {
                 $base = [
@@ -274,6 +348,8 @@ class DeviceApiPersistor
                     $mempoolId = DB::table('mempools')->insertGetId($base);
                 }
 
+                $trackedMempoolIds[] = $mempoolId;
+
                 // Create RRD file for memory usage
                 if ($mempoolId && isset($base['mempool_used'], $base['mempool_free'])) {
                     $rrd_def = RrdDefinition::make()
@@ -299,10 +375,26 @@ class DeviceApiPersistor
                 Log::warning("saveMempools failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
+
+        // Cleanup: delete mempools with mempool_type='rest' that are no longer present
+        if (! empty($trackedMempoolIds)) {
+            $deleted = DB::table('mempools')
+                ->where('device_id', $device->device_id)
+                ->where('mempool_type', 'rest')
+                ->whereNotIn('mempool_id', $trackedMempoolIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale mempools for device {$device->device_id}");
+            }
+        }
+
     }
 
     public static function saveInventory(Device $device, array $inv): void
     {
+        $trackedInventoryIds = [];
+
         foreach ($inv as $e) {
             try {
                 // Skip if entPhysicalIndex is missing - it's a required field
@@ -342,8 +434,10 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('entPhysical')->where('entPhysical_id', $existing->entPhysical_id)->update($base);
+                    $trackedInventoryIds[] = $existing->entPhysical_id;
                 } else {
-                    DB::table('entPhysical')->insert($base);
+                    $inventoryId = DB::table('entPhysical')->insertGetId($base);
+                    $trackedInventoryIds[] = $inventoryId;
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveInventory failed for device {$device->device_id}: {$e->getMessage()}");
@@ -424,6 +518,8 @@ class DeviceApiPersistor
 
     public static function saveStorage(Device $device, array $storage): void
     {
+        $trackedStorageIds = [];
+
         foreach ($storage as $s) {
             try {
                 $base = [
@@ -458,6 +554,8 @@ class DeviceApiPersistor
                     $storageId = DB::table('storage')->insertGetId($base);
                 }
 
+                $trackedStorageIds[] = $storageId;
+
                 // Create RRD file for storage metrics
                 if ($storageId && isset($base['storage_used'], $base['storage_free'])) {
                     $rrd_def = RrdDefinition::make()
@@ -481,6 +579,19 @@ class DeviceApiPersistor
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveStorage failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Cleanup: delete storage with type='rest' that are no longer present
+        if (! empty($trackedStorageIds)) {
+            $deleted = DB::table('storage')
+                ->where('device_id', $device->device_id)
+                ->where('type', 'rest')
+                ->whereNotIn('storage_id', $trackedStorageIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale storage items for device {$device->device_id}");
             }
         }
     }
@@ -927,9 +1038,24 @@ class DeviceApiPersistor
                             if ($currentValue >= $previousValue) {
                                 $delta = $currentValue - $previousValue;
                             } else {
-                                // Counter wrapped - assume 64-bit
+                                // Counter decreased - could be wrap or reset
+                                // If previous value was very large and current is small, likely a reset
+                                // Only treat as wraparound if the decrease is small relative to max counter
                                 $maxCounter = PHP_INT_MAX;
-                                $delta = ($maxCounter - $previousValue) + $currentValue;
+                                $wrappedDelta = ($maxCounter - $previousValue) + $currentValue;
+
+                                // If wrapped delta would result in unrealistic rate (> 100Gbps for most interfaces),
+                                // treat as counter reset instead
+                                $wrappedRate = $poll_period > 0 ? ($wrappedDelta / $poll_period) : 0;
+                                $maxReasonableRate = 100000000000; // 100 Gbps in bytes/sec
+
+                                if ($wrappedRate > $maxReasonableRate) {
+                                    // Likely a counter reset, use current value as delta
+                                    $delta = $currentValue;
+                                } else {
+                                    // Likely a real wraparound
+                                    $delta = $wrappedDelta;
+                                }
                             }
                             if ($poll_period > 0) {
                                 $rate = $delta / $poll_period;
@@ -1230,11 +1356,69 @@ class DeviceApiPersistor
     }
 
     /**
+     * Save storage array metadata
+     */
+    public static function saveStorageArray(Device $device, array $arrays): void
+    {
+        Log::debug("DeviceApiPersistor::saveStorageArray called for device {$device->device_id} with " . count($arrays) . " arrays");
+
+        $trackedArrayIds = [];
+
+        foreach ($arrays as $arr) {
+            try {
+                $base = [
+                    'device_id' => $device->device_id,
+                    'array_name' => $arr['array_name'] ?? 'Unknown',
+                    'software_version' => $arr['software_version'] ?? null,
+                    'total_bytes' => $arr['total_bytes'] ?? 0,
+                    'used_bytes' => $arr['used_bytes'] ?? 0,
+                    'free_bytes' => ($arr['total_bytes'] ?? 0) - ($arr['used_bytes'] ?? 0),
+                    'used_pct' => $arr['used_pct'] ?? 0,
+                    'data_reduction_ratio' => $arr['data_reduction_ratio'] ?? null,
+                    'last_polled_at' => now(),
+                ];
+
+                // Upsert by device_id (one array per device typically)
+                $existing = DB::table('storage_arrays')
+                    ->where('device_id', $device->device_id)
+                    ->first();
+
+                if ($existing) {
+                    DB::table('storage_arrays')->where('id', $existing->id)->update($base);
+                    $trackedArrayIds[] = $existing->id;
+                } else {
+                    $arrayId = DB::table('storage_arrays')->insertGetId(array_merge($base, [
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]));
+                    $trackedArrayIds[] = $arrayId;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveStorageArray failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Cleanup: delete storage arrays that are no longer present
+        if (! empty($trackedArrayIds)) {
+            $deleted = DB::table('storage_arrays')
+                ->where('device_id', $device->device_id)
+                ->whereNotIn('id', $trackedArrayIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale storage arrays for device {$device->device_id}");
+            }
+        }
+    }
+
+    /**
      * Save storage controllers
      */
     public static function saveControllers(Device $device, array $controllers): void
     {
         Log::debug("DeviceApiPersistor::saveControllers called for device {$device->device_id} with " . count($controllers) . " controllers");
+
+        $trackedControllerIds = [];
 
         foreach ($controllers as $c) {
             try {
@@ -1255,11 +1439,25 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('storage_controllers')->where('id', $existing->id)->update($base);
+                    $trackedControllerIds[] = $existing->id;
                 } else {
-                    DB::table('storage_controllers')->insert($base);
+                    $controllerId = DB::table('storage_controllers')->insertGetId($base);
+                    $trackedControllerIds[] = $controllerId;
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveControllers failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Cleanup: delete controllers that are no longer present
+        if (! empty($trackedControllerIds)) {
+            $deleted = DB::table('storage_controllers')
+                ->where('device_id', $device->device_id)
+                ->whereNotIn('id', $trackedControllerIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale storage controllers for device {$device->device_id}");
             }
         }
     }
@@ -1270,6 +1468,8 @@ class DeviceApiPersistor
     public static function saveVolumes(Device $device, array $volumes): void
     {
         Log::debug("DeviceApiPersistor::saveVolumes called for device {$device->device_id} with " . count($volumes) . " volumes");
+
+        $trackedVolumeIds = [];
 
         foreach ($volumes as $v) {
             try {
@@ -1295,11 +1495,25 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('storage_volumes')->where('id', $existing->id)->update($base);
+                    $trackedVolumeIds[] = $existing->id;
                 } else {
-                    DB::table('storage_volumes')->insert($base);
+                    $volumeId = DB::table('storage_volumes')->insertGetId($base);
+                    $trackedVolumeIds[] = $volumeId;
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveVolumes failed for device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Cleanup: delete volumes that are no longer present
+        if (! empty($trackedVolumeIds)) {
+            $deleted = DB::table('storage_volumes')
+                ->where('device_id', $device->device_id)
+                ->whereNotIn('id', $trackedVolumeIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale storage volumes for device {$device->device_id}");
             }
         }
     }
@@ -1310,6 +1524,8 @@ class DeviceApiPersistor
     public static function saveHosts(Device $device, array $hosts): void
     {
         Log::debug("DeviceApiPersistor::saveHosts called for device {$device->device_id} with " . count($hosts) . " hosts");
+
+        $trackedHostIds = [];
 
         foreach ($hosts as $h) {
             try {
@@ -1333,12 +1549,434 @@ class DeviceApiPersistor
 
                 if ($existing) {
                     DB::table('storage_hosts')->where('id', $existing->id)->update($base);
+                    $trackedHostIds[] = $existing->id;
                 } else {
-                    DB::table('storage_hosts')->insert($base);
+                    $hostId = DB::table('storage_hosts')->insertGetId($base);
+                    $trackedHostIds[] = $hostId;
                 }
             } catch (\Throwable $e) {
                 Log::warning("saveHosts failed for device {$device->device_id}: {$e->getMessage()}");
             }
         }
+
+        // Cleanup: delete hosts that are no longer present
+        if (! empty($trackedHostIds)) {
+            $deleted = DB::table('storage_hosts')
+                ->where('device_id', $device->device_id)
+                ->whereNotIn('id', $trackedHostIds)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale storage hosts for device {$device->device_id}");
+            }
+        }
+    }
+
+    /**
+     * Save device information (hardware, serial, sysObjectID, sysContact, uptime, location, lat/long)
+     * 
+     * Expected input format:
+     * - Either a single associative array with device info fields
+     * - Or an array containing a single associative array
+     * 
+     * Supported fields:
+     * - hardware: Device hardware/model name
+     * - serial: Device serial number
+     * - sysObjectID: System object ID (OID)
+     * - sysContact: System contact information
+     * - uptime: Device uptime in seconds
+     * - location: Location string
+     * - lat: Latitude (float)
+     * - lng: Longitude (float)
+     * 
+     * @param Device $device
+     * @param array $deviceInfo Array of device info data (can be single item or array of items)
+     */
+    public static function saveDeviceInfo(Device $device, array $deviceInfo): void
+    {
+        Log::debug("DeviceApiPersistor::saveDeviceInfo called for device {$device->device_id}");
+
+        try {
+            // Handle both single array and array of arrays
+            // If the array has numeric keys and first element is an array, treat as array of items
+            // Otherwise, treat as a single item
+            $items = [];
+            if (!empty($deviceInfo) && isset($deviceInfo[0]) && is_array($deviceInfo[0])) {
+                $items = $deviceInfo;
+            } else {
+                // Check if it's a single associative array with device info keys
+                $hasDeviceInfoKeys = !empty(array_intersect(array_keys($deviceInfo),
+                    ['hardware', 'serial', 'sysObjectID', 'sysDescr', 'sysName', 'sysContact', 'uptime', 'location', 'lat', 'lng', 'version', 'features']));
+                if ($hasDeviceInfoKeys) {
+                    $items = [$deviceInfo];
+                } else {
+                    // Might be structured response with device_info key
+                    if (isset($deviceInfo['device_info'])) {
+                        $items = is_array($deviceInfo['device_info'][0] ?? null) ? $deviceInfo['device_info'] : [$deviceInfo['device_info']];
+                    } else {
+                        $items = [$deviceInfo];
+                    }
+                }
+            }
+
+            // Process each item (usually just one for device info)
+            foreach ($items as $info) {
+                if (!is_array($info)) {
+                    continue;
+                }
+
+                $updates = [];
+
+                // Update hardware
+                if (isset($info['hardware'])) {
+                    $updates['hardware'] = trim((string) $info['hardware']);
+                }
+
+                // Update serial
+                if (isset($info['serial'])) {
+                    $updates['serial'] = trim((string) $info['serial']);
+                }
+
+                // Update sysObjectID
+                if (isset($info['sysObjectID'])) {
+                    $updates['sysObjectID'] = trim((string) $info['sysObjectID']);
+                }
+
+                // Update version
+                if (isset($info['version'])) {
+                    $updates['version'] = trim((string) $info['version']);
+                }
+
+                // Update sysDescr
+                if (isset($info['sysDescr'])) {
+                    $updates['sysDescr'] = trim((string) $info['sysDescr']);
+                }
+
+                // Update sysName
+                if (isset($info['sysName'])) {
+                    $updates['sysName'] = trim((string) $info['sysName']);
+                }
+
+                // Update features
+                if (isset($info['features'])) {
+                    $updates['features'] = trim((string) $info['features']);
+                }
+
+                // Update sysContact
+                if (isset($info['sysContact'])) {
+                    $contact = trim((string) $info['sysContact']);
+                    // Clean up sysContact like SNMP discovery does
+                    $contact = str_replace(['"', '\n', 'not set'], '', $contact);
+                    $contact = trim($contact);
+                    if (!empty($contact)) {
+                        $updates['sysContact'] = $contact;
+                    } else {
+                        $updates['sysContact'] = null;
+                    }
+                }
+
+                // Update uptime (in seconds)
+                if (isset($info['uptime'])) {
+                    $uptime = (int) $info['uptime'];
+                    if ($uptime > 0) {
+                        $updates['uptime'] = $uptime;
+                    }
+                }
+
+                // Handle location first (before device updates) to check override_sysLocation
+                $locationStr = $info['location'] ?? null;
+                $lat = isset($info['lat']) ? (float) $info['lat'] : null;
+                $lng = isset($info['lng']) ? (float) $info['lng'] : null;
+
+                if ($locationStr !== null || $lat !== null || $lng !== null) {
+                    // Only update location if device doesn't have override_sysLocation set
+                    if (!$device->override_sysLocation) {
+                        $locationData = [];
+                        if ($locationStr !== null && $locationStr !== '') {
+                            $locationData['location'] = trim((string) $locationStr);
+                        }
+                        if ($lat !== null) {
+                            $locationData['lat'] = $lat;
+                        }
+                        if ($lng !== null) {
+                            $locationData['lng'] = $lng;
+                        }
+
+                        // Only update if location string is provided or coordinates are provided
+                        if (!empty($locationData['location']) || ($lat !== null && $lng !== null)) {
+                            $location = new \App\Models\Location($locationData);
+                            $device->setLocation($location, true); // doLookup = true to geocode if needed
+                            $device->location?->save();
+                            Log::info("Updated location for device {$device->device_id}: " . ($locationData['location'] ?? '') . 
+                                ($lat !== null && $lng !== null ? " [{$lat}, {$lng}]" : ''));
+                        }
+                    } else {
+                        Log::debug("Skipping location update for device {$device->device_id}: override_sysLocation is set");
+                    }
+                }
+
+                // Apply device field updates
+                if (!empty($updates)) {
+                    $device->fill($updates);
+                    $device->save();
+                    Log::info("Updated device info for device {$device->device_id}: " . implode(', ', array_keys($updates)));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning("saveDeviceInfo failed for device {$device->device_id}: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Save virtual machine information
+     *
+     * Expected array structure:
+     * [
+     *     [
+     *         'vm_type' => 'vmware'|'proxmox'|'libvirt',
+     *         'vmwVmVMID' => 'unique-vm-id',
+     *         'vmwVmDisplayName' => 'VM Display Name',
+     *         'vmwVmGuestOS' => 'ubuntu64Guest',
+     *         'vmwVmMemSize' => 8192,  // MB
+     *         'vmwVmCpus' => 4,
+     *         'vmwVmState' => 'running'|'poweredOn'|'poweredOff'|'suspended',
+     *     ],
+     *     ...
+     * ]
+     */
+    public static function saveVminfo(Device $device, array $vms): void
+    {
+        Log::debug("DeviceApiPersistor::saveVminfo called for device {$device->device_id} with " . count($vms) . " VMs");
+
+        // Track which VM IDs we've seen in this poll
+        $seenVmKeys = [];
+
+        foreach ($vms as $vm) {
+            if (!isset($vm['vmwVmVMID']) || !isset($vm['vm_type'])) {
+                Log::warning("Skipping VM without vmwVmVMID or vm_type for device {$device->device_id}");
+                continue;
+            }
+
+            try {
+                // The composite key is vm_type + vmwVmVMID
+                $compositeKey = $vm['vm_type'] . $vm['vmwVmVMID'];
+
+                // Find existing VM by device_id, vm_type, and vmwVmVMID
+                $vmRow = DB::table('vminfo')
+                    ->where('device_id', $device->device_id)
+                    ->where('vm_type', $vm['vm_type'])
+                    ->where('vmwVmVMID', $vm['vmwVmVMID'])
+                    ->first();
+
+                $data = [
+                    'device_id' => $device->device_id,
+                    'vm_type' => $vm['vm_type'],
+                    'vmwVmVMID' => $vm['vmwVmVMID'],
+                    'vmwVmDisplayName' => $vm['vmwVmDisplayName'] ?? '',
+                    'vmwVmGuestOS' => $vm['vmwVmGuestOS'] ?? null,
+                    'vmwVmMemSize' => isset($vm['vmwVmMemSize']) ? (int) $vm['vmwVmMemSize'] : null,
+                    'vmwVmCpus' => isset($vm['vmwVmCpus']) ? (int) $vm['vmwVmCpus'] : null,
+                    'vmwVmState' => $vm['vmwVmState'] ?? 'unknown',
+                    'vmwVmHostId' => $vm['vmwVmHostId'] ?? null,
+                ];
+
+                if ($vmRow) {
+                    DB::table('vminfo')->where('id', $vmRow->id)->update($data);
+                    $seenVmKeys[] = $compositeKey;
+                } else {
+                    DB::table('vminfo')->insert($data);
+                    $seenVmKeys[] = $compositeKey;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("saveVminfo failed for VM {$vm['vmwVmVMID']} on device {$device->device_id}: {$e->getMessage()}");
+            }
+        }
+
+        // Remove VMs that weren't seen in this poll (they were deleted from the hypervisor)
+        // Only do this if we actually received some VMs
+        if (!empty($seenVmKeys)) {
+            // We need to delete VMs where the composite key (vm_type + vmwVmVMID) is not in our seen list
+            // Unfortunately, we can't directly compare concatenated columns in whereNotIn,
+            // so we'll use a more complex query
+            $existingVms = DB::table('vminfo')
+                ->where('device_id', $device->device_id)
+                ->select('id', 'vm_type', 'vmwVmVMID')
+                ->get();
+
+            $idsToDelete = [];
+            foreach ($existingVms as $existingVm) {
+                $existingKey = $existingVm->vm_type . $existingVm->vmwVmVMID;
+                if (!in_array($existingKey, $seenVmKeys)) {
+                    $idsToDelete[] = $existingVm->id;
+                }
+            }
+
+            if (!empty($idsToDelete)) {
+                $deletedCount = DB::table('vminfo')
+                    ->whereIn('id', $idsToDelete)
+                    ->delete();
+
+                if ($deletedCount > 0) {
+                    Log::info("Deleted {$deletedCount} VM(s) for device {$device->device_id}");
+                }
+            }
+        }
+    }
+
+    /**
+     * Save hypervisor clusters (datacenters, clusters, resource pools)
+     *
+     * @param Device $device
+     * @param array $clusters Array of cluster data
+     * @return void
+     */
+    public static function saveClusters(Device $device, array $clusters): void
+    {
+        if (empty($clusters)) {
+            return;
+        }
+
+        $syncData = [];
+        $clusterType = null;
+
+        foreach ($clusters as $cluster) {
+            if (!isset($cluster['cluster_id'], $cluster['cluster_name'])) {
+                Log::warning("Cluster missing required fields", ['device_id' => $device->device_id, 'cluster' => $cluster]);
+                continue;
+            }
+
+            // Determine cluster type from first cluster if not set
+            if (!$clusterType) {
+                $clusterType = $cluster['cluster_type'] ?? 'unknown';
+            }
+
+            $clusterData = [
+                'device_id' => $device->device_id,
+                'cluster_type' => $cluster['cluster_type'] ?? $clusterType,
+                'cluster_id' => $cluster['cluster_id'],
+                'cluster_name' => $cluster['cluster_name'],
+                'parent_id' => $cluster['parent_id'] ?? null,
+                'parent_name' => $cluster['parent_name'] ?? null,
+                'cluster_level' => $cluster['cluster_level'] ?? 'cluster',
+                'metadata' => isset($cluster['metadata']) ? json_encode($cluster['metadata']) : null,
+            ];
+
+            \App\Models\HypervisorCluster::updateOrCreate(
+                [
+                    'device_id' => $device->device_id,
+                    'cluster_type' => $clusterData['cluster_type'],
+                    'cluster_id' => $clusterData['cluster_id'],
+                ],
+                $clusterData
+            );
+
+            $syncData[] = $clusterData['cluster_id'];
+        }
+
+        // Delete clusters that no longer exist
+        if (!empty($syncData) && $clusterType) {
+            $deleted = \App\Models\HypervisorCluster::where('device_id', $device->device_id)
+                ->where('cluster_type', $clusterType)
+                ->whereNotIn('cluster_id', $syncData)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale cluster(s) for device {$device->device_id}");
+            }
+        }
+
+        Log::debug("Saved " . count($clusters) . " cluster(s) for device {$device->device_id}");
+    }
+
+    /**
+     * Save hypervisor hosts (ESXi hosts, Proxmox nodes, Hyper-V hosts)
+     *
+     * @param Device $device
+     * @param array $hosts Array of host data
+     * @return void
+     */
+    public static function saveHypervisorHosts(Device $device, array $hosts): void
+    {
+        if (empty($hosts)) {
+            return;
+        }
+
+        $syncData = [];
+        $hostType = null;
+
+        foreach ($hosts as $host) {
+            if (!isset($host['host_id'], $host['host_name'])) {
+                Log::warning("Host missing required fields", ['device_id' => $device->device_id, 'host' => $host]);
+                continue;
+            }
+
+            // Determine host type from first host if not set
+            if (!$hostType) {
+                $hostType = $host['host_type'] ?? 'unknown';
+            }
+
+            // Try to find matching LibreNMS device by hostname or IP
+            $hostDeviceId = null;
+            if (isset($host['host_name']) || isset($host['ip_address'])) {
+                $hostname = $host['host_name'] ?? null;
+                $ip = $host['ip_address'] ?? null;
+
+                $hostDevice = Device::where(function ($query) use ($hostname, $ip) {
+                    if ($hostname) {
+                        $query->orWhere('hostname', $hostname)
+                              ->orWhere('sysName', $hostname);
+                    }
+                    if ($ip) {
+                        $query->orWhere('hostname', $ip);
+                    }
+                })->first();
+
+                if ($hostDevice) {
+                    $hostDeviceId = $hostDevice->device_id;
+                }
+            }
+
+            $hostData = [
+                'device_id' => $device->device_id,
+                'host_device_id' => $hostDeviceId,
+                'host_type' => $host['host_type'] ?? $hostType,
+                'host_id' => $host['host_id'],
+                'host_name' => $host['host_name'],
+                'cluster_id' => $host['cluster_id'] ?? null,
+                'role' => $host['role'] ?? null,
+                'status' => $host['status'] ?? null,
+                'version' => $host['version'] ?? null,
+                'cpu_cores' => $host['cpu_cores'] ?? null,
+                'cpu_threads' => $host['cpu_threads'] ?? null,
+                'memory_total' => $host['memory_total'] ?? null,
+                'ip_address' => $host['ip_address'] ?? null,
+                'metadata' => isset($host['metadata']) ? json_encode($host['metadata']) : null,
+            ];
+
+            \App\Models\HypervisorHost::updateOrCreate(
+                [
+                    'device_id' => $device->device_id,
+                    'host_type' => $hostData['host_type'],
+                    'host_id' => $hostData['host_id'],
+                ],
+                $hostData
+            );
+
+            $syncData[] = $hostData['host_id'];
+        }
+
+        // Delete hosts that no longer exist
+        if (!empty($syncData) && $hostType) {
+            $deleted = \App\Models\HypervisorHost::where('device_id', $device->device_id)
+                ->where('host_type', $hostType)
+                ->whereNotIn('host_id', $syncData)
+                ->delete();
+
+            if ($deleted > 0) {
+                Log::info("Deleted {$deleted} stale host(s) for device {$device->device_id}");
+            }
+        }
+
+        Log::debug("Saved " . count($hosts) . " host(s) for device {$device->device_id}");
     }
 }

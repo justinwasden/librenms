@@ -38,6 +38,10 @@ interface DeviceApiClientInterface
     // Return an array of entries with keys: ifIndex and counter fields (ifInOctets, ifOutOctets, etc.)
     public function fetchPortsStatistics(Device $device): array;
 
+    // Virtual machines (optional capability)
+    // Return an array of entries with keys: vm_type, vmwVmVMID, vmwVmDisplayName, vmwVmGuestOS, vmwVmMemSize, vmwVmCpus, vmwVmState
+    public function fetchVms(Device $device): array;
+
     /**
      * Low-level HTTP transport methods
      */

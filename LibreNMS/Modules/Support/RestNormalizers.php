@@ -354,7 +354,7 @@ class RestNormalizers
                     'sensor_type' => 'purestorage',
                     'sensor_descr' => $name . ' Temperature',
                     'sensor_index' => 'hw_temp_' . $index,
-                    'sensor_current' => $hw['temperature'],
+                    'sensor_current' => round($hw['temperature']),
                     'sensor_limit' => 85,
                     'sensor_limit_low' => 0,
                 ];
@@ -464,51 +464,212 @@ class RestNormalizers
 		    return $stats;
 		}
 
+    /**
+     * Parse wavelength string to extract numeric value in nanometers
+     * Examples: "850 nm" => 850, "1310 nm" => 1310, "" => null
+     */
+    private static function parseWavelength(?string $wavelength): ?int
+    {
+        if (empty($wavelength)) {
+            return null;
+        }
+        
+        // Extract numeric value from string like "850 nm"
+        if (preg_match('/(\d+)\s*nm/i', $wavelength, $matches)) {
+            return (int) $matches[1];
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Parse link length string to extract maximum distance in meters
+     * Examples: 
+     *   "OM2: 80 m, OM1: 30 m, OM3: 300 m" => 300
+     *   "Copper Cable: 3 m, Attenuation..." => 3
+     *   "SMF: 10 km, SMF: 10000 m" => 10000
+     */
+    private static function parseLinkLength(?string $linkLength): ?int
+    {
+        if (empty($linkLength)) {
+            return null;
+        }
+        
+        $maxDistance = null;
+        
+        // Find all distance values in meters or kilometers
+        // Match patterns like "80 m", "10 km", "10000 m"
+        if (preg_match_all('/(\d+)\s*(km|m)\b/i', $linkLength, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $value = (int) $match[1];
+                $unit = strtolower($match[2]);
+                
+                // Convert to meters
+                if ($unit === 'km') {
+                    $value *= 1000;
+                }
+                
+                // Keep the maximum distance found
+                if ($maxDistance === null || $value > $maxDistance) {
+                    $maxDistance = $value;
+                }
+            }
+        }
+        
+        return $maxDistance;
+    }
+
     public static function normalizePurePortOptics($device, $payload): array
     {
         if (!is_array($payload)) {
             return [];
         }
 
+        $transceivers = [];
         $sensors = [];
 
         if (!isset($payload['items']) || !is_array($payload['items'])) {
-            return $sensors;
+            return ['transceivers' => $transceivers, 'sensors' => $sensors];
         }
 
         foreach ($payload['items'] as $port) {
-            $name = $port['name'] ?? 'unknown';
+            $name = strtolower($port['name'] ?? 'unknown');
             $index = self::stableIndexFromName($name);
+            $static = $port['static'] ?? [];
 
-            // Optical power sensors (dBm) - only if this is an FC/optical port
-            if (isset($port['wwn'])) {
-                if (isset($port['rx_power']) && is_numeric($port['rx_power'])) {
-                    $sensors[] = [
-                        'sensor_class' => 'dbm',
-                        'sensor_type' => 'purestorage',
-                        'sensor_descr' => $name . ' RX Power',
-                        'sensor_index' => 'port_rx_' . $index,
-                        'sensor_current' => $port['rx_power'],
-                        'sensor_limit' => 0,
-                        'sensor_limit_low' => -20,
-                    ];
+            // Only process ports that have transceiver data
+            if (!empty($static) && isset($static['vendor_name'])) {
+                // Parse wavelength and distance to numeric values
+                $wavelength = self::parseWavelength($static['wavelength'] ?? null);
+                $distance = self::parseLinkLength($static['link_length'] ?? null);
+                
+                // Build transceiver record
+                $transceiver = [
+                    'ifName' => $name,
+                    'index' => $index,
+                    'type' => $static['identifier'] ?? null,
+                    'vendor' => $static['vendor_name'] ?? null,
+                    'oui' => $static['vendor_oui'] ?? null,
+                    'model' => $static['vendor_part_number'] ?? null,
+                    'revision' => $static['vendor_revision'] ?? null,
+                    'serial' => $static['vendor_serial_number'] ?? null,
+                    'date' => $static['vendor_date_code'] ?? null,
+                    'encoding' => $static['encoding'] ?? null,
+                    'connector' => $static['connector_type'] ?? null,
+                    'wavelength' => $wavelength,
+                    'distance' => $distance,
+                    'cable' => $static['cable_technology'] ?? null,
+                    'channels' => 1, // Default to 1, will be overridden if multi-channel
+                ];
+
+                // Detect number of channels from tx_power or rx_power arrays
+                if (isset($port['tx_power']) && is_array($port['tx_power'])) {
+                    $transceiver['channels'] = count($port['tx_power']);
+                } elseif (isset($port['rx_power']) && is_array($port['rx_power'])) {
+                    $transceiver['channels'] = count($port['rx_power']);
                 }
 
-                if (isset($port['tx_power']) && is_numeric($port['tx_power'])) {
-                    $sensors[] = [
-                        'sensor_class' => 'dbm',
-                        'sensor_type' => 'purestorage',
-                        'sensor_descr' => $name . ' TX Power',
-                        'sensor_index' => 'port_tx_' . $index,
-                        'sensor_current' => $port['tx_power'],
-                        'sensor_limit' => 2,
-                        'sensor_limit_low' => -10,
-                    ];
+                $transceivers[] = $transceiver;
+
+                // Create sensors for temperature, voltage, and optical power
+                // Temperature sensor
+                if (isset($port['temperature']) && is_array($port['temperature'])) {
+                    foreach ($port['temperature'] as $temp) {
+                        if (isset($temp['measurement']) && $temp['measurement'] != 0) {
+                            $sensors[] = [
+                                'sensor_class' => 'temperature',
+                                'sensor_type' => 'purestorage',
+                                'sensor_descr' => $name . ' Temperature',
+                                'sensor_index' => 'port_temp_' . $index,
+                                'sensor_current' => round($temp['measurement']),
+                                'sensor_limit' => $static['temperature_thresholds']['alarm_high'] ?? 70,
+                                'sensor_limit_low' => $static['temperature_thresholds']['alarm_low'] ?? -5,
+                            ];
+                            break; // Only one temperature sensor per port
+                        }
+                    }
+                }
+
+                // Voltage sensor
+                if (isset($port['voltage']) && is_array($port['voltage'])) {
+                    foreach ($port['voltage'] as $volt) {
+                        if (isset($volt['measurement']) && $volt['measurement'] != 0) {
+                            $sensors[] = [
+                                'sensor_class' => 'voltage',
+                                'sensor_type' => 'purestorage',
+                                'sensor_descr' => $name . ' Voltage',
+                                'sensor_index' => 'port_volt_' . $index,
+                                'sensor_current' => $volt['measurement'],
+                                'sensor_limit' => $static['voltage_thresholds']['alarm_high'] ?? 3.6,
+                                'sensor_limit_low' => $static['voltage_thresholds']['alarm_low'] ?? 3.0,
+                            ];
+                            break; // Only one voltage sensor per port
+                        }
+                    }
+                }
+
+                // TX/RX Power sensors for each channel
+                if (isset($port['rx_power']) && is_array($port['rx_power'])) {
+                    foreach ($port['rx_power'] as $rx) {
+                        $channel = $rx['channel'] ?? '';
+                        $measurement = $rx['measurement'] ?? null;
+                        if ($measurement !== null && $measurement != 0) {
+                            $channelSuffix = $channel ? " Ch{$channel}" : '';
+                            $sensors[] = [
+                                'sensor_class' => 'dbm',
+                                'sensor_type' => 'purestorage',
+                                'sensor_descr' => $name . $channelSuffix . ' RX Power',
+                                'sensor_index' => 'port_rx_' . $index . ($channel ? '_ch' . $channel : ''),
+                                'sensor_current' => $measurement,
+                                'sensor_limit' => $static['rx_power_thresholds']['alarm_high'] ?? 0,
+                                'sensor_limit_low' => $static['rx_power_thresholds']['alarm_low'] ?? -20,
+                            ];
+                        }
+                    }
+                }
+
+                if (isset($port['tx_power']) && is_array($port['tx_power'])) {
+                    foreach ($port['tx_power'] as $tx) {
+                        $channel = $tx['channel'] ?? '';
+                        $measurement = $tx['measurement'] ?? null;
+                        if ($measurement !== null && $measurement != 0) {
+                            $channelSuffix = $channel ? " Ch{$channel}" : '';
+                            $sensors[] = [
+                                'sensor_class' => 'dbm',
+                                'sensor_type' => 'purestorage',
+                                'sensor_descr' => $name . $channelSuffix . ' TX Power',
+                                'sensor_index' => 'port_tx_' . $index . ($channel ? '_ch' . $channel : ''),
+                                'sensor_current' => $measurement,
+                                'sensor_limit' => $static['tx_power_thresholds']['alarm_high'] ?? 2,
+                                'sensor_limit_low' => $static['tx_power_thresholds']['alarm_low'] ?? -10,
+                            ];
+                        }
+                    }
+                }
+
+                // TX Bias sensors for each channel
+                if (isset($port['tx_bias']) && is_array($port['tx_bias'])) {
+                    foreach ($port['tx_bias'] as $bias) {
+                        $channel = $bias['channel'] ?? '';
+                        $measurement = $bias['measurement'] ?? null;
+                        if ($measurement !== null && $measurement != 0) {
+                            $channelSuffix = $channel ? " Ch{$channel}" : '';
+                            $sensors[] = [
+                                'sensor_class' => 'current',
+                                'sensor_type' => 'purestorage',
+                                'sensor_descr' => $name . $channelSuffix . ' TX Bias',
+                                'sensor_index' => 'port_txbias_' . $index . ($channel ? '_ch' . $channel : ''),
+                                'sensor_current' => $measurement,
+                                'sensor_limit' => $static['tx_bias_thresholds']['alarm_high'] ?? 100,
+                                'sensor_limit_low' => $static['tx_bias_thresholds']['alarm_low'] ?? 0,
+                            ];
+                        }
+                    }
                 }
             }
         }
 
-        return $sensors;
+        return ['transceivers' => $transceivers, 'sensors' => $sensors];
     }
     public static function normalizePureVolumes($device, $volumesPayload, $volPerfPayload = []): array
     {
@@ -1070,35 +1231,194 @@ class RestNormalizers
 
         return ['sensors' => $sensors, 'processors' => $processors, 'mempools' => $mempools];
     }
-    public static function normalizeProxmoxNodeNetwork(array $payload): array
+    public static function normalizeProxmoxNodeNetwork($device, $payload = null): array
     {
+        // Handle both old signature (array $payload) and new signature ($device, array $payload)
+        if (is_array($device) && $payload === null) {
+            // Old signature: called with just payload
+            $payload = $device;
+            $deviceId = 0; // No device ID available in old signature
+        } else {
+            // New signature: called with device and payload
+            $deviceId = is_object($device) ? $device->device_id : ($device['device_id'] ?? 0);
+        }
+
         $ports = [];
+        $interfaceData = []; // Collect all data for each interface, merging best information
 
         if (!isset($payload['data']) || !is_array($payload['data'])) {
             return $ports;
         }
 
-        foreach ($payload['data'] as $idx => $iface) {
-            $name = $iface['iface'] ?? "iface_$idx";
-            $active = ($iface['active'] ?? 0) ? 'up' : 'down';
+        // First pass: collect and merge interface data
+        // Proxmox API may return multiple entries for the same interface with different IPs
+        // We want to merge the best information from all entries
+        foreach ($payload['data'] as $iface) {
+            $rawName = $iface['iface'] ?? '';
+            $name = trim($rawName);
+            if (!$name || strtolower($name) === 'lo') {
+                continue;
+            }
 
-            // Get MAC address from hwaddr field, not from address (which is IP)
+            // Use normalized name as key for matching, but preserve original for display
+            $key = $name; // Use trimmed name as key for consistent matching
+
+            // Extract MAC address from altnames if not in hwaddr
+            // Proxmox often stores MAC in altnames like "enx0025b518a0ed"
+            $hwaddr = $iface['hwaddr'] ?? '';
+            if (empty($hwaddr) && !empty($iface['altnames'])) {
+                foreach ($iface['altnames'] as $altname) {
+                    // Check if altname starts with "enx" followed by 12 hex chars (MAC)
+                    if (preg_match('/^enx([0-9a-f]{12})$/i', $altname, $matches)) {
+                        $hwaddr = $matches[1];
+                        break;
+                    }
+                }
+            }
+
+            // Parse bridge_ports and VLAN info for additional details
+            $bridgePorts = [];
+            if (!empty($iface['bridge_ports'])) {
+                $bridgePorts = array_map('trim', explode(' ', $iface['bridge_ports']));
+            }
+
+            // Initialize interface data if not seen before
+            if (!isset($interfaceData[$key])) {
+                $interfaceData[$key] = [
+                    'iface' => $name, // Store trimmed name (original without whitespace)
+                    'type' => $iface['type'] ?? 'unknown',
+                    'active' => $iface['active'] ?? 0,
+                    'autostart' => $iface['autostart'] ?? 0,
+                    'mtu' => $iface['mtu'] ?? 1500,
+                    'hwaddr' => $hwaddr,
+                    'comments' => $iface['comments'] ?? '',
+                    'bridge_ports' => $bridgePorts,
+                    'vlan_id' => $iface['vlan-id'] ?? '',
+                    'vlan_raw_device' => $iface['vlan-raw-device'] ?? '',
+                ];
+            } else {
+                // Merge data: prefer non-empty values and better information
+                // Prefer MAC address if available
+                if (empty($interfaceData[$key]['hwaddr']) && !empty($hwaddr)) {
+                    $interfaceData[$key]['hwaddr'] = $hwaddr;
+                }
+                // Prefer comments if available (longer/comments are usually more descriptive)
+                if (empty($interfaceData[$key]['comments']) && !empty($iface['comments'])) {
+                    $interfaceData[$key]['comments'] = $iface['comments'];
+                } elseif (!empty($iface['comments']) && strlen($iface['comments']) > strlen($interfaceData[$key]['comments'])) {
+                    // If both have comments, prefer the longer one (more descriptive)
+                    $interfaceData[$key]['comments'] = $iface['comments'];
+                }
+                // Prefer active status (if any entry is active, mark as active)
+                if (($iface['active'] ?? 0) && !$interfaceData[$key]['active']) {
+                    $interfaceData[$key]['active'] = 1;
+                }
+                // Prefer autostart if set
+                if (($iface['autostart'] ?? 0) && !$interfaceData[$key]['autostart']) {
+                    $interfaceData[$key]['autostart'] = 1;
+                }
+                // Prefer larger MTU (usually more accurate)
+                if (($iface['mtu'] ?? 0) > ($interfaceData[$key]['mtu'] ?? 0)) {
+                    $interfaceData[$key]['mtu'] = $iface['mtu'];
+                }
+                // Preserve type if current is 'unknown' and new one is not
+                if ($interfaceData[$key]['type'] === 'unknown' && !empty($iface['type'])) {
+                    $interfaceData[$key]['type'] = $iface['type'];
+                }
+                // Merge bridge ports
+                if (empty($interfaceData[$key]['bridge_ports']) && !empty($bridgePorts)) {
+                    $interfaceData[$key]['bridge_ports'] = $bridgePorts;
+                }
+                // Merge VLAN info
+                if (empty($interfaceData[$key]['vlan_id']) && !empty($iface['vlan-id'])) {
+                    $interfaceData[$key]['vlan_id'] = $iface['vlan-id'];
+                }
+                if (empty($interfaceData[$key]['vlan_raw_device']) && !empty($iface['vlan-raw-device'])) {
+                    $interfaceData[$key]['vlan_raw_device'] = $iface['vlan-raw-device'];
+                }
+            }
+        }
+
+        // Second pass: create port entries from merged interface data
+        foreach ($interfaceData as $name => $iface) {
+            $active = $iface['active'] ? 'up' : 'down';
+            $type = $iface['type'];
+
+            // Get MAC address and normalize format
             $macAddress = '';
             if (!empty($iface['hwaddr'])) {
-                $macAddress = strtolower($iface['hwaddr']);
+                $macAddress = strtolower(trim($iface['hwaddr']));
+                // Normalize MAC address format (remove colons, dashes, spaces, then add colons)
+                $macAddress = preg_replace('/[^0-9a-f]/i', '', $macAddress);
+                if (strlen($macAddress) === 12) {
+                    $macAddress = implode(':', str_split($macAddress, 2));
+                }
+            }
+
+            // Use stable index based on interface name AND device_id for unique port matching across cluster nodes
+            // This prevents ifIndex collisions when multiple Proxmox nodes have identically named interfaces
+            $ifIndex = self::stableIndexFromName($deviceId . ':' . $name);
+
+            // Build description with type and additional info
+            $description = $name;
+            $descParts = [];
+
+            if ($type && $type !== 'unknown') {
+                $descParts[] = ucfirst($type);
+            }
+
+            // Add VLAN info for VLAN interfaces
+            if ($type === 'vlan' && !empty($iface['vlan_id'])) {
+                $descParts[] = "VLAN {$iface['vlan_id']}";
+                if (!empty($iface['vlan_raw_device'])) {
+                    $descParts[] = "on {$iface['vlan_raw_device']}";
+                }
+            }
+
+            // Add bridge ports for bridges
+            if ($type === 'bridge' && !empty($iface['bridge_ports'])) {
+                $descParts[] = 'ports: ' . implode(', ', $iface['bridge_ports']);
+            }
+
+            // Add comment if available
+            $comment = trim($iface['comments']);
+            if (!empty($comment)) {
+                $descParts[] = $comment;
+            }
+
+            if (!empty($descParts)) {
+                $description = $name . ' (' . implode(', ', $descParts) . ')';
+            }
+
+            // Determine interface type for ifType field
+            $ifType = 'ethernetCsmacd';
+            if ($type === 'bridge') {
+                $ifType = 'bridge';
+            } elseif ($type === 'bond') {
+                $ifType = 'ieee8023adLag';
+            } elseif ($type === 'vlan') {
+                $ifType = 'l2vlan';
+            } elseif ($type === 'eth') {
+                $ifType = 'ethernetCsmacd';
+            }
+
+            // Determine port speed - default to 10Gbps if MTU is 9000 (jumbo frames often used for 10G)
+            $ifSpeed = 1000000000; // 1Gbps default
+            if ($iface['mtu'] >= 9000) {
+                $ifSpeed = 10000000000; // 10Gbps for jumbo frame interfaces
             }
 
             $ports[] = [
-                'ifIndex' => $idx + 1,  // Use sequential index instead of CRC32 hash
+                'ifIndex' => $ifIndex,
                 'ifName' => $name,
-                'ifDescr' => $iface['comments'] ?? $name,
-                'ifType' => $iface['type'] ?? 'ethernetCsmacd',
-                'ifSpeed' => 1000000000, // Default to 1Gbps
+                'ifDescr' => $description,
+                'ifType' => $ifType,
+                'ifSpeed' => $ifSpeed,
                 'ifOperStatus' => $active,
-                'ifAdminStatus' => ($iface['autostart'] ?? 1) ? 'up' : 'down',
-                'ifMtu' => $iface['mtu'] ?? 1500,
-                'ifPhysAddress' => $macAddress, // Fixed: use hwaddr, not address (IP)
-                'ifAlias' => $iface['comments'] ?? '',
+                'ifAdminStatus' => $iface['autostart'] ? 'up' : 'down',
+                'ifMtu' => $iface['mtu'],
+                'ifPhysAddress' => $macAddress,
+                'ifAlias' => $comment,
                 'ifLastChange' => 0,
             ];
         }
@@ -1115,29 +1435,50 @@ class RestNormalizers
         }
 
         foreach ($payload['data'] as $iface) {
-            $ifName = $iface['iface'] ?? '';
+            $ifName = trim($iface['iface'] ?? '');
+            if (!$ifName || strtolower($ifName) === 'lo') {
+                continue;
+            }
+
+            // Proxmox API can return multiple IP addresses for the same interface
+            // Handle both 'cidr' field (format: "IP/PREFIX") and separate 'address'/'netmask' fields
             $cidr = $iface['cidr'] ?? null;
             $ipAddr = $iface['address'] ?? null;
             $netmask = $iface['netmask'] ?? null;
 
-            if (!$ifName || (!$cidr && !$ipAddr)) {
+            // If cidr field exists and contains a slash, parse it
+            if ($cidr && strpos($cidr, '/') !== false) {
+                [$ipAddr, $prefixLenStr] = explode('/', $cidr, 2);
+                $prefixLen = (int) $prefixLenStr;
+            } elseif ($ipAddr) {
+                // Calculate prefix length from netmask
+                $prefixLen = 24; // Default safe value
+                
+                if ($netmask) {
+                    if (is_numeric($netmask)) {
+                        // Netmask is already a CIDR prefix length
+                        $prefixLen = (int) $netmask;
+                    } else {
+                        // Netmask is a dotted quad (e.g., "255.255.255.0")
+                        try {
+                            $prefixLen = self::netmaskToCidr($netmask);
+                        } catch (\Exception $e) {
+                            // If conversion fails, use default
+                            $prefixLen = 24;
+                        }
+                    }
+                }
+            } else {
+                // No IP address information for this interface entry
                 continue;
             }
 
-            $prefixLen = 24; // Default safe value
-
-            if ($cidr && strpos($cidr, '/') !== false) {
-                [$ipAddr, $prefixLen] = explode('/', $cidr, 2);
-            } elseif ($ipAddr && $netmask) {
-                // If netmask is a number (CIDR) or a dotted quad
-                $prefixLen = is_numeric($netmask) ? (int)$netmask : self::netmaskToCidr($netmask);
-            } elseif ($ipAddr && is_numeric($netmask)) {
-                $prefixLen = (int)$netmask;
-            }
-
-            if ($ipAddr) {
+            // Validate IP address
+            if ($ipAddr && filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                // Use stable index for consistency with port matching
+                // But also include ifName for persistor to match by name (more reliable)
                 $addresses[] = [
-                    // Persistor will resolve port_id via ifName
+                    'ifIndex' => self::stableIndexFromName($ifName),
                     'ifName' => $ifName,
                     'ipv4_address' => $ipAddr,
                     'ipv4_prefixlen' => $prefixLen,
@@ -1241,6 +1582,8 @@ class RestNormalizers
                 'entPhysicalIsFRU' => 0,
                 'entPhysicalAlias' => '',
                 'entPhysicalAssetID' => '',
+                // Store storage ID for for_each iteration
+                'storage' => $name,
             ];
 
             // Storage usage
@@ -1257,14 +1600,17 @@ class RestNormalizers
                 ];
             }
 
-            // Storage capacity
+            // Storage capacity - convert bytes to GB for readability
             if (isset($storage['total'])) {
+                $totalBytes = $storage['total'];
+                $totalGB = $totalBytes / (1024 * 1024 * 1024);
+
                 $sensors[] = [
                     'sensor_class' => 'count',
                     'sensor_type' => 'proxmox',
-                    'sensor_descr' => 'Storage ' . $name . ' Total',
+                    'sensor_descr' => 'Storage ' . $name . ' Total (GB)',
                     'sensor_index' => 'storage_total_' . $index,
-                    'sensor_current' => $storage['total'],
+                    'sensor_current' => round($totalGB, 2),
                     'sensor_limit' => null,
                     'sensor_limit_low' => 0,
                 ];
@@ -1382,6 +1728,11 @@ class RestNormalizers
         return ['sensors' => $sensors, 'inventory' => $inventory];
     }
 
+    /**
+     * DEPRECATED: This normalizer is replaced by normalizeProxmoxGuestDiscovery()
+     * Kept for backward compatibility with existing configurations but no longer creates duplicate sensors.
+     * The newer normalizeProxmoxGuestDiscovery() provides the same functionality with better data structure.
+     */
     public static function normalizeProxmoxClusterResources(array $payload): array
     {
         $sensors = [];
@@ -1391,70 +1742,9 @@ class RestNormalizers
             return ['sensors' => $sensors, 'inventory' => $inventory];
         }
 
-        // Count VMs and containers
-        $vmCount = 0;
-        $ctCount = 0;
-        $runningVms = 0;
-        $runningCts = 0;
-
-        foreach ($payload['data'] as $resource) {
-            $type = $resource['type'] ?? '';
-            $status = $resource['status'] ?? '';
-
-            if ($type === 'qemu') {
-                $vmCount++;
-                if ($status === 'running') {
-                    $runningVms++;
-                }
-            } elseif ($type === 'lxc') {
-                $ctCount++;
-                if ($status === 'running') {
-                    $runningCts++;
-                }
-            }
-        }
-
-        // VM count sensors
-        $sensors[] = [
-            'sensor_class' => 'count',
-            'sensor_type' => 'proxmox',
-            'sensor_descr' => 'Total VMs',
-            'sensor_index' => 'resource_vm_total',
-            'sensor_current' => $vmCount,
-            'sensor_limit' => null,
-            'sensor_limit_low' => 0,
-        ];
-
-        $sensors[] = [
-            'sensor_class' => 'count',
-            'sensor_type' => 'proxmox',
-            'sensor_descr' => 'Running VMs',
-            'sensor_index' => 'resource_vm_running',
-            'sensor_current' => $runningVms,
-            'sensor_limit' => null,
-            'sensor_limit_low' => 0,
-        ];
-
-        // Container count sensors
-        $sensors[] = [
-            'sensor_class' => 'count',
-            'sensor_type' => 'proxmox',
-            'sensor_descr' => 'Total Containers',
-            'sensor_index' => 'resource_ct_total',
-            'sensor_current' => $ctCount,
-            'sensor_limit' => null,
-            'sensor_limit_low' => 0,
-        ];
-
-        $sensors[] = [
-            'sensor_class' => 'count',
-            'sensor_type' => 'proxmox',
-            'sensor_descr' => 'Running Containers',
-            'sensor_index' => 'resource_ct_running',
-            'sensor_current' => $runningCts,
-            'sensor_limit' => null,
-            'sensor_limit_low' => 0,
-        ];
+        // This function is deprecated and no longer creates sensors to avoid duplicates
+        // with normalizeProxmoxGuestDiscovery(). If you need VM/Container counts,
+        // use the 'discovery' capability with normalizeProxmoxGuestDiscovery instead.
 
         return ['sensors' => $sensors, 'inventory' => $inventory];
     }
@@ -1602,7 +1892,17 @@ class RestNormalizers
 
         foreach ($results as $idx => $iface) {
             $name = $iface['name'] ?? "port_$idx";
-            $status = strtolower($iface['status'] ?? 'down');
+
+            // FortiGate uses 'link' (boolean) instead of 'status' (string)
+            // link: true = interface is up, link: false = interface is down
+            $linkUp = $iface['link'] ?? false;
+            $status = $linkUp ? 'up' : 'down';
+
+            // Also check for 'status' field for other FortiGate API versions
+            if (isset($iface['status'])) {
+                $status = strtolower($iface['status']) === 'up' ? 'up' : 'down';
+            }
+
             $ifIndex = self::stableIndexFromName($name);
 
             // Parse speed - handle numeric values and string formats like "1000", "auto", "1G", etc.
@@ -1614,17 +1914,24 @@ class RestNormalizers
                 $speedBps = 1000000000;
             }
 
+            // Use alias for ifDescr, fallback to name if alias is empty
+            $alias = $iface['alias'] ?? '';
+            $ifDescr = !empty($alias) ? $alias : $name;
+
+            // Use MAC address from 'mac' field (FortiGate specific)
+            $macAddr = $iface['mac'] ?? $iface['macaddr'] ?? '';
+
             $ports[] = [
                 'ifIndex' => $ifIndex,
                 'ifName' => $name,
-                'ifDescr' => $iface['alias'] ?? $name,
+                'ifDescr' => $ifDescr,
                 'ifType' => $iface['type'] ?? 'ethernetCsmacd',
                 'ifSpeed' => $speedBps,
-                'ifOperStatus' => $status === 'up' ? 'up' : 'down',
-                'ifAdminStatus' => $status === 'up' ? 'up' : 'down',
+                'ifOperStatus' => $status,
+                'ifAdminStatus' => $status,
                 'ifMtu' => $iface['mtu'] ?? 1500,
-                'ifPhysAddress' => $iface['macaddr'] ?? '',
-                'ifAlias' => $iface['alias'] ?? '',
+                'ifPhysAddress' => $macAddr,
+                'ifAlias' => $alias,
                 'ifLastChange' => 0,
             ];
 
@@ -4293,8 +4600,8 @@ class RestNormalizers
         // Use CRC32 to generate a stable numeric index
         // This ensures the same name always gets the same index
         // Constrain to fit in MySQL INT(11) column (max 2,147,483,647)
-        // Using 2 billion as max to leave headroom
-        return abs(crc32($name)) % 2000000000;
+        // Match ProxmoxApiClient implementation for consistency
+        return abs(crc32($name)) % 2147483647;
     }
 
     protected static function netmaskToCidr(string $netmask): int
@@ -4519,5 +4826,2107 @@ class RestNormalizers
         }
 
         return $rows;
+    }
+
+    // =========================================================================
+    // Device Info Normalizers - Extract hardware, serial, sysObjectID, sysContact, uptime, location, lat/lng
+    // =========================================================================
+
+    /**
+     * Normalize Pure Storage FlashArray device information
+     * Input: GET /arrays
+     */
+    public static function normalizePureDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $array = $payload['items'][0] ?? $payload;
+
+        if (empty($array)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model
+        if (isset($array['model'])) {
+            $deviceInfo['hardware'] = $array['model'];
+        }
+
+        // Serial number
+        if (isset($array['id'])) {
+            $deviceInfo['serial'] = $array['id'];
+        }
+
+        // System Object ID (Pure Storage OID)
+        // Pure Storage enterprise OID: .1.3.6.1.4.1.40482
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.40482';
+
+        // Version (software version)
+        if (isset($array['version'])) {
+            // Version is already collected via OS discovery, but we could set it here if needed
+        }
+
+        // Uptime (if available in API response)
+        // Pure Storage API doesn't directly provide uptime, but we can calculate from timestamps if available
+        if (isset($array['uptime'])) {
+            $deviceInfo['uptime'] = (int) $array['uptime'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize FortiGate device information
+     * Input: GET /monitor/system/status
+     */
+    public static function normalizeFortigateDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $results = $payload['results'] ?? $payload;
+
+        if (empty($results) && empty($payload)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model - Format as "FortiGate <model>"
+        // Try model_name + model_number first (more descriptive), then fall back to model
+        if (isset($results['model_name']) && isset($results['model_number'])) {
+            $deviceInfo['hardware'] = $results['model_name'] . ' ' . $results['model_number'];
+        } elseif (isset($results['model'])) {
+            $model = $results['model'];
+            // If model doesn't start with "FortiGate", prepend it
+            if (stripos($model, 'FortiGate') !== 0 && stripos($model, 'FG') === 0) {
+                $deviceInfo['hardware'] = 'FortiGate ' . $model;
+            } else {
+                $deviceInfo['hardware'] = $model;
+            }
+        }
+
+        // Version - Combine version and build information
+        // Check top-level payload first (FortiGate puts these there), then check results
+        $version = $payload['version'] ?? $results['version'] ?? null;
+        $build = $payload['build'] ?? $results['build'] ?? null;
+        $patch = $payload['patch'] ?? $results['patch'] ?? null;
+
+        if ($version) {
+            $versionStr = $version;
+            // Add build number if available
+            if ($build) {
+                $versionStr .= ',build' . $build;
+            }
+            // Add patch level if available
+            if ($patch) {
+                $versionStr .= ',patch' . $patch;
+            }
+            $deviceInfo['version'] = $versionStr;
+        }
+
+        // Serial number - Check top-level first
+        $serial = $payload['serial'] ?? $results['serial'] ?? null;
+        if ($serial) {
+            $deviceInfo['serial'] = $serial;
+        }
+
+        // System Object ID - Build complete OID from model if available
+        // Base Fortinet OID: .1.3.6.1.4.1.12356.101.1
+        if (isset($results['model_id'])) {
+            // Use model_id if provided by API
+            $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.12356.101.1.' . $results['model_id'];
+        } elseif (isset($results['model'])) {
+            // Try to extract numeric model ID from model name (e.g., "901G" -> 9002)
+            $model = $results['model'];
+            if (preg_match('/(\d+)[A-Z]?/', $model, $matches)) {
+                $modelNum = $matches[1];
+                // Rough mapping: model number * 10 + 2 (e.g., 900 -> 9002)
+                $modelId = ($modelNum * 10) + 2;
+                $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.12356.101.1.' . $modelId;
+            } else {
+                // Fallback to base Fortinet OID
+                $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.12356';
+            }
+        } else {
+            $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.12356';
+        }
+
+        // System Name - Use hostname from API
+        $hostname = $results['hostname'] ?? null;
+        if ($hostname && $hostname !== 'FortiGate') {
+            $deviceInfo['sysName'] = $hostname;
+        }
+
+        // System Description - Build from hostname, model, and version
+        $model = $results['model'] ?? ($results['model_name'] ?? '') . ' ' . ($results['model_number'] ?? '');
+        $model = trim($model);
+
+        $sysDescr = 'Fortinet';
+        if ($hostname && $hostname !== 'FortiGate') {
+            $sysDescr = $hostname;
+        }
+        if ($model) {
+            $sysDescr .= ' ' . $model;
+        }
+        if (isset($deviceInfo['version'])) {
+            $sysDescr .= ' ' . $deviceInfo['version'];
+        }
+        $deviceInfo['sysDescr'] = trim($sysDescr);
+
+        // System Contact (if available) - check both payload and results
+        $contact = $payload['contact'] ?? $results['contact'] ?? null;
+        if ($contact) {
+            $deviceInfo['sysContact'] = $contact;
+        }
+
+        // Uptime (FortiGate provides uptime in seconds) - check both payload and results
+        $uptime = $payload['uptime'] ?? $results['uptime'] ?? null;
+        if ($uptime !== null) {
+            $deviceInfo['uptime'] = (int) $uptime;
+        }
+
+        // Location (if available)
+        if (isset($results['location'])) {
+            $deviceInfo['location'] = $results['location'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize Juniper Junos device information
+     * Input: POST get-system-information
+     */
+    public static function normalizeJunosDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $sysInfo = $payload['system-information'] ?? $payload;
+
+        if (empty($sysInfo)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model
+        if (isset($sysInfo['hardware-model'])) {
+            $deviceInfo['hardware'] = $sysInfo['hardware-model'];
+        } elseif (isset($sysInfo['model'])) {
+            $deviceInfo['hardware'] = $sysInfo['model'];
+        }
+
+        // Serial number
+        if (isset($sysInfo['hardware-serial-number'])) {
+            $deviceInfo['serial'] = $sysInfo['hardware-serial-number'];
+        } elseif (isset($sysInfo['serial-number'])) {
+            $deviceInfo['serial'] = $sysInfo['serial-number'];
+        }
+
+        // System Object ID (Juniper OID)
+        // Juniper enterprise OID: .1.3.6.1.4.1.2636
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.2636';
+
+        // System Contact
+        if (isset($sysInfo['system-contact'])) {
+            $deviceInfo['sysContact'] = $sysInfo['system-contact'];
+        }
+
+        // Uptime (Junos provides uptime in seconds)
+        if (isset($sysInfo['system-uptime-information']['system-booted-time'])) {
+            $bootTime = $sysInfo['system-uptime-information']['system-booted-time']['time-length']['seconds'] ?? 0;
+            $deviceInfo['uptime'] = (int) $bootTime;
+        } elseif (isset($sysInfo['uptime'])) {
+            $deviceInfo['uptime'] = (int) $sysInfo['uptime'];
+        }
+
+        // Location
+        if (isset($sysInfo['system-location'])) {
+            $deviceInfo['location'] = $sysInfo['system-location'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize Dell OS10 device information
+     * Input: GET /system
+     */
+    public static function normalizeDellDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $system = $payload['SystemInformation'] ?? $payload['system'] ?? $payload;
+
+        if (empty($system)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model
+        if (isset($system['Model'])) {
+            $deviceInfo['hardware'] = $system['Model'];
+        } elseif (isset($system['model'])) {
+            $deviceInfo['hardware'] = $system['model'];
+        }
+
+        // Serial number
+        if (isset($system['ServiceTag'])) {
+            $deviceInfo['serial'] = $system['ServiceTag'];
+        } elseif (isset($system['SerialNumber'])) {
+            $deviceInfo['serial'] = $system['SerialNumber'];
+        } elseif (isset($system['serial'])) {
+            $deviceInfo['serial'] = $system['serial'];
+        }
+
+        // System Object ID (Dell OID)
+        // Dell enterprise OID: .1.3.6.1.4.1.674
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.674';
+
+        // System Contact (if available)
+        if (isset($system['Contact'])) {
+            $deviceInfo['sysContact'] = $system['Contact'];
+        } elseif (isset($system['contact'])) {
+            $deviceInfo['sysContact'] = $system['contact'];
+        }
+
+        // Uptime
+        if (isset($system['Uptime'])) {
+            // Dell may provide uptime in various formats
+            $uptime = $system['Uptime'];
+            if (is_numeric($uptime)) {
+                $deviceInfo['uptime'] = (int) $uptime;
+            }
+        }
+
+        // Location
+        if (isset($system['Location'])) {
+            $deviceInfo['location'] = $system['Location'];
+        } elseif (isset($system['location'])) {
+            $deviceInfo['location'] = $system['location'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize HPE/Aruba device information
+     * Input: GET /system
+     */
+    public static function normalizeHpeDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $system = $payload['System'] ?? $payload['system'] ?? $payload;
+
+        if (empty($system)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model
+        if (isset($system['Model'])) {
+            $deviceInfo['hardware'] = $system['Model'];
+        } elseif (isset($system['model'])) {
+            $deviceInfo['hardware'] = $system['model'];
+        }
+
+        // Serial number
+        if (isset($system['SerialNumber'])) {
+            $deviceInfo['serial'] = $system['SerialNumber'];
+        } elseif (isset($system['serial'])) {
+            $deviceInfo['serial'] = $system['serial'];
+        }
+
+        // System Object ID (HPE OID)
+        // HPE enterprise OID: .1.3.6.1.4.1.11
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.11';
+
+        // System Contact (if available)
+        if (isset($system['Contact'])) {
+            $deviceInfo['sysContact'] = $system['Contact'];
+        } elseif (isset($system['contact'])) {
+            $deviceInfo['sysContact'] = $system['contact'];
+        }
+
+        // Uptime
+        if (isset($system['Uptime'])) {
+            $uptime = $system['Uptime'];
+            if (is_numeric($uptime)) {
+                $deviceInfo['uptime'] = (int) $uptime;
+            }
+        }
+
+        // Location
+        if (isset($system['Location'])) {
+            $deviceInfo['location'] = $system['Location'];
+        } elseif (isset($system['location'])) {
+            $deviceInfo['location'] = $system['location'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize Proxmox device information
+     * Input: GET /nodes/{node}/status
+     */
+    public static function normalizeProxmoxDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $data = $payload['data'] ?? $payload;
+
+        if (empty($data)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model - Use CPU model if available, otherwise use machine architecture
+        if (isset($data['cpuinfo']['model'])) {
+            $deviceInfo['hardware'] = $data['cpuinfo']['model'];
+        } elseif (isset($data['current-kernel']['machine'])) {
+            $sysname = $data['current-kernel']['sysname'] ?? 'Generic';
+            $machine = $data['current-kernel']['machine'];
+            $deviceInfo['hardware'] = "{$sysname} {$machine}";
+        } elseif (isset($data['node'])) {
+            $deviceInfo['hardware'] = 'Generic x86 64-bit';
+        }
+
+        // Version - Use kernel release version
+        if (isset($data['current-kernel']['release'])) {
+            $deviceInfo['version'] = $data['current-kernel']['release'];
+        } elseif (isset($data['kversion'])) {
+            // Extract version from kversion string (e.g., "Linux 6.14.11-4-pve #1...")
+            if (preg_match('/Linux\s+([\d\.-]+)/', $data['kversion'], $matches)) {
+                $deviceInfo['version'] = $matches[1];
+            }
+        }
+
+        // Features - Store PVE version info
+        if (isset($data['pveversion'])) {
+            $deviceInfo['features'] = $data['pveversion'];
+        }
+
+        // Serial number (usually not available for virtual nodes)
+        if (isset($data['serial'])) {
+            $deviceInfo['serial'] = $data['serial'];
+        }
+
+        // System Object ID (Proxmox uses .1.3.6.1.4.1.2606)
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.2606';
+
+        // Uptime (Proxmox provides uptime in seconds)
+        if (isset($data['uptime'])) {
+            $deviceInfo['uptime'] = (int) $data['uptime'];
+        }
+
+        // System Contact (if available)
+        if (isset($data['contact'])) {
+            $deviceInfo['sysContact'] = $data['contact'];
+        }
+
+        // Location (if available)
+        if (isset($data['location'])) {
+            $deviceInfo['location'] = $data['location'];
+        }
+
+        // System Name - Use the node name from Proxmox
+        if (isset($data['node'])) {
+            $deviceInfo['sysName'] = $data['node'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize NetApp ONTAP device information
+     * Input: GET /cluster/nodes
+     */
+    public static function normalizeNetappDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+
+        // Handle both cluster-level endpoint (/cluster) and node-level endpoint (/cluster/nodes)
+        $records = $payload['records'] ?? $payload['items'] ?? [];
+
+        // If we have records, it's the nodes endpoint - get the first node
+        // Otherwise, it's the cluster endpoint - use the payload directly
+        $data = is_array($records) && isset($records[0]) ? $records[0] : $payload;
+
+        if (empty($data)) {
+            return $deviceInfo;
+        }
+
+        // System Name (hostname) - Construct FQDN from cluster name + DNS domain
+        if (isset($payload['name'])) {
+            $clusterName = $payload['name'];
+            $dnsDomains = $payload['dns_domains'] ?? [];
+
+            if (!empty($dnsDomains) && is_array($dnsDomains)) {
+                // Construct FQDN: cluster-name.domain
+                $deviceInfo['sysName'] = strtolower($clusterName) . '.' . $dnsDomains[0];
+            } else {
+                // Just use cluster name if no DNS domain available
+                $deviceInfo['sysName'] = $clusterName;
+            }
+        }
+
+        // Version - Extract full version string
+        if (isset($payload['version']['full'])) {
+            $deviceInfo['version'] = $payload['version']['full'];
+        } elseif (isset($data['version']['full'])) {
+            $deviceInfo['version'] = $data['version']['full'];
+        }
+
+        // Hardware/Model - from node data
+        if (isset($data['model'])) {
+            $deviceInfo['hardware'] = $data['model'];
+        }
+
+        // Serial number - from node data
+        if (isset($data['serial_number'])) {
+            $deviceInfo['serial'] = $data['serial_number'];
+        } elseif (isset($data['serial'])) {
+            $deviceInfo['serial'] = $data['serial'];
+        }
+
+        // System Object ID (NetApp OID)
+        // NetApp enterprise OID: .1.3.6.1.4.1.789
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.789';
+
+        // System Contact - prefer cluster-level, fallback to node-level
+        if (isset($payload['contact'])) {
+            $deviceInfo['sysContact'] = $payload['contact'];
+        } elseif (isset($data['contact'])) {
+            $deviceInfo['sysContact'] = $data['contact'];
+        }
+
+        // Location - prefer cluster-level, fallback to node-level
+        if (isset($payload['location'])) {
+            $deviceInfo['location'] = $payload['location'];
+        } elseif (isset($data['location'])) {
+            $deviceInfo['location'] = $data['location'];
+        }
+
+        // Uptime - from node data
+        if (isset($data['uptime'])) {
+            $deviceInfo['uptime'] = (int) $data['uptime'];
+        }
+
+        // System Description - Build from available information
+        $sysDescrParts = [];
+        if (isset($deviceInfo['version'])) {
+            $sysDescrParts[] = $deviceInfo['version'];
+        }
+        if (isset($deviceInfo['sysName'])) {
+            $sysDescrParts[] = 'System Name: ' . $deviceInfo['sysName'];
+        }
+        if (isset($deviceInfo['hardware'])) {
+            $sysDescrParts[] = $deviceInfo['hardware'];
+        }
+
+        if (!empty($sysDescrParts)) {
+            $deviceInfo['sysDescr'] = implode("\n", $sysDescrParts);
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize HPE Nimble device information
+     * Input: GET /arrays
+     */
+    public static function normalizeNimbleDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+        $data = $payload['data'] ?? $payload['items'] ?? $payload;
+
+        // Get first array if it's a list
+        $array = is_array($data) && isset($data[0]) ? $data[0] : $data;
+
+        if (empty($array)) {
+            return $deviceInfo;
+        }
+
+        // Hardware/Model
+        if (isset($array['model'])) {
+            $deviceInfo['hardware'] = $array['model'];
+        }
+
+        // Serial number
+        if (isset($array['serial'])) {
+            $deviceInfo['serial'] = $array['serial'];
+        }
+
+        // System Object ID (HPE Nimble OID - part of HPE)
+        $deviceInfo['sysObjectID'] = '.1.3.6.1.4.1.11';
+
+        // System Contact (if available)
+        if (isset($array['contact'])) {
+            $deviceInfo['sysContact'] = $array['contact'];
+        }
+
+        // Uptime (if available)
+        if (isset($array['uptime'])) {
+            $deviceInfo['uptime'] = (int) $array['uptime'];
+        }
+
+        // Location (if available)
+        if (isset($array['location'])) {
+            $deviceInfo['location'] = $array['location'];
+        }
+
+        return $deviceInfo;
+    }
+
+    /**
+     * Normalize Proxmox disk list inventory
+     * Input: GET /nodes/{node}/disks/list
+     * Returns inventory entries for physical disks
+     */
+    public static function normalizeProxmoxDiskList(array $payload): array
+    {
+        $inventory = [];
+        $data = $payload['data'] ?? $payload;
+
+        if (!is_array($data)) {
+            return ['inventory' => $inventory];
+        }
+
+        foreach ($data as $disk) {
+            $devpath = $disk['devpath'] ?? '';
+            if (empty($devpath)) {
+                continue;
+            }
+
+            $index = self::stableIndexFromName($devpath);
+            $model = $disk['model'] ?? '';
+            $serial = $disk['serial'] ?? '';
+            $size = $disk['size'] ?? 0;
+            $wwn = $disk['wwn'] ?? '';
+            $vendor = $disk['vendor'] ?? '';
+            $type = $disk['type'] ?? 'disk';
+
+            // Create inventory entry
+            $inventory[] = [
+                'entPhysicalIndex' => $index,
+                'entPhysicalDescr' => 'Disk: ' . $devpath . ($model ? " ($model)" : ''),
+                'entPhysicalClass' => 'disk',
+                'entPhysicalName' => $devpath,
+                'entPhysicalModelName' => $model,
+                'entPhysicalSerialNum' => $serial,
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => $vendor,
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => $type,
+                'entPhysicalHardwareRev' => '',
+                'entPhysicalFirmwareRev' => '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 1,
+                'entPhysicalAlias' => $wwn,
+                'entPhysicalAssetID' => '',
+                // Store devpath for SMART polling
+                'devpath' => $devpath,
+            ];
+        }
+
+        return ['inventory' => $inventory];
+    }
+
+    /**
+     * Normalize Proxmox disk SMART sensors
+     * Input: GET /nodes/{node}/disks/smart?disk={devpath}
+     * Returns sensor data from SMART attributes
+     */
+    public static function normalizeProxmoxDiskSmart(array $payload): array
+    {
+        $sensors = [];
+        $data = $payload['data'] ?? $payload;
+
+        if (empty($data) || !is_array($data)) {
+            return ['sensors' => $sensors];
+        }
+
+        // Extract disk device path from parent item if available
+        $devpath = $data['_parent_item']['devpath'] ?? $data['disk'] ?? 'unknown';
+        $baseIndex = self::stableIndexFromName($devpath);
+
+        // SMART attributes can be in different formats depending on disk type
+        $attributes = $data['attributes'] ?? [];
+
+        // Temperature sensor
+        if (isset($data['temperature'])) {
+            $sensors[] = [
+                'sensor_class' => 'temperature',
+                'sensor_type' => 'proxmox-smart',
+                'sensor_descr' => $devpath . ' Temperature',
+                'sensor_index' => 'smart_temp_' . $baseIndex,
+                'sensor_current' => (float) $data['temperature'],
+                'sensor_limit' => 60,
+                'sensor_limit_low' => 0,
+            ];
+        }
+
+        // Power-on hours sensor
+        if (isset($data['power_on_hours'])) {
+            $sensors[] = [
+                'sensor_class' => 'count',
+                'sensor_type' => 'proxmox-smart',
+                'sensor_descr' => $devpath . ' Power-On Hours',
+                'sensor_index' => 'smart_poh_' . $baseIndex,
+                'sensor_current' => (int) $data['power_on_hours'],
+                'sensor_limit' => null,
+                'sensor_limit_low' => 0,
+            ];
+        }
+
+        // Health status (if available)
+        if (isset($data['health'])) {
+            $health = strtolower($data['health']);
+            $healthValue = match ($health) {
+                'passed', 'ok', 'healthy' => 2,
+                'warning', 'degraded' => 1,
+                'failed', 'critical' => 0,
+                default => 3,
+            };
+
+            $sensors[] = [
+                'sensor_class' => 'state',
+                'sensor_type' => 'proxmox-smart',
+                'sensor_descr' => $devpath . ' Health',
+                'sensor_index' => 'smart_health_' . $baseIndex,
+                'sensor_current' => $healthValue,
+                'sensor_limit' => null,
+                'sensor_limit_low' => null,
+                'states' => [
+                    ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'failed'],
+                    ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'warning'],
+                    ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'healthy'],
+                    ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
+                ],
+            ];
+        }
+
+        // Wear level percentage (for SSDs)
+        if (isset($data['wearout']) || isset($data['wear_leveling_count'])) {
+            $wearout = $data['wearout'] ?? $data['wear_leveling_count'] ?? 0;
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'proxmox-smart',
+                'sensor_descr' => $devpath . ' Wear Level',
+                'sensor_index' => 'smart_wear_' . $baseIndex,
+                'sensor_current' => (float) $wearout,
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+        }
+
+        // Process individual SMART attributes if available
+        if (is_array($attributes)) {
+            foreach ($attributes as $attr) {
+                $id = $attr['id'] ?? null;
+                $name = $attr['name'] ?? null;
+                $value = $attr['value'] ?? $attr['raw'] ?? null;
+
+                if ($id === null || $value === null) {
+                    continue;
+                }
+
+                // Map common SMART attributes to sensors
+                $attrIndex = 'smart_attr_' . $id . '_' . $baseIndex;
+
+                switch ($id) {
+                    case 5: // Reallocated Sectors Count
+                        $sensors[] = [
+                            'sensor_class' => 'count',
+                            'sensor_type' => 'proxmox-smart',
+                            'sensor_descr' => $devpath . ' Reallocated Sectors',
+                            'sensor_index' => $attrIndex,
+                            'sensor_current' => (int) $value,
+                            'sensor_limit' => 10,
+                            'sensor_limit_low' => 0,
+                        ];
+                        break;
+
+                    case 9: // Power-On Hours
+                        if (!isset($data['power_on_hours'])) {
+                            $sensors[] = [
+                                'sensor_class' => 'count',
+                                'sensor_type' => 'proxmox-smart',
+                                'sensor_descr' => $devpath . ' Power-On Hours',
+                                'sensor_index' => $attrIndex,
+                                'sensor_current' => (int) $value,
+                                'sensor_limit' => null,
+                                'sensor_limit_low' => 0,
+                            ];
+                        }
+                        break;
+
+                    case 194: // Temperature
+                        if (!isset($data['temperature'])) {
+                            $sensors[] = [
+                                'sensor_class' => 'temperature',
+                                'sensor_type' => 'proxmox-smart',
+                                'sensor_descr' => $devpath . ' Temperature',
+                                'sensor_index' => $attrIndex,
+                                'sensor_current' => (float) $value,
+                                'sensor_limit' => 60,
+                                'sensor_limit_low' => 0,
+                            ];
+                        }
+                        break;
+                }
+            }
+        }
+
+        return ['sensors' => $sensors];
+    }
+
+    /**
+     * Normalize Proxmox storage status
+     * Input: GET /storage/{storageid}/status
+     * Returns storage metrics for a specific storage resource
+     */
+    public static function normalizeProxmoxStorageStatus(array $payload): array
+    {
+        $storage = [];
+        $data = $payload['data'] ?? $payload;
+
+        if (empty($data) || !is_array($data)) {
+            return ['storage' => $storage];
+        }
+
+        // Extract storage ID from parent item if available (from for_each loop)
+        $storageId = $data['_parent_item']['storage'] ?? $data['storage'] ?? 'unknown';
+        $storageType = $data['type'] ?? 'unknown';
+
+        $total = $data['total'] ?? 0;
+        $used = $data['used'] ?? 0;
+        $avail = $data['avail'] ?? 0;
+
+        // If avail is not provided, calculate it
+        if ($avail === 0 && $total > 0 && $used > 0) {
+            $avail = $total - $used;
+        }
+
+        $storage[] = [
+            'storage_index' => 'proxmox_' . self::stableIndexFromName($storageId),
+            'storage_descr' => $storageId,
+            'storage_type' => $storageType,
+            'storage_size' => $total,
+            'storage_used' => $used,
+            'storage_free' => $avail,
+            'storage_units' => 1,
+            'storage_perc' => $total > 0 ? round(($used / $total) * 100, 2) : 0,
+        ];
+
+        return ['storage' => $storage];
+    }
+
+    /**
+     * Normalize Proxmox guest discovery
+     * Input: GET /cluster/resources?type=vm
+     * Returns discovered VMs and containers (for future guest device creation)
+     * Note: This is for the 'discovery' capability - stores results for review
+     */
+    public static function normalizeProxmoxGuestDiscovery(array $payload): array
+    {
+        $discovered = [];
+        $sensors = [];
+        $data = $payload['data'] ?? $payload;
+
+        if (!is_array($data)) {
+            return ['sensors' => $sensors];
+        }
+
+        // Count VMs and containers by status
+        $vmCounts = ['total' => 0, 'running' => 0, 'stopped' => 0];
+        $ctCounts = ['total' => 0, 'running' => 0, 'stopped' => 0];
+
+        foreach ($data as $guest) {
+            $type = $guest['type'] ?? '';
+            $vmid = $guest['vmid'] ?? $guest['id'] ?? null;
+            $name = $guest['name'] ?? "guest-$vmid";
+            $status = strtolower($guest['status'] ?? 'unknown');
+            $node = $guest['node'] ?? 'unknown';
+
+            if ($vmid === null) {
+                continue;
+            }
+
+            // Categorize by type
+            if ($type === 'qemu') {
+                $vmCounts['total']++;
+                if ($status === 'running') {
+                    $vmCounts['running']++;
+                } else {
+                    $vmCounts['stopped']++;
+                }
+            } elseif ($type === 'lxc') {
+                $ctCounts['total']++;
+                if ($status === 'running') {
+                    $ctCounts['running']++;
+                } else {
+                    $ctCounts['stopped']++;
+                }
+            }
+
+            // Store discovery info (could be used for auto-adding guest devices in the future)
+            $discovered[] = [
+                'vmid' => $vmid,
+                'name' => $name,
+                'type' => $type,
+                'status' => $status,
+                'node' => $node,
+                'cpu' => $guest['cpu'] ?? null,
+                'maxcpu' => $guest['maxcpu'] ?? null,
+                'mem' => $guest['mem'] ?? null,
+                'maxmem' => $guest['maxmem'] ?? null,
+                'disk' => $guest['disk'] ?? null,
+                'maxdisk' => $guest['maxdisk'] ?? null,
+                'uptime' => $guest['uptime'] ?? null,
+            ];
+        }
+
+        // Create count sensors
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox-guests',
+            'sensor_descr' => 'Total VMs',
+            'sensor_index' => 'guest_vm_total',
+            'sensor_current' => $vmCounts['total'],
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox-guests',
+            'sensor_descr' => 'Running VMs',
+            'sensor_index' => 'guest_vm_running',
+            'sensor_current' => $vmCounts['running'],
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox-guests',
+            'sensor_descr' => 'Total Containers',
+            'sensor_index' => 'guest_ct_total',
+            'sensor_current' => $ctCounts['total'],
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        $sensors[] = [
+            'sensor_class' => 'count',
+            'sensor_type' => 'proxmox-guests',
+            'sensor_descr' => 'Running Containers',
+            'sensor_index' => 'guest_ct_running',
+            'sensor_current' => $ctCounts['running'],
+            'sensor_limit' => null,
+            'sensor_limit_low' => 0,
+        ];
+
+        // Log discovered guests for potential future use
+        \Illuminate\Support\Facades\Log::debug('Proxmox Guest Discovery', [
+            'total_guests' => count($discovered),
+            'vms' => $vmCounts,
+            'containers' => $ctCounts,
+        ]);
+
+        // Convert discovered guests to vminfo format
+        $vminfo = [];
+        foreach ($discovered as $guest) {
+            // Map Proxmox status to LibreNMS PowerState integer values
+            // PowerState: OFF = 0, ON = 1, SUSPENDED = 2, UNKNOWN = 3
+            $stateMap = [
+                'running' => 1,  // PowerState::ON
+                'stopped' => 0,  // PowerState::OFF
+                'paused' => 2,   // PowerState::SUSPENDED
+            ];
+            $state = $stateMap[$guest['status']] ?? 3; // PowerState::UNKNOWN
+
+            $vminfo[] = [
+                'vm_type' => 'proxmox',
+                'vmwVmVMID' => (string) $guest['vmid'],
+                'vmwVmDisplayName' => $guest['name'],
+                'vmwVmGuestOS' => $guest['type'] === 'lxc' ? 'Linux Container' : 'Unknown',
+                'vmwVmMemSize' => isset($guest['maxmem']) ? (int) ($guest['maxmem'] / 1048576) : 0, // Convert to MB
+                'vmwVmCpus' => $guest['maxcpu'] ?? 0,
+                'vmwVmState' => $state,
+                'vmwVmHostId' => $guest['node'] ?? null,
+            ];
+        }
+
+        return ['sensors' => $sensors, 'vminfo' => $vminfo];
+    }
+
+    /**
+     * Normalize Proxmox cluster information
+     *
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeProxmoxClusterInfo(array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $clusters = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        foreach ($data as $item) {
+            $type = $item['type'] ?? null;
+
+            // The first item with type 'cluster' represents the cluster itself
+            if ($type === 'cluster') {
+                $clusters[] = [
+                    'cluster_type' => 'proxmox',
+                    'cluster_id' => $item['name'] ?? 'proxmox-cluster',
+                    'cluster_name' => $item['name'] ?? 'Proxmox Cluster',
+                    'parent_id' => null,
+                    'parent_name' => null,
+                    'cluster_level' => 'cluster',
+                    'metadata' => [
+                        'quorate' => $item['quorate'] ?? null,
+                        'nodes' => $item['nodes'] ?? null,
+                        'version' => $item['version'] ?? null,
+                    ],
+                ];
+                break;
+            }
+        }
+
+        // If no cluster found, create a default standalone entry
+        if (empty($clusters)) {
+            $clusters[] = [
+                'cluster_type' => 'proxmox',
+                'cluster_id' => 'standalone',
+                'cluster_name' => 'Standalone Node',
+                'parent_id' => null,
+                'parent_name' => null,
+                'cluster_level' => 'cluster',
+                'metadata' => [],
+            ];
+        }
+
+        return $clusters;
+    }
+
+    /**
+     * Normalize Proxmox nodes information
+     *
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeProxmoxNodes(array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $hosts = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        foreach ($data as $node) {
+            $nodeName = $node['node'] ?? null;
+            if (!$nodeName) {
+                continue;
+            }
+
+            // Map Proxmox status to our status values
+            $status = $node['status'] ?? 'unknown';
+            $status = match(strtolower($status)) {
+                'online' => 'connected',
+                'offline' => 'disconnected',
+                default => strtolower($status),
+            };
+
+            $hosts[] = [
+                'host_type' => 'proxmox-node',
+                'host_id' => $nodeName,
+                'host_name' => $nodeName,
+                'cluster_id' => null,
+                'role' => 'node',
+                'status' => $status,
+                'version' => null, // Basic node list doesn't include version
+                'cpu_cores' => $node['maxcpu'] ?? null,
+                'cpu_threads' => null,
+                'memory_total' => $node['maxmem'] ?? null,
+                'ip_address' => $node['ip'] ?? null,
+                'metadata' => [
+                    'uptime' => $node['uptime'] ?? null,
+                    'level' => $node['level'] ?? null,
+                ],
+            ];
+        }
+
+        return $hosts;
+    }
+
+    // ========================================================================
+    // VeloCloud Normalizers
+    // ========================================================================
+
+    /**
+     * Normalize VeloCloud device information from getEnterpriseEdges
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudDeviceInfo($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+
+        if (!is_array($data) || empty($data)) {
+            return [];
+        }
+
+        // Get the first edge as the primary device info
+        $edge = is_array($data) ? $data[0] : $data;
+
+        // Use edge name as sysName, convert to lowercase for consistency
+        $sysName = isset($edge['name']) ? strtolower($edge['name']) : null;
+
+        return [
+            'sysName' => $sysName,
+            'hardware' => $edge['modelNumber'] ?? 'VeloCloud Edge',
+            'version' => $edge['softwareVersion'] ?? null,
+            'serial' => $edge['serialNumber'] ?? null,
+            'features' => $edge['edgeState'] ?? null,
+        ];
+    }
+
+    /**
+     * Normalize VeloCloud inventory from getEnterpriseEdges
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudInventory($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $inventory = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $index = 1;
+        foreach ($data as $edge) {
+            $edgeId = $edge['id'] ?? $index;
+            $edgeName = $edge['name'] ?? "Edge-{$edgeId}";
+            $state = $edge['edgeState'] ?? 'UNKNOWN';
+            $activationState = $edge['activationState'] ?? 'UNKNOWN';
+
+            $inventory[] = [
+                'entPhysicalIndex' => $index++,
+                'entPhysicalDescr' => "VeloCloud Edge: {$edgeName} [{$state}]",
+                'entPhysicalClass' => 'chassis',
+                'entPhysicalName' => $edgeName,
+                'entPhysicalModelName' => $edge['modelNumber'] ?? 'VeloCloud Edge',
+                'entPhysicalSerialNum' => $edge['serialNumber'] ?? '',
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'VMware',
+                'entPhysicalParentRelPos' => -1,
+                'entPhysicalVendorType' => 'velocloud-edge',
+                'entPhysicalHardwareRev' => $edge['buildNumber'] ?? '',
+                'entPhysicalFirmwareRev' => $edge['softwareVersion'] ?? '',
+                'entPhysicalSoftwareRev' => '',
+                'entPhysicalIsFRU' => 0,
+                'entPhysicalAlias' => $edge['description'] ?? '',
+                'entPhysicalAssetID' => (string)$edgeId,
+            ];
+        }
+
+        return $inventory;
+    }
+
+    /**
+     * Normalize VeloCloud ports from getAggregateEdgeLinkMetrics
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudPorts($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $ports = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Handle two possible formats:
+        // 1. Array of link metrics from getAggregateEdgeLinkMetrics (flat array)
+        // 2. Nested structure with 'links' key
+        $links = $data;
+        if (isset($data['links']) && is_array($data['links'])) {
+            $links = $data['links'];
+        }
+
+        // If data is not a numeric array, it might be a single link or wrong format
+        if (empty($links) || !isset($links[0])) {
+            return [];
+        }
+
+        $ifIndex = 1;
+        foreach ($links as $link) {
+            // getAggregateEdgeLinkMetrics uses 'name' and 'linkId'
+            // Other endpoints might use 'link' or 'interface'
+            $linkName = $link['name'] ?? $link['link'] ?? "Link-{$ifIndex}";
+            $linkId = $link['linkId'] ?? $link['id'] ?? $ifIndex;
+            $interface = $link['interface'] ?? $linkName;
+            $state = $link['state'] ?? 'UNKNOWN';
+
+            // Map VeloCloud states to standard operational status
+            $operStatus = match(strtoupper($state)) {
+                'STABLE', 'UP' => 'up',
+                'DOWN', 'DEAD' => 'down',
+                'UNSTABLE' => 'testing',
+                default => 'unknown',
+            };
+
+            $adminStatus = ($link['serviceState'] ?? 'IN_SERVICE') === 'IN_SERVICE' ? 'up' : 'down';
+
+            // Calculate speed from bpsOfBestPathRx/Tx (bits per second)
+            $speed = 0;
+            if (isset($link['bpsOfBestPathTx']) && isset($link['bpsOfBestPathRx'])) {
+                $speed = max($link['bpsOfBestPathTx'], $link['bpsOfBestPathRx']);
+            } elseif (isset($link['uplinkMbps'])) {
+                $speed = $link['uplinkMbps'] * 1000000; // Convert Mbps to bps
+            }
+
+            // Extract label information from nested link object
+            $linkInfo = $link['link'] ?? [];
+            $displayName = $linkInfo['displayName'] ?? $link['displayName'] ?? null;
+            $isp = $linkInfo['isp'] ?? null;
+            $linkIp = $linkInfo['linkIpAddress'] ?? null;
+            $interfaceName = $linkInfo['interface'] ?? $linkName;
+
+            // Build ifAlias with ISP/carrier label and IP address
+            $labelParts = [];
+            if ($displayName && $displayName !== $linkName) {
+                $labelParts[] = $displayName;
+            } elseif ($isp) {
+                $labelParts[] = $isp;
+            }
+            if ($linkIp) {
+                $labelParts[] = $linkIp;
+            }
+            $ifAlias = !empty($labelParts) ? implode(' - ', $labelParts) : $linkName;
+
+            $ports[] = [
+                'ifIndex' => $ifIndex++,
+                'ifName' => $linkName,
+                'ifDescr' => $interfaceName,
+                'ifType' => 'ethernetCsmacd',
+                'ifOperStatus' => $operStatus,
+                'ifAdminStatus' => $adminStatus,
+                'ifSpeed' => $speed,
+                'ifMtu' => 1500,
+                'ifPhysAddress' => '',
+                'ifAlias' => $ifAlias,
+            ];
+        }
+
+        return $ports;
+    }
+
+    /**
+     * Normalize VeloCloud IPv4 addresses from getEnterpriseEdges
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudIpv4($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $addresses = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        foreach ($data as $edge) {
+            // Get edge interface links
+            $links = $edge['links'] ?? [];
+            if (!is_array($links)) {
+                continue;
+            }
+
+            // Build map of IP addresses to interface names from the links
+            $ipToInterface = [];
+            foreach ($links as $link) {
+                $ipAddress = $link['ipAddress'] ?? null;
+                if ($ipAddress && filter_var($ipAddress, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    // Use the interface name from the link
+                    $interfaceName = $link['interface'] ?? null;
+                    if ($interfaceName) {
+                        $ipToInterface[$ipAddress] = $interfaceName;
+                    }
+                }
+            }
+
+            // Also check for the linkIpAddress field in the nested link object
+            // This provides better mapping when link details are available
+            foreach ($links as $link) {
+                $linkInfo = $link['link'] ?? [];
+                $linkIpAddress = $linkInfo['linkIpAddress'] ?? null;
+                $interfaceName = $linkInfo['interface'] ?? $link['name'] ?? null;
+
+                if ($linkIpAddress && filter_var($linkIpAddress, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && $interfaceName) {
+                    $ipToInterface[$linkIpAddress] = $interfaceName;
+                }
+            }
+
+            // Now create address records with proper ifName matching
+            foreach ($ipToInterface as $ipAddress => $interfaceName) {
+                // Try to determine prefix length from IP class
+                $prefixLen = 30; // Default to /30 for point-to-point links (common for SD-WAN)
+                $firstOctet = (int) explode('.', $ipAddress)[0];
+                if ($firstOctet >= 1 && $firstOctet <= 126) {
+                    $prefixLen = 8; // Class A
+                } elseif ($firstOctet >= 128 && $firstOctet <= 191) {
+                    $prefixLen = 16; // Class B
+                } elseif ($firstOctet >= 192 && $firstOctet <= 223) {
+                    $prefixLen = 24; // Class C
+                }
+
+                $addresses[] = [
+                    'ipv4_address' => $ipAddress,
+                    'ipv4_prefixlen' => $prefixLen,
+                    'ipv4_network_id' => null,
+                    'ifName' => $interfaceName, // Use ifName instead of context_name for proper linking
+                ];
+            }
+        }
+
+        return $addresses;
+    }
+
+    /**
+     * Normalize VeloCloud sensors from getAggregateEdgeLinkMetrics
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudSensors($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $sensors = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $links = $data['links'] ?? [];
+        if (!is_array($links)) {
+            return [];
+        }
+
+        foreach ($links as $idx => $link) {
+            $linkName = $link['link'] ?? "Link-{$idx}";
+            $linkId = $link['linkId'] ?? $idx;
+
+            // Link state sensor
+            if (isset($link['state'])) {
+                $stateMap = [
+                    'STABLE' => 2,
+                    'UP' => 2,
+                    'UNSTABLE' => 1,
+                    'DOWN' => 0,
+                    'DEAD' => 0,
+                ];
+                $state = strtoupper($link['state']);
+                $stateValue = $stateMap[$state] ?? 3;
+
+                $sensors[] = [
+                    'sensor_class' => 'state',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} State",
+                    'sensor_index' => "link-{$linkId}-state",
+                    'sensor_current' => $stateValue,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                    'states' => [
+                        ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'down'],
+                        ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'unstable'],
+                        ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'stable'],
+                        ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
+                    ],
+                ];
+            }
+
+            // Packet loss percentage
+            if (isset($link['bestLossPercentage'])) {
+                $sensors[] = [
+                    'sensor_class' => 'percent',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} Packet Loss",
+                    'sensor_index' => "link-{$linkId}-loss",
+                    'sensor_current' => round($link['bestLossPercentage'], 2),
+                    'sensor_limit' => 5,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Latency (ms)
+            if (isset($link['bestLatencyMsec'])) {
+                $sensors[] = [
+                    'sensor_class' => 'delay',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} Latency",
+                    'sensor_index' => "link-{$linkId}-latency",
+                    'sensor_current' => $link['bestLatencyMsec'],
+                    'sensor_limit' => 150,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Jitter (ms)
+            if (isset($link['bestJitterMsec'])) {
+                $sensors[] = [
+                    'sensor_class' => 'delay',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} Jitter",
+                    'sensor_index' => "link-{$linkId}-jitter",
+                    'sensor_current' => $link['bestJitterMsec'],
+                    'sensor_limit' => 30,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Bandwidth utilization percentage
+            if (isset($link['bandwidthUtilization'])) {
+                $sensors[] = [
+                    'sensor_class' => 'percent',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} Bandwidth Utilization",
+                    'sensor_index' => "link-{$linkId}-bw-util",
+                    'sensor_current' => round($link['bandwidthUtilization'], 2),
+                    'sensor_limit' => 90,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            // Signal strength (if available)
+            if (isset($link['signalStrength'])) {
+                $sensors[] = [
+                    'sensor_class' => 'dbm',
+                    'sensor_type' => 'velocloud',
+                    'sensor_descr' => "{$linkName} Signal Strength",
+                    'sensor_index' => "link-{$linkId}-signal",
+                    'sensor_current' => $link['signalStrength'],
+                    'sensor_limit' => -50,
+                    'sensor_limit_low' => -90,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize VeloCloud processor metrics
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudProcessors($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $processors = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Handle metrics/getEdgeStatusMetrics format (cpuPct with min/max/average)
+        if (isset($data['cpuPct']) && is_array($data['cpuPct'])) {
+            $cpuUsage = $data['cpuPct']['average'] ?? $data['cpuPct']['max'] ?? null;
+            if ($cpuUsage !== null) {
+                $processors[] = [
+                    'processor_index' => 'edge-cpu',
+                    'processor_type' => 'velocloud-edge-cpu',
+                    'processor_descr' => 'Edge CPU',
+                    'processor_usage' => $cpuUsage,
+                ];
+            }
+            return $processors;
+        }
+
+        // Handle legacy format - Get edge metrics if available
+        $edgeMetrics = $data['edgeMetrics'] ?? $data['edges'] ?? [];
+        if (!is_array($edgeMetrics)) {
+            return [];
+        }
+
+        foreach ($edgeMetrics as $idx => $edge) {
+            $edgeName = $edge['edgeName'] ?? "Edge-{$idx}";
+            $cpuUsage = $edge['cpuPercentage'] ?? $edge['cpuPct'] ?? null;
+
+            if ($cpuUsage !== null) {
+                $processors[] = [
+                    'processor_index' => "edge-{$idx}",
+                    'processor_type' => 'velocloud-edge-cpu',
+                    'processor_descr' => "{$edgeName} CPU",
+                    'processor_usage' => $cpuUsage,
+                ];
+            }
+        }
+
+        return $processors;
+    }
+
+    /**
+     * Normalize VeloCloud memory pool metrics
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudMempools($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $mempools = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Handle metrics/getEdgeStatusMetrics format (memoryPct with min/max/average)
+        if (isset($data['memoryPct']) && is_array($data['memoryPct'])) {
+            $memoryUsagePct = $data['memoryPct']['average'] ?? $data['memoryPct']['max'] ?? null;
+            if ($memoryUsagePct !== null) {
+                // VeloCloud doesn't report total memory in status metrics, so we estimate
+                // Typical edge has 4GB-16GB RAM depending on model
+                // We'll use percentage-based tracking without total
+                $mempools[] = [
+                    'mempool_index' => 'edge-memory',
+                    'mempool_type' => 'velocloud-edge',
+                    'mempool_descr' => 'Edge Memory',
+                    'mempool_perc' => $memoryUsagePct,
+                    'mempool_perc_warn' => 80,
+                ];
+            }
+            return $mempools;
+        }
+
+        // Handle legacy format - Get edge metrics if available
+        $edgeMetrics = $data['edgeMetrics'] ?? $data['edges'] ?? [];
+        if (!is_array($edgeMetrics)) {
+            return [];
+        }
+
+        foreach ($edgeMetrics as $idx => $edge) {
+            $edgeName = $edge['edgeName'] ?? "Edge-{$idx}";
+            $memoryUsagePct = $edge['memoryPercentage'] ?? $edge['memoryPct'] ?? null;
+            $memoryTotal = $edge['memoryTotal'] ?? null;
+
+            if ($memoryUsagePct !== null && $memoryTotal !== null) {
+                $memUsed = ($memoryTotal * $memoryUsagePct) / 100;
+                $memFree = $memoryTotal - $memUsed;
+
+                $mempools[] = [
+                    'mempool_index' => "edge-{$idx}",
+                    'mempool_type' => 'velocloud-edge',
+                    'mempool_descr' => "{$edgeName} Memory",
+                    'mempool_total' => $memoryTotal,
+                    'mempool_used' => $memUsed,
+                    'mempool_free' => $memFree,
+                    'mempool_perc' => $memoryUsagePct,
+                ];
+            } elseif ($memoryUsagePct !== null) {
+                // No total available, use percentage only
+                $mempools[] = [
+                    'mempool_index' => "edge-{$idx}",
+                    'mempool_type' => 'velocloud-edge',
+                    'mempool_descr' => "{$edgeName} Memory",
+                    'mempool_perc' => $memoryUsagePct,
+                    'mempool_perc_warn' => 80,
+                ];
+            }
+        }
+
+        return $mempools;
+    }
+
+    /**
+     * Normalize VeloCloud VLAN information
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudVlans($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $vlans = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        foreach ($data as $edge) {
+            // Get edge configuration segments
+            $segments = $edge['segments'] ?? [];
+            if (!is_array($segments)) {
+                continue;
+            }
+
+            foreach ($segments as $segment) {
+                $vlanId = $segment['segmentId'] ?? null;
+                $vlanName = $segment['name'] ?? "Segment-{$vlanId}";
+
+                if ($vlanId !== null) {
+                    $vlans[] = [
+                        'vlan_vlan' => $vlanId,
+                        'vlan_domain' => 1,
+                        'vlan_name' => $vlanName,
+                        'vlan_type' => 'ethernet',
+                        'vlan_mtu' => null,
+                    ];
+                }
+            }
+        }
+
+        return $vlans;
+    }
+
+    /**
+     * Normalize VeloCloud system metrics (flow count, tunnel count, drops) as sensors
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudSystemMetrics($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $sensors = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Flow count sensor
+        if (isset($data['flowCount']) && is_array($data['flowCount'])) {
+            $flowCount = $data['flowCount']['average'] ?? $data['flowCount']['max'] ?? null;
+            if ($flowCount !== null) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'velocloud_flows',
+                    'sensor_descr' => 'Active Flows',
+                    'sensor_index' => 'edge-flows',
+                    'sensor_current' => $flowCount,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        // Tunnel count sensor (IPv4)
+        if (isset($data['tunnelCount']) && is_array($data['tunnelCount'])) {
+            $tunnelCount = $data['tunnelCount']['average'] ?? $data['tunnelCount']['max'] ?? null;
+            if ($tunnelCount !== null) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'velocloud_tunnels',
+                    'sensor_descr' => 'Active Tunnels (IPv4)',
+                    'sensor_index' => 'edge-tunnels-v4',
+                    'sensor_current' => $tunnelCount,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        // Tunnel count sensor (IPv6)
+        if (isset($data['tunnelCountV6']) && is_array($data['tunnelCountV6'])) {
+            $tunnelCountV6 = $data['tunnelCountV6']['average'] ?? $data['tunnelCountV6']['max'] ?? null;
+            if ($tunnelCountV6 !== null && $tunnelCountV6 > 0) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'velocloud_tunnels',
+                    'sensor_descr' => 'Active Tunnels (IPv6)',
+                    'sensor_index' => 'edge-tunnels-v6',
+                    'sensor_current' => $tunnelCountV6,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        // Handoff queue drops (over-capacity drops)
+        if (isset($data['handoffQueueDrops']) && is_array($data['handoffQueueDrops'])) {
+            $drops = $data['handoffQueueDrops']['average'] ?? $data['handoffQueueDrops']['max'] ?? null;
+            if ($drops !== null) {
+                $sensors[] = [
+                    'sensor_class' => 'count',
+                    'sensor_type' => 'velocloud_drops',
+                    'sensor_descr' => 'Handoff Queue Drops',
+                    'sensor_index' => 'edge-handoff-drops',
+                    'sensor_current' => $drops,
+                    'sensor_limit' => null,
+                    'sensor_limit_low' => null,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize VeloCloud port statistics from getAggregateEdgeLinkMetrics
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudPortStatistics($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $portStats = [];
+
+        if (!is_array($data) || empty($data) || !isset($data[0])) {
+            return [];
+        }
+
+        $ifIndex = 1;
+        foreach ($data as $link) {
+            $linkName = $link['name'] ?? "Link-{$ifIndex}";
+
+            // VeloCloud returns aggregate statistics, not cumulative counters
+            // bytesRx/bytesTx are aggregate values over a time window and can fluctuate
+            // Use bpsOfBestPathRx/Tx (bits per second) for accurate rate reporting
+            $bpsRx = $link['bpsOfBestPathRx'] ?? 0;
+            $bpsTx = $link['bpsOfBestPathTx'] ?? 0;
+
+            // Convert bits per second to bytes per second
+            $bytesPerSecRx = $bpsRx / 8;
+            $bytesPerSecTx = $bpsTx / 8;
+
+            // Extract traffic statistics using rate-based fields
+            $stats = [
+                'ifIndex' => $ifIndex++,
+                // Use rate fields instead of counters because VeloCloud provides rates, not cumulative counters
+                'ifInOctets_rate' => $bytesPerSecRx,
+                'ifOutOctets_rate' => $bytesPerSecTx,
+                'ifInBits_rate' => $bpsRx,
+                'ifOutBits_rate' => $bpsTx,
+                // Packet rates could be derived from totalPackets/interval, but not reliable
+                'ifInUcastPkts' => 0,
+                'ifOutUcastPkts' => 0,
+                'ifInErrors' => 0,
+                'ifOutErrors' => 0,
+                'ifInDiscards' => 0,
+                'ifOutDiscards' => 0,
+            ];
+
+            $portStats[] = $stats;
+        }
+
+        return $portStats;
+    }
+
+    // vCenter Normalizers
+
+    /**
+     * Normalize vCenter device info
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVcenterDeviceInfo($device, array $payload): array
+    {
+        $deviceInfo = [];
+
+        if (!empty($payload['version'])) {
+            $deviceInfo['version'] = $payload['version'];
+        }
+
+        if (!empty($payload['build'])) {
+            $deviceInfo['features'] = $payload['product'] . ' build ' . $payload['build'];
+        }
+
+        if (!empty($payload['hostname'])) {
+            $deviceInfo['sysName'] = $payload['hostname'];
+        }
+
+        if (!empty($deviceInfo)) {
+            return [$deviceInfo];
+        }
+
+        return [];
+    }
+
+    /**
+     * Normalize Cisco FTD device hostname
+     * Endpoint: /api/fdm/v6/devicesettings/default/devicehostnames
+     */
+    public static function normalizeFtdDeviceHostname($device, $payload): array
+    {
+        $deviceInfo = [];
+
+        // Extract hostname from FTD device settings
+        if (!empty($payload['hostname'])) {
+            $deviceInfo['sysName'] = $payload['hostname'];
+        }
+
+        if (!empty($payload['domainName'])) {
+            $deviceInfo['sysDescr'] = 'Cisco FTD - ' . $payload['domainName'];
+        }
+
+        if (!empty($deviceInfo)) {
+            return [$deviceInfo];
+        }
+
+        return [];
+    }
+
+    /**
+     * Normalize Cisco FTD disk usage sensors
+     * Endpoint: /api/fdm/v6/operational/disk/usage
+     */
+    public static function normalizeFtdDiskUsage($device, $payload): array
+    {
+        $sensors = [];
+
+        // FTD returns disk usage data
+        if (isset($payload['items']) && is_array($payload['items'])) {
+            foreach ($payload['items'] as $disk) {
+                $diskName = $disk['diskName'] ?? $disk['mountPoint'] ?? 'disk';
+                $diskName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $diskName);
+
+                // Disk usage percentage
+                if (isset($disk['usedPercent'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'ftd-disk',
+                        'sensor_descr' => "Disk {$diskName} Usage",
+                        'sensor_index' => "ftd_disk_{$diskName}_usage",
+                        'sensor_current' => $disk['usedPercent'],
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Disk capacity in GB
+                if (isset($disk['capacity'])) {
+                    $capacityGB = round($disk['capacity'] / (1024 * 1024 * 1024), 2);
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'ftd-disk',
+                        'sensor_descr' => "Disk {$diskName} Capacity (GB)",
+                        'sensor_index' => "ftd_disk_{$diskName}_capacity",
+                        'sensor_current' => $capacityGB,
+                        'sensor_limit' => null,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+            }
+        } elseif (isset($payload['usedPercent'])) {
+            // Single disk usage response
+            $sensors[] = [
+                'sensor_class' => 'percent',
+                'sensor_type' => 'ftd-disk',
+                'sensor_descr' => 'Disk Usage',
+                'sensor_index' => 'ftd_disk_usage',
+                'sensor_current' => $payload['usedPercent'],
+                'sensor_limit' => 90,
+                'sensor_limit_low' => 0,
+            ];
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize Cisco FTD operational metrics
+     * Endpoint: /api/fdm/v6/operational/metrics/data
+     */
+    public static function normalizeFtdMetrics($device, $payload): array
+    {
+        $sensors = [];
+
+        // FTD metrics can include CPU, memory, connections, throughput
+        if (isset($payload['items']) && is_array($payload['items'])) {
+            foreach ($payload['items'] as $metric) {
+                $metricType = $metric['metricType'] ?? null;
+                $metricName = $metric['name'] ?? $metricType;
+                $value = $metric['value'] ?? $metric['currentValue'] ?? null;
+
+                if ($value === null) {
+                    continue;
+                }
+
+                // CPU usage
+                if (stripos($metricType, 'cpu') !== false) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'ftd-cpu',
+                        'sensor_descr' => $metricName,
+                        'sensor_index' => 'ftd_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($metricType)),
+                        'sensor_current' => $value,
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Memory usage
+                if (stripos($metricType, 'memory') !== false || stripos($metricType, 'mem') !== false) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'ftd-memory',
+                        'sensor_descr' => $metricName,
+                        'sensor_index' => 'ftd_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($metricType)),
+                        'sensor_current' => $value,
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Connection counts
+                if (stripos($metricType, 'connection') !== false || stripos($metricType, 'conn') !== false) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'ftd-connections',
+                        'sensor_descr' => $metricName,
+                        'sensor_index' => 'ftd_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($metricType)),
+                        'sensor_current' => $value,
+                        'sensor_limit' => null,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Throughput metrics (bps)
+                if (stripos($metricType, 'throughput') !== false || stripos($metricType, 'bps') !== false) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'ftd-throughput',
+                        'sensor_descr' => $metricName,
+                        'sensor_index' => 'ftd_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($metricType)),
+                        'sensor_current' => $value,
+                        'sensor_limit' => null,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+            }
+        } elseif (isset($payload['cpu']) || isset($payload['memory'])) {
+            // Direct metrics in payload
+            if (isset($payload['cpu'])) {
+                $sensors[] = [
+                    'sensor_class' => 'percent',
+                    'sensor_type' => 'ftd-cpu',
+                    'sensor_descr' => 'CPU Usage',
+                    'sensor_index' => 'ftd_cpu_usage',
+                    'sensor_current' => $payload['cpu'],
+                    'sensor_limit' => 90,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+
+            if (isset($payload['memory'])) {
+                $sensors[] = [
+                    'sensor_class' => 'percent',
+                    'sensor_type' => 'ftd-memory',
+                    'sensor_descr' => 'Memory Usage',
+                    'sensor_index' => 'ftd_memory_usage',
+                    'sensor_current' => $payload['memory'],
+                    'sensor_limit' => 90,
+                    'sensor_limit_low' => 0,
+                ];
+            }
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Normalize VeloCloud ports from getEdgeConfigurationStack
+     * Returns ALL routed interfaces (WAN + LAN), not just active WAN links
+     * Also fetches labels from existing ports in database to preserve ISP/carrier labels
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudConfigStackPorts($device, array $payload): array
+    {
+        $ports = [];
+
+        // Get existing port labels from database to preserve them
+        $existingLabels = [];
+        if ($device && $device->device_id) {
+            $existingPorts = \App\Models\Port::where('device_id', $device->device_id)
+                ->whereNotNull('ifAlias')
+                ->where('ifAlias', '!=', '')
+                ->get(['ifName', 'ifAlias']);
+
+            foreach ($existingPorts as $port) {
+                $existingLabels[$port->ifName] = $port->ifAlias;
+            }
+        }
+
+        // Get edge-specific config (first stack)
+        $edgeConfig = $payload[0] ?? [];
+
+        // Find deviceSettings module
+        foreach ($edgeConfig['modules'] ?? [] as $module) {
+            if (($module['name'] ?? '') === 'deviceSettings') {
+                $routedInterfaces = $module['data']['routedInterfaces'] ?? [];
+
+                foreach ($routedInterfaces as $idx => $intf) {
+                    $ifName = $intf['name'] ?? "Interface$idx";
+                    $addressing = $intf['addressing'] ?? [];
+                    $l2 = $intf['l2'] ?? [];
+                    $disabled = $intf['disabled'] ?? false;
+
+                    // Map to LibreNMS port structure
+                    $port = [
+                        'ifName' => $ifName,
+                        'ifDescr' => $ifName,
+                        'ifType' => 'ethernetCsmacd',
+                        'ifOperStatus' => $disabled ? 'down' : 'up',
+                        'ifAdminStatus' => $disabled ? 'down' : 'up',
+                        'ifMtu' => $l2['MTU'] ?? 1500,
+                    ];
+
+                    // Preserve existing label if it exists
+                    if (isset($existingLabels[$ifName])) {
+                        $port['ifAlias'] = $existingLabels[$ifName];
+                    }
+
+                    // Infer speed from interface name since VeloCloud config shows administrative
+                    // speed (often 100M with autoneg) not actual negotiated speed
+                    if (preg_match('/^GE\d+$/i', $ifName)) {
+                        // Gigabit Ethernet - 1G
+                        $port['ifSpeed'] = 1000000000;
+                    } elseif (preg_match('/^SFP\d+$/i', $ifName)) {
+                        // SFP slot - assume 1G (could be 10G but most common is 1G)
+                        $port['ifSpeed'] = 1000000000;
+                    } elseif (preg_match('/^LAG\d+$/i', $ifName)) {
+                        // Link Aggregation - default to 1G (actual speed depends on member links)
+                        $port['ifSpeed'] = 1000000000;
+                    } else {
+                        // Try to parse configured speed as fallback
+                        $speed = $l2['speed'] ?? '1G';
+                        if (preg_match('/(\d+)([MG])/', $speed, $matches)) {
+                            $value = (int) $matches[1];
+                            $unit = $matches[2];
+                            $port['ifSpeed'] = $unit === 'G' ? ($value * 1000000000) : ($value * 1000000);
+                        } else {
+                            $port['ifSpeed'] = 1000000000; // Default to 1G
+                        }
+                    }
+
+                    // Add metadata about addressing type and overlay
+                    $port['ifVlan'] = $intf['vlanId'] ?? null;
+
+                    $ports[] = $port;
+                }
+
+                break;
+            }
+        }
+
+        return $ports;
+    }
+
+    /**
+     * Normalize VeloCloud port labels from getAggregateEdgeLinkMetrics
+     * Returns ONLY ifName and ifAlias for label updates
+     * This is merged with ports from getEdgeConfigurationStack
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudPortLabels($device, array $payload): array
+    {
+        $data = $payload['data'] ?? $payload;
+        $ports = [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Track unique interfaces to avoid duplicates
+        $seen = [];
+
+        foreach ($data as $link) {
+            // Extract link information
+            $linkInfo = $link['link'] ?? [];
+            $interfaceName = $linkInfo['interface'] ?? $link['name'] ?? null;
+
+            if (!$interfaceName || isset($seen[$interfaceName])) {
+                continue;
+            }
+            $seen[$interfaceName] = true;
+
+            // Get displayName (ISP/carrier label)
+            $displayName = $linkInfo['displayName'] ?? $link['displayName'] ?? null;
+
+            if ($displayName) {
+                $ports[] = [
+                    'ifName' => $interfaceName,
+                    'ifAlias' => $displayName,
+                ];
+            }
+        }
+
+        return $ports;
+    }
+
+    /**
+     * Normalize VeloCloud IPv4 addresses from getEdgeConfigurationStack
+     * Returns IPv4 addresses with proper interface linking
+     *
+     * @param mixed $device
+     * @param array $payload
+     * @return array
+     */
+    public static function normalizeVelocloudConfigStackIpv4($device, array $payload): array
+    {
+        $addresses = [];
+
+        // Get edge-specific config (first stack)
+        $edgeConfig = $payload[0] ?? [];
+
+        // Find deviceSettings module
+        foreach ($edgeConfig['modules'] ?? [] as $module) {
+            if (($module['name'] ?? '') === 'deviceSettings') {
+                $routedInterfaces = $module['data']['routedInterfaces'] ?? [];
+
+                foreach ($routedInterfaces as $intf) {
+                    $ifName = $intf['name'] ?? null;
+                    $addressing = $intf['addressing'] ?? [];
+                    $disabled = $intf['disabled'] ?? false;
+
+                    // Skip disabled interfaces
+                    if ($disabled || !$ifName) {
+                        continue;
+                    }
+
+                    // Only process interfaces with static IPs
+                    // DHCP addresses would be captured from runtime state, not config
+                    if (($addressing['type'] ?? '') === 'STATIC' && !empty($addressing['cidrIp'])) {
+                        $prefixLen = $addressing['cidrPrefix'] ?? 24;
+
+                        // Validate it's a proper IPv4 address
+                        if (filter_var($addressing['cidrIp'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                            $addresses[] = [
+                                'ipv4_address' => $addressing['cidrIp'],
+                                'ipv4_prefixlen' => $prefixLen,
+                                'ipv4_network_id' => null,
+                                'ifName' => $ifName,
+                            ];
+                        }
+                    }
+                }
+
+                break;
+            }
+        }
+
+        return $addresses;
     }
 }

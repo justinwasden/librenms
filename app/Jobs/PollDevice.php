@@ -187,6 +187,9 @@ class PollDevice implements ShouldQueue
                 return;
             }
 
+            // Update endpoint enablement based on device version/capabilities
+            \App\Services\DeviceApiVersionManager::updateEndpointEnablement($this->device);
+
             // Resolve base URL and construct client
             \LibreNMS\Util\DeviceApiSettings::ensureResolvedBaseUrl($this->device);
             $client = \App\ApiClients\DeviceApiClientFactory::make($this->device);
@@ -195,7 +198,7 @@ class PollDevice implements ShouldQueue
                 return;
             }
 
-            $executor = new \App\Services\DeviceApiExecutor();
+            $executor = new \App\Services\DeviceApiExecutor($this->os);
 
             // Execute polling endpoints (templates may intermix poll/discovery)
             $executor->run($this->device, $tplKey, $client);

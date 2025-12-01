@@ -370,7 +370,7 @@ class FlashArrayClient implements DeviceApiClientInterface
                         'sensor_class' => 'temperature',
                         'sensor_type' => 'purestorage',
                         'sensor_descr' => "$name Temperature",
-                        'sensor_current' => $hw['temperature'],
+                        'sensor_current' => round($hw['temperature']),
                     ];
                 }
 
@@ -642,5 +642,11 @@ class FlashArrayClient implements DeviceApiClientInterface
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    public function fetchVms(Device $device): array
+    {
+        // PureStorage arrays do not host virtual machines
+        return [];
     }
 }

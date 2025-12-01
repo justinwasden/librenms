@@ -14,6 +14,7 @@ class DeviceApiEndpoint extends Model
 
     protected $fillable = [
         'device_id',
+        'template_endpoint_id',
         'name',
         'path',
         'method',

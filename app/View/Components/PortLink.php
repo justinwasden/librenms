@@ -41,10 +41,21 @@ class PortLink extends Component
      *
      * @return void
      */
-    public function __construct(Port $port, ?array $graphs = null, bool $basic = false, array $vars = [])
+    public function __construct(?Port $port, ?array $graphs = null, bool $basic = false, array $vars = [])
     {
         $this->basic = $basic;
         $this->port = $port;
+
+        // Handle null port gracefully
+        if ($port === null) {
+            $this->link = '#';
+            $this->label = 'Unknown Port';
+            $this->description = '';
+            $this->status = 'unknown';
+            $this->graphs = [];
+            return;
+        }
+
         $this->link = Url::portUrl($port, $vars);
         $this->label = Rewrite::normalizeIfName($port->getLabel());
         $this->description = $port->getDescription();
@@ -73,6 +84,10 @@ class PortLink extends Component
 
     private function status(): string
     {
+        if ($this->port === null) {
+            return 'unknown';
+        }
+
         if ($this->port->ifAdminStatus == 'down') {
             return 'disabled';
         }

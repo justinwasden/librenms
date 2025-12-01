@@ -331,4 +331,10 @@ class FortiGateClient implements DeviceApiClientInterface
             ];
         }
     }
+
+    public function fetchVms(Device $device): array
+    {
+        // FortiGate firewalls do not host virtual machines
+        return [];
+    }
 }

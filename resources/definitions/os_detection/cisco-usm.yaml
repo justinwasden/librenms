@@ -1,0 +1,39 @@
+os: cisco-usm
+text: Cisco UCS Manager
+type: management
+icon: cisco
+discovery:
+  - sysObjectID:
+      # UCS 6300 Series Fabric Interconnects
+      - .1.3.6.1.4.1.9.12.3.1.3.1662
+  - sysDescr_regex:
+      # Match UCS Manager variants on NX-OS and direct UCS Manager strings
+      - '/Cisco NX-OS\(tm\).*UCS( Manager)?/i'
+      - '/^Cisco UCS Manager/i'
+    sysDescr_regex_except:
+      # Explicitly exclude Unified Communications Manager / CUCM to avoid collision
+      - '/Unified Communications Manager/i'
+      - '/\bCUCM\b/i'
+    snmpwalk:
+      oid: 'CISCO-UNIFIED-COMPUTING-MIB::cucsEquipmentChassisId'
+      op: 'exists'
+      value: true
+over:
+  - { graph: device_bits, text: 'Device Traffic' }
+  - { graph: device_processor, text: 'CPU Usage' }
+  - { graph: device_mempool, text: 'Memory Usage' }
+poller_modules:
+  cisco-cef: false
+  cisco-mac-accounting: false
+  slas: false
+  cisco-ipsec-flow-monitor: false
+  cipsec-tunnels: false
+  cisco-otv: false
+discovery_modules:
+  cisco-cef: false
+  slas: false
+  cisco-mac-accounting: false
+  cisco-otv: false
+  cisco-pw: false
+  vrf: false
+  cisco-vrf-lite: false

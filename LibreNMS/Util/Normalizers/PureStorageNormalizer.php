@@ -389,13 +389,31 @@ class PureStorageNormalizer
                 return [];
             }
 
+            // Extract array metadata from payload
+            $arrayData = [];
+            $items = $payload['items'] ?? [];
+            if (!empty($items) && isset($items[0])) {
+                $item = $items[0];
+                $arrayData = [[
+                    'array_name' => $item['name'] ?? 'Unknown',
+                    'software_version' => $item['version'] ?? null,
+                    'total_bytes' => $item['capacity'] ?? 0,
+                    'used_bytes' => $item['space']['total_used'] ?? 0,
+                    'used_pct' => isset($item['capacity'], $item['space']['total_used']) && $item['capacity'] > 0
+                        ? ($item['space']['total_used'] / $item['capacity']) * 100
+                        : 0,
+                    'data_reduction_ratio' => $item['space']['data_reduction'] ?? null,
+                ]];
+            }
+
             // Fetch detailed information using client methods
             $controllers = $client->fetchControllers($device);
             $volumes = $client->fetchVolumes($device);
             $hosts = $client->fetchHosts($device);
 
-            // Return structured response
+            // Return structured response with array data
             return [
+                'array' => $arrayData,
                 'controllers' => $controllers,
                 'volumes' => $volumes,
                 'hosts' => $hosts,

@@ -153,7 +153,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     public function capabilities(): array
     {
-        return ['sensors', 'ports', 'processors', 'mempools', 'storage', 'ipv4', 'ports_stats'];
+        return ['sensors', 'ports', 'processors', 'mempools', 'storage', 'ipv4', 'ports_stats', 'vminfo', 'clusters', 'hypervisor_hosts'];
     }
 
     public function fetchSensors(Device $device): array
@@ -262,38 +262,158 @@ class ProxmoxApiClient implements DeviceApiClientInterface
             $network = $this->get("nodes/$node/network");
             $interfaces = $network['data'] ?? [];
 
-            // Build a map of interface names for consistent indexing
-            $ifNameToIndex = [];
-            foreach ($interfaces as $idx => $interface) {
-                $ifName = $interface['iface'] ?? "port$idx";
-                if ($ifName !== 'lo') {
-                    $ifNameToIndex[$ifName] = $this->stableIndexFromName($ifName);
-                }
-            }
-
-            foreach ($interfaces as $idx => $interface) {
-                $ifName = $interface['iface'] ?? "port$idx";
-                $type = $interface['type'] ?? 'unknown';
-
-                // Skip loopback
-                if ($ifName === 'lo') {
+            // Build a map of interface names for consistent indexing and deduplication
+            // Proxmox API may return multiple entries for the same interface with different IPs
+            $interfaceData = [];
+            foreach ($interfaces as $interface) {
+                $ifName = trim($interface['iface'] ?? '');
+                if (!$ifName || strtolower($ifName) === 'lo') {
                     continue;
                 }
 
-                // Proxmox /network endpoint doesn't return MAC addresses
-                // We'll need to use ifName for identification instead
+                // Extract MAC address from altnames if not in hwaddr
+                // Proxmox often stores MAC in altnames like "enx0025b518a0ed"
+                $hwaddr = $interface['hwaddr'] ?? '';
+                if (empty($hwaddr) && !empty($interface['altnames'])) {
+                    foreach ($interface['altnames'] as $altname) {
+                        // Check if altname starts with "enx" followed by 12 hex chars (MAC)
+                        if (preg_match('/^enx([0-9a-f]{12})$/i', $altname, $matches)) {
+                            $hwaddr = $matches[1];
+                            break;
+                        }
+                    }
+                }
+
+                // Parse bridge_ports for additional info
+                $bridgePorts = [];
+                if (!empty($interface['bridge_ports'])) {
+                    $bridgePorts = array_map('trim', explode(' ', $interface['bridge_ports']));
+                }
+
+                // Initialize or merge interface data
+                if (!isset($interfaceData[$ifName])) {
+                    $interfaceData[$ifName] = [
+                        'iface' => $ifName,
+                        'type' => $interface['type'] ?? 'unknown',
+                        'active' => $interface['active'] ?? 0,
+                        'autostart' => $interface['autostart'] ?? 0,
+                        'mtu' => $interface['mtu'] ?? 1500,
+                        'hwaddr' => $hwaddr,
+                        'comments' => $interface['comments'] ?? '',
+                        'bridge_ports' => $bridgePorts,
+                        'vlan_id' => $interface['vlan-id'] ?? '',
+                        'vlan_raw_device' => $interface['vlan-raw-device'] ?? '',
+                        'altnames' => $interface['altnames'] ?? [],
+                    ];
+                } else {
+                    // Merge data: prefer non-empty values
+                    if (empty($interfaceData[$ifName]['hwaddr']) && !empty($hwaddr)) {
+                        $interfaceData[$ifName]['hwaddr'] = $hwaddr;
+                    }
+                    if (empty($interfaceData[$ifName]['comments']) && !empty($interface['comments'])) {
+                        $interfaceData[$ifName]['comments'] = $interface['comments'];
+                    } elseif (!empty($interface['comments']) && strlen($interface['comments']) > strlen($interfaceData[$ifName]['comments'])) {
+                        $interfaceData[$ifName]['comments'] = $interface['comments'];
+                    }
+                    if (($interface['active'] ?? 0) && !$interfaceData[$ifName]['active']) {
+                        $interfaceData[$ifName]['active'] = 1;
+                    }
+                    if (($interface['autostart'] ?? 0) && !$interfaceData[$ifName]['autostart']) {
+                        $interfaceData[$ifName]['autostart'] = 1;
+                    }
+                    if (($interface['mtu'] ?? 0) > ($interfaceData[$ifName]['mtu'] ?? 0)) {
+                        $interfaceData[$ifName]['mtu'] = $interface['mtu'];
+                    }
+                    if ($interfaceData[$ifName]['type'] === 'unknown' && !empty($interface['type'])) {
+                        $interfaceData[$ifName]['type'] = $interface['type'];
+                    }
+                    if (empty($interfaceData[$ifName]['bridge_ports']) && !empty($bridgePorts)) {
+                        $interfaceData[$ifName]['bridge_ports'] = $bridgePorts;
+                    }
+                    if (empty($interfaceData[$ifName]['vlan_id']) && !empty($interface['vlan-id'])) {
+                        $interfaceData[$ifName]['vlan_id'] = $interface['vlan-id'];
+                    }
+                    if (empty($interfaceData[$ifName]['vlan_raw_device']) && !empty($interface['vlan-raw-device'])) {
+                        $interfaceData[$ifName]['vlan_raw_device'] = $interface['vlan-raw-device'];
+                    }
+                    if (empty($interfaceData[$ifName]['altnames']) && !empty($interface['altnames'])) {
+                        $interfaceData[$ifName]['altnames'] = $interface['altnames'];
+                    }
+                }
+            }
+
+            // Create ports from merged interface data
+            foreach ($interfaceData as $ifName => $iface) {
+                $type = $iface['type'];
                 $macAddress = '';
+                if (!empty($iface['hwaddr'])) {
+                    $macAddress = strtolower(trim($iface['hwaddr']));
+                    // Normalize MAC address format
+                    $macAddress = preg_replace('/[^0-9a-f]/i', '', $macAddress);
+                    if (strlen($macAddress) === 12) {
+                        $macAddress = implode(':', str_split($macAddress, 2));
+                    }
+                }
+
+                // Build description with type and additional info
+                $description = $ifName;
+                $descParts = [];
+
+                if ($type && $type !== 'unknown') {
+                    $descParts[] = ucfirst($type);
+                }
+
+                // Add VLAN info for VLAN interfaces
+                if ($type === 'vlan' && !empty($iface['vlan_id'])) {
+                    $descParts[] = "VLAN {$iface['vlan_id']}";
+                    if (!empty($iface['vlan_raw_device'])) {
+                        $descParts[] = "on {$iface['vlan_raw_device']}";
+                    }
+                }
+
+                // Add bridge ports for bridges
+                if ($type === 'bridge' && !empty($iface['bridge_ports'])) {
+                    $descParts[] = 'ports: ' . implode(', ', $iface['bridge_ports']);
+                }
+
+                // Add comment if available
+                $comment = trim($iface['comments']);
+                if (!empty($comment)) {
+                    $descParts[] = $comment;
+                }
+
+                if (!empty($descParts)) {
+                    $description = $ifName . ' (' . implode(', ', $descParts) . ')';
+                }
+
+                // Determine interface type
+                $ifType = 'ethernetCsmacd';
+                if ($type === 'bridge') {
+                    $ifType = 'bridge';
+                } elseif ($type === 'bond') {
+                    $ifType = 'ieee8023adLag';
+                } elseif ($type === 'vlan') {
+                    $ifType = 'l2vlan';
+                } elseif ($type === 'eth') {
+                    $ifType = 'ethernetCsmacd';
+                }
+
+                // Determine port speed - default to 10Gbps if MTU is 9000 (jumbo frames often used for 10G)
+                $ifSpeed = 1000000000; // 1Gbps default
+                if ($iface['mtu'] >= 9000) {
+                    $ifSpeed = 10000000000; // 10Gbps for jumbo frame interfaces
+                }
 
                 $ports[] = [
-                    'ifIndex' => $ifNameToIndex[$ifName],
+                    'ifIndex' => $this->stableIndexFromName($ifName),
                     'ifName' => $ifName,
-                    'ifDescr' => $ifName,
-                    'ifAlias' => $interface['comments'] ?? '',
-                    'ifType' => $type === 'bridge' ? 'bridge' : ($type === 'bond' ? 'bond' : 'ethernetCsmacd'),
-                    'ifOperStatus' => (isset($interface['active']) && $interface['active']) ? 'up' : 'down',
-                    'ifAdminStatus' => (isset($interface['autostart']) && $interface['autostart']) ? 'up' : 'down',
-                    'ifSpeed' => 1000000000, // Default to 1Gbps
-                    'ifMtu' => $interface['mtu'] ?? 1500,
+                    'ifDescr' => $description,
+                    'ifAlias' => $comment,
+                    'ifType' => $ifType,
+                    'ifOperStatus' => $iface['active'] ? 'up' : 'down',
+                    'ifAdminStatus' => $iface['autostart'] ? 'up' : 'down',
+                    'ifSpeed' => $ifSpeed,
+                    'ifMtu' => $iface['mtu'],
                     'ifPhysAddress' => $macAddress,
                 ];
             }
@@ -457,43 +577,55 @@ class ProxmoxApiClient implements DeviceApiClientInterface
             $network = $this->get("nodes/$node/network");
             $interfaces = $network['data'] ?? [];
 
-            foreach ($interfaces as $idx => $interface) {
-                $ifName = $interface['iface'] ?? "port$idx";
-
-                // Skip loopback
-                if ($ifName === 'lo') {
+            foreach ($interfaces as $interface) {
+                $ifName = trim($interface['iface'] ?? '');
+                if (!$ifName || strtolower($ifName) === 'lo') {
                     continue;
                 }
 
-                // Parse IP address and CIDR
+                // Proxmox API can return multiple IP addresses for the same interface
+                // Process all entries to capture all IPs
+                $cidr = $interface['cidr'] ?? null;
                 $address = $interface['address'] ?? null;
                 $netmask = $interface['netmask'] ?? null;
-                $cidr = $interface['cidr'] ?? null;
 
-                if ($address) {
-                    // Calculate prefix length
-                    $prefixlen = 24; // default
-
-                    if ($cidr && strpos($cidr, '/') !== false) {
-                        // CIDR format: 192.168.1.1/24
-                        $parts = explode('/', $cidr);
-                        $prefixlen = (int)($parts[1] ?? 24);
-                    } elseif ($netmask) {
-                        // Check if netmask is already a number (CIDR)
+                // If cidr field exists and contains a slash, parse it
+                if ($cidr && strpos($cidr, '/') !== false) {
+                    [$address, $prefixLenStr] = explode('/', $cidr, 2);
+                    $prefixlen = (int) $prefixLenStr;
+                } elseif ($address) {
+                    // Calculate prefix length from netmask
+                    $prefixlen = 24; // Default safe value
+                    
+                    if ($netmask) {
                         if (is_numeric($netmask)) {
-                            $prefixlen = (int)$netmask;
+                            // Netmask is already a CIDR prefix length
+                            $prefixlen = (int) $netmask;
                         } else {
-                            // Convert netmask to prefix length
-                            $prefixlen = $this->netmaskToPrefixlen($netmask);
+                            // Netmask is a dotted quad (e.g., "255.255.255.0")
+                            try {
+                                $prefixlen = $this->netmaskToPrefixlen($netmask);
+                            } catch (\Exception $e) {
+                                // If conversion fails, use default
+                                $prefixlen = 24;
+                            }
                         }
                     }
+                } else {
+                    // No IP address information for this interface entry
+                    continue;
+                }
 
-                    // Use ifName for lookup instead of ifIndex
+                // Validate IP address and add it
+                if ($address && filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    // Use stable index for consistency with port matching
+                    // But also include ifName for persistor to match by name (more reliable)
                     $addresses[] = [
-                        'ifName' => $ifName,  // Use ifName for port resolution
+                        'ifIndex' => $this->stableIndexFromName($ifName),
+                        'ifName' => $ifName,
                         'ipv4_address' => $address,
                         'ipv4_prefixlen' => $prefixlen,
-                        'context_name' => 'proxmox',
+                        'context_name' => '',
                     ];
                 }
             }
@@ -612,5 +744,202 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    public function fetchVms(Device $device): array
+    {
+        $vms = [];
+
+        try {
+            // Get cluster resources filtered by VM/LXC type
+            $resources = $this->get('cluster/resources?type=vm');
+            $data = $resources['data'] ?? [];
+
+            foreach ($data as $resource) {
+                $type = $resource['type'] ?? '';
+
+                // Skip non-VM resources
+                if (!in_array($type, ['qemu', 'lxc'])) {
+                    continue;
+                }
+
+                // Map Proxmox VM states to LibreNMS vminfo states
+                $status = $resource['status'] ?? 'unknown';
+                $vmState = match($status) {
+                    'running' => 'running',
+                    'stopped' => 'poweredOff',
+                    'paused' => 'suspended',
+                    default => 'unknown',
+                };
+
+                // Extract VM details
+                $vmid = $resource['vmid'] ?? $resource['id'] ?? null;
+                if (!$vmid) {
+                    continue;
+                }
+
+                $vms[] = [
+                    'vm_type' => 'proxmox',
+                    'vmwVmVMID' => (string) $vmid,
+                    'vmwVmDisplayName' => $resource['name'] ?? "VM-{$vmid}",
+                    'vmwVmGuestOS' => $type === 'lxc' ? 'Linux Container' : ($resource['ostype'] ?? 'Other'),
+                    'vmwVmMemSize' => isset($resource['maxmem']) ? (int) ($resource['maxmem'] / (1024 * 1024)) : null, // Convert bytes to MB
+                    'vmwVmCpus' => isset($resource['maxcpu']) ? (int) $resource['maxcpu'] : ($resource['cpus'] ?? null),
+                    'vmwVmState' => $vmState,
+                    'vmwVmHostId' => $resource['node'] ?? null, // Capture the node/host where VM is running
+                ];
+            }
+
+        } catch (\Exception $e) {
+            \Log::warning('Proxmox fetchVms failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vms;
+    }
+
+    /**
+     * Fetch Proxmox cluster information
+     *
+     * @param Device $device
+     * @return array
+     */
+    public function fetchClusters(Device $device): array
+    {
+        $clusters = [];
+
+        try {
+            // Get cluster status
+            $response = $this->get('cluster/status');
+
+            if (empty($response)) {
+                return [];
+            }
+
+            foreach ($response as $item) {
+                $type = $item['type'] ?? null;
+
+                // The first item with type 'cluster' represents the cluster itself
+                if ($type === 'cluster') {
+                    $clusters[] = [
+                        'cluster_type' => 'proxmox',
+                        'cluster_id' => $item['name'] ?? 'proxmox-cluster',
+                        'cluster_name' => $item['name'] ?? 'Proxmox Cluster',
+                        'parent_id' => null,
+                        'parent_name' => null,
+                        'cluster_level' => 'cluster',
+                        'metadata' => [
+                            'quorate' => $item['quorate'] ?? null,
+                            'nodes' => $item['nodes'] ?? null,
+                            'version' => $item['version'] ?? null,
+                        ],
+                    ];
+                    break; // Only one cluster entry
+                }
+            }
+
+            // If no cluster found, create a default standalone entry
+            if (empty($clusters)) {
+                $clusters[] = [
+                    'cluster_type' => 'proxmox',
+                    'cluster_id' => 'standalone',
+                    'cluster_name' => 'Standalone Node',
+                    'parent_id' => null,
+                    'parent_name' => null,
+                    'cluster_level' => 'cluster',
+                    'metadata' => [],
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('ProxmoxApiClient fetchClusters failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $clusters;
+    }
+
+    /**
+     * Fetch Proxmox nodes (hosts)
+     *
+     * @param Device $device
+     * @return array
+     */
+    public function fetchHosts(Device $device): array
+    {
+        $hosts = [];
+
+        try {
+            // Get node list
+            $nodes = $this->get('nodes');
+
+            if (empty($nodes)) {
+                return [];
+            }
+
+            foreach ($nodes as $node) {
+                $nodeName = $node['node'] ?? null;
+                if (!$nodeName) {
+                    continue;
+                }
+
+                // Get detailed node status
+                $nodeStatus = null;
+                try {
+                    $nodeStatus = $this->get("nodes/{$nodeName}/status");
+                } catch (\Exception $e) {
+                    Log::debug("ProxmoxApiClient: Could not fetch status for node {$nodeName}: {$e->getMessage()}");
+                }
+
+                // Map Proxmox status to our status values
+                $status = $node['status'] ?? 'unknown';
+                $status = match(strtolower($status)) {
+                    'online' => 'connected',
+                    'offline' => 'disconnected',
+                    default => strtolower($status),
+                };
+
+                // Determine role - check if this is the node we're connected to
+                $role = 'node';
+                $currentNode = $device->getAttrib('proxmox_node');
+                if ($currentNode && $currentNode === $nodeName) {
+                    $role = 'master'; // The node we're managing from
+                }
+
+                $cpuCores = $nodeStatus['cpuinfo']['cpus'] ?? ($node['maxcpu'] ?? null);
+                $memoryTotal = $nodeStatus['memory']['total'] ?? ($node['maxmem'] ?? null);
+                $version = $nodeStatus['pveversion'] ?? null;
+
+                $hosts[] = [
+                    'host_type' => 'proxmox-node',
+                    'host_id' => $nodeName,
+                    'host_name' => $nodeName,
+                    'cluster_id' => null, // Will be populated based on cluster name if available
+                    'role' => $role,
+                    'status' => $status,
+                    'version' => $version,
+                    'cpu_cores' => $cpuCores,
+                    'cpu_threads' => null, // Proxmox doesn't expose thread count directly
+                    'memory_total' => $memoryTotal,
+                    'ip_address' => $node['ip'] ?? null,
+                    'metadata' => [
+                        'uptime' => $node['uptime'] ?? null,
+                        'level' => $node['level'] ?? null,
+                    ],
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('ProxmoxApiClient fetchHosts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $hosts;
     }
 }

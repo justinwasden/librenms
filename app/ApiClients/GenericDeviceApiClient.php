@@ -275,4 +275,10 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
         return $headers;
     }
+
+    public function fetchVms(Device $device): array
+    {
+        // Generic clients don't support VM discovery by default
+        return [];
+    }
 }

@@ -58,7 +58,7 @@ class EditDeviceController
 
 		    // Handle API section (Renders the blade partial)
 		    if ($section === 'api') {
-				    $templates = ApiTemplateManager::getTemplatesForOs($device->os);
+				    $templates = ApiTemplateManager::getAllTemplates();
 				    $authTypes = ApiTemplateManager::getAuthTypes();
 				    $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
 				        ->where('device_id', $device->device_id)
@@ -71,38 +71,26 @@ class EditDeviceController
 				        $selectedTemplate = array_key_first($templates);
 				    }
 
+				    // -------------------------------------------------
+				    // Auto-select template/auth for known OSes when API is being enabled
+				    // -------------------------------------------------
+				    if (!$apiConfig) {
+				        // Get device OS for matching
+				        $deviceOs = $device->os;
 
-//				    // -------------------------------------------------
-//				    // Force defaults for known OSes when enabling API
-//				    // -------------------------------------------------
-//				    if (!$apiConfig) {
-//				        switch ($device->os) {
-//				            case 'proxmox':
-//				                $selectedTemplate = 'proxmox_ve_token';
-//				                $selectedAuthType = 'proxmox_ve_token';
-//				                break;
-//
-//				            case 'purestorage_flasharray':
-//				                $selectedTemplate = 'purestorage_flasharray';
-//				                $selectedAuthType = 'api-token';
-//				                $baseUrl = "https://{$device->hostname}/api/2.26";
-//				                $extraDefaults = [
-//				                    'login_path' => '/login',
-//				                    'auth_header_name' => 'X-Auth-Token',
-//				                ];
-//				                break;
-//				        }
-//				    }
-//
-//					  // --------------------------------------------
-//				    // Force default template/auth for Proxmox VE
-//				    // --------------------------------------------
-//				    if ($device->os === 'proxmox' && !$selectedTemplate) {
-//				        $selectedTemplate = 'proxmox_ve_token'; // default template key
-//				        $selectedAuthType = 'proxmox_ve_token';  // default auth key
-//				    }
-//
-//				    // -----------------------------
+				        // Try to find a template that supports this OS
+				        $matchingTemplate = \App\Models\DeviceApiTemplate::enabled()
+				            ->forOs($deviceOs)
+				            ->with('schema')
+				            ->first();
+
+				        if ($matchingTemplate) {
+				            $selectedTemplate = $matchingTemplate->key;
+				            $selectedAuthType = $matchingTemplate->schema?->key;
+				        }
+				    }
+
+				    // -----------------------------
 				    // Suppress output from template
 				    // -----------------------------
 				    $templateData = null;
@@ -121,22 +109,23 @@ class EditDeviceController
 				        'selectedTemplate' => $selectedTemplate,
 				        'templateData' => $templateData,
 				        'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
-			        'savedEndpoints' => \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-			            ->ordered()
-			            ->get()
-			            ->map(fn($ep) => [
-			                'id' => $ep->id,
-			                'name' => $ep->name,
-			                'path' => $ep->path,
-			                'method' => $ep->method,
-			                'category' => $ep->capability,
-			                'poll_interval' => $ep->poll_interval,
-			                'enabled' => $ep->enabled,
-			                'transform' => $ep->transform,
-			                'headers' => $ep->headers,
-			                'request_body' => $ep->request_body,
-			            ])
-			            ->toArray(),
+		        'savedEndpoints' => \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
+		            ->ordered()
+		            ->get()
+		            ->map(fn($ep) => [
+		                'id' => $ep->id,
+		                'template_endpoint_id' => $ep->template_endpoint_id,
+		                'name' => $ep->name,
+		                'path' => $ep->path,
+		                'method' => $ep->method,
+		                'category' => $ep->capability,
+		                'poll_interval' => $ep->poll_interval,
+		                'enabled' => $ep->enabled,
+		                'transform' => $ep->transform,
+		                'headers' => $ep->headers,
+		                'request_body' => $ep->request_body,
+		            ])
+		            ->toArray(),
 				    ]);
 				}
 
@@ -808,12 +797,14 @@ class EditDeviceController
     {
         try {
             $endpointId = $request->input('endpoint_id');
+            $templateEndpointId = $request->input('template_endpoint_id');
+            $isTemplate = $request->input('is_template', false);
             $changes = $request->input('changes', []);
 
-            if (!$endpointId) {
+            if (!$endpointId && !$templateEndpointId) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Endpoint ID is required',
+                    'error' => 'Endpoint ID or Template Endpoint ID is required',
                 ], 400);
             }
 
@@ -824,18 +815,6 @@ class EditDeviceController
                 ], 400);
             }
 
-            // Find the endpoint
-            $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-                ->where('id', $endpointId)
-                ->first();
-
-            if (!$endpoint) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Endpoint not found',
-                ], 404);
-            }
-
             // Map frontend field names to database column names
             $fieldMapping = [
                 'name' => 'name',
@@ -843,12 +822,57 @@ class EditDeviceController
                 'method' => 'method',
                 'category' => 'capability',
                 'poll_interval' => 'poll_interval',
-                'description' => 'description',
                 'enabled' => 'enabled',
                 'transform' => 'transform',
                 'headers' => 'headers',
                 'request_body' => 'request_body',
             ];
+
+            // If this is a template endpoint, create a device-specific override
+            if ($isTemplate && $templateEndpointId) {
+                // Check if a device override already exists for this template endpoint
+                $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
+                    ->where('template_endpoint_id', $templateEndpointId)
+                    ->first();
+
+                if (!$endpoint) {
+                    // Load the template endpoint to get its base configuration
+                    $templateEndpoint = \App\Models\DeviceApiTemplateEndpoint::find($templateEndpointId);
+                    
+                    if (!$templateEndpoint) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Template endpoint not found',
+                        ], 404);
+                    }
+
+                    // Create a new device-specific endpoint based on the template
+                    $endpoint = new \App\Models\DeviceApiEndpoint();
+                    $endpoint->device_id = $device->device_id;
+                    $endpoint->template_endpoint_id = $templateEndpointId;
+                    $endpoint->path = $templateEndpoint->path;
+                    $endpoint->method = $templateEndpoint->method;
+                    $endpoint->capability = $templateEndpoint->capability;
+                    $endpoint->transform = $templateEndpoint->transform;
+                    $endpoint->headers = $templateEndpoint->headers;
+                    $endpoint->request_body = $templateEndpoint->request_body;
+                    $endpoint->poll_interval = $templateEndpoint->poll_interval ?? 300;
+                    $endpoint->enabled = $templateEndpoint->enabled;
+                    $endpoint->display_order = $templateEndpoint->display_order ?? 0;
+                }
+            } else {
+                // Find existing device-specific endpoint
+                $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
+                    ->where('id', $endpointId)
+                    ->first();
+
+                if (!$endpoint) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Endpoint not found',
+                    ], 404);
+                }
+            }
 
             // Apply changes
             $updatedFields = [];
@@ -865,6 +889,7 @@ class EditDeviceController
             \Illuminate\Support\Facades\Log::info("Updated endpoint {$endpoint->id} ({$endpoint->path}) for device {$device->device_id}", [
                 'updated_fields' => $updatedFields,
                 'changes' => $changes,
+                'is_template_override' => $isTemplate,
             ]);
 
             return response()->json([
@@ -874,6 +899,7 @@ class EditDeviceController
                     'id' => $endpoint->id,
                     'path' => $endpoint->path,
                     'updated_fields' => $updatedFields,
+                    'is_override' => $isTemplate,
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -891,7 +917,7 @@ class EditDeviceController
     public function showApiConfig(Device $device)
     {
         $os = $device->os ?? 'generic';
-        $templates = ApiTemplateManager::getTemplatesForOs($os);
+        $templates = ApiTemplateManager::getAllTemplates();
 
         $recommended = reset($templates); // first candidate
         // Autofill Pure defaults if recommended is Pure

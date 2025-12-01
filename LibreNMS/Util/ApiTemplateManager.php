@@ -62,6 +62,7 @@ class ApiTemplateManager
             'modules' => $template->modules ?? [],
             'endpoints' => $template->endpoints->map(function ($endpoint) {
                 return [
+                    'id' => $endpoint->id,
                     'capability' => $endpoint->capability,
                     'method' => $endpoint->method,
                     'path' => $endpoint->path,
@@ -69,6 +70,10 @@ class ApiTemplateManager
                     'headers' => $endpoint->headers ?? [],
                     'request_body' => $endpoint->request_body ?? null,
                     'enabled' => $endpoint->enabled,
+                    'poll_interval' => $endpoint->poll_interval ?? 300,
+                    'for_each' => $endpoint->for_each,
+                    'for_each_options' => $endpoint->for_each_options,
+                    'is_template' => true,
                 ];
             })->toArray(),
         ];

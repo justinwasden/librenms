@@ -78,6 +78,7 @@ class Device extends BaseModel
         'snmpver',
         'status',
         'status_reason',
+        'sysContact',
         'sysDescr',
         'sysName',
         'sysObjectID',

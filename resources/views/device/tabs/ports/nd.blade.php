@@ -14,14 +14,17 @@
         </thead>
         <tbody>
         @foreach(DeviceCache::getPrimary()->nd as $nd)
-            @php $port = PortCache::getByIp($nd->ipv6_address); @endphp
+            @php
+                $port = PortCache::getByIp($nd->ipv6_address);
+                $localPort = PortCache::get($nd->port_id);
+            @endphp
         <tr>
-            <td><x-port-link :port="PortCache::get($nd->port_id)" /></td>
+            <td>@if($localPort)<x-port-link :port="$localPort" />@else{{ $nd->port_id }}@endif</td>
             <td>{{ $nd->mac_address }}</td>
             <td>{{ \LibreNMS\Util\Mac::parse($nd->mac_address)->vendor() }}</td>
             <td>{{ \LibreNMS\Util\IPv6::parse($nd->ipv6_address, true)->compressed() }}</td>
             <td><x-device-link :device="$port?->device" /></td>
-            <td>@if($port)<x-port-link :port="PortCache::getByIp($nd->ipv6_address)" />@endif</td>
+            <td>@if($port)<x-port-link :port="$port" />@endif</td>
         </tr>
         @endforeach
         </tbody>

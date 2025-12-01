@@ -16,8 +16,13 @@ class DeviceApiClientFactory
         'proxmox_ve' => \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         'vmware_vcenter' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_vcenter_default' => \App\ApiClients\VMware\VCenterClient::class,
+        'vmware_velocloud' => \App\ApiClients\VMware\VeloCloudClient::class,
+        'vcenter_soap' => \App\ApiClients\VMware\VCenterSoapClient::class,
         'fortinet_fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
         'netapp_ontap' => \App\ApiClients\NetApp\OntapClient::class,
+        'cisco_ucsm_xml' => \App\ApiClients\Cisco\UcsmXmlClient::class,
+        'cisco_ftd' => \App\ApiClients\Cisco\FtdApiClient::class,
+        // Note: esxi_soap uses GenericDeviceApiClient + SOAP endpoints via DeviceApiExecutor
     ];
 
     /**
@@ -29,8 +34,11 @@ class DeviceApiClientFactory
         \App\ApiClients\PureStorage\FlashArrayClient::class,
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         \App\ApiClients\VMware\VCenterClient::class,
+        \App\ApiClients\VMware\VeloCloudClient::class,
         \App\ApiClients\Fortinet\FortiGateClient::class,
         \App\ApiClients\NetApp\OntapClient::class,
+        \App\ApiClients\Cisco\UcsmXmlClient::class,
+        \App\ApiClients\Cisco\FtdApiClient::class,
         \App\ApiClients\GenericDeviceApiClient::class, // Fallback for templates without specific clients
     ];
 
@@ -63,7 +71,14 @@ class DeviceApiClientFactory
                     return $client;
                 }
             } catch (\Throwable $e) {
-                Log::debug("API client probe failed for $class on device $id: " . $e->getMessage());
+                // For VMware clients, session failures are expected when probing non-VMware devices
+                if ($class === \App\ApiClients\VMware\VCenterClient::class) {
+                    Log::debug("API client probe skipped VCenterClient for device $id: not a vCenter device");
+                } elseif ($class === \App\ApiClients\VMware\VeloCloudClient::class) {
+                    Log::debug("API client probe skipped VeloCloudClient for device $id: not a VeloCloud device");
+                } else {
+                    Log::debug("API client probe failed for $class on device $id: " . $e->getMessage());
+                }
             }
         }
 

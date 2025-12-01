@@ -583,26 +583,64 @@ function applyTemplate(template) {
         $('#rest_auth_type').val(template.auth_type).trigger('change');
     }
 
-    // 3. Endpoints (FIXED - Ensure mapping uses correct source keys)
+    // 3. Endpoints - Merge template endpoints with device-specific overrides
     const rawEndpoints = template.endpoints;
 
     if (Array.isArray(rawEndpoints) && rawEndpoints.length > 0) {
+        // Store current device-specific endpoints (from savedEndpoints loaded on page load)
+        const deviceOverrides = {};
+        
+        // Build a map of device-specific overrides by template_endpoint_id
+        @if(!empty($savedEndpoints) && is_array($savedEndpoints))
+            const savedEndpointsData = @json($savedEndpoints);
+            savedEndpointsData.forEach(function(ep) {
+                if (ep.template_endpoint_id) {
+                    // This is a device override - key by template endpoint ID
+                    deviceOverrides[ep.template_endpoint_id] = ep;
+                }
+            });
+        @endif
+        
+        // Map template endpoints, using device overrides where they exist
         endpoints = rawEndpoints.map(function(ep) {
-            // Map fields using the correct names exposed by the PHP loadTemplate function.
             let name = generateEndpointName(ep.path, ep.capability);
-
-            return {
-                name: name,
-                path: ep.path,
-                method: ep.method || 'GET',
-                category: ep.capability || 'general',
-                // Use default if DB field is not set/exposed, otherwise use what's exposed.
-                poll_interval: ep.poll_interval || 60,
-                enabled: ep.enabled !== false,
-                transform: ep.transform || '',
-                headers: ep.headers || {},
-                request_body: ep.request_body || null
-            };
+            
+            // Check if there's a device-specific override for this template endpoint
+            const override = deviceOverrides[ep.id];
+            
+            if (override) {
+                // Use the device-specific override
+                return {
+                    id: override.id,
+                    is_template: false, // It's now a device-specific endpoint
+                    template_endpoint_id: override.template_endpoint_id,
+                    name: override.name || name,
+                    path: override.path,
+                    method: override.method || 'GET',
+                    category: override.category || 'general',
+                    poll_interval: override.poll_interval || 60,
+                    enabled: override.enabled !== false,
+                    transform: override.transform || '',
+                    headers: override.headers || {},
+                    request_body: override.request_body || null
+                };
+            } else {
+                // Use the template endpoint
+                return {
+                    id: ep.id || null,
+                    is_template: ep.is_template || false,
+                    template_endpoint_id: ep.is_template ? ep.id : null,
+                    name: name,
+                    path: ep.path,
+                    method: ep.method || 'GET',
+                    category: ep.capability || 'general',
+                    poll_interval: ep.poll_interval || 60,
+                    enabled: ep.enabled !== false,
+                    transform: ep.transform || '',
+                    headers: ep.headers || {},
+                    request_body: ep.request_body || null
+                };
+            }
         });
         renderEndpointsTable();
         updateEndpointsHiddenField();
@@ -850,7 +888,6 @@ $('#save-endpoint-btn').on('click', function() {
             method: 'method',
             category: 'category',
             poll_interval: 'poll_interval',
-            description: 'description',
             enabled: 'enabled',
             transform: 'transform',
             headers: 'headers',
@@ -882,16 +919,30 @@ $('#save-endpoint-btn').on('click', function() {
         btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
 
         // Send AJAX request to update only changed fields
+        // For template endpoints, send template_endpoint_id instead of endpoint_id
+        const requestBody = {
+            changes: changes
+        };
+        
+        if (originalEndpointState.is_template) {
+            // This is a template endpoint - send template info
+            requestBody.template_endpoint_id = originalEndpointState.id;
+            requestBody.is_template = true;
+            requestBody.endpoint_id = null;
+        } else {
+            // This is a device-specific endpoint
+            requestBody.endpoint_id = originalEndpointState.id;
+            requestBody.template_endpoint_id = null;
+            requestBody.is_template = false;
+        }
+        
         fetch('{{ route("device.update-endpoint", $device->device_id) }}', {
             method: 'POST',
             headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                endpoint_id: newEndpoint.id,
-                changes: changes
-            })
+            body: JSON.stringify(requestBody)
         })
         .then(r => {
             if (!r.ok) {

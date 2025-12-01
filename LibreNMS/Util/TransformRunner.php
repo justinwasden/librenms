@@ -33,9 +33,15 @@ class TransformRunner
             [$class, $method] = explode('::', $transform, 2);
             if (class_exists($class) && method_exists($class, $method)) {
                 try {
-                    // For RestNormalizers, try old signature first: (array $payload)
+                    // For RestNormalizers, try 2-param signature first: ($device, array $payload)
+                    // Then fall back to 1-param signature: (array $payload)
                     if ($class === RestNormalizers::class || $class === '\\LibreNMS\\Modules\\Support\\RestNormalizers') {
-                        return call_user_func([$class, $method], $payload);
+                        try {
+                            return call_user_func([$class, $method], $device, $payload);
+                        } catch (\ArgumentCountError $e) {
+                            // Fallback to old single-parameter signature
+                            return call_user_func([$class, $method], $payload);
+                        }
                     }
 
                     // For other classes, prefer new signature: ($device, $payload, $endpoint)

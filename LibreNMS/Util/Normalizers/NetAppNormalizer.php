@@ -167,12 +167,12 @@ class NetAppNormalizer
             // Throughput metrics are often counters, handle accordingly
             $metrics[] = [
                 'port_id' => $portUuid, // Used to match with existing port
-                'ifInOctets' => $metric['throughput']['total'] ?? 0,
-                'ifOutOctets' => $metric['throughput']['total'] ?? 0, // Adjust if separate in/out available
+                'ifInOctets' => $metric['throughput']['read'] ?? 0,
+                'ifOutOctets' => $metric['throughput']['write'] ?? 0,
                 'ifInErrors' => $metric['errors']['total'] ?? 0,
-                'ifOutErrors' => $metric['errors']['total'] ?? 0, // Adjust if separate in/out available
-                'ifHCInOctets' => $metric['throughput']['total'] ?? 0,
-                'ifHCOutOctets' => $metric['throughput']['total'] ?? 0, // Adjust if separate in/out available
+                'ifOutErrors' => $metric['errors']['total'] ?? 0,
+                'ifHCInOctets' => $metric['throughput']['read'] ?? 0,
+                'ifHCOutOctets' => $metric['throughput']['write'] ?? 0,
             ];
         }
 
@@ -256,24 +256,37 @@ class NetAppNormalizer
         $processors = [];
         $records = $payload['records'] ?? [];
 
-        foreach ($records as $idx => $node) {
-            $nodeName = $node['name'] ?? "node{$idx}";
-            $stats = $node['statistics'] ?? [];
-
-            // Calculate CPU percentage from raw counters
-            if (isset($stats['processor_utilization_raw'], $stats['processor_utilization_base'])) {
-                $raw = (float) $stats['processor_utilization_raw'];
-                $base = (float) $stats['processor_utilization_base'];
-
+        foreach ($records as $record) {
+            $nodeName = data_get($record, 'name', 'unknown');
+            $statistics = data_get($record, 'statistics', []);
+            
+            // Try different possible field names for processor utilization
+            $processorUsage = null;
+            
+            // Check for processor_utilization_raw and processor_utilization_base (raw counters)
+            if (isset($statistics['processor_utilization_raw']) && isset($statistics['processor_utilization_base'])) {
+                $raw = (float) $statistics['processor_utilization_raw'];
+                $base = (float) $statistics['processor_utilization_base'];
                 if ($base > 0) {
-                    $cpuPercent = ($raw / $base) * 100;
-                    $processors[] = [
-                        'processor_index' => "netapp-node-{$idx}",
-                        'processor_type' => 'netapp-cpu',
-                        'processor_descr' => "{$nodeName} CPU",
-                        'processor_usage' => round($cpuPercent, 2),
-                    ];
+                    $processorUsage = ($raw / $base) * 100;
                 }
+            }
+            // Check for direct processor_utilization percentage
+            elseif (isset($statistics['processor_utilization'])) {
+                $processorUsage = $statistics['processor_utilization'];
+            }
+            // Check for processor_utilization_percentage
+            elseif (isset($statistics['processor_utilization_percentage'])) {
+                $processorUsage = $statistics['processor_utilization_percentage'];
+            }
+            
+            // Only add processor if we have valid data
+            if ($processorUsage !== null) {
+                $processors[] = [
+                    'processor_usage' => $processorUsage,
+                    'processor_descr' => $nodeName,
+                    'processor_index' => 'netapp-node-' . count($processors),
+                ];
             }
         }
 
@@ -289,25 +302,44 @@ class NetAppNormalizer
         $mempools = [];
         $records = $payload['records'] ?? [];
 
-        foreach ($records as $idx => $node) {
-            $nodeName = $node['name'] ?? "node{$idx}";
-
-            // Memory statistics
-            $memTotal = $node['statistics']['memory_size'] ?? 0; // in bytes
-            $memUsed = $node['statistics']['memory_used'] ?? 0; // in bytes
-
-            if ($memTotal > 0) {
-                $memFree = $memTotal - $memUsed;
-                $memPerc = ($memUsed / $memTotal) * 100;
-
+        foreach ($records as $record) {
+            $nodeName = data_get($record, 'name', 'unknown');
+            $statistics = data_get($record, 'statistics', []);
+            
+            // Try different possible field structures for memory
+            $mempoolTotal = null;
+            $mempoolUsed = null;
+            $mempoolFree = null;
+            
+            // Check for memory_size and memory_used (raw values)
+            if (isset($statistics['memory_size'])) {
+                $mempoolTotal = $statistics['memory_size'];
+                $mempoolUsed = $statistics['memory_used'] ?? null;
+            }
+            // Check for memory object with total/used
+            elseif (isset($statistics['memory']['total'])) {
+                $mempoolTotal = $statistics['memory']['total'];
+                $mempoolUsed = $statistics['memory']['used'] ?? null;
+            }
+            // Check for memory_usage object
+            elseif (isset($statistics['memory_usage']['total'])) {
+                $mempoolTotal = $statistics['memory_usage']['total'];
+                $mempoolUsed = $statistics['memory_usage']['used'] ?? null;
+            }
+            
+            // Calculate free memory if we have total and used
+            if ($mempoolTotal !== null && $mempoolUsed !== null) {
+                $mempoolFree = $mempoolTotal - $mempoolUsed;
+            }
+            
+            // Only add mempool if we have valid data
+            if ($mempoolTotal !== null && $mempoolUsed !== null) {
                 $mempools[] = [
-                    'mempool_index' => "netapp-node-{$idx}",
-                    'mempool_type' => 'netapp-memory',
-                    'mempool_descr' => "{$nodeName} Memory",
-                    'mempool_total' => $memTotal,
-                    'mempool_used' => $memUsed,
-                    'mempool_free' => $memFree,
-                    'mempool_perc' => $memPerc,
+                    'mempool_total' => $mempoolTotal,
+                    'mempool_used' => $mempoolUsed,
+                    'mempool_free' => $mempoolFree,
+                    'mempool_descr' => $nodeName,
+                    'mempool_index' => 'netapp-node-' . count($mempools),
                 ];
             }
         }

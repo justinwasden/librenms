@@ -296,6 +296,42 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             'display_order' => 1,
         ]);
 
+        // Cisco FTD OAuth
+        $ftdOAuth = $schema([
+            'key' => 'cisco_ftd_oauth',
+            'label' => 'Cisco FTD OAuth',
+            'description' => 'Cisco Firepower Threat Defense OAuth2 with JWT',
+            'vendor' => 'cisco',
+            'enabled' => true,
+        ]);
+        $upsertField($ftdOAuth->id, [
+            'name' => 'username',
+            'label' => 'Username',
+            'type' => 'text',
+            'required' => true,
+            'encrypted' => false,
+            'placeholder' => 'admin',
+            'display_order' => 1,
+        ]);
+        $upsertField($ftdOAuth->id, [
+            'name' => 'password',
+            'label' => 'Password',
+            'type' => 'password',
+            'required' => true,
+            'encrypted' => true,
+            'placeholder' => 'Password',
+            'display_order' => 2,
+        ]);
+        $upsertField($ftdOAuth->id, [
+            'name' => 'token_endpoint',
+            'label' => 'Token Endpoint',
+            'type' => 'text',
+            'required' => false,
+            'encrypted' => false,
+            'placeholder' => '/api/fdm/v6/fdm/token (default)',
+            'display_order' => 3,
+        ]);
+
         // Cookie
         $cookie = $schema([
             'key' => 'cookie',
@@ -391,6 +427,30 @@ class DeviceApiAuthSchemasSeeder extends Seeder
         $upsertField($checkpoint->id, ['name' => 'username','label' => 'Username','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'admin','display_order' => 2]);
         $upsertField($checkpoint->id, ['name' => 'password','label' => 'Password','type' => 'password','required' => true,'encrypted' => true,'placeholder' => 'Password','display_order' => 3]);
         $upsertField($checkpoint->id, ['name' => 'sid_header_name','label' => 'SID Header Name','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'X-chkp-sid','display_order' => 4]);
+
+        // Cisco UCSM XML API (aaaLogin/cookie-based session)
+        $ucsmXml = $schema([
+            'key' => 'cisco_ucsm_xml',
+            'label' => 'Cisco UCSM XML API',
+            'description' => 'XML API with aaaLogin for cookie-based session authentication',
+            'vendor' => 'cisco',
+            'enabled' => true,
+        ]);
+        $upsertField($ucsmXml->id, ['name' => 'username','label' => 'Username','type' => 'text','required' => true,'encrypted' => false,'placeholder' => 'admin','display_order' => 1]);
+        $upsertField($ucsmXml->id, ['name' => 'password','label' => 'Password','type' => 'password','required' => true,'encrypted' => true,'placeholder' => 'Password','display_order' => 2]);
+        $upsertField($ucsmXml->id, ['name' => 'session_timeout','label' => 'Session Timeout (seconds)','type' => 'number','required' => false,'encrypted' => false,'placeholder' => '600','display_order' => 3]);
+
+        // VMware VeloCloud Orchestrator API Token
+        $velocloud = $schema([
+            'key' => 'vmware_velocloud_token',
+            'label' => 'VMware VeloCloud API Token',
+            'description' => 'VeloCloud Orchestrator authentication using API token',
+            'vendor' => 'vmware',
+            'enabled' => true,
+        ]);
+        $upsertField($velocloud->id, ['name' => 'api_token','label' => 'API Token','type' => 'password','required' => true,'encrypted' => true,'placeholder' => 'Paste your VeloCloud API token','display_order' => 1]);
+        $upsertField($velocloud->id, ['name' => 'enterprise_id','label' => 'Enterprise ID','type' => 'text','required' => false,'encrypted' => false,'placeholder' => 'Required for operator tokens (e.g., 1288)','display_order' => 2]);
+        $upsertField($velocloud->id, ['name' => 'edge_id','label' => 'Edge ID','type' => 'text','required' => false,'encrypted' => false,'placeholder' => 'Optional: Monitor specific edge (e.g., 23106)','display_order' => 3]);
     }
 
     private function createTemplates(): void
@@ -476,5 +536,28 @@ class DeviceApiAuthSchemasSeeder extends Seeder
             ['capability' => 'sensors',    'path' => '/cluster/status',        'transform' => 'normalizeProxmoxClusterStatus',     'order' => 5],
             ['capability' => 'sensors',    'path' => '/cluster/resources',     'transform' => 'normalizeProxmoxClusterResources',  'order' => 6],
         ] as $e) { $upsertEndpoint($pxTokenTemplate->id, $e); }
+
+        // Cisco FTD
+        $ftdSchema = DeviceApiAuthSchema::where('key', 'cisco_ftd_oauth')->first();
+        $ftdTemplate = DeviceApiTemplate::updateOrCreate(
+            ['key' => 'cisco_ftd'],
+            [
+                'label'        => 'Cisco Firepower Threat Defense',
+                'os_keys'      => ['ftd', 'cisco-ftd'],
+                'schema_id'    => $ftdSchema?->id,
+                'default_values' => [
+                    'base_url_pattern' => 'https://{hostname}',
+                ],
+                'modules'      => ['device_info', 'sensors'],
+                'capabilities' => ['device_info', 'sensors'],
+                'description'  => 'Cisco FTD REST API v6 with OAuth 2.0',
+                'enabled'      => true,
+            ]
+        );
+        foreach ([
+            ['capability' => 'device_info', 'path' => '/api/fdm/v6/devicesettings/default/devicehostnames', 'transform' => 'normalizeFtdDeviceHostname', 'order' => 1],
+            ['capability' => 'sensors',     'path' => '/api/fdm/v6/operational/disk/usage',                'transform' => 'normalizeFtdDiskUsage',      'order' => 2],
+            ['capability' => 'sensors',     'path' => '/api/fdm/v6/operational/metrics/data',              'transform' => 'normalizeFtdMetrics',        'order' => 3],
+        ] as $e) { $upsertEndpoint($ftdTemplate->id, $e); }
     }
 }
