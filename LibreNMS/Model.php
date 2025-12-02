@@ -43,8 +43,8 @@ abstract class Model
             }
         }
 
-        // delete invalid sensors
-        self::clean($device_id, $valid_ids);
+        // delete invalid sensors - use static:: for late static binding to allow subclass overrides
+        static::clean($device_id, $valid_ids);
     }
 
     /**

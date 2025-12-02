@@ -315,6 +315,48 @@ class Processor extends Model implements DiscoveryModule, PollerModule, Discover
     }
 
     /**
+     * Override clean method to preserve API-sourced processors during SNMP discovery
+     *
+     * @param int $device_id
+     * @param array $model_ids valid Model ids from SNMP discovery
+     */
+    protected static function clean($device_id, $model_ids)
+    {
+        $table = static::$table;
+        $key = static::$primaryKey;
+
+        // List of API processor types that should not be deleted by SNMP discovery
+        $apiProcessorTypes = ['proxmox-cpu', 'rest', 'velocloud-cpu', 'esxi-cpu', 'netapp-cpu', 'purestorage-cpu', 'ucsm-blade-cpu', 'ucsm-fi-cpu', 'fortinet-cpu'];
+
+        // Get IDs of API-sourced processors to exclude from deletion
+        $apiProcessorIds = \Illuminate\Support\Facades\DB::table($table)
+            ->where('device_id', $device_id)
+            ->whereIn('processor_type', $apiProcessorTypes)
+            ->pluck($key)
+            ->toArray();
+
+        // Combine valid SNMP processors with API processors to preserve
+        $preserveIds = array_merge($model_ids, $apiProcessorIds);
+
+        // Delete only processors that are not in the preserve list
+        $params = [$device_id];
+        $where = '`device_id`=?';
+
+        if (! empty($preserveIds)) {
+            $where .= " AND `$key` NOT IN " . dbGenPlaceholders(count($preserveIds));
+            $params = array_merge($params, $preserveIds);
+        }
+
+        $rows = dbFetchRows("SELECT * FROM `$table` WHERE $where", $params);
+        foreach ($rows as $row) {
+            static::onDelete(static::create($row));
+        }
+        if (! empty($rows)) {
+            dbDelete($table, $where, $params);
+        }
+    }
+
+    /**
      * @param  Processor  $processor
      */
     public static function onDelete($processor)
