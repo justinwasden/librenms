@@ -903,10 +903,16 @@ class UcsmXmlNormalizer
 
             $portName = "Eth{$switchId}/{$slotId}/{$portId}";
 
+            // Build description with role if present
+            $description = $portName;
+            if (!empty($ifRole) && $ifRole !== 'unknown') {
+                $description .= " ({$ifRole})";
+            }
+
             $ports[] = [
                 'ifIndex' => crc32($dn) & 0x7FFFFFFF,
                 'ifName' => $portName,
-                'ifDescr' => "{$portName} ({$ifRole})",
+                'ifDescr' => $description,
                 'ifType' => $ifType === 'ether' ? 'ethernetCsmacd' : $ifType,
                 'ifOperStatus' => $operState === 'up' ? 'up' : 'down',
                 'ifAdminStatus' => $adminState === 'enabled' ? 'up' : 'down',
@@ -984,6 +990,13 @@ class UcsmXmlNormalizer
                 : $data['tx_stats']['outConfigs']['etherTxStats'];
         }
 
+        $errStatsList = [];
+        if (isset($data['error_stats']['outConfigs']['etherErrStats'])) {
+            $errStatsList = isset($data['error_stats']['outConfigs']['etherErrStats']['@attributes'])
+                ? [$data['error_stats']['outConfigs']['etherErrStats']]
+                : $data['error_stats']['outConfigs']['etherErrStats'];
+        }
+
         // Create stats indexed by DN for easy correlation
         $statsByDn = [];
 
@@ -1007,13 +1020,23 @@ class UcsmXmlNormalizer
             $statsByDn[$dn]['ifOutBroadcastPkts'] = (int) ($attrs['broadcastPackets'] ?? 0);
         }
 
+        foreach ($errStatsList as $errStat) {
+            $attrs = $errStat['@attributes'] ?? $errStat;
+            $dn = preg_replace('/\/err-stats$/', '', $attrs['dn'] ?? '');
+
+            $statsByDn[$dn]['ifInErrors'] = (int) ($attrs['crc'] ?? 0) + (int) ($attrs['align'] ?? 0);
+            $statsByDn[$dn]['ifInDiscards'] = (int) ($attrs['inDiscard'] ?? 0);
+            $statsByDn[$dn]['ifOutErrors'] = (int) ($attrs['outDiscard'] ?? 0);
+        }
+
         // Convert to port stats format with ifIndex
         foreach ($statsByDn as $dn => $stats) {
             $stats['ifIndex'] = crc32($dn) & 0x7FFFFFFF;
             $portStats[] = $stats;
         }
 
-        return ['port_stats' => $portStats];
+        // Return flat array for DeviceApiPersistor::savePortsStatistics
+        return $portStats;
     }
 
     /**

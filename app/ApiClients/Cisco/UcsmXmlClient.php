@@ -419,6 +419,15 @@ class UcsmXmlClient implements DeviceApiClientInterface
     }
 
     /**
+     * Fetch port statistics (required by RestPortsStatisticsModule)
+     * Alias for fetchEthernetTrafficStats
+     */
+    public function fetchPortsStatistics(Device $device): array
+    {
+        return $this->fetchEthernetTrafficStats($device);
+    }
+
+    /**
      * Fetch Fibre Channel traffic statistics
      */
     public function fetchFibreChannelTrafficStats(Device $device): array
@@ -471,7 +480,6 @@ class UcsmXmlClient implements DeviceApiClientInterface
     public function fetchStorage(Device $device): array { return []; }
     public function fetchSensors(Device $device): array { return []; }
     public function fetchInventory(Device $device): array { return []; }
-    public function fetchPortsStatistics(Device $device): array { return []; }
     public function fetchIpv4Addresses(Device $device): array { return []; }
     public function fetchTransceivers(Device $device): array { return []; }
 

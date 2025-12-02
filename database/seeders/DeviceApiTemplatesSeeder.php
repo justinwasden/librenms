@@ -752,7 +752,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ['capability' => 'ports', 'method' => 'XML', 'path' => 'fetchFibreChannelPorts', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeFibreChannelPorts', 'display_order' => 91, 'enabled' => 1],
 
             // Port statistics (traffic counters, errors)
-            ['capability' => 'port_stats', 'method' => 'XML', 'path' => 'fetchEthernetTrafficStats', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeEthernetTrafficStats', 'display_order' => 95, 'enabled' => 1],
+            ['capability' => 'ports_stats', 'method' => 'XML', 'path' => 'fetchPortsStatistics', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeEthernetTrafficStats', 'display_order' => 95, 'enabled' => 1],
         ];
 
         foreach ($ucsmXmlEndpoints as $ep) {
