@@ -746,6 +746,13 @@ class DeviceApiTemplatesSeeder extends Seeder
             // Fabric Interconnect CPU and memory stats (for UCS Manager device metrics)
             ['capability' => 'processors', 'method' => 'XML', 'path' => 'fetchSwitchStats', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeSwitchStats', 'display_order' => 75, 'enabled' => 1],
             ['capability' => 'mempools', 'method' => 'XML', 'path' => 'fetchSwitchStats', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeSwitchStats', 'display_order' => 85, 'enabled' => 1],
+
+            // Network ports (Ethernet and Fibre Channel physical interfaces)
+            ['capability' => 'ports', 'method' => 'XML', 'path' => 'fetchFabricEthernetPorts', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeEthernetPhysicalPorts', 'display_order' => 90, 'enabled' => 1],
+            ['capability' => 'ports', 'method' => 'XML', 'path' => 'fetchFibreChannelPorts', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeFibreChannelPorts', 'display_order' => 91, 'enabled' => 1],
+
+            // Port statistics (traffic counters, errors)
+            ['capability' => 'port_stats', 'method' => 'XML', 'path' => 'fetchEthernetTrafficStats', 'transform' => '\LibreNMS\Util\Normalizers\UcsmXmlNormalizer::normalizeEthernetTrafficStats', 'display_order' => 95, 'enabled' => 1],
         ];
 
         foreach ($ucsmXmlEndpoints as $ep) {

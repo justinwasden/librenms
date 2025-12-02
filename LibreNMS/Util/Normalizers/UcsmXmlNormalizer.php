@@ -872,6 +872,235 @@ class UcsmXmlNormalizer
     }
 
     /**
+     * Normalize Ethernet physical ports to LibreNMS ports
+     */
+    public static function normalizeEthernetPhysicalPorts(Device $device, array $payload, array $ep = []): array
+    {
+        $ports = [];
+        $outConfigs = $payload['data']['outConfigs'] ?? [];
+
+        // Handle etherPIo objects
+        $portsList = [];
+        if (isset($outConfigs['etherPIo'])) {
+            $portsList = isset($outConfigs['etherPIo']['@attributes'])
+                ? [$outConfigs['etherPIo']]
+                : $outConfigs['etherPIo'];
+        }
+
+        foreach ($portsList as $port) {
+            $attrs = $port['@attributes'] ?? $port;
+
+            $dn = $attrs['dn'] ?? '';
+            $portId = $attrs['portId'] ?? '';
+            $slotId = $attrs['slotId'] ?? '';
+            $switchId = $attrs['switchId'] ?? '';
+            $ifRole = $attrs['ifRole'] ?? '';
+            $ifType = $attrs['ifType'] ?? '';
+            $operState = $attrs['operState'] ?? '';
+            $adminState = $attrs['adminState'] ?? '';
+            $operSpeed = $attrs['operSpeed'] ?? '';
+            $mac = $attrs['mac'] ?? '';
+
+            $portName = "Eth{$switchId}/{$slotId}/{$portId}";
+
+            $ports[] = [
+                'ifIndex' => crc32($dn) & 0x7FFFFFFF,
+                'ifName' => $portName,
+                'ifDescr' => "{$portName} ({$ifRole})",
+                'ifType' => $ifType === 'ether' ? 'ethernetCsmacd' : $ifType,
+                'ifOperStatus' => $operState === 'up' ? 'up' : 'down',
+                'ifAdminStatus' => $adminState === 'enabled' ? 'up' : 'down',
+                'ifSpeed' => self::parseSpeed($operSpeed),
+                'ifPhysAddress' => $mac ?: null,
+            ];
+        }
+
+        return ['ports' => $ports];
+    }
+
+    /**
+     * Normalize Fibre Channel physical ports to LibreNMS ports
+     */
+    public static function normalizeFibreChannelPorts(Device $device, array $payload, array $ep = []): array
+    {
+        $ports = [];
+        $outConfigs = $payload['data']['outConfigs'] ?? [];
+
+        $portsList = [];
+        if (isset($outConfigs['fcPIo'])) {
+            $portsList = isset($outConfigs['fcPIo']['@attributes'])
+                ? [$outConfigs['fcPIo']]
+                : $outConfigs['fcPIo'];
+        }
+
+        foreach ($portsList as $port) {
+            $attrs = $port['@attributes'] ?? $port;
+
+            $dn = $attrs['dn'] ?? '';
+            $portId = $attrs['portId'] ?? '';
+            $slotId = $attrs['slotId'] ?? '';
+            $switchId = $attrs['switchId'] ?? '';
+            $operState = $attrs['operState'] ?? '';
+            $adminState = $attrs['adminState'] ?? '';
+            $operSpeed = $attrs['operSpeed'] ?? '';
+            $wwn = $attrs['wwn'] ?? '';
+
+            $portName = "FC{$switchId}/{$slotId}/{$portId}";
+
+            $ports[] = [
+                'ifIndex' => crc32($dn) & 0x7FFFFFFF,
+                'ifName' => $portName,
+                'ifDescr' => "{$portName} (Fibre Channel)",
+                'ifType' => 'fibreChannel',
+                'ifOperStatus' => $operState === 'up' ? 'up' : 'down',
+                'ifAdminStatus' => $adminState === 'enabled' ? 'up' : 'down',
+                'ifSpeed' => self::parseSpeed($operSpeed),
+                'ifPhysAddress' => $wwn ?: null,
+            ];
+        }
+
+        return ['ports' => $ports];
+    }
+
+    /**
+     * Normalize Ethernet traffic statistics to port statistics
+     */
+    public static function normalizeEthernetTrafficStats(Device $device, array $payload, array $ep = []): array
+    {
+        $portStats = [];
+        $data = $payload['data'] ?? [];
+
+        $rxStatsList = [];
+        if (isset($data['rx_stats']['outConfigs']['etherRxStats'])) {
+            $rxStatsList = isset($data['rx_stats']['outConfigs']['etherRxStats']['@attributes'])
+                ? [$data['rx_stats']['outConfigs']['etherRxStats']]
+                : $data['rx_stats']['outConfigs']['etherRxStats'];
+        }
+
+        $txStatsList = [];
+        if (isset($data['tx_stats']['outConfigs']['etherTxStats'])) {
+            $txStatsList = isset($data['tx_stats']['outConfigs']['etherTxStats']['@attributes'])
+                ? [$data['tx_stats']['outConfigs']['etherTxStats']]
+                : $data['tx_stats']['outConfigs']['etherTxStats'];
+        }
+
+        // Create stats indexed by DN for easy correlation
+        $statsByDn = [];
+
+        foreach ($rxStatsList as $rxStat) {
+            $attrs = $rxStat['@attributes'] ?? $rxStat;
+            $dn = preg_replace('/\/rx-stats$/', '', $attrs['dn'] ?? '');
+
+            $statsByDn[$dn]['ifInOctets'] = (int) ($attrs['totalBytes'] ?? 0);
+            $statsByDn[$dn]['ifInUcastPkts'] = (int) ($attrs['unicastPackets'] ?? 0);
+            $statsByDn[$dn]['ifInMulticastPkts'] = (int) ($attrs['multicastPackets'] ?? 0);
+            $statsByDn[$dn]['ifInBroadcastPkts'] = (int) ($attrs['broadcastPackets'] ?? 0);
+        }
+
+        foreach ($txStatsList as $txStat) {
+            $attrs = $txStat['@attributes'] ?? $txStat;
+            $dn = preg_replace('/\/tx-stats$/', '', $attrs['dn'] ?? '');
+
+            $statsByDn[$dn]['ifOutOctets'] = (int) ($attrs['totalBytes'] ?? 0);
+            $statsByDn[$dn]['ifOutUcastPkts'] = (int) ($attrs['unicastPackets'] ?? 0);
+            $statsByDn[$dn]['ifOutMulticastPkts'] = (int) ($attrs['multicastPackets'] ?? 0);
+            $statsByDn[$dn]['ifOutBroadcastPkts'] = (int) ($attrs['broadcastPackets'] ?? 0);
+        }
+
+        // Convert to port stats format with ifIndex
+        foreach ($statsByDn as $dn => $stats) {
+            $stats['ifIndex'] = crc32($dn) & 0x7FFFFFFF;
+            $portStats[] = $stats;
+        }
+
+        return ['port_stats' => $portStats];
+    }
+
+    /**
+     * Normalize UCSM cluster/fabric interconnect info for overview display
+     */
+    public static function normalizeClusterInfo(Device $device, array $payload, array $ep = []): array
+    {
+        $clusterInfo = [
+            'domain_name' => null,
+            'fabric_interconnects' => [],
+            'ha_ready' => false,
+            'leadership' => null,
+        ];
+
+        // Get top system for domain name
+        if (isset($payload['topSystem']['data']['outConfigs']['topSystem'])) {
+            $topSys = $payload['topSystem']['data']['outConfigs']['topSystem'];
+            $topAttrs = $topSys['@attributes'] ?? $topSys;
+            $clusterInfo['domain_name'] = $topAttrs['name'] ?? null;
+        }
+
+        // Get fabric interconnect information
+        if (isset($payload['fabricInterconnects']['data']['outConfigs']['networkElement'])) {
+            $fiList = $payload['fabricInterconnects']['data']['outConfigs']['networkElement'];
+            $fiList = isset($fiList['@attributes']) ? [$fiList] : $fiList;
+
+            foreach ($fiList as $fi) {
+                $attrs = $fi['@attributes'] ?? $fi;
+
+                $clusterInfo['fabric_interconnects'][] = [
+                    'id' => $attrs['id'] ?? '',
+                    'model' => $attrs['model'] ?? '',
+                    'serial' => $attrs['serial'] ?? '',
+                    'operability' => $attrs['operability'] ?? '',
+                    'thermal' => $attrs['thermal'] ?? '',
+                    'oob_if_ip' => $attrs['oobIfIp'] ?? '',
+                    'inband_if_ip' => $attrs['inbandIfIp'] ?? '',
+                    'total_memory' => isset($attrs['totalMemory']) ? (int) $attrs['totalMemory'] : 0,
+                ];
+            }
+
+            $clusterInfo['ha_ready'] = count($clusterInfo['fabric_interconnects']) >= 2;
+        }
+
+        // Get HA/leadership status from management entity
+        if (isset($payload['managementEntity']['data']['outConfigs']['mgmtEntity'])) {
+            $mgmtEntity = $payload['managementEntity']['data']['outConfigs']['mgmtEntity'];
+            $mgmtAttrs = $mgmtEntity['@attributes'] ?? $mgmtEntity;
+            $clusterInfo['leadership'] = $mgmtAttrs['leadership'] ?? null;
+            $clusterInfo['ha_configuration'] = $mgmtAttrs['haConfiguration'] ?? null;
+            $clusterInfo['ha_ready'] = ($mgmtAttrs['haReady'] ?? 'no') === 'yes';
+        }
+
+        return $clusterInfo;
+    }
+
+    /**
+     * Parse speed string (e.g., "10gbps", "40gbps") to bits per second
+     */
+    protected static function parseSpeed(string $speed): int
+    {
+        if (empty($speed) || $speed === 'indeterminate') {
+            return 0;
+        }
+
+        $speed = strtolower($speed);
+
+        if (preg_match('/(\d+)\s*([kmg]?)bps/', $speed, $matches)) {
+            $value = (int) $matches[1];
+            $unit = $matches[2] ?? '';
+
+            switch ($unit) {
+                case 'g':
+                    return $value * 1000000000;
+                case 'm':
+                    return $value * 1000000;
+                case 'k':
+                    return $value * 1000;
+                default:
+                    return $value;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * Map UCSM operational state to numeric value
      */
     protected static function mapOperState(string $state): int

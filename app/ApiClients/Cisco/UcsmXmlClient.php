@@ -362,6 +362,79 @@ class UcsmXmlClient implements DeviceApiClientInterface
     }
 
     /**
+     * Fetch Fibre Channel physical ports
+     */
+    public function fetchFibreChannelPorts(Device $device): array
+    {
+        $data = $this->resolveClass('fcPIo');
+        return $data ? ['data' => $data] : [];
+    }
+
+    /**
+     * Fetch server-facing Ethernet ports (unified ports on IOM)
+     */
+    public function fetchServerEthernetPorts(Device $device): array
+    {
+        $data = $this->resolveClass('etherServerIntFIo');
+        return $data ? ['data' => $data] : [];
+    }
+
+    /**
+     * Fetch Ethernet port channel (aggregation) information
+     */
+    public function fetchEthernetPortChannels(Device $device): array
+    {
+        $data = $this->resolveClass('fabricEthLanPc');
+        return $data ? ['data' => $data] : [];
+    }
+
+    /**
+     * Fetch backplane port statistics (IOM to blade connectivity)
+     */
+    public function fetchBackplanePorts(Device $device): array
+    {
+        $data = $this->resolveClass('fabricDceSwSrvPc');
+        return $data ? ['data' => $data] : [];
+    }
+
+    /**
+     * Fetch detailed Ethernet port statistics with traffic counters
+     */
+    public function fetchEthernetTrafficStats(Device $device): array
+    {
+        // Get comprehensive port stats including bytes, packets, errors
+        $rxStats = $this->resolveClass('etherRxStats');
+        $txStats = $this->resolveClass('etherTxStats');
+        $errStats = $this->resolveClass('etherErrStats');
+        $lossStats = $this->resolveClass('etherLossStats');
+
+        return [
+            'data' => [
+                'rx_stats' => $rxStats ?? [],
+                'tx_stats' => $txStats ?? [],
+                'error_stats' => $errStats ?? [],
+                'loss_stats' => $lossStats ?? [],
+            ],
+        ];
+    }
+
+    /**
+     * Fetch Fibre Channel traffic statistics
+     */
+    public function fetchFibreChannelTrafficStats(Device $device): array
+    {
+        $rxStats = $this->resolveClass('fcStats');
+        $errStats = $this->resolveClass('fcErrStats');
+
+        return [
+            'data' => [
+                'fc_stats' => $rxStats ?? [],
+                'fc_err_stats' => $errStats ?? [],
+            ],
+        ];
+    }
+
+    /**
      * Test connection
      */
     public function testConnection(): bool
