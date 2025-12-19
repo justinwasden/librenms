@@ -232,8 +232,8 @@ class DeviceApiTemplatesSeeder extends Seeder
             'default_values' => json_encode([
                 'base_url_pattern' => 'https://{hostname}/api/v2',
             ]),
-            'modules' => json_encode(['sensors','inventory','ports','ipv4','device_info']),
-            'capabilities' => json_encode(['sensors','inventory','ports','ipv4','device_info']),
+            'modules' => json_encode(['sensors','inventory','ports','ipv4','device_info','ports_statistics','vlans','routes']),
+            'capabilities' => json_encode(['sensors','inventory','ports','ipv4','device_info','ports_statistics','vlans','routes']),
             'description' => 'FortiGate REST v2 API',
             'enabled' => 1,
             'created_at' => $now, 'updated_at' => $now,
@@ -246,6 +246,7 @@ class DeviceApiTemplatesSeeder extends Seeder
             ['capability' => 'inventory', 'method' => 'GET', 'path' => 'monitor/system/status',       'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigateSystemStatus','display_order' => 20],
             ['capability' => 'ports',     'method' => 'GET', 'path' => 'monitor/system/interface',    'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigateInterfaces', 'display_order' => 30],
             ['capability' => 'ipv4',      'method' => 'GET', 'path' => 'monitor/system/interface',    'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigateIpv4',      'display_order' => 40],
+            ['capability' => 'ports_statistics', 'method' => 'GET', 'path' => 'monitor/system/interface', 'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigatePortsStatistics', 'display_order' => 45],
             // Hardware sensors (temperature, fan, voltage, power)
             ['capability' => 'sensors',   'method' => 'GET', 'path' => 'monitor/system/sensor-info',    'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortgateSensorInfo',    'display_order' => 50],
             // VPN monitoring
@@ -254,6 +255,9 @@ class DeviceApiTemplatesSeeder extends Seeder
             // DHCP and licensing
             ['capability' => 'sensors',   'method' => 'GET', 'path' => 'monitor/system/dhcp',         'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortgateDhcp',         'display_order' => 80],
             ['capability' => 'sensors',   'method' => 'GET', 'path' => 'monitor/license/status',      'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortgateLicense',       'display_order' => 90],
+            // VLANs and Routes
+            ['capability' => 'vlans',     'method' => 'GET', 'path' => 'cmdb/system/interface',      'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigateVlans',        'display_order' => 95],
+            ['capability' => 'routes',    'method' => 'GET', 'path' => 'monitor/router/ipv4',        'transform' => '\LibreNMS\Modules\Support\RestNormalizers::normalizeFortigateRoutes',       'display_order' => 100],
         ];
         foreach ($fortiEndpoints as $ep) {
             DB::table('device_api_template_endpoints')->updateOrInsert(

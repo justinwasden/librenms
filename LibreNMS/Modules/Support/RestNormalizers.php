@@ -2325,6 +2325,96 @@ class RestNormalizers
         return $sensors;
     }
 
+    /**
+     * Normalize FortiGate interface statistics for port traffic metrics
+     * This is an alias for normalizeFortigateInterfaceStats
+     * Input: GET /monitor/system/interface
+     */
+    public static function normalizeFortigatePortsStatistics(array $payload): array
+    {
+        return self::normalizeFortigateInterfaceStats($payload);
+    }
+
+    /**
+     * Normalize FortiGate VLANs from interface configuration
+     * Input: GET /cmdb/system/interface
+     */
+    public static function normalizeFortigateVlans(array $payload): array
+    {
+        $vlans = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $vlans;
+        }
+
+        foreach ($results as $iface) {
+            $type = $iface['type'] ?? '';
+            $vlanid = $iface['vlanid'] ?? 0;
+            $name = $iface['name'] ?? '';
+
+            // Only process VLAN interfaces
+            if ($type === 'vlan' && $vlanid > 0 && $name) {
+                $vlans[] = [
+                    'vlan_vlan' => $vlanid,
+                    'vlan_domain' => 1,
+                    'vlan_name' => $name,
+                    'vlan_type' => 'ethernet',
+                    'vlan_mtu' => $iface['mtu'] ?? null,
+                ];
+            }
+        }
+
+        return $vlans;
+    }
+
+    /**
+     * Normalize FortiGate IPv4 routing table
+     * Input: GET /monitor/router/ipv4
+     */
+    public static function normalizeFortigateRoutes(array $payload): array
+    {
+        $routes = [];
+        $results = $payload['results'] ?? [];
+
+        if (!is_array($results)) {
+            return $routes;
+        }
+
+        foreach ($results as $route) {
+            $network = $route['ip_address'] ?? '';
+            $mask = $route['ip_mask'] ?? '';
+            $nexthop = $route['gateway'] ?? '';
+            $interface = $route['interface'] ?? '';
+            $distance = $route['distance'] ?? 0;
+            $metric = $route['metric'] ?? 0;
+            $type = $route['type'] ?? 'static';
+
+            if (!$network || !$mask) {
+                continue;
+            }
+
+            $routes[] = [
+                'context_name' => '',
+                'inetCidrRouteDestType' => 'ipv4',
+                'inetCidrRouteDest' => $network,
+                'inetCidrRoutePfxLen' => self::netmaskToCidr($mask),
+                'inetCidrRoutePolicy' => '',
+                'inetCidrRouteNextHopType' => 'ipv4',
+                'inetCidrRouteNextHop' => $nexthop ?: '0.0.0.0',
+                'inetCidrRouteIfIndex' => self::stableIndexFromName($interface),
+                'inetCidrRouteType' => $type === 'connected' ? 'local' : 'remote',
+                'inetCidrRouteProto' => $type,
+                'inetCidrRouteAge' => 0,
+                'inetCidrRouteNextHopAS' => 0,
+                'inetCidrRouteMetric1' => $distance,
+                'inetCidrRouteMetric2' => $metric,
+            ];
+        }
+
+        return $routes;
+    }
+
     public static function normalizeJunosInterfaces(array $payload): array
     {
         $ports = [];

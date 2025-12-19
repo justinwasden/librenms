@@ -1059,18 +1059,25 @@ class UcsmXmlNormalizer
         }
 
         // Get fabric interconnect information
+        $operableFIs = 0;
         if (isset($payload['fabricInterconnects']['data']['outConfigs']['networkElement'])) {
             $fiList = $payload['fabricInterconnects']['data']['outConfigs']['networkElement'];
             $fiList = isset($fiList['@attributes']) ? [$fiList] : $fiList;
 
             foreach ($fiList as $fi) {
                 $attrs = $fi['@attributes'] ?? $fi;
+                $operability = $attrs['operability'] ?? '';
+
+                // Count operable FIs
+                if (strtolower($operability) === 'operable') {
+                    $operableFIs++;
+                }
 
                 $clusterInfo['fabric_interconnects'][] = [
                     'id' => $attrs['id'] ?? '',
                     'model' => $attrs['model'] ?? '',
                     'serial' => $attrs['serial'] ?? '',
-                    'operability' => $attrs['operability'] ?? '',
+                    'operability' => $operability,
                     'thermal' => $attrs['thermal'] ?? '',
                     'oob_if_ip' => $attrs['oobIfIp'] ?? '',
                     'inband_if_ip' => $attrs['inbandIfIp'] ?? '',
@@ -1078,7 +1085,8 @@ class UcsmXmlNormalizer
                 ];
             }
 
-            $clusterInfo['ha_ready'] = count($clusterInfo['fabric_interconnects']) >= 2;
+            // HA is ready only if we have 2 operable fabric interconnects
+            $clusterInfo['ha_ready'] = $operableFIs >= 2;
         }
 
         // Get HA/leadership status from management entity
@@ -1087,7 +1095,7 @@ class UcsmXmlNormalizer
             $mgmtAttrs = $mgmtEntity['@attributes'] ?? $mgmtEntity;
             $clusterInfo['leadership'] = $mgmtAttrs['leadership'] ?? null;
             $clusterInfo['ha_configuration'] = $mgmtAttrs['haConfiguration'] ?? null;
-            $clusterInfo['ha_ready'] = ($mgmtAttrs['haReady'] ?? 'no') === 'yes';
+            // Note: Don't override ha_ready from operable FI count - the operability check is more accurate
         }
 
         return $clusterInfo;

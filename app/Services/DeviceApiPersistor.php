@@ -779,6 +779,9 @@ class DeviceApiPersistor
         // After saving VLANs, associate ports with VLANs for vCenter
         self::associatePortsWithVlans($device);
 
+        // Associate ports with VLANs for ESXi devices
+        self::associateEsxiPortsWithVlans($device);
+
         // Also sync VLANs to managed ESXi hosts
         self::syncVlansToEsxiHosts($device, $vlans);
     }
@@ -878,6 +881,77 @@ class DeviceApiPersistor
 
         } catch (\Throwable $e) {
             Log::warning("associatePortsWithVlans failed for device {$device->device_id}: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Associate ports with VLANs for ESXi devices
+     * Matches port's ifDescr (which contains the port group name) with VLAN names
+     */
+    private static function associateEsxiPortsWithVlans(Device $device): void
+    {
+        // Only do this for ESXi devices
+        if (!in_array($device->os, ['esxi', 'vmware-esxi'], true)) {
+            return;
+        }
+
+        try {
+            // Get all ports and VLANs for this device
+            $ports = DB::table('ports')
+                ->where('device_id', $device->device_id)
+                ->whereNotNull('ifDescr')
+                ->where('ifDescr', '!=', '')
+                ->get();
+
+            $vlans = DB::table('vlans')
+                ->where('device_id', $device->device_id)
+                ->get()
+                ->keyBy('vlan_name'); // Key by name for easy lookup
+
+            $associated = 0;
+            foreach ($ports as $port) {
+                // For ESXi, VMkernel adapters have ifDescr like "vmk0 (VMkernel) - Management Network [172.16.3.156]"
+                // Extract the port group name from within the ifDescr
+                // Pattern: "vmk0 (VMkernel) - <PortGroupName> [IP]"
+                // or just match anything between " - " and " [" for the port group name
+                if (preg_match('/ - ([^\[]+)/', $port->ifDescr, $matches)) {
+                    $portGroupName = trim($matches[1]);
+
+                    // Find the VLAN with this port group name
+                    $vlan = $vlans->get($portGroupName);
+
+                    if (!$vlan) {
+                        continue;
+                    }
+
+                    // Check if association already exists
+                    $existing = DB::table('ports_vlans')
+                        ->where('device_id', $device->device_id)
+                        ->where('port_id', $port->port_id)
+                        ->where('vlan', $vlan->vlan_vlan)
+                        ->first();
+
+                    if (!$existing) {
+                        DB::table('ports_vlans')->insert([
+                            'device_id' => $device->device_id,
+                            'port_id' => $port->port_id,
+                            'vlan' => $vlan->vlan_vlan,
+                            'baseport' => 0,
+                            'priority' => 0,
+                            'state' => 'forwarding',
+                            'cost' => 0,
+                        ]);
+                        $associated++;
+                    }
+                }
+            }
+
+            if ($associated > 0) {
+                Log::debug("Associated {$associated} ESXi ports with VLANs for device {$device->device_id}");
+            }
+
+        } catch (\Throwable $e) {
+            Log::warning("associateEsxiPortsWithVlans failed for device {$device->device_id}: {$e->getMessage()}");
         }
     }
 
