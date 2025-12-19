@@ -52,6 +52,8 @@ class PageTabs extends Component
         'accesspoints' => \App\Http\Controllers\Device\Tabs\AccessPointsController::class,
         'vlans' => \App\Http\Controllers\Device\Tabs\VlansController::class,
         'vm' => \App\Http\Controllers\Device\Tabs\VmInfoController::class,
+        'clusters' => \App\Http\Controllers\Device\Tabs\ClustersController::class,
+        'vm-snapshots' => \App\Http\Controllers\Device\Tabs\VmSnapshotsController::class,
         'mef' => \App\Http\Controllers\Device\Tabs\MefController::class,
         'tnmsne' => \App\Http\Controllers\Device\Tabs\TnmsneController::class,
         'loadbalancer' => \App\Http\Controllers\Device\Tabs\LoadBalancerController::class,

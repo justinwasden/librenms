@@ -35,8 +35,15 @@ class ClustersController implements DeviceTab
 
     public function data(Device $device, Request $request): array
     {
+        $clusters = \DB::table('hypervisor_clusters')
+            ->where('device_id', $device->device_id)
+            ->where('cluster_type', 'vmware')
+            ->orderBy('cluster_name')
+            ->get();
+
         return [
             'device' => $device,
+            'clusters' => $clusters,
         ];
     }
 }

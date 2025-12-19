@@ -34,8 +34,15 @@ class VmSnapshotsController implements DeviceTab
 
     public function data(Device $device, Request $request): array
     {
+        $snapshots = \DB::table('vmware_vm_snapshots')
+            ->where('device_id', $device->device_id)
+            ->orderBy('snapshot_count', 'desc')
+            ->orderBy('vm_name')
+            ->get();
+
         return [
             'device' => $device,
+            'snapshots' => $snapshots,
         ];
     }
 }
