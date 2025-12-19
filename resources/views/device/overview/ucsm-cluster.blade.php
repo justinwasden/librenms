@@ -69,9 +69,6 @@
                         <th>Serial Number</th>
                         <th>Operability</th>
                         <th>Thermal</th>
-                        <th>Out-of-Band IP</th>
-                        <th>In-Band IP</th>
-                        <th>Total Memory</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -96,15 +93,6 @@
                             <span class="label {{ $fi['thermal'] === 'ok' ? 'label-success' : 'label-danger' }}">
                                 {{ strtoupper($fi['thermal']) }}
                             </span>
-                        </td>
-                        <td>{{ $fi['oob_if_ip'] ?: 'N/A' }}</td>
-                        <td>{{ $fi['inband_if_ip'] ?: 'N/A' }}</td>
-                        <td>
-                            @if ($fi['total_memory'] > 0)
-                                {{ \LibreNMS\Util\Number::formatBi($fi['total_memory'] * 1024 * 1024) }}
-                            @else
-                                N/A
-                            @endif
                         </td>
                     </tr>
                     @endforeach
