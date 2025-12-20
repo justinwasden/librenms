@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
+use LibreNMS\Util\ApiTemplateManager;
 use LibreNMS\Util\File;
 use LibreNMS\Util\Number;
 use App\Http\Controllers\DeviceController;
@@ -51,33 +52,47 @@ class EditDeviceController
 
         // Handle API section
         if ($section === 'api') {
+            // Get templates and auth types
+            $templates = ApiTemplateManager::getAllTemplates();
+            $authTypes = ApiTemplateManager::getAuthTypes();
+
             // Get current API configuration from device attributes
             $apiEnabled = (bool) $device->getAttrib('api_enabled');
             $baseUrl = $device->getAttrib('api_base_url');
-            $authType = $device->getAttrib('api_auth_type', 'token');
-            $verifySSL = (bool) $device->getAttrib('api_verify_ssl', true);
-            $timeoutMs = (int) $device->getAttrib('api_timeout_ms', 10000);
+            $authType = $device->getAttrib('api_auth_type');
+            $selectedTemplate = $device->getAttrib('api_template');
 
-            // Get credentials (will be masked in view)
-            $username = $device->getAttrib('api_credential_username');
-            $password = $device->getAttrib('api_credential_password');
-            $apiToken = $device->getAttrib('api_credential_api_token');
+            // Create an apiConfig-like object for compatibility with the blade view
+            // The blade view expects $apiConfig to have properties like base_url, verify_ssl, etc.
+            $apiConfig = null;
+            if ($apiEnabled || $baseUrl) {
+                $apiConfig = (object) [
+                    'base_url' => $baseUrl,
+                    'verify_ssl' => (bool) $device->getAttrib('api_verify_ssl', true),
+                    'schema' => $authType ? (object) ['key' => $authType] : null,
+                    'extra_headers' => json_decode($device->getAttrib('api_extra_headers', '{}'), true),
+                ];
+            }
 
-            // Get OS-specific presets
-            $authTypePresets = $this->getAuthTypePresetsForOS($device->os);
+            // Auto-select template for known OSes if no configuration exists
+            $autoSelectTemplate = false;
+            if (!$selectedTemplate && !$apiConfig && count($templates) === 1) {
+                $selectedTemplate = array_key_first($templates);
+                $autoSelectTemplate = true;
+            }
+
+            // Get saved endpoints from device attributes
+            $savedEndpoints = json_decode($device->getAttrib('api_endpoints', '[]'), true) ?: [];
 
             return view('device.edit', [
                 'device' => $device,
                 'section' => 'api',
-                'api_enabled' => $apiEnabled,
-                'base_url' => $baseUrl,
-                'auth_type' => $authType,
-                'verify_ssl' => $verifySSL,
-                'timeout_ms' => $timeoutMs,
-                'has_username' => !empty($username),
-                'has_password' => !empty($password),
-                'has_api_token' => !empty($apiToken),
-                'auth_type_presets' => $authTypePresets,
+                'templates' => $templates,
+                'authTypes' => $authTypes,
+                'apiConfig' => $apiConfig,
+                'selectedTemplate' => $selectedTemplate,
+                'autoSelectTemplate' => $autoSelectTemplate,
+                'savedEndpoints' => $savedEndpoints,
             ]);
         }
 

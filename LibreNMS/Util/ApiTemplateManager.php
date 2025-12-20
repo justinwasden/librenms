@@ -2,167 +2,200 @@
 
 namespace LibreNMS\Util;
 
-use App\Models\DeviceApiAuthSchema;
-use App\Models\DeviceApiTemplate;
-
 /**
  * Manages API templates for vendor device connections
+ * Now uses hardcoded templates instead of database tables
  */
 class ApiTemplateManager
 {
+    /**
+     * Get all available API templates
+     */
     public static function getAllTemplates(): array
     {
-        $templates = [];
-
-        $dbTemplates = DeviceApiTemplate::with('schema')->enabled()->get();
-
-        foreach ($dbTemplates as $template) {
-            $templates[$template->key] = [
-                'id' => $template->id,
-                'vendor' => $template->key,
-                'name' => $template->label,
-                'description' => $template->description ?? '',
-                'os' => $template->os_keys ?? [],
-                'schema_id' => $template->schema_id,
-                'capabilities' => $template->capabilities ?? [],
-                'modules' => $template->modules ?? [],
-            ];
-        }
-
-        return $templates;
-    }
-
-    /**
-     * Load a specific template by key
-     *
-     * @param string $key Template key
-     * @return array|null
-     */
-    public static function loadTemplate(string $key): ?array
-    {
-        $template = DeviceApiTemplate::with(['schema.fields', 'endpoints'])
-            ->where('key', $key)
-            ->enabled()
-            ->first();
-
-        if (!$template) {
-            return null;
-        }
-
         return [
-            'id' => $template->id,
-            'vendor' => $template->key,
-            'name' => $template->label,
-            'description' => $template->description,
-            'os' => $template->os_keys ?? [],
-            'auth_type' => $template->schema->key ?? null,
-            'schema_id' => $template->schema_id,
-            'base_url_pattern' => $template->default_values['base_url_pattern'] ?? '',
-            'capabilities' => $template->capabilities ?? [],
-            'modules' => $template->modules ?? [],
-            'endpoints' => $template->endpoints->map(function ($endpoint) {
-                return [
-                    'id' => $endpoint->id,
-                    'capability' => $endpoint->capability,
-                    'method' => $endpoint->method,
-                    'path' => $endpoint->path,
-                    'transform' => $endpoint->transform,
-                    'headers' => $endpoint->headers ?? [],
-                    'request_body' => $endpoint->request_body ?? null,
-                    'enabled' => $endpoint->enabled,
-                    'poll_interval' => $endpoint->poll_interval ?? 300,
-                    'for_each' => $endpoint->for_each,
-                    'for_each_options' => $endpoint->for_each_options,
-                    'is_template' => true,
-                ];
-            })->toArray(),
+            'vmware_vcenter' => [
+                'name' => 'VMware vCenter',
+                'description' => 'VMware vCenter Server REST API',
+                'os' => ['vmware-vcsa'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'vmware_esxi' => [
+                'name' => 'VMware ESXi',
+                'description' => 'VMware ESXi SOAP/REST API',
+                'os' => ['vmware-esxi'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'proxmox' => [
+                'name' => 'Proxmox VE',
+                'description' => 'Proxmox Virtual Environment API',
+                'os' => ['proxmox'],
+                'auth_type' => 'token',
+                'base_url_pattern' => 'https://{hostname}:8006',
+            ],
+            'purestorage' => [
+                'name' => 'Pure Storage FlashArray',
+                'description' => 'Pure Storage FlashArray REST API',
+                'os' => ['purestorage'],
+                'auth_type' => 'token',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'fortigate' => [
+                'name' => 'Fortinet FortiGate',
+                'description' => 'FortiGate REST API',
+                'os' => ['fortigate'],
+                'auth_type' => 'token',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'netapp' => [
+                'name' => 'NetApp ONTAP',
+                'description' => 'NetApp ONTAP REST API',
+                'os' => ['netapp'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'cisco_ucsm' => [
+                'name' => 'Cisco UCS Manager',
+                'description' => 'Cisco UCS Manager XML API',
+                'os' => ['cisco-ucsm'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'cisco_ftd' => [
+                'name' => 'Cisco FTD',
+                'description' => 'Cisco Firepower Threat Defense API',
+                'os' => ['cisco-ftd'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
+            'velocloud' => [
+                'name' => 'VMware VeloCloud',
+                'description' => 'VeloCloud SD-WAN API',
+                'os' => ['velocloud'],
+                'auth_type' => 'basic',
+                'base_url_pattern' => 'https://{hostname}',
+            ],
         ];
     }
 
     /**
+     * Load a specific template by key
+     */
+    public static function loadTemplate(string $key): ?array
+    {
+        $templates = self::getAllTemplates();
+        return $templates[$key] ?? null;
+    }
+
+    /**
      * Get templates filtered by device OS
-     *
-     * @param string $os Device OS
-     * @return array Array of template metadata matching the OS
      */
     public static function getTemplatesForOs(string $os): array
     {
         $allTemplates = self::getAllTemplates();
-        $osSpecific = [];
-        $generic = [];
+        $matched = [];
 
         foreach ($allTemplates as $vendor => $template) {
-            if (empty($template['os'])) {
-                // Generic template (no OS specified)
-                $generic[$vendor] = $template;
-            } elseif (in_array($os, $template['os'])) {
-                // OS-specific template
-                $osSpecific[$vendor] = $template;
+            if (in_array($os, $template['os'])) {
+                $matched[$vendor] = $template;
             }
         }
 
-        // Return OS-specific templates if available, otherwise return generic templates
-        return !empty($osSpecific) ? $osSpecific : $generic;
+        return $matched;
     }
 
+    /**
+     * Get available authentication types
+     */
     public static function getAuthTypes(): array
     {
-        $authTypes = [];
-
-        $schemas = DeviceApiAuthSchema::with('fields')->enabled()->get();
-
-        foreach ($schemas as $schema) {
-            $authTypes[$schema->key] = [
-                'id' => $schema->id,
-                'name' => $schema->label,
-                'description' => $schema->description,
-                'vendor' => $schema->vendor,
-                'fields' => $schema->fields->map(function ($field) {
-                    return [
-                        'name' => $field->name,
-                        'label' => $field->label,
-                        'type' => $field->type,
-                        'required' => $field->required,
-                        'encrypted' => $field->encrypted,
-                        'placeholder' => $field->placeholder,
-                        'default' => $field->default,
-                        'options' => $field->options,
-                    ];
-                })->toArray(),
-            ];
-        }
-
-        return $authTypes;
+        return [
+            'basic' => [
+                'name' => 'Basic Authentication',
+                'description' => 'Username and password authentication',
+                'fields' => [
+                    [
+                        'name' => 'api_credential_username',
+                        'label' => 'Username',
+                        'type' => 'text',
+                        'required' => true,
+                        'encrypted' => false,
+                        'placeholder' => 'admin',
+                    ],
+                    [
+                        'name' => 'api_credential_password',
+                        'label' => 'Password',
+                        'type' => 'password',
+                        'required' => true,
+                        'encrypted' => true,
+                        'placeholder' => 'Enter password',
+                    ],
+                ],
+            ],
+            'token' => [
+                'name' => 'API Token',
+                'description' => 'Token-based authentication',
+                'fields' => [
+                    [
+                        'name' => 'api_credential_api_token',
+                        'label' => 'API Token',
+                        'type' => 'password',
+                        'required' => true,
+                        'encrypted' => true,
+                        'placeholder' => 'Enter API token',
+                    ],
+                ],
+            ],
+            'oauth2' => [
+                'name' => 'OAuth 2.0',
+                'description' => 'OAuth 2.0 client credentials flow',
+                'fields' => [
+                    [
+                        'name' => 'api_credential_client_id',
+                        'label' => 'Client ID',
+                        'type' => 'text',
+                        'required' => true,
+                        'encrypted' => false,
+                        'placeholder' => 'client_id',
+                    ],
+                    [
+                        'name' => 'api_credential_client_secret',
+                        'label' => 'Client Secret',
+                        'type' => 'password',
+                        'required' => true,
+                        'encrypted' => true,
+                        'placeholder' => 'Enter client secret',
+                    ],
+                    [
+                        'name' => 'api_credential_token_url',
+                        'label' => 'Token URL',
+                        'type' => 'text',
+                        'required' => true,
+                        'encrypted' => false,
+                        'placeholder' => 'https://auth.example.com/oauth/token',
+                    ],
+                ],
+            ],
+        ];
     }
 
+    /**
+     * Get authentication fields for a specific auth type
+     */
     public static function getAuthFields(string $authType): array
     {
-        $schema = DeviceApiAuthSchema::with('fields')
-            ->where('key', $authType)
-            ->enabled()
-            ->first();
-
-        if (!$schema) {
-            return [];
-        }
-
-        return $schema->fields->map(function ($field) {
-            return [
-                'name' => $field->name,
-                'label' => $field->label,
-                'type' => $field->type,
-                'required' => $field->required,
-                'encrypted' => $field->encrypted,
-                'placeholder' => $field->placeholder,
-                'default' => $field->default,
-                'options' => $field->options,
-            ];
-        })->toArray();
+        $authTypes = self::getAuthTypes();
+        return $authTypes[$authType]['fields'] ?? [];
     }
 
+    /**
+     * Validate a template structure
+     */
     public static function validateTemplate(array $template): bool
     {
-        $required = ['name', 'vendor', 'auth_type', 'endpoints'];
+        $required = ['name', 'auth_type'];
 
         foreach ($required as $field) {
             if (!isset($template[$field])) {
