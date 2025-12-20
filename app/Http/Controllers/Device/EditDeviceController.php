@@ -3,208 +3,158 @@
 /**
  * EditDeviceController.php
  *
- * -Description-
+ * Controller for device editing, now using device attributes instead of database tables
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
  * @link       https://www.librenms.org
- *
  * @copyright  2025 Tony Murray
  * @author     Tony Murray <murraytony@gmail.com>
  */
 
 namespace App\Http\Controllers\Device;
 
-use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\DeviceApiClientFactory;
 use App\Facades\LibrenmsConfig;
 use App\Facades\Rrd;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use App\Models\DeviceGroup;
 use App\Models\PollerGroup;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use LibreNMS\Enum\MaintenanceBehavior;
 use LibreNMS\Exceptions\HostRenameException;
-use LibreNMS\Util\ApiTemplateManager;
-use LibreNMS\Util\DeviceApiSettings;
 use LibreNMS\Util\File;
 use LibreNMS\Util\Number;
 use App\Http\Controllers\DeviceController;
 
 class EditDeviceController
 {
+    /**
+     * Show the device edit page
+     */
     public function index(Device $device): View
-		{
-		    // Eager load attribs to ensure they're available in the view
-		    $device->load('attribs');
+    {
+        // Eager load attribs to ensure they're available in the view
+        $device->load('attribs');
 
-		    $section = request()->get('section', 'device');
+        $section = request()->get('section', 'device');
 
-		    // Handle API section (Renders the blade partial)
-		    if ($section === 'api') {
-				    $templates = ApiTemplateManager::getAllTemplates();
-				    $authTypes = ApiTemplateManager::getAuthTypes();
-				    $apiConfig = DeviceApiConfig::with(['schema.fields', 'template'])
-				        ->where('device_id', $device->device_id)
-				        ->first();
+        // Handle API section
+        if ($section === 'api') {
+            // Get current API configuration from device attributes
+            $apiEnabled = (bool) $device->getAttrib('api_enabled');
+            $baseUrl = $device->getAttrib('api_base_url');
+            $authType = $device->getAttrib('api_auth_type', 'token');
+            $verifySSL = (bool) $device->getAttrib('api_verify_ssl', true);
+            $timeoutMs = (int) $device->getAttrib('api_timeout_ms', 10000);
 
-				    $selectedTemplate = $apiConfig?->template?->key ?? null;
-				    $selectedAuthType = $apiConfig?->schema?->key ?? null;
+            // Get credentials (will be masked in view)
+            $username = $device->getAttrib('api_credential_username');
+            $password = $device->getAttrib('api_credential_password');
+            $apiToken = $device->getAttrib('api_credential_api_token');
 
-				    if (!$selectedTemplate && count($templates) === 1) {
-				        $selectedTemplate = array_key_first($templates);
-				    }
+            // Get OS-specific presets
+            $authTypePresets = $this->getAuthTypePresetsForOS($device->os);
 
-				    // -------------------------------------------------
-				    // Auto-select template/auth for known OSes when API is being enabled
-				    // -------------------------------------------------
-				    if (!$apiConfig) {
-				        // Get device OS for matching
-				        $deviceOs = $device->os;
+            return view('device.edit', [
+                'device' => $device,
+                'section' => 'api',
+                'api_enabled' => $apiEnabled,
+                'base_url' => $baseUrl,
+                'auth_type' => $authType,
+                'verify_ssl' => $verifySSL,
+                'timeout_ms' => $timeoutMs,
+                'has_username' => !empty($username),
+                'has_password' => !empty($password),
+                'has_api_token' => !empty($apiToken),
+                'auth_type_presets' => $authTypePresets,
+            ]);
+        }
 
-				        // Try to find a template that supports this OS
-				        $matchingTemplate = \App\Models\DeviceApiTemplate::enabled()
-				            ->forOs($deviceOs)
-				            ->with('schema')
-				            ->first();
+        // Device settings section
+        if ($section === 'device') {
+            $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
+            if (! $types->has($device->type)) {
+                $types->put($device->type, [
+                    'icon' => null,
+                    'text' => ucfirst($device->type),
+                    'type' => $device->type,
+                ]);
+            }
 
-				        if ($matchingTemplate) {
-				            $selectedTemplate = $matchingTemplate->key;
-				            $selectedAuthType = $matchingTemplate->schema?->key;
-				        }
-				    }
+            [$rrd_size, $rrd_num] = File::getFolderSize(Rrd::dirFromHost($device->hostname));
 
-				    // -----------------------------
-				    // Suppress output from template
-				    // -----------------------------
-				    $templateData = null;
-				    if ($selectedTemplate) {
-				        ob_start(); // start output buffering
-				        $templateData = ApiTemplateManager::loadTemplate($selectedTemplate);
-				        ob_end_clean(); // discard any echoed messages
-				    }
+            $alertSchedules = $device->alertSchedules()->isActive()->get();
+            $isUnderMaintenance = $alertSchedules->isNotEmpty();
+            $exclusiveSchedules = $alertSchedules->filter(function ($schedule) {
+                $totalMappings = DB::table('alert_schedulables')
+                    ->where('schedule_id', $schedule->schedule_id)
+                    ->count();
 
-				    return view('device.edit', [
-				        'device' => $device,
-				        'section' => 'api',
-				        'templates' => $templates,
-				        'authTypes' => $authTypes,
-				        'apiConfig' => $apiConfig,
-				        'selectedTemplate' => $selectedTemplate,
-				        'templateData' => $templateData,
-				        'autoSelectTemplate' => !$apiConfig && count($templates) === 1,
-		        'savedEndpoints' => \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-		            ->ordered()
-		            ->get()
-		            ->map(fn($ep) => [
-		                'id' => $ep->id,
-		                'template_endpoint_id' => $ep->template_endpoint_id,
-		                'name' => $ep->name,
-		                'path' => $ep->path,
-		                'method' => $ep->method,
-		                'category' => $ep->capability,
-		                'poll_interval' => $ep->poll_interval,
-		                'enabled' => $ep->enabled,
-		                'transform' => $ep->transform,
-		                'headers' => $ep->headers,
-		                'request_body' => $ep->request_body,
-		            ])
-		            ->toArray(),
-				    ]);
-				}
+                return $totalMappings === 1;
+            });
+            $exclusive_schedule_id = $exclusiveSchedules->count() === 1 ? $exclusiveSchedules->first()->schedule_id : 0;
 
+            [$static_show, $static_groups] = DeviceGroup::where('type', 'static')->exists()
+                ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
+                : [false, []];
 
-		    // ---------------------------
-		    // Device settings section
-		    // ---------------------------
-		    if ($section === 'device') {
-		        $types = collect(LibrenmsConfig::get('device_types'))->keyBy('type');
-		        if (! $types->has($device->type)) {
-		            $types->put($device->type, [
-		                'icon' => null,
-		                'text' => ucfirst($device->type),
-		                'type' => $device->type,
-		            ]);
-		        }
+            return view('device.edit', [
+                'device' => $device,
+                'section' => $section,
+                'show_static_groups' => $static_show,
+                'static_groups' => $static_groups,
+                'types' => $types,
+                'default_type' => LibrenmsConfig::getOsSetting($device->os, 'type'),
+                'parents' => $device->parents()->pluck('hostname', 'device_id'),
+                'poller_groups' => PollerGroup::orderBy('group_name')->pluck('group_name', 'id'),
+                'default_poller_group' => LibrenmsConfig::get('distributed_poller_group'),
+                'override_sysContact_bool' => $device->getAttrib('override_sysContact_bool'),
+                'override_sysContact_string' => $device->getAttrib('override_sysContact_string'),
+                'maintenance' => $isUnderMaintenance,
+                'default_maintenance_behavior' => MaintenanceBehavior::from((int) LibrenmsConfig::get('alert.scheduled_maintenance_default_behavior'))->value,
+                'exclusive_maintenance_id' => $exclusive_schedule_id,
+                'rrd_size' => Number::formatBi($rrd_size),
+                'rrd_num' => $rrd_num,
+            ]);
+        }
 
-		        [$rrd_size, $rrd_num] = File::getFolderSize(Rrd::dirFromHost($device->hostname));
+        // Legacy sections fallback
+        $deviceController = new DeviceController();
+        $legacyContent = $deviceController->renderLegacyTab('edit', $device, ['vars' => ['section' => $section]]);
 
-		        $alertSchedules = $device->alertSchedules()->isActive()->get();
-		        $isUnderMaintenance = $alertSchedules->isNotEmpty();
-		        $exclusiveSchedules = $alertSchedules->filter(function ($schedule) {
-		            $totalMappings = DB::table('alert_schedulables')
-		                ->where('schedule_id', $schedule->schedule_id)
-		                ->count();
+        return view('device.edit', [
+            'device' => $device,
+            'section' => $section,
+            'legacyContent' => $legacyContent,
+        ]);
+    }
 
-		            return $totalMappings === 1; // only exclusive schedules
-		        });
-		        $exclusive_schedule_id = $exclusiveSchedules->count() === 1 ? $exclusiveSchedules->first()->schedule_id : 0;
-
-		        [$static_show, $static_groups] = DeviceGroup::where('type', 'static')->exists()
-		            ? [true, $device->groups()->where('type', 'static')->pluck('name', 'id')]
-		            : [false, []];
-
-		        return view('device.edit', [
-		            'device' => $device,
-		            'section' => $section,
-		            'show_static_groups' => $static_show,
-		            'static_groups' => $static_groups,
-		            'types' => $types,
-		            'default_type' => LibrenmsConfig::getOsSetting($device->os, 'type'),
-		            'parents' => $device->parents()->pluck('hostname', 'device_id'),
-		            'poller_groups' => PollerGroup::orderBy('group_name')->pluck('group_name', 'id'),
-		            'default_poller_group' => LibrenmsConfig::get('distributed_poller_group'),
-		            'override_sysContact_bool' => $device->getAttrib('override_sysContact_bool'),
-		            'override_sysContact_string' => $device->getAttrib('override_sysContact_string'),
-		            'maintenance' => $isUnderMaintenance,
-		            'default_maintenance_behavior' => MaintenanceBehavior::from((int) LibrenmsConfig::get('alert.scheduled_maintenance_default_behavior'))->value,
-		            'exclusive_maintenance_id' => $exclusive_schedule_id,
-		            'rrd_size' => Number::formatBi($rrd_size),
-		            'rrd_num' => $rrd_num,
-		        ]);
-		    }
-
-		    // Legacy sections fallback
-		    $deviceController = new DeviceController();
-		    $legacyContent = $deviceController->renderLegacyTab('edit', $device, ['vars' => ['section' => $section]]);
-
-		    return view('device.edit', [
-		        'device' => $device,
-		        'section' => $section,
-		        'legacyContent' => $legacyContent,
-		    ]);
-		}
-
+    /**
+     * Update device settings
+     */
     public function update(UpdateDeviceRequest $request, Device $device): RedirectResponse
     {
-        \Illuminate\Support\Facades\Log::info('EditDeviceController@update called', [
+        Log::info('EditDeviceController@update called', [
             'device_id' => $device->device_id,
             'has_api_settings_form' => $request->has('api_settings_form'),
-            'all_keys' => array_keys($request->all()),
         ]);
 
-        // Check if this is an API settings update (using hidden field to detect form submission)
+        // Check if this is an API settings update
         if ($request->has('api_settings_form')) {
-            \Illuminate\Support\Facades\Log::info('Processing API settings update');
             $this->updateApiSettings($request, $device);
 
-            // Reload the device to get fresh attributes from database
+            // Reload the device to get fresh attributes
             $device->refresh();
             $device->load('attribs');
 
@@ -216,7 +166,7 @@ class EditDeviceController
         // Handle device settings update
         $device->fill($request->validated());
 
-        $device->parents()->sync($request->get('parent_id', [])); // TODO avoid loops!
+        $device->parents()->sync($request->get('parent_id', []));
 
         // sync groups without removing dynamic groups
         $dynamic_groups = $device->groups()->where('type', 'dynamic')->pluck('id')->toArray();
@@ -227,7 +177,6 @@ class EditDeviceController
             $device->setLocation($request->get('sysLocation'), true, true);
             $device->location?->save();
         } elseif ($device->isDirty('override_sysLocation')) {
-            // no longer overridden, clear location
             $device->location()->dissociate();
         }
 
@@ -245,7 +194,7 @@ class EditDeviceController
             $device->setAttrib('override_device_type', true);
         }
 
-        // save it, no message if no changes
+        // save it
         try {
             if ($device->isDirty()) {
                 if ($device->save()) {
@@ -261,680 +210,307 @@ class EditDeviceController
         return response()->redirectToRoute('device', ['device' => $device->device_id, 'edit']);
     }
 
-    private function updateApiSettings($request, Device $device): void
+    /**
+     * Update API settings (stored in device attributes)
+     */
+    private function updateApiSettings(Request $request, Device $device): void
     {
         // Check if API is being disabled
-        if (!$request->boolean('rest_enabled')) {
-            // Delete API configuration and all related data
-            $deleted = DeviceApiConfig::where('device_id', $device->device_id)->delete();
-
-            // Clear legacy attribs if they exist (migration cleanup)
-            $device->forgetAttrib('rest_enabled');
-            $device->forgetAttrib('rest_template_key');
-            $device->forgetAttrib('rest_auth_type');
-            $device->forgetAttrib('rest_base_url');
-            $device->forgetAttrib('rest_headers');
-            $device->forgetAttrib('rest_verify_tls');
-            $device->forgetAttrib('rest_endpoints');
-            $device->forgetAttrib('rest_timeout_ms');
-            $device->forgetAttrib('rest_proxy');
-            $device->forgetAttrib('rest_token');
-            $device->forgetAttrib('rest_token_enc');
-            $device->forgetAttrib('rest_username');
-            $device->forgetAttrib('rest_password');
-            $device->forgetAttrib('rest_password_enc');
-            $device->forgetAttrib('proxmox_base_url');
-            $device->forgetAttrib('proxmox_token_user');
-            $device->forgetAttrib('proxmox_token_id');
-            $device->forgetAttrib('proxmox_token');
-            $device->forgetAttrib('proxmox_token_enc');
-            $device->forgetAttrib('proxmox_username');
-            $device->forgetAttrib('proxmox_password_enc');
-            $device->forgetAttrib('proxmox_verify_tls');
-            $device->forgetAttrib('proxmox_timeout_ms');
-            $device->forgetAttrib('proxmox_proxy');
-            $device->forgetAttrib('rest_last_success');
-            $device->forgetAttrib('rest_last_error');
-            $device->forgetAttrib('rest_last_error_message');
-            $device->forgetAttrib('rest_error_count');
-            $device->forgetAttrib('rest_avg_latency_ms');
-
-            if ($deleted > 0) {
-                toast()->success(__('API configuration removed and credentials deleted'));
-            }
-
+        if (!$request->boolean('api_enabled')) {
+            // Clear all API-related attributes
+            $this->clearApiAttributes($device);
+            toast()->success(__('API configuration disabled'));
             return;
         }
 
-        // Get template and schema IDs
-        $templateKey = $request->input('rest_template');
-        $authTypeKey = $request->input('rest_auth_type');
-
-        // Auth type is required, template is optional
-        if (!$authTypeKey) {
-            toast()->error(__('Authentication type is required'));
-            return;
-        }
-
-        $schema = \App\Models\DeviceApiAuthSchema::with('fields')->where('key', $authTypeKey)->first();
-        if (!$schema) {
-            toast()->error(__('Selected authentication schema not found'));
-            return;
-        }
-
-        // Template is optional
-        $template = null;
-        if ($templateKey) {
-            $template = \App\Models\DeviceApiTemplate::where('key', $templateKey)->first();
-            if (!$template) {
-                toast()->error(__('Selected template not found'));
-                return;
-            }
-        }
-
-        // Base URL validation
-        $baseUrl = trim((string) $request->input('rest_base_url'));
+        // Validate required fields
+        $baseUrl = trim((string) $request->input('api_base_url'));
         if (empty($baseUrl)) {
             toast()->error(__('Base URL is required'));
             return;
         }
+
         $baseUrl = rtrim($baseUrl, '/');
         if (!filter_var($baseUrl, FILTER_VALIDATE_URL)) {
             toast()->error(__('Invalid base URL'));
             return;
         }
 
-        // Parse extra headers (one per line "Header: value")
-        $headersString = (string) $request->input('rest_headers', '');
-        $extraHeaders = [];
-        if (!empty($headersString)) {
-            foreach (explode("\n", $headersString) as $line) {
-                $line = trim($line);
-                if ($line === '' || !str_contains($line, ':')) {
-                    continue;
-                }
-                [$name, $value] = array_map('trim', explode(':', $line, 2));
-                if ($name !== '') {
-                    $extraHeaders[$name] = $value;
-                }
-            }
-        }
+        $authType = $request->input('api_auth_type', 'token');
 
-        // Create or update DeviceApiConfig
-        $apiConfig = DeviceApiConfig::firstOrNew([
+        // Save basic settings
+        $device->setAttrib('api_enabled', true);
+        $device->setAttrib('api_base_url', $baseUrl);
+        $device->setAttrib('api_auth_type', $authType);
+        $device->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
+        $device->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
+
+        // Save credentials based on auth type
+        $this->saveCredentials($device, $authType, $request);
+
+        // Save vendor-specific fields if present
+        $this->saveVendorSpecificFields($device, $request);
+
+        Log::info('API settings saved to device attributes', [
             'device_id' => $device->device_id,
+            'base_url' => $baseUrl,
+            'auth_type' => $authType,
         ]);
+    }
 
-        // Detect schema change for password field handling
-        $schemaChanged = $apiConfig->schema_id !== $schema->id;
+    /**
+     * Save credentials (encrypted) based on auth type
+     */
+    private function saveCredentials(Device $device, string $authType, Request $request): void
+    {
+        // Clear all credential fields first
+        $credentialFields = [
+            'api_credential_username',
+            'api_credential_password',
+            'api_credential_api_token',
+            'api_credential_token_user',
+            'api_credential_token_id',
+            'api_credential_token_secret',
+            'api_credential_hostname',
+            'api_credential_enterprise_id',
+            'api_credential_edge_id',
+        ];
 
-        // Update config fields
-        $apiConfig->template_id = $template?->id;
-        $apiConfig->schema_id = $schema->id;
-        $apiConfig->base_url = $baseUrl;
-        $apiConfig->verify_ssl = $request->boolean('rest_verify_tls');
-        $apiConfig->extra_headers = $extraHeaders;
-
-        // Store connection settings in values
-        $apiConfig->setValue('timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
-        $apiConfig->setValue('proxy', (string) $request->input('rest_proxy', ''));
-
-        // Save auth values dynamically from schema fields
-        \Illuminate\Support\Facades\Log::debug('Processing auth fields', [
-            'device_id' => $device->device_id,
-            'schema_key' => $schema->key,
-            'schema_fields_count' => $schema->fields->count(),
-            'all_request_keys' => array_keys($request->all()),
-            'username_in_request' => $request->has('username'),
-            'password_in_request' => $request->has('password'),
-            'username_raw' => $request->input('username'),
-            'password_length' => strlen((string) $request->input('password')),
-        ]);
-
-        foreach ($schema->fields as $field) {
-            $fieldName = $field->name;
-            $inputValue = $request->input($fieldName);
-            $hasFilled = $request->filled($fieldName);
-            $hasInput = $request->has($fieldName);
-
-            \Illuminate\Support\Facades\Log::debug('Processing field', [
-                'field_name' => $fieldName,
-                'field_type' => $field->type,
-                'has_input' => $hasInput,
-                'filled' => $hasFilled,
-                'value_length' => is_string($inputValue) ? strlen($inputValue) : 0,
-            ]);
-
-            if ($field->type === 'password') {
-                if ($request->filled($fieldName)) {
-                    $apiConfig->setValue($fieldName, $inputValue);
-                    \Illuminate\Support\Facades\Log::debug('Set password field', ['field' => $fieldName]);
-                } elseif ($schemaChanged) {
-                    $apiConfig->setValue($fieldName, null);
-                    \Illuminate\Support\Facades\Log::debug('Cleared password field due to schema change', ['field' => $fieldName]);
-                } else {
-                    \Illuminate\Support\Facades\Log::debug('Skipped password field (empty and no schema change)', ['field' => $fieldName]);
-                }
-            } else {
-                // Use default value if input is empty
-                if ($inputValue === null || $inputValue === '') {
-                    $inputValue = $field->default;
-                }
-                $apiConfig->setValue($fieldName, $inputValue);
-                \Illuminate\Support\Facades\Log::debug('Set non-password field', ['field' => $fieldName, 'value' => $inputValue]);
-            }
+        foreach ($credentialFields as $field) {
+            $device->forgetAttrib($field);
         }
 
-        $apiConfig->save();
-
-        // Save custom endpoints if provided
-        // Sync device endpoint overrides with the submitted JSON from the form
-        $endpointsJson = $request->input('rest_endpoints');
-        if ($endpointsJson && $endpointsJson !== '[]' && $endpointsJson !== '') {
-            try {
-                $endpoints = json_decode($endpointsJson, true);
-                if (is_array($endpoints) && count($endpoints) > 0) {
-                    // Create a lookup of existing endpoints by path+method
-                    $existing = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)->get();
-                    $existingByKey = $existing->keyBy(function ($ep) {
-                        return $ep->path . '::' . $ep->method;
-                    });
-
-                    $processedKeys = [];
-
-                    // Update or create endpoints from the submitted JSON
-                    foreach ($endpoints as $index => $ep) {
-                        $key = ($ep['path'] ?? '') . '::' . ($ep['method'] ?? 'GET');
-                        $processedKeys[] = $key;
-
-                        $data = [
-                            'device_id' => $device->device_id,
-                            'name' => $ep['name'] ?? null,
-                            'path' => $ep['path'] ?? '',
-                            'method' => $ep['method'] ?? 'GET',
-                            'capability' => $ep['category'] ?? 'general',
-                            'poll_interval' => $ep['poll_interval'] ?? 300,
-                            'enabled' => $ep['enabled'] ?? true,
-                            'transform' => $ep['transform'] ?? null,
-                            'headers' => $ep['headers'] ?? null,
-                            'request_body' => $ep['request_body'] ?? null,
-                            'display_order' => $index,
-                        ];
-
-                        if (isset($existingByKey[$key])) {
-                            // Update existing endpoint
-                            $existingByKey[$key]->update($data);
-                        } else {
-                            // Create new endpoint override
-                            \App\Models\DeviceApiEndpoint::create($data);
-                        }
-                    }
-
-                    // Remove endpoints that are no longer in the submitted JSON
-                    // (user removed them from the list)
-                    foreach ($existingByKey as $key => $endpoint) {
-                        if (!in_array($key, $processedKeys)) {
-                            $endpoint->delete();
-                            \Illuminate\Support\Facades\Log::info("Removed endpoint override for device {$device->device_id}: {$endpoint->path}");
-                        }
-                    }
-
-                    \Illuminate\Support\Facades\Log::info("Synced endpoints for device {$device->device_id}", ['count' => count($endpoints)]);
-
-                    // Also keep in attribs for backward compatibility
-                    $device->setAttrib('rest_endpoints', $endpointsJson);
+        // Save new credentials based on auth type
+        switch ($authType) {
+            case 'basic':
+            case 'session':
+                if ($request->filled('api_username')) {
+                    $device->setAttrib('api_credential_username', $request->input('api_username'));
                 }
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Failed to save rest_endpoints: {$e->getMessage()}");
-                toast()->error(__('Failed to save endpoints: ' . $e->getMessage()));
-            }
-        } elseif (!$endpointsJson || $endpointsJson === '[]') {
-            // If endpoints JSON is empty, it might mean the user is using a pure template without overrides
-            // Don't delete existing overrides unless explicitly requested
-            \Illuminate\Support\Facades\Log::debug("Empty endpoints JSON for device {$device->device_id} - keeping existing overrides");
-        }
+                if ($request->filled('api_password')) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($request->input('api_password')));
+                }
+                break;
 
-        // Notify user if schema changed and password fields were cleared
-        if ($schemaChanged) {
-            toast()->info(__('Authentication schema changed; please re-enter secrets if required.'));
+            case 'token':
+            case 'bearer':
+                if ($request->filled('api_token')) {
+                    $device->setAttrib('api_credential_api_token', Crypt::encryptString($request->input('api_token')));
+                }
+                break;
+
+            case 'proxmox_token':
+                if ($request->filled('api_token_user')) {
+                    $device->setAttrib('api_credential_token_user', $request->input('api_token_user'));
+                }
+                if ($request->filled('api_token_id')) {
+                    $device->setAttrib('api_credential_token_id', $request->input('api_token_id'));
+                }
+                if ($request->filled('api_token_secret')) {
+                    $device->setAttrib('api_credential_token_secret', Crypt::encryptString($request->input('api_token_secret')));
+                }
+                break;
+
+            case 'vmware_soap':
+                if ($request->filled('api_hostname')) {
+                    $device->setAttrib('api_credential_hostname', $request->input('api_hostname'));
+                }
+                if ($request->filled('api_username')) {
+                    $device->setAttrib('api_credential_username', $request->input('api_username'));
+                }
+                if ($request->filled('api_password')) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($request->input('api_password')));
+                }
+                break;
         }
     }
 
+    /**
+     * Save vendor-specific fields
+     */
+    private function saveVendorSpecificFields(Device $device, Request $request): void
+    {
+        // VeloCloud specific
+        if ($request->filled('api_enterprise_id')) {
+            $device->setAttrib('api_credential_enterprise_id', $request->input('api_enterprise_id'));
+        }
+        if ($request->filled('api_edge_id')) {
+            $device->setAttrib('api_credential_edge_id', $request->input('api_edge_id'));
+        }
+
+        // Pure Storage specific
+        if ($request->filled('api_auth_header_name')) {
+            $device->setAttrib('api_credential_auth_header_name', $request->input('api_auth_header_name'));
+        }
+        if ($request->filled('api_login_path')) {
+            $device->setAttrib('api_credential_login_path', $request->input('api_login_path'));
+        }
+
+        // Proxmox specific (auth schema)
+        if ($request->filled('api_auth_schema')) {
+            $device->setAttrib('api_auth_schema', $request->input('api_auth_schema'));
+        }
+    }
+
+    /**
+     * Clear all API-related attributes
+     */
+    private function clearApiAttributes(Device $device): void
+    {
+        $apiAttributes = [
+            'api_enabled',
+            'api_base_url',
+            'api_auth_type',
+            'api_verify_ssl',
+            'api_timeout_ms',
+            'api_credential_username',
+            'api_credential_password',
+            'api_credential_api_token',
+            'api_credential_token_user',
+            'api_credential_token_id',
+            'api_credential_token_secret',
+            'api_credential_hostname',
+            'api_credential_enterprise_id',
+            'api_credential_edge_id',
+            'api_credential_auth_header_name',
+            'api_credential_login_path',
+            'api_auth_schema',
+        ];
+
+        foreach ($apiAttributes as $attr) {
+            $device->forgetAttrib($attr);
+        }
+    }
+
+    /**
+     * Test API connection
+     */
     public function testConnection(Request $request, Device $device): JsonResponse
-		{
-		    try {
-		        $baseUrl = $request->input('rest_base_url');
-		        $templateKey = $request->input('rest_template');
-		        $authType = $request->input('rest_auth_type');
+    {
+        try {
+            // Temporarily save credentials for testing
+            $tempDevice = clone $device;
+            $this->saveCredentials($tempDevice, $request->input('api_auth_type', 'token'), $request);
+            $tempDevice->setAttrib('api_base_url', $request->input('api_base_url'));
+            $tempDevice->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
+            $tempDevice->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
 
-		        // Validate required fields
-		        if (empty($baseUrl)) {
-		            return response()->json([
-		                'ok' => false,
-		                'error' => 'Base URL is required',
-		            ], 400);
-		        }
+            // Try to create API client and test connection
+            $client = DeviceApiClientFactory::make($tempDevice);
 
-		        if (empty($authType)) {
-		            return response()->json([
-		                'ok' => false,
-		                'error' => 'Authentication type is required',
-		            ], 400);
-		        }
+            if (!$client) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No API client available for this device OS',
+                ]);
+            }
 
-		        // Load schema and template models
-		        $schemaModel = \App\Models\DeviceApiAuthSchema::with('fields')->where('key', $authType)->first();
-		        if (!$schemaModel) {
-		            return response()->json([
-		                'ok' => false,
-		                'error' => 'Authentication schema not found',
-		            ], 404);
-		        }
+            $isReachable = method_exists($client, 'isReachable') ? $client->isReachable() : true;
 
-		        $templateModel = !empty($templateKey)
-		            ? \App\Models\DeviceApiTemplate::where('key', $templateKey)->first()
-		            : null;
+            if ($isReachable) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'API connection successful',
+                ]);
+            }
 
-		        // Parse extra headers
-		        $headersString = $request->input('rest_headers', '');
-		        $extraHeaders = [];
-		        if (!empty($headersString)) {
-		            foreach (explode("\n", $headersString) as $line) {
-		                $line = trim($line);
-		                if (empty($line)) continue;
-		                $parts = explode(':', $line, 2);
-		                if (count($parts) === 2) {
-		                    $extraHeaders[trim($parts[0])] = trim($parts[1]);
-		                }
-		            }
-		        }
+            return response()->json([
+                'success' => false,
+                'message' => 'API connection failed - host not reachable',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('API connection test failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
 
-		        // Variables to capture test results
-		        $latencyMs = 0;
-		        $apiInfo = null;
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection test failed: ' . $e->getMessage(),
+            ]);
+        }
+    }
 
-		        // Use database transaction to test without persisting changes
-		        try {
-		            DB::transaction(function () use ($device, $baseUrl, $schemaModel, $templateModel, $extraHeaders, $request, &$latencyMs, &$apiInfo) {
-		                // Get existing config or create new one
-		                $existingConfig = DeviceApiConfig::with('schema.fields')->where('device_id', $device->device_id)->first();
-
-		                // Create or update config for testing
-		                $testConfig = $existingConfig ?? new DeviceApiConfig();
-		                $testConfig->device_id = $device->device_id;
-		                $testConfig->schema_id = $schemaModel->id;
-		                $testConfig->template_id = $templateModel?->id;
-		                $testConfig->base_url = rtrim($baseUrl, '/');
-		                $testConfig->verify_ssl = $request->boolean('rest_verify_tls', true);
-		                $testConfig->extra_headers = $extraHeaders;
-
-		                // Set connection settings
-		                $testConfig->setValue('timeout_ms', (int) $request->input('rest_timeout_ms', 5000));
-		                $testConfig->setValue('proxy', (string) $request->input('rest_proxy', ''));
-
-		                // Set auth field values
-		                foreach ($schemaModel->fields as $field) {
-		                    $value = $request->input($field->name);
-
-		                    // For password fields, use existing value if not provided
-		                    if ($field->type === 'password' && ($value === null || $value === '')) {
-		                        if ($existingConfig && $existingConfig->schema_id === $schemaModel->id) {
-		                            $value = $existingConfig->getValue($field->name);
-		                        }
-		                    }
-
-		                    // Use default value if empty and not a password field
-		                    if (($value === null || $value === '') && $field->type !== 'password' && $field->default) {
-		                        $value = $field->default;
-		                    }
-
-		                    if ($value !== null && $value !== '') {
-		                        $testConfig->setValue($field->name, $value);
-		                    }
-		                }
-
-		                // Save the config temporarily (will be rolled back after test)
-		                $testConfig->save();
-
-		                // Reload device with fresh config
-		                $device->load(['apiConfig.template', 'apiConfig.schema']);
-
-		                // Use the same client factory as discovery/polling
-		                $start = microtime(true);
-		                $client = \App\ApiClients\DeviceApiClientFactory::make($device);
-
-		                if (!$client) {
-		                    throw new \RuntimeException('Could not create API client for device. Check template and authentication settings.');
-		                }
-
-		                // Test connection using the client's isReachable method
-		                if (!$client->isReachable()) {
-		                    throw new \RuntimeException('Device is not reachable via API');
-		                }
-
-		                $latencyMs = (int) ((microtime(true) - $start) * 1000);
-
-		                // Try to get API info for additional verification
-		                try {
-		                    $apiInfo = $client->getApiInfo();
-		                } catch (\Throwable $e) {
-		                    // API info is optional, ignore errors
-		                }
-
-		                // Rollback transaction - we don't want to save the test config yet
-		                // User must click "Save Settings" to persist changes
-		                throw new \Exception('ROLLBACK_TEST'); // This will trigger rollback
-		            });
-		        } catch (\Throwable $e) {
-		            // Check if this was our intentional rollback
-		            if ($e->getMessage() === 'ROLLBACK_TEST') {
-		                // Test succeeded, return success (transaction was rolled back)
-		                return response()->json([
-		                    'ok' => true,
-		                    'message' => 'Connection successful - click "Save Settings" to persist changes',
-		                    'latency_ms' => $latencyMs,
-		                    'api_info' => $apiInfo,
-		                ]);
-		            }
-
-		            // Actual error occurred during test
-		            throw $e;
-		        }
-
-		    } catch (\Throwable $e) {
-		        // Actual error occurred
-		        return response()->json([
-		            'ok' => false,
-		            'error' => $e->getMessage(),
-		            'details' => config('app.debug') ? $e->getTraceAsString() : null,
-		        ], 400);
-		    }
-		}
-
-    protected function makeClient(Device $device, array $tpl)
-		{
-		    return match ($tpl['vendor']) {
-		        'proxmox_ve_token', 'proxmox_ve_ticket' => new \App\ApiClients\Proxmox\ProxmoxApiClient($device),
-		        'purestorage_flasharray' => new \App\ApiClients\PureStorage\FlashArrayClient($device, ['strategy_key' => $tpl['auth_type']]),
-		        'vmware_vcenter', 'vmware_vcenter_default' => new \App\ApiClients\Vmware\VcenterClient($device),
-		        'vmware_esxi' => new \App\ApiClients\Vmware\EsxiClient($device),
-
-		        'fortinet_fortigate' => new \App\ApiClients\Generic\RestClient($device),
-		        'juniper_junos' => new \App\ApiClients\Generic\RestClient($device),
-		        'dell_os10' => new \App\ApiClients\Generic\RestClient($device),
-		        'hpe_network' => new \App\ApiClients\Generic\RestClient($device),
-		        'hpe_nimble' => new \App\ApiClients\Generic\RestClient($device),
-		        'nutanix_prism' => new \App\ApiClients\Generic\RestClient($device),
-		        'cisco_ise' => new \App\ApiClients\Generic\RestClient($device),
-		        'paloalto_panos' => new \App\ApiClients\Generic\RestClient($device),
-		        'cisco_nxos' => new \App\ApiClients\Generic\RestClient($device),
-		        'cisco_ios_xr' => new \App\ApiClients\Generic\RestClient($device),
-		        'cisco_cucm' => new \App\ApiClients\Generic\RestClient($device),
-		        'calix_generic' => new \App\ApiClients\Generic\RestClient($device),
-		        'cisco_ndfc' => new \App\ApiClients\Generic\RestClient($device),
-		        'arista_eos' => new \App\ApiClients\Generic\RestClient($device),
-		        'extreme_exos' => new \App\ApiClients\Generic\RestClient($device),
-		        'brocade_fastiron' => new \App\ApiClients\Generic\RestClient($device),
-		        'sonicwall_gen7' => new \App\ApiClients\Generic\RestClient($device),
-		        'checkpoint_mgmt' => new \App\ApiClients\Generic\RestClient($device),
-
-		        default => new \App\ApiClients\Generic\RestClient($device),
-		    };
-		}
-
+    /**
+     * Reset circuit breaker for API polling
+     */
     public function resetCircuitBreaker(Request $request, Device $device): JsonResponse
     {
         try {
-            DeviceApiSettings::resetCircuitBreaker($device);
+            // Reset error tracking attributes
+            $device->forgetAttrib('api_error_count');
+            $device->forgetAttrib('api_last_error');
+            $device->forgetAttrib('api_last_error_message');
+            $device->forgetAttrib('api_circuit_open');
 
             return response()->json([
                 'success' => true,
                 'message' => 'Circuit breaker reset successfully',
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage(),
+                'message' => 'Failed to reset circuit breaker: ' . $e->getMessage(),
             ]);
         }
     }
 
+    /**
+     * Toggle endpoint (deprecated - endpoints now managed in OS classes)
+     */
     public function toggleEndpoint(Request $request, Device $device): JsonResponse
     {
-        try {
-            $endpointId = $request->input('endpoint_id');
-            $enabled = $request->boolean('enabled');
-
-            // If endpoint_id is provided, update that specific record
-            if ($endpointId) {
-                $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-                    ->where('id', $endpointId)
-                    ->first();
-
-                if (!$endpoint) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Endpoint not found',
-                    ], 404);
-                }
-
-                $endpoint->enabled = $enabled;
-                $endpoint->save();
-
-                \Illuminate\Support\Facades\Log::info("Toggled endpoint {$endpoint->id} ({$endpoint->path}) to " . ($enabled ? 'enabled' : 'disabled') . " for device {$device->device_id}");
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Endpoint ' . ($enabled ? 'enabled' : 'disabled'),
-                    'endpoint' => [
-                        'id' => $endpoint->id,
-                        'path' => $endpoint->path,
-                        'enabled' => $endpoint->enabled,
-                    ],
-                ]);
-            }
-
-            // Fallback: handle by index (for template endpoints that haven't been saved yet)
-            $index = $request->input('index');
-            $allEndpointsJson = $request->input('all_endpoints');
-
-            if (!isset($index) || !$allEndpointsJson) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Either endpoint_id or index+all_endpoints required',
-                ], 400);
-            }
-
-            $endpoints = json_decode($allEndpointsJson, true);
-            if (!is_array($endpoints) || $index < 0 || $index >= count($endpoints)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Invalid endpoint data',
-                ], 400);
-            }
-
-            // Initialize endpoints from template and save them all
-            \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)->delete();
-
-            foreach ($endpoints as $idx => $ep) {
-                $ep['enabled'] = ($idx === $index) ? $enabled : ($ep['enabled'] ?? true);
-
-                \App\Models\DeviceApiEndpoint::create([
-                    'device_id' => $device->device_id,
-                    'name' => $ep['name'] ?? null,
-                    'path' => $ep['path'] ?? '',
-                    'method' => $ep['method'] ?? 'GET',
-                    'capability' => $ep['category'] ?? 'general',
-                    'poll_interval' => $ep['poll_interval'] ?? 300,
-                    'enabled' => $ep['enabled'],
-                    'transform' => $ep['transform'] ?? null,
-                    'headers' => $ep['headers'] ?? null,
-                    'request_body' => $ep['request_body'] ?? null,
-                    'display_order' => $idx,
-                ]);
-            }
-
-            \Illuminate\Support\Facades\Log::info("Initialized " . count($endpoints) . " endpoints and toggled index {$index} to " . ($enabled ? 'enabled' : 'disabled') . " for device {$device->device_id}");
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Endpoint ' . ($enabled ? 'enabled' : 'disabled'),
-                'initialized' => true,
-            ]);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to toggle endpoint for device {$device->device_id}: {$e->getMessage()}", [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function updateEndpoint(Request $request, Device $device): JsonResponse
-    {
-        try {
-            $endpointId = $request->input('endpoint_id');
-            $templateEndpointId = $request->input('template_endpoint_id');
-            $isTemplate = $request->input('is_template', false);
-            $changes = $request->input('changes', []);
-
-            if (!$endpointId && !$templateEndpointId) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Endpoint ID or Template Endpoint ID is required',
-                ], 400);
-            }
-
-            if (empty($changes) || !is_array($changes)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'No changes provided',
-                ], 400);
-            }
-
-            // Map frontend field names to database column names
-            $fieldMapping = [
-                'name' => 'name',
-                'path' => 'path',
-                'method' => 'method',
-                'category' => 'capability',
-                'poll_interval' => 'poll_interval',
-                'enabled' => 'enabled',
-                'transform' => 'transform',
-                'headers' => 'headers',
-                'request_body' => 'request_body',
-            ];
-
-            // If this is a template endpoint, create a device-specific override
-            if ($isTemplate && $templateEndpointId) {
-                // Check if a device override already exists for this template endpoint
-                $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-                    ->where('template_endpoint_id', $templateEndpointId)
-                    ->first();
-
-                if (!$endpoint) {
-                    // Load the template endpoint to get its base configuration
-                    $templateEndpoint = \App\Models\DeviceApiTemplateEndpoint::find($templateEndpointId);
-                    
-                    if (!$templateEndpoint) {
-                        return response()->json([
-                            'success' => false,
-                            'error' => 'Template endpoint not found',
-                        ], 404);
-                    }
-
-                    // Create a new device-specific endpoint based on the template
-                    $endpoint = new \App\Models\DeviceApiEndpoint();
-                    $endpoint->device_id = $device->device_id;
-                    $endpoint->template_endpoint_id = $templateEndpointId;
-                    $endpoint->path = $templateEndpoint->path;
-                    $endpoint->method = $templateEndpoint->method;
-                    $endpoint->capability = $templateEndpoint->capability;
-                    $endpoint->transform = $templateEndpoint->transform;
-                    $endpoint->headers = $templateEndpoint->headers;
-                    $endpoint->request_body = $templateEndpoint->request_body;
-                    $endpoint->poll_interval = $templateEndpoint->poll_interval ?? 300;
-                    $endpoint->enabled = $templateEndpoint->enabled;
-                    $endpoint->display_order = $templateEndpoint->display_order ?? 0;
-                }
-            } else {
-                // Find existing device-specific endpoint
-                $endpoint = \App\Models\DeviceApiEndpoint::where('device_id', $device->device_id)
-                    ->where('id', $endpointId)
-                    ->first();
-
-                if (!$endpoint) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Endpoint not found',
-                    ], 404);
-                }
-            }
-
-            // Apply changes
-            $updatedFields = [];
-            foreach ($changes as $field => $value) {
-                if (isset($fieldMapping[$field])) {
-                    $dbField = $fieldMapping[$field];
-                    $endpoint->$dbField = $value;
-                    $updatedFields[] = $field;
-                }
-            }
-
-            $endpoint->save();
-
-            \Illuminate\Support\Facades\Log::info("Updated endpoint {$endpoint->id} ({$endpoint->path}) for device {$device->device_id}", [
-                'updated_fields' => $updatedFields,
-                'changes' => $changes,
-                'is_template_override' => $isTemplate,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Endpoint updated successfully',
-                'endpoint' => [
-                    'id' => $endpoint->id,
-                    'path' => $endpoint->path,
-                    'updated_fields' => $updatedFields,
-                    'is_override' => $isTemplate,
-                ],
-            ]);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to update endpoint for device {$device->device_id}: {$e->getMessage()}", [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function showApiConfig(Device $device)
-    {
-        $os = $device->os ?? 'generic';
-        $templates = ApiTemplateManager::getAllTemplates();
-
-        $recommended = reset($templates); // first candidate
-        // Autofill Pure defaults if recommended is Pure
-        $defaults = $recommended['vendor'] === 'purestorage_flasharray'
-            ? ['login_path' => '/login', 'auth_header_name' => 'X-Auth-Token']
-            : [];
-
-        return view('devices.api-config', [
-            'device' => $device,
-            'templates' => $templates,
-            'recommended' => $recommended,
-            'defaults' => $defaults,
+        return response()->json([
+            'success' => false,
+            'message' => 'Endpoint management has moved to OS classes and normalizers',
         ]);
     }
 
-    public function edit(Device $device, Request $request)
+    /**
+     * Update endpoint (deprecated - endpoints now managed in OS classes)
+     */
+    public function updateEndpoint(Request $request, Device $device): JsonResponse
     {
-        return $this->index($device);
+        return response()->json([
+            'success' => false,
+            'message' => 'Endpoint management has moved to OS classes and normalizers',
+        ]);
+    }
+
+    /**
+     * Get auth type presets based on device OS
+     */
+    private function getAuthTypePresetsForOS(string $os): array
+    {
+        $presets = [
+            'vmware-vcsa' => [
+                ['value' => 'session', 'label' => 'vCenter Session Auth (Recommended)', 'default' => true],
+                ['value' => 'basic', 'label' => 'Basic Authentication'],
+            ],
+            'vmware-esxi' => [
+                ['value' => 'vmware_soap', 'label' => 'ESXi SOAP Auth (Recommended)', 'default' => true],
+            ],
+            'proxmox' => [
+                ['value' => 'proxmox_token', 'label' => 'Proxmox API Token (Recommended)', 'default' => true],
+                ['value' => 'session', 'label' => 'Proxmox Ticket Auth'],
+            ],
+            'purestorage' => [
+                ['value' => 'token', 'label' => 'Pure Storage API Token (Recommended)', 'default' => true],
+            ],
+            'fortigate' => [
+                ['value' => 'bearer', 'label' => 'FortiGate API Token (Recommended)', 'default' => true],
+            ],
+            'velocloud' => [
+                ['value' => 'token', 'label' => 'VeloCloud API Token (Recommended)', 'default' => true],
+                ['value' => 'session', 'label' => 'VeloCloud Username/Password'],
+            ],
+        ];
+
+        // Return OS-specific presets or generic defaults
+        return $presets[$os] ?? [
+            ['value' => 'token', 'label' => 'API Token / Bearer Token', 'default' => true],
+            ['value' => 'basic', 'label' => 'Basic Authentication'],
+            ['value' => 'session', 'label' => 'Session-based Authentication'],
+        ];
     }
 }

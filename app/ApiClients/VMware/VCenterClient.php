@@ -5,7 +5,6 @@ namespace App\ApiClients\VMware;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -21,26 +20,18 @@ class VCenterClient implements DeviceApiClientInterface
 
     protected Device $device;
     protected DeviceHttpClient $httpClient;
-    protected ?DeviceApiConfig $apiConfig = null;
     protected string $apiRoot = '/api'; // Hardcoded for v7.x and v8.x
 
     public function __construct(Device $device)
     {
         $this->device = $device;
 
-        // Load saved API config from relation or DB
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-
-        if (!$this->apiConfig) {
-            throw new RuntimeException("No saved API configuration found for device {$device->device_id}");
-        }
-
-        // Use model columns for base_url/verify_ssl and values for other fields
-        $baseUrl   = $this->apiConfig->base_url;
-        $username  = $this->apiConfig->getValue('username');
-        $password  = $this->apiConfig->getValue('password');
-        $verifyTls = (bool) ($this->apiConfig->verify_ssl ?? true); // Captures the user setting
-        $timeoutMs = (int) $this->apiConfig->getValue('timeout_ms', 5000);
+        // Read config from device attributes
+        $baseUrl = $device->getAttrib('api_base_url');
+        $username  = $device->getAttrib('api_credential_username');
+        $password  = $device->getAttrib('api_credential_password');
+        $verifyTls = (bool) $device->getAttrib('api_verify_ssl', true);
+        $timeoutMs = (int) $device->getAttrib('api_credential_timeout_ms', 5000);
 
         // Mask password for logs
         $maskedPassword = $password !== null ? str_repeat('*', max(4, strlen($password))) : null;
@@ -56,7 +47,16 @@ class VCenterClient implements DeviceApiClientInterface
         }
 
         // Initialize HTTP client using the DB's base_url for ALL requests
-        $headers = $this->apiConfig->extra_headers ?? [];
+        // Get extra headers from attributes or legacy config
+        $headers = [];
+        if ($this->apiConfig) {
+            $headers = $this->apiConfig->extra_headers ?? [];
+        } else {
+            $extraHeadersJson = $device->getAttrib('api_extra_headers');
+            if ($extraHeadersJson) {
+                $headers = json_decode($extraHeadersJson, true) ??  [];
+            }
+        }
         if ($username && $password) {
             $headers['Authorization'] = 'Basic ' . base64_encode("$username:$password");
         }

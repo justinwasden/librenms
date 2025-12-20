@@ -4,7 +4,6 @@ namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use RuntimeException;
 
 class EsxiClient implements DeviceApiClientInterface

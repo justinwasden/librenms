@@ -25,7 +25,14 @@ class FtdApiClient extends GenericDeviceApiClient
         parent::__construct($device);
 
         // Override token endpoint if specified in config
-        $customEndpoint = $device->apiConfig?->getValue('token_endpoint');
+        if ($device->getAttrib('api_base_url')) {
+            // New attribute-based config
+            $customEndpoint = $device->getAttrib('api_credential_token_endpoint');
+        } else {
+            // Fall back to legacy table-based config
+            $customEndpoint = $device->apiConfig?->getValue('token_endpoint');
+        }
+
         if ($customEndpoint) {
             $this->tokenEndpoint = $customEndpoint;
         }
@@ -57,13 +64,20 @@ class FtdApiClient extends GenericDeviceApiClient
      */
     protected function getPasswordGrantToken(): bool
     {
-        $apiConfig = $this->device->apiConfig;
-        if (!$apiConfig) {
-            return false;
-        }
+        // Try to read from device attributes first (new method)
+        if ($this->device->getAttrib('api_base_url')) {
+            $username = $this->device->getAttrib('api_credential_username');
+            $password = $this->device->getAttrib('api_credential_password');
+        } else {
+            // Fall back to legacy table-based config
+            $apiConfig = $this->device->apiConfig;
+            if (!$apiConfig) {
+                return false;
+            }
 
-        $username = $apiConfig->getValue('username');
-        $password = $apiConfig->getValue('password');
+            $username = $apiConfig->getValue('username');
+            $password = $apiConfig->getValue('password');
+        }
 
         if (!$username || !$password) {
             Log::error('FTD API: Missing credentials', ['device_id' => $this->device->device_id]);

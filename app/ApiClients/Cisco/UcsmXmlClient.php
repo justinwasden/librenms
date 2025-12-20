@@ -25,18 +25,30 @@ class UcsmXmlClient implements DeviceApiClientInterface
     public function __construct(Device $device)
     {
         $this->device = $device;
-        $apiConfig = $device->apiConfig;
 
-        if (!$apiConfig) {
-            throw new \Exception("No API configuration found for device {$device->device_id}");
+        // Try to read from device attributes first (new method)
+        $baseUrl = $device->getAttrib('api_base_url');
+
+        if ($baseUrl) {
+            // New attribute-based config
+            $verifySSL = (bool) $device->getAttrib('api_verify_ssl', false);
+            $this->sessionTimeout = (int) $device->getAttrib('api_credential_session_timeout', 600);
+        } else {
+            // Fall back to legacy table-based config
+            $apiConfig = $device->apiConfig;
+
+            if (!$apiConfig) {
+                throw new \Exception("No API configuration found for device {$device->device_id}");
+            }
+
+            $baseUrl = $apiConfig->base_url ?? 'https://' . $device->hostname;
+            $verifySSL = $apiConfig->verify_ssl ?? false;
+            $this->sessionTimeout = $apiConfig->getValue('session_timeout') ?? 600;
         }
-
-        $baseUrl = $apiConfig->base_url ?? 'https://' . $device->hostname;
-        $this->sessionTimeout = $apiConfig->getValue('session_timeout') ?? 600;
 
         $this->client = new Client([
             'base_uri' => $baseUrl,
-            'verify' => $apiConfig->verify_ssl ?? false,
+            'verify' => $verifySSL,
             'timeout' => 30,
             'headers' => [
                 'Content-Type' => 'application/xml',
@@ -57,9 +69,16 @@ class UcsmXmlClient implements DeviceApiClientInterface
             }
         }
 
-        $apiConfig = $this->device->apiConfig;
-        $username = $apiConfig->getValue('username') ?? '';
-        $password = $apiConfig->getValue('password') ?? '';
+        // Try to read from device attributes first (new method)
+        if ($this->device->getAttrib('api_base_url')) {
+            $username = $this->device->getAttrib('api_credential_username') ?? '';
+            $password = $this->device->getAttrib('api_credential_password') ?? '';
+        } else {
+            // Fall back to legacy table-based config
+            $apiConfig = $this->device->apiConfig;
+            $username = $apiConfig->getValue('username') ?? '';
+            $password = $apiConfig->getValue('password') ?? '';
+        }
 
         $loginXml = sprintf(
             '<aaaLogin inName="%s" inPassword="%s"></aaaLogin>',

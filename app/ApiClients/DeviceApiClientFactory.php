@@ -2,7 +2,6 @@
 namespace App\ApiClients;
 
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use Illuminate\Support\Facades\Log;
 
@@ -52,9 +51,8 @@ class DeviceApiClientFactory
             return new $class($device);
         }
 
-        // Get template key from DeviceApiConfig
-        $apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')->where('device_id', $device->device_id)->first();
-        $templateKey = $apiConfig?->template?->key;
+        // Get template key from device attributes
+        $templateKey = $device->getAttrib('api_template_key');
 
         if ($templateKey && isset(self::$templateToClient[$templateKey])) {
             $class = self::$templateToClient[$templateKey];

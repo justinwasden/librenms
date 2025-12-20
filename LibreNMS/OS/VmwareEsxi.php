@@ -27,7 +27,7 @@
 namespace LibreNMS\OS;
 
 use App\ApiClients\VMware\EsxiSoapClient;
-use App\Models\DeviceApiConfig;
+use App\ApiClients\VMware\EsxiSoapClientFactory;
 use App\Services\DeviceApiPersistor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -35,11 +35,13 @@ use LibreNMS\Device\Processor;
 use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
 use LibreNMS\Interfaces\Discovery\VminfoDiscovery;
 use LibreNMS\Interfaces\Polling\VminfoPolling;
+use LibreNMS\OS\Traits\ApiPolling;
 use LibreNMS\OS\Traits\VminfoVmware;
 use LibreNMS\Util\Normalizers\EsxiSoapNormalizer;
 
 class VmwareEsxi extends \LibreNMS\OS implements VminfoDiscovery, VminfoPolling, ProcessorDiscovery
 {
+    use ApiPolling;
     use VminfoVmware;
 
     /**
@@ -216,6 +218,10 @@ class VmwareEsxi extends \LibreNMS\OS implements VminfoDiscovery, VminfoPolling,
      */
     protected function getSoapClient(): ?EsxiSoapClient
     {
+        if (!$this->hasApiConfig()) {
+            return null;
+        }
+
         return \App\ApiClients\VMware\EsxiSoapClientFactory::makeFromDevice($this->getDevice());
     }
 }

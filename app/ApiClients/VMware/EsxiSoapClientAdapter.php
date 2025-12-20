@@ -4,7 +4,6 @@ namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -19,25 +18,24 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
 
     protected EsxiSoapClient $soapClient;
     protected Device $device;
-    protected ?DeviceApiConfig $apiConfig = null;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
 
-        // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
+        // Get config from device attributes
+        $baseUrl = $device->getAttrib('api_base_url');
 
-        if (!$this->apiConfig) {
+        if (!$baseUrl) {
             throw new \RuntimeException("No saved API configuration found for device {$device->device_id}");
         }
 
-        // Extract config values
+        // Extract config values from attributes
         $config = [
-            'hostname' => $this->apiConfig->base_url ? parse_url($this->apiConfig->base_url, PHP_URL_HOST) : $device->hostname,
-            'username' => $this->apiConfig->getValue('username'),
-            'password' => $this->apiConfig->getValue('password'),
-            'verify_ssl' => (bool) ($this->apiConfig->verify_ssl ?? false),
+            'hostname' => parse_url($baseUrl, PHP_URL_HOST) ?: $device->hostname,
+            'username' => $device->getAttrib('api_credential_username'),
+            'password' => $device->getAttrib('api_credential_password'),
+            'verify_ssl' => (bool) $device->getAttrib('api_verify_ssl', false),
         ];
 
         $this->soapClient = new EsxiSoapClient($device, $config);
@@ -45,7 +43,7 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
 
     public function supports(Device $device): bool
     {
-        return $device->os === 'vmware-esxi' && $this->apiConfig !== null;
+        return $device->os === 'vmware-esxi' && $device->getAttrib('api_base_url') !== null;
     }
 
     public function capabilities(): array
@@ -122,7 +120,7 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
     {
         return [
             'vendor' => self::VENDOR,
-            'base_url' => $this->apiConfig->base_url ?? null,
+            'base_url' => $this->device->getAttrib('api_base_url'),
             'api_type' => 'soap',
             'reachable' => $this->isReachable(),
         ];

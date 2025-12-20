@@ -15,6 +15,7 @@ use LibreNMS\OS;
  */
 class VmwareVcsa extends OS
 {
+    use Traits\ApiPolling;
     use Traits\VminfoVmware;
 
     /**
@@ -55,8 +56,7 @@ class VmwareVcsa extends OS
     public function discoverVlans(): Collection
     {
         // Check if REST API is configured
-        $apiConfig = $this->getDevice()->apiConfig;
-        if (!$apiConfig) {
+        if (!$this->hasApiConfig()) {
             // Fall back to SNMP discovery if REST API is not configured
             return parent::discoverVlans();
         }

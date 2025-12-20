@@ -5,6 +5,7 @@ namespace LibreNMS\Util;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Modules\Support\RestNormalizers;
+use LibreNMS\Util\Normalizers\LegacyNormalizerAdapter;
 
 /**
  * TransformRunner
@@ -58,27 +59,11 @@ class TransformRunner
             }
         }
 
-        // Case 2: Short method names in RestNormalizers (legacy)
-        if (is_string($transform) && method_exists(RestNormalizers::class, $transform)) {
+        // Case 2: Short method names - Use new normalizer classes via adapter
+        if (is_string($transform)) {
             try {
-                // Common signature: (array $payload)
-                return RestNormalizers::{$transform}($payload);
-            } catch (\ArgumentCountError $e) {
-                try {
-                    // Alternative signature: ($payload, pollIntervalSec)
-                    return RestNormalizers::{$transform}($payload, 60);
-                } catch (\ArgumentCountError $e2) {
-                    try {
-                        // Some may accept ($device, $payload, $endpoint)
-                        return RestNormalizers::{$transform}($device, $payload, $endpoint);
-                    } catch (\Throwable $e3) {
-                        Log::warning("Transform {$transform} failed: " . $e3->getMessage());
-                        return [];
-                    }
-                } catch (\Throwable $e2t) {
-                    Log::warning("Transform {$transform} failed: " . $e2t->getMessage());
-                    return [];
-                }
+                // Try new normalizer architecture first (auto-falls back to RestNormalizers if needed)
+                return LegacyNormalizerAdapter::normalize($transform, $device, $payload);
             } catch (\Throwable $e) {
                 Log::warning("Transform {$transform} failed: " . $e->getMessage());
                 return [];

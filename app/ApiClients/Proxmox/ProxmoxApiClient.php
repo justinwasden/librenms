@@ -3,7 +3,6 @@ namespace App\ApiClients\Proxmox;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\Util\DeviceApiSettings;
 
@@ -18,14 +17,10 @@ class ProxmoxApiClient implements DeviceApiClientInterface
     protected string $authType;
     protected array $headers = [];
     protected array $cookies = [];
-    protected ?DeviceApiConfig $apiConfig = null;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-
-        // Load API config from database
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema.fields')->where('device_id', $device->device_id)->first();
 
         // Get HTTP options from DeviceApiSettings
         $http = DeviceApiSettings::httpOptions($device);
@@ -35,13 +30,14 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         $this->proxy = $http['proxy'] ?? null;
 
         // Determine auth type from schema key
-        $schemaKey = $this->apiConfig?->schema?->key ?? 'proxmox_token';
+        $schemaKey = $device->getAttrib('api_auth_schema', 'proxmox_token');
         $this->authType = str_contains($schemaKey, 'ticket') ? 'ticket' : 'token';
 
         if ($this->authType === 'token') {
-            $user = $this->apiConfig?->getValue('token_user') ?? '';
-            $tokenid = $this->apiConfig?->getValue('token_id') ?? '';
-            $secret = $this->apiConfig?->getValue('token_secret') ?? '';
+            // Read token credentials from device attributes
+            $user = $device->getAttrib('api_credential_token_user') ?? '';
+            $tokenid = $device->getAttrib('api_credential_token_id') ?? '';
+            $secret = $device->getAttrib('api_credential_token_secret') ?? '';
 
             // Validate required token fields
             if (empty($user) || empty($tokenid) || empty($secret)) {
@@ -72,8 +68,9 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     protected function login(): void
     {
-        $user = $this->apiConfig?->getValue('username') ?? '';
-        $password = $this->apiConfig?->getValue('password') ?? '';
+        // Read username/password credentials from device attributes
+        $user = $this->device->getAttrib('api_credential_username') ?? '';
+        $password = $this->device->getAttrib('api_credential_password') ?? '';
 
         $resp = Http::timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls])
@@ -148,7 +145,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     public function supports(Device $device): bool
     {
-        return $device->os === 'proxmox' && $this->apiConfig !== null;
+        return $device->os === 'proxmox' && $device->getAttrib('api_base_url') !== null;
     }
 
     public function capabilities(): array

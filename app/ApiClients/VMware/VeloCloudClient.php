@@ -5,7 +5,6 @@ namespace App\ApiClients\VMware;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -21,7 +20,6 @@ class VeloCloudClient implements DeviceApiClientInterface
 
     protected Device $device;
     protected DeviceHttpClient $httpClient;
-    protected ?DeviceApiConfig $apiConfig = null;
     protected ?string $apiToken = null;
     protected ?string $username = null;
     protected ?string $password = null;
@@ -35,22 +33,15 @@ class VeloCloudClient implements DeviceApiClientInterface
     {
         $this->device = $device;
 
-        // Load saved API config from relation or DB
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-
-        if (!$this->apiConfig) {
-            throw new RuntimeException("No saved API configuration found for device {$device->device_id}");
-        }
-
-        // Use model columns for base_url/verify_ssl and values for other fields
-        $baseUrl   = $this->apiConfig->base_url;
-        $this->apiToken  = $this->apiConfig->getValue('api_token');
-        $this->username  = $this->apiConfig->getValue('username');
-        $this->password  = $this->apiConfig->getValue('password');
-        $this->enterpriseId = $this->apiConfig->getValue('enterprise_id');
-        $this->edgeId = $this->apiConfig->getValue('edge_id');
-        $verifyTls = (bool) ($this->apiConfig->verify_ssl ?? true);
-        $timeoutMs = (int) $this->apiConfig->getValue('timeout_ms', 10000);
+        // Read config from device attributes
+        $baseUrl = $device->getAttrib('api_base_url');
+        $this->apiToken  = $device->getAttrib('api_credential_api_token');
+        $this->username  = $device->getAttrib('api_credential_username');
+        $this->password  = $device->getAttrib('api_credential_password');
+        $this->enterpriseId = $device->getAttrib('api_credential_enterprise_id');
+        $this->edgeId = $device->getAttrib('api_credential_edge_id');
+        $verifyTls = (bool) $device->getAttrib('api_verify_ssl', true);
+        $timeoutMs = (int) $device->getAttrib('api_credential_timeout_ms', 10000);
 
         if (!$baseUrl) {
             throw new RuntimeException("API config for device {$device->device_id} is missing base_url");

@@ -3,7 +3,6 @@
 namespace App\ApiClients;
 
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use LibreNMS\Util\DeviceApiSettings;
@@ -12,16 +11,10 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 {
     protected Device $device;
     protected DeviceHttpClient $httpClient;
-    protected DeviceApiConfig $apiConfig;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-
-        // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template', 'schema')
-            ->where('device_id', $device->device_id)
-            ->firstOrFail();
 
         // Build HTTP client with auth
         $httpOptions = DeviceApiSettings::httpOptions($device);
@@ -40,7 +33,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         ], $device);
 
         // Initialize session-based auth if needed
-        if ($this->apiConfig->schema?->key === 'vmware_vcenter_session') {
+        $schemaKey = $device->getAttrib('api_auth_schema');
+        if ($schemaKey === 'vmware_vcenter_session') {
             $this->initializeVmwareSession();
         }
     }
@@ -51,8 +45,8 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
      */
     protected function initializeVmwareSession(): void
     {
-        $username = $this->apiConfig->getValue('username');
-        $password = $this->apiConfig->getValue('password');
+        $username = $this->device->getAttrib('api_credential_username');
+        $password = $this->device->getAttrib('api_credential_password');
 
         if (!$username || $password === null) {
             throw new \RuntimeException("Username and password required for VMware vCenter session auth");
@@ -120,19 +114,14 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
     public function supports(Device $device): bool
     {
         // This is a fallback client - it supports any device with an API config
-        $apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-        return $apiConfig !== null;
+        return !empty($device->getAttrib('api_base_url'));
     }
 
     public function capabilities(): array
     {
-        // Return capabilities from template
-        $tpl = $this->apiConfig->template;
-        if (!$tpl) {
-            return [];
-        }
-        $capabilities = $tpl->capabilities ?? [];
-        return is_array($capabilities) ? $capabilities : (json_decode($capabilities, true) ?: []);
+        // Capabilities are no longer stored in templates
+        // Return empty array - specific clients should override this
+        return [];
     }
 
     public function get(string $path, array $query = []): array
@@ -205,24 +194,26 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         return [
             'vendor' => 'generic',
             'client' => 'GenericDeviceApiClient',
-            'template_key' => $this->apiConfig->template?->key ?? null,
+            'template_key' => $this->device->getAttrib('api_template_key'),
         ];
     }
 
     protected function buildAuthHeaders(): array
     {
         $headers = [];
-        $schema = $this->apiConfig->schema;
 
-        if (!$schema) {
+        // Get schema key from attributes
+        $schemaKey = $this->device->getAttrib('api_auth_schema');
+
+        if (!$schemaKey) {
             return $headers;
         }
 
-        switch ($schema->key) {
+        switch ($schemaKey) {
             case 'basic':
                 // Basic authentication
-                $username = $this->apiConfig->getValue('username') ?? '';
-                $password = $this->apiConfig->getValue('password') ?? '';
+                $username = $this->device->getAttrib('api_credential_username') ?? '';
+                $password = $this->device->getAttrib('api_credential_password') ?? '';
                 if ($username !== '') {
                     $encoded = base64_encode("$username:$password");
                     $headers['Authorization'] = "Basic $encoded";
@@ -231,7 +222,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
             case 'bearer':
                 // Bearer token
-                $token = $this->apiConfig->getValue('token') ?? $this->apiConfig->getValue('api_token') ?? '';
+                $token = $this->device->getAttrib('api_credential_token') ?? $this->device->getAttrib('api_credential_api_token') ?? '';
                 if ($token) {
                     $headers['Authorization'] = "Bearer $token";
                 }
@@ -244,33 +235,27 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
 
             case 'custom_header':
                 // Custom header auth
-                $headerName = $this->apiConfig->getValue('header_name') ?? '';
-                $headerValue = $this->apiConfig->getValue('header_value') ?? '';
+                $headerName = $this->device->getAttrib('api_credential_header_name') ?? '';
+                $headerValue = $this->device->getAttrib('api_credential_header_value') ?? '';
                 if ($headerName && $headerValue) {
                     $headers[$headerName] = $headerValue;
                 }
                 break;
 
             default:
-                // Try to auto-detect from values
-                $token = $this->apiConfig->getValue('token') ?? $this->apiConfig->getValue('api_token');
+                // Try to auto-detect from credentials
+                $token = $this->device->getAttrib('api_credential_token') ?? $this->device->getAttrib('api_credential_api_token');
                 if ($token) {
                     $headers['Authorization'] = "Bearer $token";
                 } else {
-                    $username = $this->apiConfig->getValue('username');
-                    $password = $this->apiConfig->getValue('password') ?? '';
+                    $username = $this->device->getAttrib('api_credential_username');
+                    $password = $this->device->getAttrib('api_credential_password') ?? '';
                     if (!empty($username)) {
                         $encoded = base64_encode($username . ':' . $password);
                         $headers['Authorization'] = "Basic $encoded";
                     }
                 }
                 break;
-        }
-
-        // Add any custom headers from config
-        $customHeaders = $this->apiConfig->getValue('custom_headers');
-        if (!empty($customHeaders) && is_array($customHeaders)) {
-            $headers = array_merge($headers, $customHeaders);
         }
 
         return $headers;

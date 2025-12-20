@@ -5,7 +5,6 @@ namespace App\ApiClients\Fortinet;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use LibreNMS\Util\DeviceApiSettings;
 use Illuminate\Support\Facades\Log;
 
@@ -20,16 +19,10 @@ class FortiGateClient implements DeviceApiClientInterface
 
     protected Device $device;
     protected DeviceHttpClient $httpClient;
-    protected DeviceApiConfig $apiConfig;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
-
-        // Load API config
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('template')
-            ->where('device_id', $device->device_id)
-            ->firstOrFail();
 
         // Build HTTP client with API token auth
         $httpOptions = DeviceApiSettings::httpOptions($device);
@@ -37,10 +30,11 @@ class FortiGateClient implements DeviceApiClientInterface
             throw new \RuntimeException("No base URL configured for FortiGate device {$device->device_id}");
         }
 
-        // Get API token from config (try multiple field names for compatibility)
-        $apiToken = $this->apiConfig->getValue('api_token')
-                 ?? $this->apiConfig->getValue('token')
-                 ?? $this->apiConfig->getValue('access_token');
+        // Get API token from device attributes (try multiple field names for compatibility)
+        $apiToken = $device->getAttrib('api_credential_api_token')
+                 ?? $device->getAttrib('api_credential_token')
+                 ?? $device->getAttrib('api_credential_access_token');
+
         if (!$apiToken) {
             throw new \RuntimeException("API token required for FortiGate authentication");
         }
@@ -77,8 +71,7 @@ class FortiGateClient implements DeviceApiClientInterface
             return false;
         }
 
-        $apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-        return $apiConfig !== null;
+        return $device->getAttrib('api_base_url') !== null;
     }
 
     public function capabilities(): array

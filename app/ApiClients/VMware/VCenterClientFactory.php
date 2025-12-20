@@ -3,8 +3,6 @@
 namespace App\ApiClients\VMware;
 
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
-use Illuminate\Support\Facades\Log;
 
 class VCenterClientFactory
 {
@@ -21,11 +19,6 @@ class VCenterClientFactory
      */
     public static function hasConfig(Device $device): bool
     {
-        $apiConfig = $device->apiConfig ?? DeviceApiConfig::where('device_id', $device->device_id)->first();
-
-        return $apiConfig && $apiConfig->template && in_array($apiConfig->template->key, [
-            'vmware_vcenter_default', // new template key
-            'vmware_vcenter',         // legacy key, if present
-        ], true);
+        return $device->getAttrib('api_base_url') !== null;
     }
 }

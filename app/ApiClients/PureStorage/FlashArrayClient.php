@@ -6,7 +6,6 @@ use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\AuthStrategies\AuthStrategyFactory;
 use App\ApiClients\AuthStrategies\AuthContext;
 use App\Models\Device;
-use App\Models\DeviceApiConfig;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\Util\DeviceApiSettings;
 
@@ -17,19 +16,15 @@ class FlashArrayClient implements DeviceApiClientInterface
     protected array $httpBaseOpts;
     protected array $requestOpts = [];
     protected ?AuthContext $authCtx = null;
-    protected ?DeviceApiConfig $apiConfig = null;
 
     public function __construct(Device $device, array $template = [])
     {
         $this->device = $device;
 
-        // Load API config from database
-        $this->apiConfig = $device->apiConfig ?? DeviceApiConfig::with('schema.fields')->where('device_id', $device->device_id)->first();
-
         $http = DeviceApiSettings::httpOptions($device);
         $values = $this->resolveValues();
 
-        $strategyKey = $template['strategy_key'] ?? $this->apiConfig?->schema?->key ?? 'pure_token_login';
+        $strategyKey = $template['strategy_key'] ?? 'pure_token_login';
         $strategyOpts = array_merge($template['strategy_options'] ?? [], [
             'base_url'   => $http['base_url'],
             'verify_ssl' => $http['verify_tls'],
@@ -103,36 +98,23 @@ class FlashArrayClient implements DeviceApiClientInterface
 
     protected function resolveValues(): array
     {
-        if (!$this->apiConfig) {
-            return [
-                'api_token' => null,
-                'auth_header_name' => 'X-Auth-Token',
-                'login_path' => '/login',
-            ];
-        }
-
-        $apiToken = $this->apiConfig->getValue('api_token') ?? $this->apiConfig->getValue('api_key');
-        $authHeaderName = $this->apiConfig->getValue('auth_header_name');
-        $loginPath = $this->apiConfig->getValue('login_path');
-
-        // Handle null values explicitly
-        if (empty($authHeaderName)) {
-            $authHeaderName = 'X-Auth-Token';
-        }
-        if (empty($loginPath)) {
-            $loginPath = '/login';
-        }
+        // Read from device attributes
+        $apiToken = $this->device->getAttrib('api_credential_api_token') ?? $this->device->getAttrib('api_credential_api_key');
+        $authHeaderName = $this->device->getAttrib('api_credential_auth_header_name', 'X-Auth-Token');
+        $loginPath = $this->device->getAttrib('api_credential_login_path', '/login');
 
         return [
             'api_token' => $apiToken,
             'auth_header_name' => $authHeaderName,
             'login_path' => $loginPath,
+            'timeout_ms' => (int) $this->device->getAttrib('api_credential_timeout_ms', 5000),
+            'proxy' => $this->device->getAttrib('api_credential_proxy'),
         ];
     }
 
     public function supports(Device $device): bool
     {
-        return $device->os === 'purestorage' && $this->apiConfig !== null;
+        return $device->os === 'purestorage' && $device->getAttrib('api_base_url') !== null;
     }
 
     public function capabilities(): array
