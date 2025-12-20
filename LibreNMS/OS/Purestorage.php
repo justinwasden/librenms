@@ -2,13 +2,147 @@
 
 namespace LibreNMS\OS;
 
+use App\ApiClients\DeviceApiClientFactory;
+use App\Models\Device;
+use LibreNMS\Device\Processor;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
+use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
+use LibreNMS\Interfaces\Discovery\SensorDiscovery;
 use LibreNMS\Interfaces\Polling\OSPolling;
+use LibreNMS\OS\Traits\ApiPolling;
 use LibreNMS\RRD\RrdDefinition;
 use SnmpQuery;
 
-class Purestorage extends \LibreNMS\OS implements OSPolling
+class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery, SensorDiscovery
 {
+    use ApiPolling;
+
+    /**
+     * Discover processors (via API if available, otherwise SNMP)
+     */
+    public function discoverProcessors()
+    {
+        // Try API discovery first
+        if ($this->hasApiConfig()) {
+            try {
+                $client = DeviceApiClientFactory::make($this->getDevice());
+                if ($client && in_array('processors', $client->capabilities())) {
+                    $apiData = $client->get('/controllers');
+                    $processors = $this->normalizeData('Pure\Controllers', $apiData);
+
+                    if (!empty($processors)) {
+                        return $processors;
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::debug('Pure API processor discovery failed, falling back to SNMP', [
+                    'device_id' => $this->getDevice()->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Fallback to SNMP discovery
+        return [];
+    }
+
+    /**
+     * Discover sensors (via API if available, otherwise SNMP)
+     */
+    public function discoverSensors()
+    {
+        $sensors = [];
+
+        // Try API discovery first
+        if ($this->hasApiConfig()) {
+            try {
+                $client = DeviceApiClientFactory::make($this->getDevice());
+                if ($client && in_array('sensors', $client->capabilities())) {
+                    // Fetch array sensors (temperature, power, etc.)
+                    $sensorData = $client->get('/arrays');
+                    $apiSensors = $this->normalizeData('Pure\ArraySensors', $sensorData);
+
+                    if (!empty($apiSensors)) {
+                        $sensors = array_merge($sensors, $apiSensors);
+                    }
+
+                    // Fetch hardware sensors
+                    $hardwareData = $client->get('/hardware');
+                    $hardwareSensors = $this->normalizeData('Pure\Hardware', $hardwareData);
+
+                    if (!empty($hardwareSensors)) {
+                        $sensors = array_merge($sensors, $hardwareSensors);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::debug('Pure API sensor discovery failed, falling back to SNMP', [
+                    'device_id' => $this->getDevice()->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Discover storage (via API)
+     */
+    public function discoverStorage()
+    {
+        if (!$this->hasApiConfig()) {
+            return [];
+        }
+
+        try {
+            $client = DeviceApiClientFactory::make($this->getDevice());
+            if (!$client || !in_array('storage', $client->capabilities())) {
+                return [];
+            }
+
+            // Fetch volumes and normalize to storage
+            $volumeData = $client->get('/volumes');
+            $storage = $this->normalizeData('Pure\VolumesToStorage', $volumeData);
+
+            return $storage ?? [];
+        } catch (\Exception $e) {
+            \Log::warning('Pure storage discovery failed', [
+                'device_id' => $this->getDevice()->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Discover ports (via API)
+     */
+    public function discoverPorts()
+    {
+        if (!$this->hasApiConfig()) {
+            return [];
+        }
+
+        try {
+            $client = DeviceApiClientFactory::make($this->getDevice());
+            if (!$client || !in_array('ports', $client->capabilities())) {
+                return [];
+            }
+
+            // Fetch network interfaces
+            $interfaceData = $client->get('/network-interfaces');
+            $ports = $this->normalizeData('Pure\NetworkInterfaces', $interfaceData);
+
+            return $ports ?? [];
+        } catch (\Exception $e) {
+            \Log::warning('Pure ports discovery failed', [
+                'device_id' => $this->getDevice()->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
     /**
      * Poll Pure Storage array metrics via SNMP
      */
