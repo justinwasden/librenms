@@ -26,25 +26,15 @@ class UcsmXmlClient implements DeviceApiClientInterface
     {
         $this->device = $device;
 
-        // Try to read from device attributes first (new method)
+        // Read from device attributes (migrated from legacy table-based config)
         $baseUrl = $device->getAttrib('api_base_url');
 
-        if ($baseUrl) {
-            // New attribute-based config
-            $verifySSL = (bool) $device->getAttrib('api_verify_ssl', false);
-            $this->sessionTimeout = (int) $device->getAttrib('api_credential_session_timeout', 600);
-        } else {
-            // Fall back to legacy table-based config
-            $apiConfig = $device->apiConfig;
-
-            if (!$apiConfig) {
-                throw new \Exception("No API configuration found for device {$device->device_id}");
-            }
-
-            $baseUrl = $apiConfig->base_url ?? 'https://' . $device->hostname;
-            $verifySSL = $apiConfig->verify_ssl ?? false;
-            $this->sessionTimeout = $apiConfig->getValue('session_timeout') ?? 600;
+        if (!$baseUrl) {
+            throw new \Exception("No API configuration found for device {$device->device_id}");
         }
+
+        $verifySSL = (bool) $device->getAttrib('api_verify_ssl', false);
+        $this->sessionTimeout = (int) $device->getAttrib('api_credential_session_timeout', 600);
 
         $this->client = new Client([
             'base_uri' => $baseUrl,
@@ -69,15 +59,17 @@ class UcsmXmlClient implements DeviceApiClientInterface
             }
         }
 
-        // Try to read from device attributes first (new method)
-        if ($this->device->getAttrib('api_base_url')) {
-            $username = $this->device->getAttrib('api_credential_username') ?? '';
-            $password = $this->device->getAttrib('api_credential_password') ?? '';
-        } else {
-            // Fall back to legacy table-based config
-            $apiConfig = $this->device->apiConfig;
-            $username = $apiConfig->getValue('username') ?? '';
-            $password = $apiConfig->getValue('password') ?? '';
+        // Read credentials from device attributes
+        $username = $this->device->getAttrib('api_credential_username') ?? '';
+        $password = $this->device->getAttrib('api_credential_password') ?? '';
+
+        // Decrypt password if encrypted
+        if ($password && str_starts_with($password, 'eyJ')) {
+            try {
+                $password = \Illuminate\Support\Facades\Crypt::decryptString($password);
+            } catch (\Exception $e) {
+                // Password might not be encrypted, use as-is
+            }
         }
 
         $loginXml = sprintf(
@@ -484,8 +476,9 @@ class UcsmXmlClient implements DeviceApiClientInterface
      */
     public function supports(Device $device): bool
     {
-        // Check if device has UCSM API config
-        return $device->apiConfig && $device->apiConfig->template?->key === 'cisco_ucsm_xml';
+        // Check if device has UCSM API config (from device attributes)
+        $templateKey = $device->getAttrib('api_template_key');
+        return $templateKey === 'cisco_ucsm_xml';
     }
 
     public function capabilities(): array

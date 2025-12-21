@@ -25,14 +25,7 @@ class FtdApiClient extends GenericDeviceApiClient
         parent::__construct($device);
 
         // Override token endpoint if specified in config
-        if ($device->getAttrib('api_base_url')) {
-            // New attribute-based config
-            $customEndpoint = $device->getAttrib('api_credential_token_endpoint');
-        } else {
-            // Fall back to legacy table-based config
-            $customEndpoint = $device->apiConfig?->getValue('token_endpoint');
-        }
-
+        $customEndpoint = $device->getAttrib('api_credential_token_endpoint');
         if ($customEndpoint) {
             $this->tokenEndpoint = $customEndpoint;
         }
@@ -64,19 +57,17 @@ class FtdApiClient extends GenericDeviceApiClient
      */
     protected function getPasswordGrantToken(): bool
     {
-        // Try to read from device attributes first (new method)
-        if ($this->device->getAttrib('api_base_url')) {
-            $username = $this->device->getAttrib('api_credential_username');
-            $password = $this->device->getAttrib('api_credential_password');
-        } else {
-            // Fall back to legacy table-based config
-            $apiConfig = $this->device->apiConfig;
-            if (!$apiConfig) {
-                return false;
-            }
+        // Read credentials from device attributes
+        $username = $this->device->getAttrib('api_credential_username');
+        $password = $this->device->getAttrib('api_credential_password');
 
-            $username = $apiConfig->getValue('username');
-            $password = $apiConfig->getValue('password');
+        // Decrypt password if encrypted
+        if ($password && str_starts_with($password, 'eyJ')) {
+            try {
+                $password = \Illuminate\Support\Facades\Crypt::decryptString($password);
+            } catch (\Exception $e) {
+                // Password might not be encrypted, use as-is
+            }
         }
 
         if (!$username || !$password) {
@@ -230,7 +221,8 @@ class FtdApiClient extends GenericDeviceApiClient
      */
     public function supports(Device $device): bool
     {
-        return $device->apiConfig && $device->apiConfig->template?->key === 'cisco_ftd';
+        $templateKey = $device->getAttrib('api_template_key');
+        return $templateKey === 'cisco_ftd';
     }
 
     /**

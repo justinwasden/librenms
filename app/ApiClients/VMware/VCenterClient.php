@@ -47,15 +47,11 @@ class VCenterClient implements DeviceApiClientInterface
         }
 
         // Initialize HTTP client using the DB's base_url for ALL requests
-        // Get extra headers from attributes or legacy config
+        // Get extra headers from device attributes
         $headers = [];
-        if ($this->apiConfig) {
-            $headers = $this->apiConfig->extra_headers ?? [];
-        } else {
-            $extraHeadersJson = $device->getAttrib('api_extra_headers');
-            if ($extraHeadersJson) {
-                $headers = json_decode($extraHeadersJson, true) ??  [];
-            }
+        $extraHeadersJson = $device->getAttrib('api_extra_headers');
+        if ($extraHeadersJson) {
+            $headers = json_decode($extraHeadersJson, true) ?? [];
         }
         if ($username && $password) {
             $headers['Authorization'] = 'Basic ' . base64_encode("$username:$password");
@@ -165,7 +161,7 @@ class VCenterClient implements DeviceApiClientInterface
     public function supports(Device $device): bool
     {
         return in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)
-            && ($device->apiConfig !== null || $this->apiConfig !== null);
+            && $device->getAttrib('api_base_url');
     }
 
     /**

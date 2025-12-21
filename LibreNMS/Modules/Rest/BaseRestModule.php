@@ -54,8 +54,8 @@ abstract class BaseRestModule implements Module
      */
     protected function shouldRun(Device $device): bool
     {
-        // Check if device has API config
-        if (!$device->apiConfig) {
+        // Check if device has API config (now stored in device attributes)
+        if (!$device->getAttrib('api_base_url')) {
             return false;
         }
 
