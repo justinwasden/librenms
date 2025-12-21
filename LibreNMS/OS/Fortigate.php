@@ -241,6 +241,10 @@ class Fortigate extends Fortinet implements
             $datastore->put($this->getDeviceArray(), 'fortigate_cpu', $tags, $fields);
             $this->enableGraph('fortigate_cpu');
         }
+
+        if ($this->hasApiConfig() && $this->isCapabilityEnabled('vpn-ssl-stats')) {
+            $this->enableGraph('fortigate_vpn_ssl_stats');
+        }
     }
 
     public function discoverWirelessClients()
