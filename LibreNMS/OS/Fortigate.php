@@ -260,4 +260,33 @@ class Fortigate extends Fortinet implements
             new WirelessSensor('ap-count', $this->getDeviceId(), $oid, 'fortigate', 1, 'Connected APs'),
         ];
     }
+
+    /**
+     * Discover VPN SSL stats (via API)
+     */
+    public function discoverVpnSslStats()
+    {
+        if (!$this->hasApiConfig()) {
+            return [];
+        }
+
+        try {
+            $client = DeviceApiClientFactory::make($this->getDevice());
+            if (!$client || !$this->isCapabilityEnabled('vpn-ssl-stats')) {
+                return [];
+            }
+
+            // Fetch VPN SSL stats
+            $statsData = $client->get('/api/v2/monitor/vpn/ssl');
+            $stats = $this->normalizeData('Fortinet\VpnSslStats', $statsData);
+
+            return $stats['sensors'] ?? [];
+        } catch (\Exception $e) {
+            Log::warning('FortiGate VPN SSL stats discovery failed', [
+                'device_id' => $this->getDevice()->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
 }

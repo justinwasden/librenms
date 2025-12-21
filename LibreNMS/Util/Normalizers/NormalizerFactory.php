@@ -76,6 +76,8 @@ class NormalizerFactory
         'normalizeFortigateVpnIpsec' => Fortinet\VpnIpsec::class,
     
         'normalizeFortigateVpnSsl' => Fortinet\VpnSsl::class,
+
+        'normalizeFortigateVpnSslStats' => Fortinet\VpnSslStats::class,
     
         'normalizeFortgateDhcp' => Fortinet\Dhcp::class,
     

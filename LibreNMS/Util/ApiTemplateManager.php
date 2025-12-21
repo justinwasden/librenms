@@ -48,6 +48,7 @@ class ApiTemplateManager
                 'os' => ['fortigate'],
                 'auth_type' => 'token',
                 'base_url_pattern' => 'https://{hostname}',
+                'capabilities' => ['dhcp-leases', 'vpn-ssl-stats'],
             ],
             'netapp' => [
                 'name' => 'NetApp ONTAP',
