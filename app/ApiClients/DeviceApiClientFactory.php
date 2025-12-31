@@ -56,7 +56,7 @@ class DeviceApiClientFactory
         }
 
         // Get template key from device attributes
-        $templateKey = $device->getAttrib('api_template_key');
+        $templateKey = $device->getAttrib('api_template_key') ?: $device->getAttrib('api_template');
 
         if ($templateKey && isset(self::$templateToClient[$templateKey])) {
             $class = self::$templateToClient[$templateKey];

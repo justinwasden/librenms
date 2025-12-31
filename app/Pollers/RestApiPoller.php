@@ -79,34 +79,107 @@ class RestApiPoller
     {
         d_echo("  Polling $capability...\n");
 
-        switch ($capability) {
-            case 'sensors':
-                $this->pollSensors();
-                break;
+        $handlers = [
+            'sensors' => [
+                'label' => 'sensors',
+                'fetch' => 'fetchSensors',
+                'persist' => fn ($data) => DeviceApiPersistor::saveSensors($this->device, $data),
+            ],
+            'ports' => [
+                'label' => 'ports',
+                'fetch' => 'fetchPorts',
+                'persist' => fn ($data) => DeviceApiPersistor::savePorts($this->device, $data),
+            ],
+            'mempools' => [
+                'label' => 'mempools',
+                'fetch' => 'fetchMempools',
+                'persist' => fn ($data) => DeviceApiPersistor::saveMempools($this->device, $data),
+            ],
+            'processors' => [
+                'label' => 'processors',
+                'fetch' => 'fetchProcessors',
+                'persist' => fn ($data) => DeviceApiPersistor::saveProcessors($this->device, $data),
+            ],
+            'inventory' => [
+                'label' => 'inventory items',
+                'fetch' => 'fetchInventory',
+                'persist' => fn ($data) => DeviceApiPersistor::saveInventory($this->device, $data),
+            ],
+            'storage' => [
+                'label' => 'storage entries',
+                'fetch' => 'fetchStorage',
+                'persist' => fn ($data) => DeviceApiPersistor::saveStorage($this->device, $data),
+            ],
+            'transceivers' => [
+                'label' => 'transceivers',
+                'fetch' => 'fetchTransceivers',
+                'persist' => fn ($data) => DeviceApiPersistor::saveTransceivers($this->device, $data),
+            ],
+            'ipv4' => [
+                'label' => 'IPv4 addresses',
+                'fetch' => 'fetchIpv4Addresses',
+                'persist' => fn ($data) => DeviceApiPersistor::saveIpv4Addresses($this->device, $data),
+            ],
+            'ports_stats' => [
+                'label' => 'port statistics',
+                'fetch' => 'fetchPortsStatistics',
+                'persist' => fn ($data) => DeviceApiPersistor::savePortsStatistics($this->device, $data),
+            ],
+            'ports_statistics' => [
+                'label' => 'port statistics',
+                'fetch' => 'fetchPortsStatistics',
+                'persist' => fn ($data) => DeviceApiPersistor::savePortsStatistics($this->device, $data),
+            ],
+            'vlans' => [
+                'label' => 'VLANs',
+                'fetch' => 'fetchVlans',
+                'persist' => fn ($data) => DeviceApiPersistor::saveVlans($this->device, $data),
+            ],
+            'vminfo' => [
+                'label' => 'virtual machines',
+                'fetch' => 'fetchVms',
+                'persist' => fn ($data) => DeviceApiPersistor::saveVminfo($this->device, $data),
+            ],
+            'device_info' => [
+                'label' => 'device info',
+                'fetch' => 'fetchDeviceInfo',
+                'persist' => fn ($data) => DeviceApiPersistor::saveDeviceInfo($this->device, $data),
+                'single' => true,
+            ],
+            'hypervisor_hosts' => [
+                'label' => 'hypervisor hosts',
+                'fetch' => 'fetchHosts',
+                'persist' => fn ($data) => DeviceApiPersistor::saveHosts($this->device, $data),
+            ],
+            'clusters' => [
+                'label' => 'clusters',
+                'fetch' => 'fetchClusters',
+                'persist' => fn ($data) => DeviceApiPersistor::saveClusters($this->device, $data),
+            ],
+        ];
 
-            case 'ports':
-                $this->pollPorts();
-                break;
-
-            case 'mempools':
-                $this->pollMempools();
-                break;
-
-            case 'processors':
-                $this->pollProcessors();
-                break;
-
-            case 'inventory':
-                $this->pollInventory();
-                break;
-
-            case 'ipv4':
-                $this->pollIpv4Addresses();
-                break;
-
-            default:
-                d_echo("    Unknown capability: $capability\n");
+        if (!isset($handlers[$capability])) {
+            d_echo("    Unknown capability: $capability\n");
         }
+
+        $handler = $handlers[$capability];
+
+        if (!method_exists($this->apiClient, $handler['fetch'])) {
+            d_echo("    API client missing fetch method for $capability\n");
+				}
+
+				$data = $this->apiClient->{$handler['fetch']}($this->device);
+
+        if (empty($data)) {
+            d_echo("    No {$handler['label']} data\n");
+
+        	return;
+        }
+
+        $count = ($handler['single'] ?? false) ? 1 : (is_countable($data) ? count($data) : 1);
+        d_echo("    Found {$count} {$handler['label']}\n");
+
+        $handler['persist']($data);
     }
 
     protected function pollSensors(): void

@@ -510,6 +510,8 @@ class EditDeviceController
         $apiAttributes = [
             'api_enabled',
             'api_base_url',
+            'api_template',
+            'api_template_key',
             'api_auth_type',
             'api_auth_schema',
             'api_verify_ssl',
