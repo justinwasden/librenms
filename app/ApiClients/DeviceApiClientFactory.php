@@ -39,6 +39,7 @@ class DeviceApiClientFactory
         \App\ApiClients\PureStorage\FlashArrayClient::class,
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         \App\ApiClients\VMware\VCenterClient::class,
+        \App\ApiClients\VMware\VCenterSoapClient::class,
         \App\ApiClients\VMware\VeloCloudClient::class,
         \App\ApiClients\VMware\EsxiClient::class,
         \App\ApiClients\Fortinet\FortiGateClient::class,

@@ -77,6 +77,16 @@ if ($device['os'] == 'slms') {
     require base_path('includes/discovery/ports/slms.inc.php');
 }
 
+// NetApp ONTAP REST API port discovery
+if ($device['os'] == 'netapp') {
+    require base_path('includes/discovery/ports/netapp.inc.php');
+}
+
+// Pure Storage FlashArray REST API port discovery
+if ($device['os'] == 'purestorage') {
+    require base_path('includes/discovery/ports/purestorage.inc.php');
+}
+
 //Cambium cnMatrix port description mapping
 if ($device['os'] == 'cnmatrix') {
     require base_path('includes/discovery/ports/cnmatrix.inc.php');

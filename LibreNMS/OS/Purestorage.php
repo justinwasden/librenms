@@ -3,22 +3,27 @@
 namespace LibreNMS\OS;
 
 use App\ApiClients\DeviceApiClientFactory;
-use App\Models\Device;
+use App\Models\Storage;
+use Illuminate\Support\Collection;
 use LibreNMS\Device\Processor;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
-use LibreNMS\Interfaces\Discovery\SensorDiscovery;
 use LibreNMS\Interfaces\Polling\OSPolling;
 use LibreNMS\OS\Traits\ApiPolling;
 use LibreNMS\RRD\RrdDefinition;
 use SnmpQuery;
 
-class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery, SensorDiscovery
+class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery
 {
     use ApiPolling;
 
     /**
      * Discover processors (via API if available, otherwise SNMP)
+     *
+     * Returns an array of LibreNMS\Device\Processor objects as required by the
+     * ProcessorDiscovery interface.
+     *
+     * @return array<Processor>
      */
     public function discoverProcessors()
     {
@@ -28,10 +33,28 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery,
                 $client = DeviceApiClientFactory::make($this->getDevice());
                 if ($client && in_array('processors', $client->capabilities())) {
                     $apiData = $client->get('/controllers');
-                    $processors = $this->normalizeData('Pure\Controllers', $apiData);
+                    $normalized = $this->normalizeData('Pure\Controllers', $apiData);
 
-                    if (!empty($processors)) {
-                        return $processors;
+                    // Extract processor data and convert to Processor objects
+                    if (!empty($normalized['processors'])) {
+                        $processors = [];
+                        foreach ($normalized['processors'] as $proc) {
+                            $processors[] = Processor::discover(
+                                $proc['processor_type'] ?? 'purestorage',
+                                $this->getDeviceId(),
+                                '',  // No OID for API-sourced data
+                                $proc['processor_index'] ?? 0,
+                                $proc['processor_descr'] ?? 'Controller',
+                                1,   // precision
+                                $proc['processor_usage'] ?? null,
+                                null // warn_percent
+                            );
+                        }
+
+                        if (!empty($processors)) {
+                            \Log::info('Pure Storage: Discovered ' . count($processors) . ' processors via API');
+                            return $processors;
+                        }
                     }
                 }
             } catch (\Exception $e) {
@@ -42,7 +65,7 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery,
             }
         }
 
-        // Fallback to SNMP discovery
+        // Fallback to SNMP discovery (let parent/YAML handle it)
         return [];
     }
 
@@ -87,31 +110,36 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery,
 
     /**
      * Discover storage (via API)
+     *
+     * Returns a Collection of Storage model instances for native module compatibility
      */
-    public function discoverStorage()
+    public function discoverStorage(): Collection
     {
-        if (!$this->hasApiConfig()) {
-            return [];
-        }
+        // Try API-based discovery first
+        if ($this->hasApiConfig()) {
+            try {
+                $client = DeviceApiClientFactory::make($this->getDevice());
+                if ($client && in_array('storage', $client->capabilities())) {
+                    $volumeData = $client->get('/volumes');
+                    $normalized = $this->normalizeData('Pure\VolumesToStorage', $volumeData);
 
-        try {
-            $client = DeviceApiClientFactory::make($this->getDevice());
-            if (!$client || !in_array('storage', $client->capabilities())) {
-                return [];
+                    if (!empty($normalized)) {
+                        // Convert normalized arrays to Storage model instances
+                        return collect($normalized)->map(function ($item) {
+                            return new Storage($item);
+                        });
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::debug('Pure API storage discovery failed, falling back to SNMP', [
+                    'device_id' => $this->getDevice()->device_id,
+                    'error' => $e->getMessage(),
+                ]);
             }
-
-            // Fetch volumes and normalize to storage
-            $volumeData = $client->get('/volumes');
-            $storage = $this->normalizeData('Pure\VolumesToStorage', $volumeData);
-
-            return $storage ?? [];
-        } catch (\Exception $e) {
-            \Log::warning('Pure storage discovery failed', [
-                'device_id' => $this->getDevice()->device_id,
-                'error' => $e->getMessage(),
-            ]);
-            return [];
         }
+
+        // Fallback to parent SNMP-based discovery
+        return parent::discoverStorage();
     }
 
     /**

@@ -1,0 +1,54 @@
+# NetApp ONTAP API Template
+# Edit this file to customize the endpoints polled for NetApp devices
+
+name: NetApp ONTAP API
+description: Template for NetApp ONTAP REST API, providing discovery and metrics for ports, storage, and inventory.
+os:
+  - netapp
+auth_type: basic
+base_url_pattern: 'https://{hostname}/api'
+capabilities:
+  - inventory
+  - ports
+  - ipv4
+  - storage
+  - sensors
+  - ports_statistics
+
+endpoints:
+  - capability: inventory
+    method: GET
+    path: /cluster/nodes
+    transform: 'LibreNMS\Util\Normalizers\NetApp\ClusterNodes::normalize'
+    enabled: true
+
+  - capability: ports
+    method: GET
+    path: /network/ethernet/ports
+    transform: 'LibreNMS\Util\Normalizers\NetApp\NetworkPorts::normalize'
+    enabled: true
+
+  - capability: ipv4
+    method: GET
+    path: /network/ip/interfaces
+    transform: 'LibreNMS\Util\Normalizers\NetApp\Ipv4::normalize'
+    enabled: true
+
+  - capability: storage
+    method: GET
+    path: /storage/volumes
+    transform: 'LibreNMS\Util\Normalizers\NetApp\Volumes::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: '/cluster/nodes?fields=statistics.processor_utilization_raw'
+    transform: 'LibreNMS\Util\Normalizers\NetApp\ClusterMetrics::normalize'
+    enabled: true
+
+  - capability: ports_statistics
+    method: GET
+    path: '/network/ethernet/ports/{port_uuid}/metrics'
+    transform: 'LibreNMS\Util\Normalizers\NetApp\PortMetrics::normalize'
+    for_each: ports
+    enabled: true

@@ -23,10 +23,11 @@ $device_obj = DeviceCache::getPrimary();
 
 // Only show for UCSM devices
 if ($device_obj->os === 'cisco-ucsm' || str_contains($device_obj->sysDescr ?? '', 'UCS Manager')) {
-    // Check if device has API configuration
-    $apiConfig = $device_obj->apiConfig;
+    // Check if device has API configuration via device attributes
+    $hasApiConfig = !empty($device_obj->getAttrib('api_base_url'));
+    $templateKey = $device_obj->getAttrib('api_template_key', '');
 
-    if ($apiConfig && $apiConfig->template?->key === 'cisco_ucsm_xml') {
+    if ($hasApiConfig && $templateKey === 'cisco_ucsm_xml') {
         // Fetch cluster information via API
         try {
             $client = \App\ApiClients\Cisco\UcsmXmlClientFactory::make($device_obj);

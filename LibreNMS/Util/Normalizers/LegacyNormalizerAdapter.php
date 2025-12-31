@@ -4,17 +4,16 @@ namespace LibreNMS\Util\Normalizers;
 
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
-use LibreNMS\Modules\Support\RestNormalizers;
 
 /**
- * Adapter to bridge old static methods to new normalizer classes
- * This allows gradual migration without breaking existing code
+ * Adapter to bridge old static method calls to new normalizer classes
+ *
+ * All normalizers are now in individual classes under LibreNMS\Util\Normalizers\{Vendor}\
  */
 class LegacyNormalizerAdapter
 {
     /**
-     * Call a normalizer by method name, using new class if available,
-     * falling back to old static method
+     * Call a normalizer by method name
      *
      * @param string $methodName Method name (e.g., 'normalizePureArraySensors')
      * @param Device $device
@@ -23,18 +22,10 @@ class LegacyNormalizerAdapter
      */
     public static function normalize(string $methodName, Device $device, array $payload): array
     {
-        // Try new normalizer first
         $normalizer = NormalizerFactory::make($methodName);
 
         if ($normalizer) {
-            Log::debug("Using new normalizer class for $methodName");
             return $normalizer->normalize($device, $payload);
-        }
-
-        // Fall back to old static method if it exists
-        if (method_exists(RestNormalizers::class, $methodName)) {
-            Log::debug("Falling back to legacy static method for $methodName");
-            return RestNormalizers::$methodName($device, $payload);
         }
 
         Log::warning("No normalizer found for method: $methodName");

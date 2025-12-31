@@ -3,9 +3,13 @@
 namespace LibreNMS\OS;
 
 use App\ApiClients\VMware\VCenterClient;
+use App\ApiClients\VMware\VCenterSoapClient;
 use App\Models\Vlan;
+use App\Models\Vminfo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Interfaces\Discovery\VminfoDiscovery;
+use LibreNMS\Interfaces\Polling\VminfoPolling;
 use LibreNMS\OS;
 
 /**
@@ -13,10 +17,12 @@ use LibreNMS\OS;
  *
  * Extends base OS to provide REST API-based discovery for VLANs (port groups)
  */
-class VmwareVcsa extends OS
+class VmwareVcsa extends OS implements VminfoDiscovery, VminfoPolling
 {
     use Traits\ApiPolling;
-    use Traits\VminfoVmware;
+    use Traits\VminfoVmware {
+        Traits\VminfoVmware::discoverVminfo as discoverVminfoSnmp;
+    }
 
     /**
      * Skip port group interfaces discovered via SNMP
@@ -45,6 +51,53 @@ class VmwareVcsa extends OS
         }
 
         return parent::skipIfName($ifName);
+    }
+
+    /**
+     * Discover VMs using SOAP API
+     */
+    public function discoverVminfo(): Collection
+    {
+        // Check if SOAP API is configured
+        if (!$this->hasApiConfig()) {
+            // Fall back to SNMP discovery if API is not configured
+            return $this->discoverVminfoSnmp();
+        }
+
+        try {
+            $client = new VCenterSoapClient($this->getDevice());
+            $vmsArray = $client->fetchVms($this->getDevice());
+
+            // Convert array to Collection of Vminfo models
+            $vms = collect();
+            foreach ($vmsArray as $vmData) {
+                $vms->push(new Vminfo($vmData));
+            }
+
+            Log::info("VmwareVcsa: Discovered " . $vms->count() . " VMs via SOAP API", [
+                'device_id' => $this->getDeviceId(),
+            ]);
+
+            return $vms;
+        } catch (\Exception $e) {
+            Log::warning("VmwareVcsa: SOAP VM discovery failed, falling back to SNMP", [
+                'device_id' => $this->getDeviceId(),
+                'error' => $e->getMessage(),
+            ]);
+            return $this->discoverVminfoSnmp();
+        }
+    }
+
+    /**
+     * Poll VMs - just re-discover since VM data can change
+     */
+    public function pollVminfo(Collection $vms): Collection
+    {
+        if ($vms->isEmpty()) {
+            return $vms;
+        }
+
+        return $this->discoverVminfo();
     }
 
     /**

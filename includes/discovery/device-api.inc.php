@@ -2,9 +2,9 @@
 /**
  * device-api.inc.php
  *
- * Legacy polling stub for REST API polling.
+ * Legacy discovery stub for REST API discovery.
  *
- * API-based discovery and polling is now integrated directly into OS classes
+ * API-based discovery is now integrated directly into OS classes
  * via the ApiPolling trait. This stub exists only for backward compatibility
  * with module enablement. The actual work is done by:
  *
@@ -13,10 +13,10 @@
  * - API clients (app/ApiClients/*) that handle authentication and HTTP requests
  *
  * This file intentionally does nothing as API data is collected during
- * the normal discovery/polling flow through OS class methods.
+ * the normal discovery flow through OS class methods.
  *
  * @link       https://www.librenms.org
  * @copyright  2024-2025
  */
 
-// No-op - API polling is handled by OS classes and native modules
+// No-op - API discovery is handled by OS classes and native modules

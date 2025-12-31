@@ -1,0 +1,20 @@
+# VMware ESXi API Template
+# Note: ESXi uses SOAP API - endpoints are handled internally by the client
+
+name: VMware ESXi
+description: VMware ESXi SOAP/REST API
+os:
+  - vmware-esxi
+auth_type: basic
+base_url_pattern: 'https://{hostname}'
+capabilities:
+  - sensors
+  - inventory
+  - vminfo
+  - vlans
+  - processors
+  - mempools
+  - storage
+
+# SOAP client handles endpoints internally - no REST endpoints defined
+endpoints: []

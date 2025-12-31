@@ -61,7 +61,7 @@ class Storage implements Module
         $storages = $os->discoverStorage()->filter->isValid($os->getName());
 
         ModuleModelObserver::observe(\App\Models\Storage::class);
-        $saved = $this->syncModels($os->getDevice(), 'storage', $storages);
+        $saved = $this->syncModels($os->getDevice(), 'storage', $storages, null, 'snmp');
 
         Log::info('');
         $saved->each($this->printStorage(...));

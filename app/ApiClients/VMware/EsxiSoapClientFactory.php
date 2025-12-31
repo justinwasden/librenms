@@ -4,6 +4,7 @@ namespace App\ApiClients\VMware;
 
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\DeviceApiSettings;
 
 /**
  * Factory for creating EsxiSoapClient instances from device attributes
@@ -27,8 +28,8 @@ class EsxiSoapClientFactory
         }
 
         $hostname = $device->getAttrib('api_credential_hostname', $device->hostname);
-        $username = $device->getAttrib('api_credential_username', 'root');
-        $password = $device->getAttrib('api_credential_password', '');
+        $username = DeviceApiSettings::getCredential($device, 'api_credential_username') ?? 'root';
+        $password = DeviceApiSettings::getCredential($device, 'api_credential_password') ?? '';
         $verifySSL = (bool) $device->getAttrib('api_verify_ssl', false);
 
         Log::debug("EsxiSoapClientFactory: Creating client from attributes for device {$device->device_id}", [

@@ -32,7 +32,6 @@ use Illuminate\Support\Facades\Log;
 use LibreNMS\Device\WirelessSensor;
 use LibreNMS\Interfaces\Data\DataStorageInterface;
 use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
-use LibreNMS\Interfaces\Discovery\SensorDiscovery;
 use LibreNMS\Interfaces\Discovery\Sensors\WirelessApCountDiscovery;
 use LibreNMS\Interfaces\Discovery\Sensors\WirelessClientsDiscovery;
 use LibreNMS\Interfaces\Polling\OSPolling;
@@ -44,8 +43,7 @@ class Fortigate extends Fortinet implements
     OSPolling,
     WirelessClientsDiscovery,
     WirelessApCountDiscovery,
-    ProcessorDiscovery,
-    SensorDiscovery
+    ProcessorDiscovery
 {
     use ApiPolling;
 
@@ -163,10 +161,10 @@ class Fortigate extends Fortinet implements
     /**
      * Discover VLANs (via API)
      */
-    public function discoverVlans()
+    public function discoverVlans(): \Illuminate\Support\Collection
     {
         if (!$this->hasApiConfig()) {
-            return [];
+            return collect();
         }
 
         try {
@@ -174,13 +172,13 @@ class Fortigate extends Fortinet implements
             $vlanData = $client->get('/api/v2/cmdb/system/interface');
             $vlans = $this->normalizeData('Fortinet\Vlans', $vlanData);
 
-            return $vlans ?? [];
+            return collect($vlans ?? []);
         } catch (\Exception $e) {
             Log::warning('FortiGate VLAN discovery failed', [
                 'device_id' => $this->getDevice()->device_id,
                 'error' => $e->getMessage(),
             ]);
-            return [];
+            return collect();
         }
     }
 

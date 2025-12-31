@@ -2,6 +2,9 @@
 
 namespace LibreNMS\OS\Traits;
 
+use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\Normalizers\NormalizerFactory;
+
 /**
  * ApiPolling Trait
  *
@@ -154,5 +157,69 @@ trait ApiPolling
     protected function setVerifySSL(bool $verify): void
     {
         $this->getDevice()->setAttrib('api_verify_ssl', $verify);
+    }
+
+    /**
+     * Normalize API data using the normalizer framework
+     *
+     * Converts vendor-specific API responses into LibreNMS-compatible data structures.
+     *
+     * @param string $normalizerPath Path-style normalizer name (e.g., 'Pure\Controllers', 'Proxmox\NodeStatus')
+     * @param array $payload Raw API response data
+     * @return array Normalized data in LibreNMS format
+     *
+     * @example
+     *   $processors = $this->normalizeData('Pure\Controllers', $apiData);
+     *   $storage = $this->normalizeData('Proxmox\StorageStatus', $storageResponse);
+     */
+    protected function normalizeData(string $normalizerPath, array $payload): array
+    {
+        // Convert path-style name to method name
+        // 'Pure\Controllers' -> 'normalizePureControllers'
+        // 'Proxmox\NodeStatus' -> 'normalizeProxmoxNodeStatus'
+        $methodName = $this->pathToMethodName($normalizerPath);
+
+        // Get normalizer instance from factory
+        $normalizer = NormalizerFactory::make($methodName);
+
+        if ($normalizer === null) {
+            Log::warning("Normalizer not found: {$normalizerPath} (method: {$methodName})", [
+                'device_id' => $this->getDevice()->device_id,
+                'normalizer_path' => $normalizerPath,
+                'method_name' => $methodName,
+            ]);
+            return [];
+        }
+
+        try {
+            return $normalizer->normalize($this->getDevice(), $payload);
+        } catch (\Throwable $e) {
+            Log::error("Normalizer failed: {$normalizerPath}", [
+                'device_id' => $this->getDevice()->device_id,
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Convert path-style normalizer name to method name
+     *
+     * @param string $path Path-style name (e.g., 'Pure\Controllers')
+     * @return string Method name (e.g., 'normalizePureControllers')
+     */
+    private function pathToMethodName(string $path): string
+    {
+        // Split by backslash: 'Pure\Controllers' -> ['Pure', 'Controllers']
+        $parts = explode('\\', $path);
+
+        // Build method name: 'normalize' + each part with first letter capitalized
+        $methodName = 'normalize';
+        foreach ($parts as $part) {
+            $methodName .= ucfirst($part);
+        }
+
+        return $methodName;
     }
 }

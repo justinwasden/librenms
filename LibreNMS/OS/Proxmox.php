@@ -3,16 +3,17 @@
 namespace LibreNMS\OS;
 
 use App\ApiClients\DeviceApiClientFactory;
+use App\Models\Mempool;
+use App\Models\Storage;
+use Illuminate\Support\Collection;
 use LibreNMS\Device\Processor;
 use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
-use LibreNMS\Interfaces\Discovery\SensorDiscovery;
 use LibreNMS\Interfaces\Discovery\MempoolsDiscovery;
 use LibreNMS\Interfaces\Discovery\StorageDiscovery;
 use LibreNMS\OS\Traits\ApiPolling;
 
 class Proxmox extends \LibreNMS\OS implements
     ProcessorDiscovery,
-    SensorDiscovery,
     MempoolsDiscovery,
     StorageDiscovery
 {
@@ -20,6 +21,11 @@ class Proxmox extends \LibreNMS\OS implements
 
     /**
      * Discover processors (via API)
+     *
+     * Returns an array of LibreNMS\Device\Processor objects as required by the
+     * ProcessorDiscovery interface.
+     *
+     * @return array<Processor>
      */
     public function discoverProcessors()
     {
@@ -33,11 +39,33 @@ class Proxmox extends \LibreNMS\OS implements
                 return [];
             }
 
-            // Fetch node status and normalize to processors
+            // Fetch node status and normalize
             $nodes = $client->get('/nodes');
-            $processors = $this->normalizeData('Proxmox\NodeStatus', $nodes);
+            $normalized = $this->normalizeData('Proxmox\NodeStatus', $nodes);
 
-            return $processors ?? [];
+            // Extract processor data and convert to Processor objects
+            if (!empty($normalized['processors'])) {
+                $processors = [];
+                foreach ($normalized['processors'] as $proc) {
+                    $processors[] = Processor::discover(
+                        $proc['processor_type'] ?? 'proxmox',
+                        $this->getDeviceId(),
+                        '',  // No OID for API-sourced data
+                        $proc['processor_index'] ?? 0,
+                        $proc['processor_descr'] ?? 'CPU',
+                        1,   // precision
+                        $proc['processor_usage'] ?? null,
+                        null // warn_percent
+                    );
+                }
+
+                if (!empty($processors)) {
+                    \Log::info('Proxmox: Discovered ' . count($processors) . ' processors via API');
+                    return $processors;
+                }
+            }
+
+            return [];
         } catch (\Exception $e) {
             \Log::warning('Proxmox processor discovery failed', [
                 'device_id' => $this->getDevice()->device_id,
@@ -49,35 +77,48 @@ class Proxmox extends \LibreNMS\OS implements
 
     /**
      * Discover memory pools (via API)
+     *
+     * Returns a Collection of Mempool model instances for native module compatibility
      */
-    public function discoverMempools()
+    public function discoverMempools(): Collection
     {
-        if (!$this->hasApiConfig()) {
-            return [];
-        }
+        // Try API-based discovery first
+        if ($this->hasApiConfig()) {
+            try {
+                $client = DeviceApiClientFactory::make($this->getDevice());
+                if ($client && in_array('mempools', $client->capabilities())) {
+                    $nodes = $client->get('/nodes');
+                    $normalized = $this->normalizeData('Proxmox\NodeStatus', $nodes);
 
-        try {
-            $client = DeviceApiClientFactory::make($this->getDevice());
-            if (!$client || !in_array('mempools', $client->capabilities())) {
-                return [];
+                    // Extract mempools data from the normalized structure
+                    if (!empty($normalized['mempools'])) {
+                        // Convert normalized arrays to Mempool model instances
+                        $mempools = collect($normalized['mempools'])->map(function ($item) {
+                            $item['device_id'] = $this->getDeviceId();
+                            return new Mempool($item);
+                        });
+
+                        if ($mempools->isNotEmpty()) {
+                            \Log::info('Proxmox: Discovered ' . $mempools->count() . ' mempools via API');
+                            return $mempools;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::debug('Proxmox API mempool discovery failed, falling back to SNMP', [
+                    'device_id' => $this->getDevice()->device_id,
+                    'error' => $e->getMessage(),
+                ]);
             }
-
-            // Fetch node status and normalize to mempools
-            $nodes = $client->get('/nodes');
-            $mempools = $this->normalizeData('Proxmox\NodeStatus', $nodes);
-
-            return $mempools ?? [];
-        } catch (\Exception $e) {
-            \Log::warning('Proxmox mempool discovery failed', [
-                'device_id' => $this->getDevice()->device_id,
-                'error' => $e->getMessage(),
-            ]);
-            return [];
         }
+
+        // Fallback to parent SNMP-based discovery
+        return parent::discoverMempools();
     }
 
     /**
      * Discover sensors (via API)
+     * Note: This is a custom discovery method, not a standard interface
      */
     public function discoverSensors()
     {
@@ -95,18 +136,24 @@ class Proxmox extends \LibreNMS\OS implements
 
             // Fetch cluster status for health sensors
             $clusterStatus = $client->get('/cluster/status');
-            $clusterSensors = $this->normalizeData('Proxmox\ClusterStatus', $clusterStatus);
+            $clusterNormalized = $this->normalizeData('Proxmox\ClusterStatus', $clusterStatus);
 
-            if (!empty($clusterSensors)) {
-                $sensors = array_merge($sensors, $clusterSensors);
+            // Extract sensors from cluster status (normalizer returns ['sensors' => [...]])
+            if (!empty($clusterNormalized['sensors'])) {
+                $sensors = array_merge($sensors, $clusterNormalized['sensors']);
             }
 
             // Fetch node status for additional sensors
             $nodes = $client->get('/nodes');
-            $nodeSensors = $this->normalizeData('Proxmox\NodeStatus', $nodes);
+            $nodeNormalized = $this->normalizeData('Proxmox\NodeStatus', $nodes);
 
-            if (!empty($nodeSensors)) {
-                $sensors = array_merge($sensors, $nodeSensors);
+            // Extract sensors from node status (normalizer returns ['sensors' => [...], 'processors' => [...], 'mempools' => [...]])
+            if (!empty($nodeNormalized['sensors'])) {
+                $sensors = array_merge($sensors, $nodeNormalized['sensors']);
+            }
+
+            if (!empty($sensors)) {
+                \Log::info('Proxmox: Discovered ' . count($sensors) . ' sensors via API');
             }
 
             return $sensors;
@@ -121,51 +168,56 @@ class Proxmox extends \LibreNMS\OS implements
 
     /**
      * Discover storage (via API)
+     *
+     * Returns a Collection of Storage model instances for native module compatibility
      */
-    public function discoverStorage()
+    public function discoverStorage(): Collection
     {
-        if (!$this->hasApiConfig()) {
-            return [];
-        }
+        // Try API-based discovery first
+        if ($this->hasApiConfig()) {
+            try {
+                $client = DeviceApiClientFactory::make($this->getDevice());
+                if ($client && in_array('storage', $client->capabilities())) {
+                    $nodes = $client->get('/nodes');
+                    $storageItems = [];
 
-        try {
-            $client = DeviceApiClientFactory::make($this->getDevice());
-            if (!$client || !in_array('storage', $client->capabilities())) {
-                return [];
-            }
+                    foreach ($nodes['data'] ?? [] as $node) {
+                        $nodeName = $node['node'] ?? null;
+                        if (!$nodeName) {
+                            continue;
+                        }
 
-            // Fetch storage status from each node
-            $nodes = $client->get('/nodes');
-            $storage = [];
+                        try {
+                            $storageData = $client->get("/nodes/{$nodeName}/storage");
+                            $nodeStorage = $this->normalizeData('Proxmox\StorageStatus', $storageData);
 
-            foreach ($nodes['data'] ?? [] as $node) {
-                $nodeName = $node['node'] ?? null;
-                if (!$nodeName) {
-                    continue;
-                }
-
-                try {
-                    $storageData = $client->get("/nodes/{$nodeName}/storage");
-                    $nodeStorage = $this->normalizeData('Proxmox\StorageStatus', $storageData);
-
-                    if (!empty($nodeStorage)) {
-                        $storage = array_merge($storage, $nodeStorage);
+                            if (!empty($nodeStorage)) {
+                                $storageItems = array_merge($storageItems, $nodeStorage);
+                            }
+                        } catch (\Exception $e) {
+                            \Log::debug("Proxmox storage discovery failed for node {$nodeName}", [
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
-                } catch (\Exception $e) {
-                    \Log::debug("Proxmox storage discovery failed for node {$nodeName}", [
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
 
-            return $storage;
-        } catch (\Exception $e) {
-            \Log::warning('Proxmox storage discovery failed', [
-                'device_id' => $this->getDevice()->device_id,
-                'error' => $e->getMessage(),
-            ]);
-            return [];
+                    if (!empty($storageItems)) {
+                        // Convert normalized arrays to Storage model instances
+                        return collect($storageItems)->map(function ($item) {
+                            return new Storage($item);
+                        });
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::debug('Proxmox API storage discovery failed, falling back to SNMP', [
+                    'device_id' => $this->getDevice()->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
+
+        // Fallback to parent SNMP-based discovery
+        return parent::discoverStorage();
     }
 
     /**

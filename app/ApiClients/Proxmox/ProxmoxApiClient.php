@@ -34,10 +34,10 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         $this->authType = str_contains($schemaKey, 'ticket') ? 'ticket' : 'token';
 
         if ($this->authType === 'token') {
-            // Read token credentials from device attributes
-            $user = $device->getAttrib('api_credential_token_user') ?? '';
-            $tokenid = $device->getAttrib('api_credential_token_id') ?? '';
-            $secret = $device->getAttrib('api_credential_token_secret') ?? '';
+            // Read token credentials from device attributes (decrypt if encrypted)
+            $user = DeviceApiSettings::getCredential($device, 'api_credential_token_user') ?? '';
+            $tokenid = DeviceApiSettings::getCredential($device, 'api_credential_token_id') ?? '';
+            $secret = DeviceApiSettings::getCredential($device, 'api_credential_token_secret') ?? '';
 
             // Validate required token fields
             if (empty($user) || empty($tokenid) || empty($secret)) {
@@ -68,9 +68,9 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     protected function login(): void
     {
-        // Read username/password credentials from device attributes
-        $user = $this->device->getAttrib('api_credential_username') ?? '';
-        $password = $this->device->getAttrib('api_credential_password') ?? '';
+        // Read username/password credentials from device attributes (decrypt if encrypted)
+        $user = DeviceApiSettings::getCredential($this->device, 'api_credential_username') ?? '';
+        $password = DeviceApiSettings::getCredential($this->device, 'api_credential_password') ?? '';
 
         $resp = Http::timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls])
@@ -90,10 +90,16 @@ class ProxmoxApiClient implements DeviceApiClientInterface
 
     protected function http(): \Illuminate\Http\Client\PendingRequest
     {
+        $domain = parse_url($this->base, PHP_URL_HOST) ?? '';
+
         $req = Http::withHeaders($this->headers)
-            ->withCookies($this->cookies, parse_url($this->base, PHP_URL_HOST))
             ->timeout($this->timeout / 1000)
             ->withOptions(['verify' => $this->verifyTls]);
+
+        // Only add cookies if we have them and a valid domain
+        if (!empty($this->cookies) && !empty($domain)) {
+            $req = $req->withCookies($this->cookies, $domain);
+        }
 
         if ($this->proxy) {
             $req = $req->withOptions(['proxy' => $this->proxy]);
@@ -426,7 +432,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
     }
 
     /**
-     * Generate stable ifIndex from interface name (same as RestNormalizers)
+     * Generate stable ifIndex from interface name
      */
     protected function stableIndexFromName(string $name): int
     {

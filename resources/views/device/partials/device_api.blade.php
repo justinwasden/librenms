@@ -7,7 +7,8 @@
 
     // API enabled state from existing config (unchecked by default if no config)
     $apiEnabled = (bool) ($apiConfig ? true : false);
-    $currentAuthType = $apiConfig?->schema?->key ?? '';
+    // Use defaultAuthType from controller if available (for auto-selection), otherwise fall back to saved config
+    $currentAuthType = $defaultAuthType ?? $apiConfig?->schema?->key ?? '';
 @endphp
 
 @if(!empty($device->getAttrib('rest_last_error_message')))
@@ -139,7 +140,12 @@
                                    name="{{ $field['name'] }}"
                                    placeholder="{{ $field['placeholder'] ?? 'Enter to set or replace' }}"
                                    value="">
-                            @if($apiConfig && $apiConfig->schema_id === $authSchema['id'] && $apiConfig->getValue($field['name']))
+                            @php
+                                // Check if a credential is stored for this field (from device attributes)
+                                $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                $hasStoredValue = $apiConfig && $apiConfig->schema?->key === $authKey && $device->getAttrib($credAttrName);
+                            @endphp
+                            @if($hasStoredValue)
                                 <small class="text-muted">A value is stored. Enter a new value to replace.</small>
                             @endif
                         @elseif($field['type'] === 'select' && isset($field['options']))
@@ -148,11 +154,12 @@
                                     name="{{ $field['name'] }}">
                                 @foreach($field['options'] as $optValue => $optLabel)
                                     @php
-                                        $currentValue = old($field['name'],
-                                            $apiConfig && $apiConfig->schema_id === $authSchema['id']
-                                                ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
-                                                : ($field['default'] ?? '')
-                                        );
+                                        // Read from device attributes instead of old model method
+                                        $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                        $storedValue = $apiConfig && $apiConfig->schema?->key === $authKey
+                                            ? $device->getAttrib($credAttrName, $field['default'] ?? '')
+                                            : ($field['default'] ?? '');
+                                        $currentValue = old($field['name'], $storedValue);
                                     @endphp
                                     <option value="{{ $optValue }}" {{ $currentValue == $optValue ? 'selected' : '' }}>
                                         {{ $optLabel }}
@@ -161,11 +168,12 @@
                             </select>
                         @else
                             @php
-                                $currentValue = old($field['name'],
-                                    $apiConfig && $apiConfig->schema_id === $authSchema['id']
-                                        ? $apiConfig->getValue($field['name'], $field['default'] ?? '')
-                                        : ($field['default'] ?? '')
-                                );
+                                // Read from device attributes instead of old model method
+                                $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                $storedValue = $apiConfig && $apiConfig->schema?->key === $authKey
+                                    ? $device->getAttrib($credAttrName, $field['default'] ?? '')
+                                    : ($field['default'] ?? '');
+                                $currentValue = old($field['name'], $storedValue);
                             @endphp
                             <input type="{{ $field['type'] ?? 'text' }}"
                                    id="{{ $field['name'] }}"

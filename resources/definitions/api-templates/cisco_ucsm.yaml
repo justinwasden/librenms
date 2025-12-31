@@ -1,0 +1,21 @@
+# Cisco UCS Manager API Template
+# Note: UCS Manager uses XML API - endpoints are handled internally by the client
+
+name: Cisco UCS Manager
+description: Cisco UCS Manager XML API
+os:
+  - cisco-ucsm
+  - cisco-usm
+auth_type: basic
+base_url_pattern: 'https://{hostname}'
+capabilities:
+  - inventory
+  - sensors
+  - ports
+  - processors
+  - mempools
+  - storage
+  - vlans
+
+# XML API client handles queries internally - no REST endpoints defined
+endpoints: []

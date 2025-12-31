@@ -79,23 +79,49 @@ class EditDeviceController
 
             // Auto-select template for known OSes if no configuration exists
             $autoSelectTemplate = false;
-            if (!$selectedTemplate && !$apiConfig && count($templates) === 1) {
-                $selectedTemplate = array_key_first($templates);
+            if (!$selectedTemplate && !$apiConfig && !empty($osTemplates)) {
+                // Auto-select the first matching template for this OS
+                $selectedTemplate = array_key_first($osTemplates);
                 $autoSelectTemplate = true;
+
+                // Also set the auth type from the template for auto-selection
+                $defaultTemplate = ApiTemplateManager::loadTemplate($selectedTemplate);
+                if ($defaultTemplate && !$authType) {
+                    $authType = $defaultTemplate['auth_type'] ?? null;
+                }
             }
 
-            // Get saved endpoints from device attributes
+            // Get saved endpoints from device attributes, or load from template if none saved
             $savedEndpoints = json_decode($device->getAttrib('api_endpoints', '[]'), true) ?: [];
+
+            // If no saved endpoints and we have a template, use template endpoints
+            if (empty($savedEndpoints) && $selectedTemplate) {
+                $templateEndpoints = ApiTemplateManager::getTemplateEndpoints($selectedTemplate);
+                if (!empty($templateEndpoints)) {
+                    $savedEndpoints = array_map(function($ep) {
+                        return [
+                            'name' => $this->generateEndpointName($ep['path'], $ep['capability'] ?? ''),
+                            'path' => $ep['path'],
+                            'method' => $ep['method'] ?? 'GET',
+                            'category' => $ep['capability'] ?? 'general',
+                            'enabled' => $ep['enabled'] ?? true,
+                            'transform' => $ep['transform'] ?? '',
+                            'is_template' => true,
+                        ];
+                    }, $templateEndpoints);
+                }
+            }
 
             return view('device.edit', [
                 'device' => $device,
                 'section' => 'api',
-                'templates' => $templates,
+                'templates' => $osTemplates,
                 'authTypes' => $authTypes,
                 'apiConfig' => $apiConfig,
                 'selectedTemplate' => $selectedTemplate,
                 'autoSelectTemplate' => $autoSelectTemplate,
                 'savedEndpoints' => $savedEndpoints,
+                'defaultAuthType' => $authType,
             ]);
         }
 
@@ -231,7 +257,7 @@ class EditDeviceController
     /**
      * Update API settings (stored in device attributes)
      */
-    private function updateApiSettings(Request $request, Device $device): void
+        private function updateApiSettings(Request $request, Device $device): void
     {
         // Check if API is being disabled
         if (!$request->boolean('api_enabled')) {
@@ -362,6 +388,7 @@ class EditDeviceController
             'api_credential_username',
             'api_credential_password',
             'api_credential_api_token',
+            'api_credential_access_token',
             'api_credential_token_user',
             'api_credential_token_id',
             'api_credential_token_secret',
@@ -374,46 +401,111 @@ class EditDeviceController
             $device->forgetAttrib($field);
         }
 
+        // Helper to get value from either api_ or rest_ or direct field name
+        $getValue = function (string $field) use ($request) {
+            // Try various prefixes/naming conventions
+            $names = [
+                $field,
+                'api_' . $field,
+                'api_credential_' . $field,
+                str_replace('_', '', $field), // e.g., apitoken -> api_token
+            ];
+            foreach ($names as $name) {
+                if ($request->filled($name)) {
+                    return $request->input($name);
+                }
+            }
+            return null;
+        };
+
         // Save new credentials based on auth type
         switch ($authType) {
             case 'basic':
             case 'session':
-                if ($request->filled('api_username')) {
-                    $device->setAttrib('api_credential_username', $request->input('api_username'));
+            case 'esxi_soap':
+            case 'cisco_ucsm_xml':
+                $username = $getValue('username') ?: $getValue('credential_username');
+                $password = $getValue('password') ?: $getValue('credential_password');
+                if ($username) {
+                    $device->setAttrib('api_credential_username', $username);
                 }
-                if ($request->filled('api_password')) {
-                    $device->setAttrib('api_credential_password', Crypt::encryptString($request->input('api_password')));
+                if ($password) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($password));
                 }
                 break;
 
             case 'token':
             case 'bearer':
-                if ($request->filled('api_token')) {
-                    $device->setAttrib('api_credential_api_token', Crypt::encryptString($request->input('api_token')));
+            case 'purestorage_api_token_login':
+                // Try multiple field names for the token
+                $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('access_token') ?: $getValue('credential_api_token');
+                if ($token) {
+                    $device->setAttrib('api_credential_api_token', Crypt::encryptString($token));
                 }
                 break;
 
             case 'proxmox_token':
-                if ($request->filled('api_token_user')) {
-                    $device->setAttrib('api_credential_token_user', $request->input('api_token_user'));
+                $tokenUser = $getValue('token_user') ?: $getValue('credential_token_user');
+                $tokenId = $getValue('token_id') ?: $getValue('credential_token_id');
+                $tokenSecret = $getValue('token_secret') ?: $getValue('credential_token_secret');
+                if ($tokenUser) {
+                    $device->setAttrib('api_credential_token_user', $tokenUser);
                 }
-                if ($request->filled('api_token_id')) {
-                    $device->setAttrib('api_credential_token_id', $request->input('api_token_id'));
+                if ($tokenId) {
+                    $device->setAttrib('api_credential_token_id', $tokenId);
                 }
-                if ($request->filled('api_token_secret')) {
-                    $device->setAttrib('api_credential_token_secret', Crypt::encryptString($request->input('api_token_secret')));
+                if ($tokenSecret) {
+                    $device->setAttrib('api_credential_token_secret', Crypt::encryptString($tokenSecret));
                 }
                 break;
 
             case 'vmware_soap':
-                if ($request->filled('api_hostname')) {
-                    $device->setAttrib('api_credential_hostname', $request->input('api_hostname'));
+                $hostname = $getValue('hostname') ?: $getValue('credential_hostname');
+                $username = $getValue('username') ?: $getValue('credential_username');
+                $password = $getValue('password') ?: $getValue('credential_password');
+                if ($hostname) {
+                    $device->setAttrib('api_credential_hostname', $hostname);
                 }
-                if ($request->filled('api_username')) {
-                    $device->setAttrib('api_credential_username', $request->input('api_username'));
+                if ($username) {
+                    $device->setAttrib('api_credential_username', $username);
                 }
-                if ($request->filled('api_password')) {
-                    $device->setAttrib('api_credential_password', Crypt::encryptString($request->input('api_password')));
+                if ($password) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($password));
+                }
+                break;
+
+            case 'vmware_velocloud_token':
+                $username = $getValue('username') ?: $getValue('credential_username');
+                $password = $getValue('password') ?: $getValue('credential_password');
+                $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('credential_api_token');
+                $enterpriseId = $getValue('enterprise_id') ?: $getValue('credential_enterprise_id');
+                $edgeId = $getValue('edge_id') ?: $getValue('credential_edge_id');
+                if ($username) {
+                    $device->setAttrib('api_credential_username', $username);
+                }
+                if ($password) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($password));
+                }
+                if ($token) {
+                    $device->setAttrib('api_credential_api_token', Crypt::encryptString($token));
+                }
+                if ($enterpriseId) {
+                    $device->setAttrib('api_credential_enterprise_id', $enterpriseId);
+                }
+                if ($edgeId) {
+                    $device->setAttrib('api_credential_edge_id', $edgeId);
+                }
+                break;
+
+            case 'cisco_ftd_oauth':
+            case 'oauth2':
+                $username = $getValue('username') ?: $getValue('credential_username') ?: $getValue('client_id');
+                $password = $getValue('password') ?: $getValue('credential_password') ?: $getValue('client_secret');
+                if ($username) {
+                    $device->setAttrib('api_credential_username', $username);
+                }
+                if ($password) {
+                    $device->setAttrib('api_credential_password', Crypt::encryptString($password));
                 }
                 break;
         }
@@ -447,6 +539,24 @@ class EditDeviceController
     }
 
     /**
+     * Generate a human-readable name from an endpoint path
+     */
+    private function generateEndpointName(string $path, string $capability = ''): string
+    {
+        $name = ltrim($path, '/');
+        $name = preg_replace('/\{[^}]+\}/', '', $name); // Remove {variables}
+        $name = str_replace(['/', '_', '-'], ' ', $name);
+        $name = trim($name);
+        $name = ucwords($name);
+
+        if ($capability) {
+            $name = ucfirst($capability) . ': ' . $name;
+        }
+
+        return $name ?: 'API Endpoint';
+    }
+
+    /**
      * Clear all API-related attributes
      */
     private function clearApiAttributes(Device $device): void
@@ -457,11 +567,15 @@ class EditDeviceController
             'api_template',
             'api_template_key',
             'api_auth_type',
+            'api_auth_schema',
             'api_verify_ssl',
             'api_timeout_ms',
+            'api_template',
+            'api_template_key',
             'api_credential_username',
             'api_credential_password',
             'api_credential_api_token',
+            'api_credential_access_token',
             'api_credential_token_user',
             'api_credential_token_id',
             'api_credential_token_secret',

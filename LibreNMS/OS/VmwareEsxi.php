@@ -42,12 +42,14 @@ use LibreNMS\Util\Normalizers\EsxiSoapNormalizer;
 class VmwareEsxi extends \LibreNMS\OS implements VminfoDiscovery, VminfoPolling, ProcessorDiscovery
 {
     use ApiPolling;
-    use VminfoVmware;
+    use VminfoVmware {
+        VminfoVmware::discoverVminfo as discoverVminfoSnmp;
+    }
 
     /**
-     * Override discoverVmInfo to use SOAP API when available, otherwise fall back to SNMP
+     * Override discoverVminfo to use SOAP API when available, otherwise fall back to SNMP
      */
-    public function discoverVmInfo(): Collection
+    public function discoverVminfo(): Collection
     {
         $soapClient = $this->getSoapClient();
         if ($soapClient) {
@@ -69,7 +71,7 @@ class VmwareEsxi extends \LibreNMS\OS implements VminfoDiscovery, VminfoPolling,
         }
 
         // Fall back to SNMP-based discovery from VminfoVmware trait
-        return parent::discoverVmInfo();
+        return $this->discoverVminfoSnmp();
     }
 
     public function pollVminfo(Collection $vms): Collection
@@ -79,7 +81,7 @@ class VmwareEsxi extends \LibreNMS\OS implements VminfoDiscovery, VminfoPolling,
             return $vms;
         }
 
-        return $this->discoverVmInfo(); // just do the same thing as discovery.
+        return $this->discoverVminfo(); // just do the same thing as discovery.
     }
 
     /**

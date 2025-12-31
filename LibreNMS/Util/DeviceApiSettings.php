@@ -2,9 +2,46 @@
 namespace LibreNMS\Util;
 
 use App\Models\Device;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Contracts\Encryption\DecryptException;
 
 class DeviceApiSettings
 {
+    /**
+     * Get a credential value, decrypting if necessary
+     *
+     * Credentials stored in device attributes may be encrypted with Laravel's Crypt.
+     * This method handles transparent decryption.
+     *
+     * @param Device $device
+     * @param string $key The credential key (e.g., 'api_credential_password')
+     * @param mixed $default Default value if not found
+     * @return string|null
+     */
+    public static function getCredential(Device $device, string $key, $default = null): ?string
+    {
+        $value = $device->getAttrib($key, $default);
+
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        // Check if the value appears to be Laravel-encrypted (base64 JSON starting with eyJ)
+        if (is_string($value) && str_starts_with($value, 'eyJ')) {
+            try {
+                return Crypt::decryptString($value);
+            } catch (DecryptException $e) {
+                // Not actually encrypted or wrong key, return as-is
+                \Log::debug("DeviceApiSettings: Could not decrypt {$key}, using raw value", [
+                    'device_id' => $device->device_id,
+                ]);
+                return $value;
+            }
+        }
+
+        return $value;
+    }
+
     public static function restEnabled(Device $device): bool
     {
         return $device->getAttrib('api_enabled') || $device->getAttrib('api_base_url') !== null;

@@ -1,0 +1,33 @@
+# VMware VeloCloud SD-WAN API Template
+# Edit this file to customize the endpoints polled for VeloCloud devices
+
+name: VMware VeloCloud
+description: VeloCloud SD-WAN API
+os:
+  - velocloud
+  - vmware-sdwan
+auth_type: basic
+base_url_pattern: 'https://{hostname}'
+capabilities:
+  - ports
+  - sensors
+  - inventory
+
+endpoints:
+  - capability: ports
+    method: POST
+    path: /portal/rest/edge/getEdge
+    transform: 'LibreNMS\Util\Normalizers\VMware\VeloCloudPorts::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: POST
+    path: /portal/rest/edge/getEdgeSDWANPeers
+    transform: 'LibreNMS\Util\Normalizers\VMware\VeloCloudSensors::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: POST
+    path: /portal/rest/edge/getEdge
+    transform: 'LibreNMS\Util\Normalizers\VMware\VeloCloudInventory::normalize'
+    enabled: true

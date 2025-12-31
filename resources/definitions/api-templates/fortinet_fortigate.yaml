@@ -1,0 +1,85 @@
+# Fortinet FortiGate API Template
+# Edit this file to customize the endpoints polled for FortiGate devices
+
+name: Fortinet FortiGate
+description: FortiGate REST v2 API
+os:
+  - fortigate
+auth_type: bearer
+base_url_pattern: 'https://{hostname}/api/v2'
+capabilities:
+  - sensors
+  - inventory
+  - ports
+  - ipv4
+  - vlans
+  - routes
+  - dhcp-leases
+  - vpn-ssl-stats
+
+endpoints:
+  - capability: sensors
+    method: GET
+    path: monitor/system/resource/usage
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\SystemUsage::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: monitor/system/status
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\SystemStatus::normalize'
+    enabled: true
+
+  - capability: ports
+    method: GET
+    path: monitor/system/interface
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\Interfaces::normalize'
+    enabled: true
+
+  - capability: ipv4
+    method: GET
+    path: monitor/system/interface
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\Ipv4::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: monitor/system/sensor-info
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\SensorInfo::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: monitor/vpn/ipsec
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\VpnIpsec::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: monitor/vpn/ssl
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\VpnSsl::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: monitor/system/dhcp
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\Dhcp::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: monitor/license/status
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\License::normalize'
+    enabled: true
+
+  - capability: vlans
+    method: GET
+    path: cmdb/system/interface
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\Vlans::normalize'
+    enabled: true
+
+  - capability: routes
+    method: GET
+    path: monitor/router/ipv4
+    transform: 'LibreNMS\Util\Normalizers\Fortinet\Routes::normalize'
+    enabled: true

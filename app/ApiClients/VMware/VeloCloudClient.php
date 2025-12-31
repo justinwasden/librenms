@@ -6,6 +6,7 @@ use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\DeviceApiSettings;
 use RuntimeException;
 
 /**
@@ -28,22 +29,25 @@ class VeloCloudClient implements DeviceApiClientInterface
     protected ?string $edgeId = null;
     protected ?string $edgeLogicalId = null;
     protected bool $useSessionAuth = false;
+    protected string $baseUrl;
+    protected bool $verifyTls;
+    protected int $timeoutMs;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
 
-        // Read config from device attributes
-        $baseUrl = $device->getAttrib('api_base_url');
-        $this->apiToken  = $device->getAttrib('api_credential_api_token');
-        $this->username  = $device->getAttrib('api_credential_username');
-        $this->password  = $device->getAttrib('api_credential_password');
+        // Read config from device attributes (decrypt credentials as needed)
+        $this->baseUrl = $device->getAttrib('api_base_url') ?? '';
+        $this->apiToken  = DeviceApiSettings::getCredential($device, 'api_credential_api_token');
+        $this->username  = DeviceApiSettings::getCredential($device, 'api_credential_username');
+        $this->password  = DeviceApiSettings::getCredential($device, 'api_credential_password');
         $this->enterpriseId = $device->getAttrib('api_credential_enterprise_id');
         $this->edgeId = $device->getAttrib('api_credential_edge_id');
-        $verifyTls = (bool) $device->getAttrib('api_verify_ssl', true);
-        $timeoutMs = (int) $device->getAttrib('api_credential_timeout_ms', 10000);
+        $this->verifyTls = (bool) $device->getAttrib('api_verify_ssl', true);
+        $this->timeoutMs = (int) $device->getAttrib('api_credential_timeout_ms', 10000);
 
-        if (!$baseUrl) {
+        if (!$this->baseUrl) {
             throw new RuntimeException("API config for device {$device->device_id} is missing base_url");
         }
 
@@ -67,7 +71,7 @@ class VeloCloudClient implements DeviceApiClientInterface
         }
 
         // Strip trailing slash from base_url
-        $baseUrl = rtrim($baseUrl, '/');
+        $this->baseUrl = rtrim($this->baseUrl, '/');
 
         // Initialize HTTP client
         $headers = ['Content-Type' => 'application/json'];
@@ -78,10 +82,10 @@ class VeloCloudClient implements DeviceApiClientInterface
         }
 
         $this->httpClient = new DeviceHttpClient([
-            'base_url'   => $baseUrl,
+            'base_url'   => $this->baseUrl,
             'headers'    => $headers,
-            'verify_tls' => $verifyTls,
-            'timeout_ms' => $timeoutMs,
+            'verify_tls' => $this->verifyTls,
+            'timeout_ms' => $this->timeoutMs,
         ], $device);
 
         // For session auth, login and get session cookie
@@ -91,8 +95,8 @@ class VeloCloudClient implements DeviceApiClientInterface
 
         Log::debug('VeloCloudClient init config', [
             'device_id'       => $this->device->device_id,
-            'base_url'        => $baseUrl,
-            'verify_tls'      => $verifyTls,
+            'base_url'        => $this->baseUrl,
+            'verify_tls'      => $this->verifyTls,
             'auth_method'     => $this->useSessionAuth ? 'session' : 'token',
             'enterprise_id'   => $this->enterpriseId,
             'edge_id'         => $this->edgeId,
@@ -137,13 +141,13 @@ class VeloCloudClient implements DeviceApiClientInterface
 
                 // Update HTTP client with session cookie
                 $this->httpClient = new DeviceHttpClient([
-                    'base_url'   => $this->apiConfig->base_url,
+                    'base_url'   => $this->baseUrl,
                     'headers'    => [
                         'Content-Type' => 'application/json',
                         '_cookies' => ['velocloud.session' => $this->sessionCookie],
                     ],
-                    'verify_tls' => (bool) ($this->apiConfig->verify_ssl ?? true),
-                    'timeout_ms' => (int) $this->apiConfig->getValue('timeout_ms', 10000),
+                    'verify_tls' => $this->verifyTls,
+                    'timeout_ms' => $this->timeoutMs,
                 ], $this->device);
 
                 Log::debug('VeloCloudClient login successful', [
@@ -318,7 +322,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     public function supports(Device $device): bool
     {
         return in_array($device->os, ['velocloud', 'vmware-sdwan'], true)
-            && ($device->apiConfig !== null || $this->apiConfig !== null);
+            && !empty($device->getAttrib('api_base_url'));
     }
 
     /**
@@ -326,80 +330,483 @@ class VeloCloudClient implements DeviceApiClientInterface
      */
     public function capabilities(): array
     {
-        return ['device_info', 'inventory', 'ports', 'ipv4', 'sensors', 'mempools', 'processors', 'vlans'];
+        return ['device_info', 'inventory', 'ports', 'ipv4', 'sensors', 'mempools', 'processors', 'vlans', 'ports_stats'];
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch sensors from VeloCloud link metrics
+     * Returns: latency, jitter, packet loss, bandwidth utilization, link state
      */
     public function fetchSensors(Device $device): array
     {
-        // Sensors are handled through the normalizer from getAggregateEdgeLinkMetrics
-        // This method is called directly by legacy polling code
-        return [];
+        $sensors = [];
+
+        try {
+            // Get link metrics from aggregate endpoint
+            $linkMetrics = $this->getAggregateLinkMetrics();
+
+            foreach ($linkMetrics as $link) {
+                $linkName = $link['name'] ?? $link['link']['displayName'] ?? 'Link';
+                $linkId = $link['linkId'] ?? 0;
+
+                // Link state sensor
+                if (isset($link['state'])) {
+                    $stateMap = [
+                        'STABLE' => 2,
+                        'UP' => 2,
+                        'UNSTABLE' => 1,
+                        'DOWN' => 0,
+                        'DEAD' => 0,
+                    ];
+                    $state = strtoupper($link['state']);
+                    $stateValue = $stateMap[$state] ?? 3;
+
+                    $sensors[] = [
+                        'sensor_class' => 'state',
+                        'sensor_type' => 'velocloud',
+                        'sensor_descr' => "{$linkName} State",
+                        'sensor_index' => "link-{$linkId}-state",
+                        'sensor_current' => $stateValue,
+                        'states' => [
+                            ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'down'],
+                            ['value' => 1, 'generic' => 1, 'graph' => 0, 'descr' => 'unstable'],
+                            ['value' => 2, 'generic' => 0, 'graph' => 1, 'descr' => 'stable'],
+                            ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
+                        ],
+                    ];
+                }
+
+                // Packet loss percentage
+                if (isset($link['bestLossPercentage'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'velocloud',
+                        'sensor_descr' => "{$linkName} Packet Loss",
+                        'sensor_index' => "link-{$linkId}-loss",
+                        'sensor_current' => round($link['bestLossPercentage'], 2),
+                        'sensor_limit' => 5,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Latency (ms)
+                if (isset($link['bestLatencyMsec'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'delay',
+                        'sensor_type' => 'velocloud',
+                        'sensor_descr' => "{$linkName} Latency",
+                        'sensor_index' => "link-{$linkId}-latency",
+                        'sensor_current' => $link['bestLatencyMsec'],
+                        'sensor_limit' => 150,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Jitter (ms)
+                if (isset($link['bestJitterMsec'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'delay',
+                        'sensor_type' => 'velocloud',
+                        'sensor_descr' => "{$linkName} Jitter",
+                        'sensor_index' => "link-{$linkId}-jitter",
+                        'sensor_current' => $link['bestJitterMsec'],
+                        'sensor_limit' => 30,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Bandwidth utilization (RX and TX)
+                if (isset($link['bpsOfBestPathRx']) && isset($link['link']['bandwidthRx'])) {
+                    $bwRx = $link['link']['bandwidthRx'] * 1000000; // Mbps to bps
+                    if ($bwRx > 0) {
+                        $utilRx = round(($link['bpsOfBestPathRx'] / $bwRx) * 100, 2);
+                        $sensors[] = [
+                            'sensor_class' => 'percent',
+                            'sensor_type' => 'velocloud',
+                            'sensor_descr' => "{$linkName} RX Utilization",
+                            'sensor_index' => "link-{$linkId}-rx-util",
+                            'sensor_current' => min($utilRx, 100),
+                            'sensor_limit' => 90,
+                            'sensor_limit_low' => 0,
+                        ];
+                    }
+                }
+
+                if (isset($link['bpsOfBestPathTx']) && isset($link['link']['bandwidthTx'])) {
+                    $bwTx = $link['link']['bandwidthTx'] * 1000000;
+                    if ($bwTx > 0) {
+                        $utilTx = round(($link['bpsOfBestPathTx'] / $bwTx) * 100, 2);
+                        $sensors[] = [
+                            'sensor_class' => 'percent',
+                            'sensor_type' => 'velocloud',
+                            'sensor_descr' => "{$linkName} TX Utilization",
+                            'sensor_index' => "link-{$linkId}-tx-util",
+                            'sensor_current' => min($utilTx, 100),
+                            'sensor_limit' => 90,
+                            'sensor_limit_low' => 0,
+                        ];
+                    }
+                }
+
+                // Score (0-10)
+                if (isset($link['bestScore'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'velocloud',
+                        'sensor_descr' => "{$linkName} Quality Score",
+                        'sensor_index' => "link-{$linkId}-score",
+                        'sensor_current' => round($link['bestScore'], 1),
+                        'sensor_limit' => 10,
+                        'sensor_limit_low' => 0,
+                        'sensor_limit_warn' => 7,
+                    ];
+                }
+            }
+
+            // Get edge system metrics
+            $edgeInfo = $this->getEdgeInfo();
+            if (!empty($edgeInfo)) {
+                // CPU usage
+                if (isset($edgeInfo['systemCpuPercent'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'velocloud-system',
+                        'sensor_descr' => 'System CPU',
+                        'sensor_index' => 'system-cpu',
+                        'sensor_current' => $edgeInfo['systemCpuPercent'],
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Memory usage
+                if (isset($edgeInfo['systemMemoryPercent'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'velocloud-system',
+                        'sensor_descr' => 'System Memory',
+                        'sensor_index' => 'system-memory',
+                        'sensor_current' => $edgeInfo['systemMemoryPercent'],
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Flow count
+                if (isset($edgeInfo['flowCount'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'velocloud-system',
+                        'sensor_descr' => 'Active Flows',
+                        'sensor_index' => 'flow-count',
+                        'sensor_current' => $edgeInfo['flowCount'],
+                    ];
+                }
+
+                // Tunnel count
+                if (isset($edgeInfo['tunnelCount'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'velocloud-system',
+                        'sensor_descr' => 'Active Tunnels',
+                        'sensor_index' => 'tunnel-count',
+                        'sensor_current' => $edgeInfo['tunnelCount'],
+                    ];
+                }
+            }
+
+            Log::debug('VeloCloud: Fetched sensors', [
+                'device_id' => $this->device->device_id,
+                'count' => count($sensors),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchSensors failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $sensors;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch ports/links from VeloCloud
      */
     public function fetchPorts(Device $device): array
     {
-        // Ports are handled through the normalizer from getAggregateEdgeLinkMetrics
-        return [];
+        $ports = [];
+
+        try {
+            $linkMetrics = $this->getAggregateLinkMetrics();
+            $ifIndex = 1;
+
+            foreach ($linkMetrics as $link) {
+                $linkName = $link['name'] ?? "Link-{$ifIndex}";
+                $linkInfo = $link['link'] ?? [];
+                $state = $link['state'] ?? 'UNKNOWN';
+
+                // Map VeloCloud states to standard operational status
+                $operStatus = match (strtoupper($state)) {
+                    'STABLE', 'UP' => 'up',
+                    'DOWN', 'DEAD' => 'down',
+                    'UNSTABLE' => 'testing',
+                    default => 'unknown',
+                };
+
+                $adminStatus = ($link['serviceState'] ?? 'IN_SERVICE') === 'IN_SERVICE' ? 'up' : 'down';
+
+                // Calculate speed from bandwidth config or best path
+                $speed = 0;
+                if (isset($link['bpsOfBestPathTx']) && isset($link['bpsOfBestPathRx'])) {
+                    $speed = max($link['bpsOfBestPathTx'], $link['bpsOfBestPathRx']);
+                } elseif (isset($linkInfo['bandwidthTx'])) {
+                    $speed = $linkInfo['bandwidthTx'] * 1000000;
+                }
+
+                // Build interface alias with ISP and IP info
+                $displayName = $linkInfo['displayName'] ?? $link['displayName'] ?? null;
+                $isp = $linkInfo['isp'] ?? null;
+                $linkIp = $linkInfo['linkIpAddress'] ?? null;
+
+                $labelParts = [];
+                if ($displayName && $displayName !== $linkName) {
+                    $labelParts[] = $displayName;
+                } elseif ($isp) {
+                    $labelParts[] = $isp;
+                }
+                if ($linkIp) {
+                    $labelParts[] = $linkIp;
+                }
+                $ifAlias = !empty($labelParts) ? implode(' - ', $labelParts) : $linkName;
+
+                $ports[] = [
+                    'ifIndex' => $ifIndex++,
+                    'ifName' => $linkName,
+                    'ifDescr' => $linkInfo['interface'] ?? $linkName,
+                    'ifType' => 'ethernetCsmacd',
+                    'ifOperStatus' => $operStatus,
+                    'ifAdminStatus' => $adminStatus,
+                    'ifSpeed' => $speed,
+                    'ifMtu' => 1500,
+                    'ifPhysAddress' => $linkInfo['macAddress'] ?? '',
+                    'ifAlias' => $ifAlias,
+                ];
+            }
+
+            Log::debug('VeloCloud: Fetched ports', [
+                'device_id' => $this->device->device_id,
+                'count' => count($ports),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchPorts failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $ports;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch memory pools from VeloCloud edge
      */
     public function fetchMempools(Device $device): array
     {
-        // Memory pools handled through the normalizer
-        return [];
+        $mempools = [];
+
+        try {
+            $edgeInfo = $this->getEdgeInfo();
+
+            if (!empty($edgeInfo)) {
+                // System memory from percentage
+                $memPercent = $edgeInfo['systemMemoryPercent'] ?? null;
+                $memTotal = $edgeInfo['memoryTotal'] ?? 0;
+                $memUsed = $edgeInfo['memoryUsed'] ?? 0;
+
+                if ($memPercent !== null || $memTotal > 0) {
+                    $mempools[] = [
+                        'mempool_index' => 0,
+                        'mempool_type' => 'velocloud',
+                        'mempool_descr' => 'System Memory',
+                        'mempool_total' => $memTotal ?: 100,
+                        'mempool_used' => $memUsed ?: ($memPercent ?? 0),
+                        'mempool_free' => $memTotal > 0 ? ($memTotal - $memUsed) : (100 - ($memPercent ?? 0)),
+                        'mempool_perc' => $memPercent ?? ($memTotal > 0 ? round(($memUsed / $memTotal) * 100, 2) : 0),
+                    ];
+                }
+            }
+
+            Log::debug('VeloCloud: Fetched mempools', [
+                'device_id' => $this->device->device_id,
+                'count' => count($mempools),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchMempools failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $mempools;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch processors from VeloCloud edge
      */
     public function fetchProcessors(Device $device): array
     {
-        // Processors handled through the normalizer
-        return [];
+        $processors = [];
+
+        try {
+            $edgeInfo = $this->getEdgeInfo();
+
+            if (!empty($edgeInfo) && isset($edgeInfo['systemCpuPercent'])) {
+                $processors[] = [
+                    'processor_index' => 0,
+                    'processor_type' => 'velocloud',
+                    'processor_descr' => 'System CPU',
+                    'processor_usage' => $edgeInfo['systemCpuPercent'],
+                ];
+            }
+
+            Log::debug('VeloCloud: Fetched processors', [
+                'device_id' => $this->device->device_id,
+                'count' => count($processors),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchProcessors failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $processors;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch inventory from VeloCloud edge
      */
     public function fetchInventory(Device $device): array
     {
-        // Inventory handled through the normalizer from getEnterpriseEdges
-        return [];
+        $inventory = [];
+
+        try {
+            $edgeInfo = $this->getEdgeInfo();
+
+            if (!empty($edgeInfo)) {
+                $edgeName = $edgeInfo['name'] ?? $edgeInfo['hostname'] ?? 'VeloCloud Edge';
+                $state = $edgeInfo['edgeState'] ?? 'UNKNOWN';
+
+                $inventory[] = [
+                    'entPhysicalIndex' => 1,
+                    'entPhysicalDescr' => "VeloCloud Edge: {$edgeName} [{$state}]",
+                    'entPhysicalClass' => 'chassis',
+                    'entPhysicalName' => $edgeName,
+                    'entPhysicalModelName' => $edgeInfo['modelNumber'] ?? 'VeloCloud Edge',
+                    'entPhysicalSerialNum' => $edgeInfo['serialNumber'] ?? '',
+                    'entPhysicalContainedIn' => 0,
+                    'entPhysicalMfgName' => 'VMware',
+                    'entPhysicalHardwareRev' => $edgeInfo['buildNumber'] ?? '',
+                    'entPhysicalFirmwareRev' => $edgeInfo['softwareVersion'] ?? '',
+                    'entPhysicalSoftwareRev' => $edgeInfo['softwareVersion'] ?? '',
+                ];
+            }
+
+            Log::debug('VeloCloud: Fetched inventory', [
+                'device_id' => $this->device->device_id,
+                'count' => count($inventory),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchInventory failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $inventory;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch storage - VeloCloud doesn't expose storage metrics
      */
     public function fetchStorage(Device $device): array
     {
-        // VeloCloud doesn't expose storage metrics
         return [];
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch transceivers - VeloCloud doesn't expose transceiver metrics
      */
     public function fetchTransceivers(Device $device): array
     {
-        // VeloCloud doesn't expose transceiver metrics
         return [];
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch IPv4 addresses from VeloCloud edge
      */
     public function fetchIpv4Addresses(Device $device): array
     {
-        // IPv4 addresses handled through the normalizer from getEnterpriseEdges
-        return [];
+        $addresses = [];
+
+        try {
+            $linkMetrics = $this->getAggregateLinkMetrics();
+
+            foreach ($linkMetrics as $link) {
+                $linkInfo = $link['link'] ?? [];
+                $linkName = $link['name'] ?? 'link';
+
+                // Get IP address from link
+                $ip = $linkInfo['linkIpAddress'] ?? null;
+                if ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    $addresses[] = [
+                        'ipv4_address' => $ip,
+                        'ipv4_prefixlen' => 24, // VeloCloud doesn't expose subnet
+                        'ifName' => $linkName,
+                    ];
+                }
+
+                // Get gateway IP
+                $gateway = $linkInfo['gatewayIpAddress'] ?? $linkInfo['nextHopIpAddress'] ?? null;
+                if ($gateway && filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    // Store gateway info in extra field
+                }
+            }
+
+            // Get LAN IPs from edge configuration
+            $edgeConfig = $this->getEdgeConfiguration();
+            if (!empty($edgeConfig['lan'])) {
+                foreach ($edgeConfig['lan'] as $lan) {
+                    $ip = $lan['ipAddress'] ?? null;
+                    $prefix = $lan['prefixLength'] ?? $lan['cidrPrefix'] ?? 24;
+                    if ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                        $addresses[] = [
+                            'ipv4_address' => $ip,
+                            'ipv4_prefixlen' => $prefix,
+                            'ifName' => $lan['name'] ?? 'LAN',
+                        ];
+                    }
+                }
+            }
+
+            Log::debug('VeloCloud: Fetched IPv4 addresses', [
+                'device_id' => $this->device->device_id,
+                'count' => count($addresses),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchIpv4Addresses failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $addresses;
     }
 
     /**
@@ -407,17 +814,80 @@ class VeloCloudClient implements DeviceApiClientInterface
      */
     public function fetchVlans(Device $device): array
     {
-        // VLANs handled through the normalizer from getEnterpriseEdges
-        return [];
+        $vlans = [];
+
+        try {
+            $edgeConfig = $this->getEdgeConfiguration();
+
+            // Get segments (VeloCloud's equivalent of VLANs)
+            $segments = $edgeConfig['segments'] ?? [];
+            foreach ($segments as $segment) {
+                $vlanId = $segment['vlanId'] ?? $segment['segment']['segmentId'] ?? null;
+                if ($vlanId !== null) {
+                    $vlans[] = [
+                        'vlan_vlan' => $vlanId,
+                        'vlan_domain' => $segment['segment']['name'] ?? "Segment {$vlanId}",
+                        'vlan_name' => $segment['name'] ?? $segment['segment']['name'] ?? "VLAN {$vlanId}",
+                        'vlan_type' => 'ethernet',
+                        'vlan_mtu' => 1500,
+                    ];
+                }
+            }
+
+            Log::debug('VeloCloud: Fetched VLANs', [
+                'device_id' => $this->device->device_id,
+                'count' => count($vlans),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchVlans failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vlans;
     }
 
     /**
-     * Implement abstract method from DeviceApiClientInterface
+     * Fetch port statistics from VeloCloud link metrics
      */
     public function fetchPortsStatistics(Device $device): array
     {
-        // Port statistics handled through the normalizer from getAggregateEdgeLinkMetrics
-        return [];
+        $stats = [];
+
+        try {
+            $linkMetrics = $this->getAggregateLinkMetrics();
+
+            foreach ($linkMetrics as $link) {
+                $linkName = $link['name'] ?? 'Link';
+
+                $stats[] = [
+                    'ifName' => $linkName,
+                    'ifInOctets' => $link['bytesRx'] ?? 0,
+                    'ifOutOctets' => $link['bytesTx'] ?? 0,
+                    'ifInUcastPkts' => $link['packetsRx'] ?? 0,
+                    'ifOutUcastPkts' => $link['packetsTx'] ?? 0,
+                    'ifInErrors' => 0,
+                    'ifOutErrors' => 0,
+                    'ifInDiscards' => $link['packetsDropRx'] ?? 0,
+                    'ifOutDiscards' => $link['packetsDropTx'] ?? 0,
+                ];
+            }
+
+            Log::debug('VeloCloud: Fetched port statistics', [
+                'device_id' => $this->device->device_id,
+                'count' => count($stats),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VeloCloud fetchPortsStatistics failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $stats;
     }
 
     /**
@@ -425,7 +895,6 @@ class VeloCloudClient implements DeviceApiClientInterface
      */
     public function fetchVms(Device $device): array
     {
-        // VeloCloud edges are not VMs
         return [];
     }
 
@@ -434,7 +903,6 @@ class VeloCloudClient implements DeviceApiClientInterface
      */
     public function fetchClusters(Device $device): array
     {
-        // VeloCloud doesn't have clusters
         return [];
     }
 
@@ -443,8 +911,98 @@ class VeloCloudClient implements DeviceApiClientInterface
      */
     public function fetchHosts(Device $device): array
     {
-        // VeloCloud doesn't expose hypervisor hosts
         return [];
+    }
+
+    // -------- VeloCloud-specific API methods --------
+
+    /**
+     * Get aggregate link metrics for the edge
+     */
+    protected function getAggregateLinkMetrics(): array
+    {
+        try {
+            $body = [
+                'interval' => [
+                    'start' => time() - 300, // Last 5 minutes
+                    'end' => time(),
+                ],
+            ];
+
+            if ($this->edgeId) {
+                $body['edgeId'] = (int) $this->edgeId;
+            }
+
+            $response = $this->post('metrics/getAggregateEdgeLinkMetrics', $body);
+
+            return $response ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('VeloCloud getAggregateLinkMetrics failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Get edge information
+     */
+    protected function getEdgeInfo(): array
+    {
+        try {
+            if (!$this->edgeId) {
+                return [];
+            }
+
+            $response = $this->post('edge/getEdge', [
+                'edgeId' => (int) $this->edgeId,
+                'with' => ['links', 'site', 'configuration'],
+            ]);
+
+            return $response ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('VeloCloud getEdgeInfo failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Get edge configuration
+     */
+    protected function getEdgeConfiguration(): array
+    {
+        try {
+            if (!$this->edgeId) {
+                return [];
+            }
+
+            $response = $this->post('edge/getEdgeConfigurationStack', [
+                'edgeId' => (int) $this->edgeId,
+            ]);
+
+            // Parse configuration modules
+            $config = [];
+            foreach ($response ?? [] as $stack) {
+                foreach ($stack['modules'] ?? [] as $module) {
+                    $moduleName = $module['name'] ?? '';
+                    if (isset($module['data'])) {
+                        $config[$moduleName] = $module['data'];
+                    }
+                }
+            }
+
+            return $config;
+        } catch (\Throwable $e) {
+            Log::warning('VeloCloud getEdgeConfiguration failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
     }
 
     /**
@@ -540,7 +1098,7 @@ class VeloCloudClient implements DeviceApiClientInterface
         try {
             $info = [
                 'vendor'      => self::VENDOR,
-                'base_url'    => $this->apiConfig->base_url ?? null,
+                'base_url'    => $this->baseUrl,
                 'api_version' => null,
                 'version'     => null,
             ];
@@ -560,7 +1118,7 @@ class VeloCloudClient implements DeviceApiClientInterface
             Log::error('VeloCloudClient getApiInfo failed', ['error' => $e->getMessage()]);
             return [
                 'vendor'      => self::VENDOR,
-                'base_url'    => $this->apiConfig->base_url ?? null,
+                'base_url'    => $this->baseUrl,
                 'api_version' => null,
                 'version'     => null,
                 'error'       => $e->getMessage(),

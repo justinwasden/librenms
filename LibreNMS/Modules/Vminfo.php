@@ -63,7 +63,7 @@ class Vminfo implements \LibreNMS\Interfaces\Module
             $vms = $os->discoverVminfo();
 
             ModuleModelObserver::observe(\App\Models\Vminfo::class);
-            $this->syncModels($os->getDevice(), 'vminfo', $vms);
+            $this->syncModels($os->getDevice(), 'vminfo', $vms, null, 'snmp');
         }
     }
 
@@ -85,7 +85,7 @@ class Vminfo implements \LibreNMS\Interfaces\Module
             $vms = $os->pollVminfo($os->getDevice()->vminfo);
 
             ModuleModelObserver::observe(\App\Models\Vminfo::class);
-            $this->syncModels($os->getDevice(), 'vminfo', $vms);
+            $this->syncModels($os->getDevice(), 'vminfo', $vms, null, 'snmp');
 
             return;
         }
