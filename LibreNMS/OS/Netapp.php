@@ -4,14 +4,12 @@ namespace LibreNMS\OS;
 
 use App\ApiClients\DeviceApiClientFactory;
 use LibreNMS\Interfaces\Discovery\ProcessorDiscovery;
-use LibreNMS\Interfaces\Discovery\SensorDiscovery;
 use LibreNMS\Interfaces\Discovery\MempoolsDiscovery;
 use LibreNMS\Interfaces\Discovery\StorageDiscovery;
 use LibreNMS\OS\Traits\ApiPolling;
 
 class Netapp extends \LibreNMS\OS implements
     ProcessorDiscovery,
-    SensorDiscovery,
     MempoolsDiscovery,
     StorageDiscovery
 {
@@ -144,10 +142,10 @@ class Netapp extends \LibreNMS\OS implements
      * Discover storage (via API)
      * NetApp ONTAP provides volumes and aggregates
      */
-    public function discoverStorage()
+    public function discoverStorage(): \Illuminate\Support\Collection
     {
         if (!$this->hasApiConfig()) {
-            return [];
+            return collect();
         }
 
         $storage = [];
@@ -155,7 +153,7 @@ class Netapp extends \LibreNMS\OS implements
         try {
             $client = DeviceApiClientFactory::make($this->getDevice());
             if (!$client) {
-                return [];
+                return collect();
             }
 
             // Volumes
@@ -182,13 +180,13 @@ class Netapp extends \LibreNMS\OS implements
                 \Log::debug('NetApp pool discovery failed', ['error' => $e->getMessage()]);
             }
 
-            return $storage;
+            return collect($storage);
         } catch (\Exception $e) {
             \Log::warning('NetApp storage discovery failed', [
                 'device_id' => $this->getDevice()->device_id,
                 'error' => $e->getMessage(),
             ]);
-            return [];
+            return collect();
         }
     }
 

@@ -7,6 +7,7 @@ use App\ApiClients\DeviceHttpClient;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\DeviceApiSettings;
 use RuntimeException;
 
 /**
@@ -21,29 +22,30 @@ class VCenterClient implements DeviceApiClientInterface
     protected Device $device;
     protected DeviceHttpClient $httpClient;
     protected string $apiRoot = '/api'; // Hardcoded for v7.x and v8.x
+    protected string $baseUrl;
 
     public function __construct(Device $device)
     {
         $this->device = $device;
 
-        // Read config from device attributes
-        $baseUrl = $device->getAttrib('api_base_url');
-        $username  = $device->getAttrib('api_credential_username');
-        $password  = $device->getAttrib('api_credential_password');
+        // Read config from device attributes (decrypt credentials as needed)
+        $this->baseUrl = $device->getAttrib('api_base_url') ?? '';
+        $username  = DeviceApiSettings::getCredential($device, 'api_credential_username');
+        $password  = DeviceApiSettings::getCredential($device, 'api_credential_password');
         $verifyTls = (bool) $device->getAttrib('api_verify_ssl', true);
         $timeoutMs = (int) $device->getAttrib('api_credential_timeout_ms', 5000);
 
         // Mask password for logs
         $maskedPassword = $password !== null ? str_repeat('*', max(4, strlen($password))) : null;
 
-        if (!$baseUrl) {
+        if (!$this->baseUrl) {
             throw new RuntimeException("API config for device {$device->device_id} is missing base_url");
         }
 
         // Strip /api suffix from base_url if present (client adds /api/ prefix itself)
-        $baseUrl = rtrim($baseUrl, '/');
-        if (str_ends_with($baseUrl, '/api')) {
-            $baseUrl = substr($baseUrl, 0, -4);
+        $this->baseUrl = rtrim($this->baseUrl, '/');
+        if (str_ends_with($this->baseUrl, '/api')) {
+            $this->baseUrl = substr($this->baseUrl, 0, -4);
         }
 
         // Initialize HTTP client using the DB's base_url for ALL requests
@@ -68,16 +70,19 @@ class VCenterClient implements DeviceApiClientInterface
         ];
 
         $this->httpClient = new DeviceHttpClient([
-            'base_url'   => $baseUrl,
+            'base_url'   => $this->baseUrl,
             'headers'    => $headers,
             'verify_tls' => $verifyTls,
             'timeout_ms' => $timeoutMs,
             'curl_opts'  => $curlOptions,
+            // Disable circuit breaker - VMs without guest tools will cause expected
+            // API failures that should not trip the circuit breaker
+            'enable_circuit_breaker' => false,
         ], $device);
 
         Log::debug('VCenterClient init config', [
             'device_id'       => $this->device->device_id,
-            'base_url'        => $baseUrl,
+            'base_url'        => $this->baseUrl,
             'verify_tls_user' => $verifyTls,
             'username'        => $username,
             'password'        => $maskedPassword,
@@ -1125,7 +1130,7 @@ class VCenterClient implements DeviceApiClientInterface
         try {
             $info = [
                 'vendor'      => self::VENDOR,
-                'base_url'    => $this->apiConfig->base_url ?? null,
+                'base_url'    => $this->baseUrl,
                 'api_version' => null,
                 'version'     => null,
             ];
@@ -1145,7 +1150,7 @@ class VCenterClient implements DeviceApiClientInterface
             Log::error('VCenterClient getApiInfo failed', ['error' => $e->getMessage()]);
             return [
                 'vendor'      => self::VENDOR,
-                'base_url'    => $this->apiConfig->base_url ?? null,
+                'base_url'    => $this->baseUrl,
                 'api_version' => null,
                 'version'     => null,
                 'error'       => $e->getMessage(),

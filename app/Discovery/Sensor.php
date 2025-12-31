@@ -95,7 +95,7 @@ class Sensor
         $type = implode('-', $params);
 
         if (! $this->isDiscovered($type)) {
-            $synced = $this->syncModelsByGroup($this->device, 'sensors', $this->getModels(), $params);
+            $synced = $this->syncModelsByGroup($this->device, 'sensors', $this->getModels(), $params, 'snmp');
             $this->discovered[$type] = true;
 
             $this->syncStates($synced);

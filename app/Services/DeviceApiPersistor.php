@@ -53,6 +53,11 @@ class DeviceApiPersistor
                 $ifName = $p['ifName'] ?? ($portRow->ifName ?? null);
                 $ifDescr = $p['ifDescr'] ?? ($ifName ?? $portRow->ifDescr ?? null);
 
+                // Determine discovered_via: if existing port was SNMP-discovered, mark as 'both'
+                // If new port or was already 'api', keep as 'api'
+                $existingSource = $portRow->discovered_via ?? 'snmp';
+                $newSource = ($existingSource === 'snmp') ? 'both' : 'api';
+
                 $base = [
                     'device_id'     => $device->device_id,
                     'ifIndex'       => $ifIndex,
@@ -68,6 +73,8 @@ class DeviceApiPersistor
                     'ifVlan'        => $p['ifVlan'] ?? ($portRow->ifVlan ?? null),
                     // Ensure REST API ports are not marked as deleted when re-discovered
                     'deleted'       => 0,
+                    // Track discovery source
+                    'discovered_via' => $portRow ? $newSource : 'api',
                 ];
 
                 if ($portRow) {
@@ -83,16 +90,18 @@ class DeviceApiPersistor
         }
 
         // Mark ports that weren't seen in this poll as deleted
-        // Only do this if we actually received some ports (empty response shouldn't delete everything)
+        // IMPORTANT: Only mark API-discovered ports as deleted, not SNMP-discovered ones
+        // This prevents API polling from deleting SNMP-discovered ports
         if (!empty($seenPortIds)) {
             $deletedCount = DB::table('ports')
                 ->where('device_id', $device->device_id)
                 ->where('deleted', 0)
+                ->whereIn('discovered_via', ['api', 'both'])  // Only API-discovered ports
                 ->whereNotIn('port_id', $seenPortIds)
                 ->update(['deleted' => 1]);
 
             if ($deletedCount > 0) {
-                Log::info("Marked {$deletedCount} port(s) as deleted for device {$device->device_id}");
+                Log::info("Marked {$deletedCount} API-discovered port(s) as deleted for device {$device->device_id}");
             }
         }
     }
@@ -141,6 +150,11 @@ class DeviceApiPersistor
                     ->where('sensor_class', $base['sensor_class'])
                     ->where('sensor_index', $base['sensor_index'])
                     ->first();
+
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $existing->discovered_via ?? 'snmp';
+                $newSource = $existing ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+                $base['discovered_via'] = $newSource;
 
                 if ($existing) {
                     DB::table('sensors')->where('sensor_id', $existing->sensor_id)->update($base);
@@ -234,6 +248,7 @@ class DeviceApiPersistor
             $deleted = DB::table('sensors')
                 ->where('device_id', $device->device_id)
                 ->where('poller_type', 'rest')
+                ->whereIn('discovered_via', ['api', 'both'])
                 ->whereIn('sensor_type', array_keys($sensorTypes))
                 ->whereNotIn('sensor_id', $trackedSensorIds)
                 ->delete();
@@ -270,6 +285,11 @@ class DeviceApiPersistor
                     ->where('processor_type', $base['processor_type'])
                     ->where('processor_index', $base['processor_index'])
                     ->first();
+
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $existing->discovered_via ?? 'snmp';
+                $newSource = $existing ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+                $base['discovered_via'] = $newSource;
 
                 if ($existing) {
                     DB::table('processors')->where('processor_id', $existing->processor_id)->update($base);
@@ -308,6 +328,7 @@ class DeviceApiPersistor
             $deleted = DB::table('processors')
                 ->where('device_id', $device->device_id)
                 ->where('processor_type', 'rest')
+                ->whereIn('discovered_via', ['api', 'both'])
                 ->whereNotIn('processor_id', $trackedProcessorIds)
                 ->delete();
 
@@ -340,6 +361,11 @@ class DeviceApiPersistor
                     ->where('mempool_type', $base['mempool_type'])
                     ->where('mempool_index', $base['mempool_index'])
                     ->first();
+
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $existing->discovered_via ?? 'snmp';
+                $newSource = $existing ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+                $base['discovered_via'] = $newSource;
 
                 if ($existing) {
                     DB::table('mempools')->where('mempool_id', $existing->mempool_id)->update($base);
@@ -381,6 +407,7 @@ class DeviceApiPersistor
             $deleted = DB::table('mempools')
                 ->where('device_id', $device->device_id)
                 ->where('mempool_type', 'rest')
+                ->whereIn('discovered_via', ['api', 'both'])
                 ->whereNotIn('mempool_id', $trackedMempoolIds)
                 ->delete();
 
@@ -522,10 +549,24 @@ class DeviceApiPersistor
 
         foreach ($storage as $s) {
             try {
+                // Upsert by device_id + type + storage_index
+                $storageType = $s['type'] ?? 'rest';
+                $storageIndex = (string) ($s['storage_index'] ?? $s['index'] ?? '');
+
+                $existing = DB::table('storage')
+                    ->where('device_id', $device->device_id)
+                    ->where('type', $storageType)
+                    ->where('storage_index', $storageIndex)
+                    ->first();
+
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $existing->discovered_via ?? 'snmp';
+                $newSource = $existing ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+
                 $base = [
                     'device_id'           => $device->device_id,
-                    'type'                => $s['type'] ?? 'rest',
-                    'storage_index'       => (string) ($s['storage_index'] ?? $s['index'] ?? ''),
+                    'type'                => $storageType,
+                    'storage_index'       => $storageIndex,
                     'storage_type'        => $s['storage_type'] ?? 'other',
                     'storage_descr'       => $s['storage_descr'] ?? $s['descr'] ?? '',
                     'storage_size'        => $s['storage_size'] ?? $s['size'] ?? 0,
@@ -538,14 +579,8 @@ class DeviceApiPersistor
                     'storage_perc'        => $s['storage_perc'] ?? $s['perc'] ?? 0,
                     'storage_perc_oid'    => $s['storage_perc_oid'] ?? null,
                     'storage_perc_warn'   => $s['storage_perc_warn'] ?? 60,
+                    'discovered_via'      => $newSource,
                 ];
-
-                // Upsert by device_id + type + storage_index
-                $existing = DB::table('storage')
-                    ->where('device_id', $device->device_id)
-                    ->where('type', $base['type'])
-                    ->where('storage_index', $base['storage_index'])
-                    ->first();
 
                 if ($existing) {
                     DB::table('storage')->where('storage_id', $existing->storage_id)->update($base);
@@ -751,20 +786,25 @@ class DeviceApiPersistor
                     continue;
                 }
 
-                $base = [
-                    'device_id' => $device->device_id,
-                    'vlan_vlan' => $vlanId,
-                    'vlan_domain' => $vlanDomain,
-                    'vlan_name' => $vlan['vlan_name'] ?? "VLAN{$vlanId}",
-                    'vlan_type' => $vlan['vlan_type'] ?? 'ethernet',
-                ];
-
                 // Check if VLAN already exists
                 $existing = DB::table('vlans')
                     ->where('device_id', $device->device_id)
                     ->where('vlan_vlan', $vlanId)
                     ->where('vlan_domain', $vlanDomain)
                     ->first();
+
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $existing->discovered_via ?? 'snmp';
+                $newSource = $existing ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+
+                $base = [
+                    'device_id' => $device->device_id,
+                    'vlan_vlan' => $vlanId,
+                    'vlan_domain' => $vlanDomain,
+                    'vlan_name' => $vlan['vlan_name'] ?? "VLAN{$vlanId}",
+                    'vlan_type' => $vlan['vlan_type'] ?? 'ethernet',
+                    'discovered_via' => $newSource,
+                ];
 
                 if ($existing) {
                     DB::table('vlans')->where('vlan_id', $existing->vlan_id)->update($base);
@@ -1842,6 +1882,10 @@ class DeviceApiPersistor
                     ->where('vmwVmVMID', $vm['vmwVmVMID'])
                     ->first();
 
+                // Determine discovered_via: if existing was SNMP-discovered, mark as 'both'
+                $existingSource = $vmRow->discovered_via ?? 'snmp';
+                $newSource = $vmRow ? (($existingSource === 'snmp') ? 'both' : 'api') : 'api';
+
                 $data = [
                     'device_id' => $device->device_id,
                     'vm_type' => $vm['vm_type'],
@@ -1852,6 +1896,7 @@ class DeviceApiPersistor
                     'vmwVmCpus' => isset($vm['vmwVmCpus']) ? (int) $vm['vmwVmCpus'] : null,
                     'vmwVmState' => $vm['vmwVmState'] ?? 'unknown',
                     'vmwVmHostId' => $vm['vmwVmHostId'] ?? null,
+                    'discovered_via' => $newSource,
                 ];
 
                 if ($vmRow) {
@@ -1867,14 +1912,14 @@ class DeviceApiPersistor
         }
 
         // Remove VMs that weren't seen in this poll (they were deleted from the hypervisor)
-        // Only do this if we actually received some VMs
+        // IMPORTANT: Only delete API-discovered VMs, not SNMP-discovered ones
         if (!empty($seenVmKeys)) {
             // We need to delete VMs where the composite key (vm_type + vmwVmVMID) is not in our seen list
-            // Unfortunately, we can't directly compare concatenated columns in whereNotIn,
-            // so we'll use a more complex query
+            // Only consider VMs that were discovered via API or both (not pure SNMP)
             $existingVms = DB::table('vminfo')
                 ->where('device_id', $device->device_id)
-                ->select('id', 'vm_type', 'vmwVmVMID')
+                ->whereIn('discovered_via', ['api', 'both'])  // Only API-discovered VMs
+                ->select('id', 'vm_type', 'vmwVmVMID', 'discovered_via')
                 ->get();
 
             $idsToDelete = [];
@@ -1891,7 +1936,7 @@ class DeviceApiPersistor
                     ->delete();
 
                 if ($deletedCount > 0) {
-                    Log::info("Deleted {$deletedCount} VM(s) for device {$device->device_id}");
+                    Log::info("Deleted {$deletedCount} API-discovered VM(s) for device {$device->device_id}");
                 }
             }
         }

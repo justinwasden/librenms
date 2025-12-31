@@ -79,7 +79,7 @@ class Mempools implements Module
         $this->calculateAvailable($mempools);
 
         ModuleModelObserver::observe(Mempool::class);
-        $this->syncModels($os->getDevice(), 'mempools', $mempools);
+        $this->syncModels($os->getDevice(), 'mempools', $mempools, null, 'snmp');
 
         Log::info('');
         $mempools->each($this->printMempool(...));

@@ -5,6 +5,7 @@ namespace App\ApiClients\VMware;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\DeviceApiSettings;
 use SoapClient;
 use stdClass;
 use RuntimeException;
@@ -23,14 +24,15 @@ class VCenterSoapClient implements DeviceApiClientInterface
     public function __construct(Device $device)
     {
         $this->device = $device;
-        $apiConfig = $device->apiConfig;
 
-        if (!$apiConfig) {
+        // Read credentials from device attributes (decrypt if encrypted)
+        $baseUrl = $device->getAttrib('api_base_url');
+        $username = DeviceApiSettings::getCredential($device, 'api_credential_username');
+        $password = DeviceApiSettings::getCredential($device, 'api_credential_password');
+
+        if (!$baseUrl) {
             throw new RuntimeException("VCenterSoapClient: No API configuration found for device {$device->device_id}");
         }
-
-        $username = $apiConfig->getValue('username');
-        $password = $apiConfig->getValue('password');
 
         if (empty($username) || empty($password)) {
             throw new RuntimeException("VCenterSoapClient: No API credentials configured for device {$device->device_id}");
@@ -39,7 +41,6 @@ class VCenterSoapClient implements DeviceApiClientInterface
         $this->credentials = ['username' => $username, 'password' => $password];
 
         // Ensure we hit the SDK endpoint
-        $baseUrl = $apiConfig->base_url ?? "https://{$device->hostname}/sdk";
         if (str_contains($baseUrl, '/api')) {
             $baseUrl = preg_replace('#/api/?$#', '/sdk', $baseUrl);
         } elseif (!str_ends_with($baseUrl, '/sdk')) {
@@ -1203,23 +1204,562 @@ class VCenterSoapClient implements DeviceApiClientInterface
         }
     }
 
-    // --- Placeholder implementations for Interface Compliance ---
-    public function supports(Device $device): bool { return true; }
-    public function testConnection(): array { return ['success' => (bool)$this->login()]; }
-    public function get(string $e, array $p = []): array { return []; }
-    public function post(string $e, array $d = []): array { return []; }
-    public function capabilities(): array { return ['vlans', 'sensors', 'ports']; }
-    public function fetchSensors(Device $d): array { return $this->fetchHostRealTimePerformance($d); }
-    public function fetchIpv4Addresses(Device $d): array { return []; }
-    public function fetchIpv6Addresses(Device $d): array { return []; }
-    public function fetchInventory(Device $d): array { return []; }
-    public function fetchProcessors(Device $d): array { return []; }
-    public function fetchMempools(Device $d): array { return []; }
-    public function fetchStorage(Device $d): array { return []; }
-    public function fetchVms(Device $d): array { return []; }
-    public function fetchNeighbors(Device $d): array { return []; }
-    public function fetchDeviceInfo(Device $d): array { return []; }
-    public function fetchTransceivers(Device $d): array { return []; }
-    public function isReachable(): bool { return $this->login(); }
-    public function getApiInfo(): array { return ['api_type' => 'vSphere SOAP', 'version' => '6.5+', 'features' => ['vlans', 'performance']]; }
+    // --- DeviceApiClientInterface implementations ---
+
+    public function supports(Device $device): bool
+    {
+        $templateKey = $device->getAttrib('api_template_key');
+        return in_array($templateKey, ['vmware_vcenter', 'vmware_vcenter_soap', 'vcenter_soap']);
+    }
+
+    public function testConnection(): array
+    {
+        return ['success' => (bool) $this->login()];
+    }
+
+    public function get(string $e, array $p = []): array
+    {
+        return [];
+    }
+
+    public function post(string $e, array $d = []): array
+    {
+        return [];
+    }
+
+    public function capabilities(): array
+    {
+        return ['vlans', 'sensors', 'ports', 'ports_stats', 'inventory', 'processors', 'mempools', 'storage', 'vms', 'clusters'];
+    }
+
+    /**
+     * Fetch sensors from vCenter
+     */
+    public function fetchSensors(Device $device): array
+    {
+        $sensors = [];
+
+        try {
+            if (!$this->login()) return [];
+
+            $sc = $this->getServiceContent();
+            if (!$sc) return [];
+
+            // Get cluster-level metrics as sensors
+            $clusters = $this->fetchClusters($this->device);
+            foreach ($clusters as $idx => $cluster) {
+                $clusterName = $cluster['cluster_name'] ?? "Cluster-{$idx}";
+
+                // CPU usage sensor
+                if (isset($cluster['cpu_usage_pct'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'vcenter-cluster',
+                        'sensor_descr' => "{$clusterName} CPU Usage",
+                        'sensor_index' => "cluster-{$idx}-cpu",
+                        'sensor_current' => $cluster['cpu_usage_pct'],
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Memory usage sensor
+                if (isset($cluster['memory_usage_pct'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'vcenter-cluster',
+                        'sensor_descr' => "{$clusterName} Memory Usage",
+                        'sensor_index' => "cluster-{$idx}-mem",
+                        'sensor_current' => $cluster['memory_usage_pct'],
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+
+                // Host count sensor
+                if (isset($cluster['num_hosts'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'vcenter-cluster',
+                        'sensor_descr' => "{$clusterName} Host Count",
+                        'sensor_index' => "cluster-{$idx}-hosts",
+                        'sensor_current' => $cluster['num_hosts'],
+                    ];
+                }
+
+                // VM count sensor
+                if (isset($cluster['num_vms_total'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'vcenter-cluster',
+                        'sensor_descr' => "{$clusterName} VM Count",
+                        'sensor_index' => "cluster-{$idx}-vms",
+                        'sensor_current' => $cluster['num_vms_total'],
+                    ];
+                }
+
+                // Powered on VMs
+                if (isset($cluster['num_vms_powered_on'])) {
+                    $sensors[] = [
+                        'sensor_class' => 'count',
+                        'sensor_type' => 'vcenter-cluster',
+                        'sensor_descr' => "{$clusterName} Powered On VMs",
+                        'sensor_index' => "cluster-{$idx}-vms-on",
+                        'sensor_current' => $cluster['num_vms_powered_on'],
+                    ];
+                }
+            }
+
+            // Get datastore capacity sensors
+            $datastores = $this->fetchDatastores();
+            foreach ($datastores as $idx => $ds) {
+                $dsName = $ds['name'] ?? "Datastore-{$idx}";
+                $freeSpace = $ds['freeSpace'] ?? 0;
+                $capacity = $ds['capacity'] ?? 0;
+
+                if ($capacity > 0) {
+                    $usedPct = round((($capacity - $freeSpace) / $capacity) * 100, 2);
+                    $sensors[] = [
+                        'sensor_class' => 'percent',
+                        'sensor_type' => 'vcenter-datastore',
+                        'sensor_descr' => "{$dsName} Usage",
+                        'sensor_index' => "ds-{$idx}-usage",
+                        'sensor_current' => $usedPct,
+                        'sensor_limit' => 90,
+                        'sensor_limit_low' => 0,
+                    ];
+                }
+            }
+
+            $this->logout();
+
+            Log::debug('VCenter SOAP: Fetched sensors', [
+                'device_id' => $this->device->device_id,
+                'count' => count($sensors),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchSensors failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $sensors;
+    }
+
+    /**
+     * Fetch IPv4 addresses from vCenter appliance
+     */
+    public function fetchIpv4Addresses(Device $device): array
+    {
+        // The vCenter appliance IP is typically the device's primary IP
+        // Additional IPs can be discovered from the vCenter VM guest tools
+        return [];
+    }
+
+    /**
+     * Fetch inventory from vCenter
+     */
+    public function fetchInventory(Device $device): array
+    {
+        $inventory = [];
+
+        try {
+            if (!$this->login()) return [];
+
+            $sc = $this->getServiceContent();
+            if (!$sc) return [];
+
+            $entIndex = 1;
+
+            // vCenter Appliance itself
+            $inventory[] = [
+                'entPhysicalIndex' => $entIndex++,
+                'entPhysicalDescr' => 'VMware vCenter Server Appliance',
+                'entPhysicalClass' => 'chassis',
+                'entPhysicalName' => $this->device->hostname,
+                'entPhysicalContainedIn' => 0,
+                'entPhysicalMfgName' => 'VMware',
+            ];
+
+            // Get clusters as inventory items
+            $clusters = $this->fetchClusters($this->device);
+            foreach ($clusters as $cluster) {
+                $inventory[] = [
+                    'entPhysicalIndex' => $entIndex++,
+                    'entPhysicalDescr' => 'vSphere Cluster',
+                    'entPhysicalClass' => 'module',
+                    'entPhysicalName' => $cluster['cluster_name'] ?? 'Unknown Cluster',
+                    'entPhysicalContainedIn' => 1,
+                    'entPhysicalMfgName' => 'VMware',
+                ];
+            }
+
+            // Get hosts as inventory items
+            $hosts = $this->fetchHosts();
+            foreach ($hosts as $host) {
+                $inventory[] = [
+                    'entPhysicalIndex' => $entIndex++,
+                    'entPhysicalDescr' => 'ESXi Host',
+                    'entPhysicalClass' => 'module',
+                    'entPhysicalName' => $host['name'] ?? 'Unknown Host',
+                    'entPhysicalModelName' => $host['model'] ?? '',
+                    'entPhysicalSerialNum' => $host['serial'] ?? '',
+                    'entPhysicalContainedIn' => 1,
+                    'entPhysicalMfgName' => $host['vendor'] ?? 'Unknown',
+                    'entPhysicalSoftwareRev' => $host['version'] ?? '',
+                ];
+            }
+
+            $this->logout();
+
+            Log::debug('VCenter SOAP: Fetched inventory', [
+                'device_id' => $this->device->device_id,
+                'count' => count($inventory),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchInventory failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $inventory;
+    }
+
+    /**
+     * Fetch processors (cluster-level CPU aggregation)
+     */
+    public function fetchProcessors(Device $device): array
+    {
+        $processors = [];
+
+        try {
+            $clusters = $this->fetchClusters($this->device);
+            foreach ($clusters as $idx => $cluster) {
+                $processors[] = [
+                    'processor_index' => $idx,
+                    'processor_type' => 'vcenter-cluster',
+                    'processor_descr' => ($cluster['cluster_name'] ?? "Cluster {$idx}") . ' Aggregate CPU',
+                    'processor_usage' => $cluster['cpu_usage_pct'] ?? null,
+                ];
+            }
+
+            Log::debug('VCenter SOAP: Fetched processors', [
+                'device_id' => $this->device->device_id,
+                'count' => count($processors),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchProcessors failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $processors;
+    }
+
+    /**
+     * Fetch memory pools (cluster-level memory aggregation)
+     */
+    public function fetchMempools(Device $device): array
+    {
+        $mempools = [];
+
+        try {
+            $clusters = $this->fetchClusters($this->device);
+            foreach ($clusters as $idx => $cluster) {
+                $totalMb = $cluster['total_memory_mb'] ?? 0;
+                $effectiveMb = $cluster['effective_memory_mb'] ?? 0;
+                $usedMb = $totalMb - $effectiveMb;
+
+                if ($totalMb > 0) {
+                    $mempools[] = [
+                        'mempool_index' => $idx,
+                        'mempool_type' => 'vcenter-cluster',
+                        'mempool_descr' => ($cluster['cluster_name'] ?? "Cluster {$idx}") . ' Memory',
+                        'mempool_total' => $totalMb * 1024 * 1024, // Convert MB to bytes
+                        'mempool_used' => $usedMb * 1024 * 1024,
+                        'mempool_free' => $effectiveMb * 1024 * 1024,
+                        'mempool_perc' => $cluster['memory_usage_pct'] ?? 0,
+                    ];
+                }
+            }
+
+            Log::debug('VCenter SOAP: Fetched mempools', [
+                'device_id' => $this->device->device_id,
+                'count' => count($mempools),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchMempools failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $mempools;
+    }
+
+    /**
+     * Fetch storage (datastores)
+     */
+    public function fetchStorage(Device $device): array
+    {
+        $storage = [];
+
+        try {
+            $datastores = $this->fetchDatastores();
+            foreach ($datastores as $idx => $ds) {
+                $name = $ds['name'] ?? "Datastore-{$idx}";
+                $capacity = $ds['capacity'] ?? 0;
+                $freeSpace = $ds['freeSpace'] ?? 0;
+                $used = $capacity - $freeSpace;
+
+                if ($capacity > 0) {
+                    $storage[] = [
+                        'storage_index' => $idx,
+                        'storage_type' => 'hrStorageFixedDisk',
+                        'storage_descr' => $name,
+                        'storage_size' => $capacity,
+                        'storage_used' => $used,
+                        'storage_free' => $freeSpace,
+                        'storage_perc' => round(($used / $capacity) * 100, 2),
+                        'storage_units' => 1,
+                    ];
+                }
+            }
+
+            Log::debug('VCenter SOAP: Fetched storage', [
+                'device_id' => $this->device->device_id,
+                'count' => count($storage),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchStorage failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $storage;
+    }
+
+    /**
+     * Fetch VMs from vCenter
+     */
+    public function fetchVms(Device $device): array
+    {
+        $vms = [];
+
+        try {
+            if (!$this->login()) return [];
+
+            $sc = $this->getServiceContent();
+            if (!$sc) return [];
+
+            $view = $this->createContainerView($sc, ['VirtualMachine']);
+            if (!$view) {
+                $this->logout();
+                return [];
+            }
+
+            $vmProps = $this->retrieveProperties($sc, $view, 'VirtualMachine', [
+                'name', 'runtime', 'config', 'guest', 'summary'
+            ]);
+
+            foreach ($vmProps as $vm) {
+                $name = $vm['name'] ?? 'Unknown';
+                $runtime = $vm['runtime'] ?? null;
+                $config = $vm['config'] ?? null;
+                $guest = $vm['guest'] ?? null;
+                $summary = $vm['summary'] ?? null;
+
+                $powerState = $runtime && is_object($runtime) ? ($runtime->powerState ?? 'unknown') : 'unknown';
+
+                // Map power state to LibreNMS convention (1 = powered on)
+                $stateValue = match ($powerState) {
+                    'poweredOn' => 1,
+                    'poweredOff' => 0,
+                    'suspended' => 2,
+                    default => -1,
+                };
+
+                $vmData = [
+                    'vm_type' => 'vmware',
+                    'vmwVmVMID' => $vm['moRef']->_ ?? '',
+                    'vmwVmDisplayName' => $name,
+                    'vmwVmState' => $stateValue,
+                    'vmwVmGuestOS' => '',
+                    'vmwVmMemSize' => 0,
+                    'vmwVmCpus' => 0,
+                ];
+
+                if ($config && is_object($config)) {
+                    $vmData['vmwVmGuestOS'] = $config->guestFullName ?? $config->guestId ?? '';
+                    $vmData['vmwVmMemSize'] = $config->hardware->memoryMB ?? 0;
+                    $vmData['vmwVmCpus'] = $config->hardware->numCPU ?? 0;
+                }
+
+                if ($guest && is_object($guest)) {
+                    $vmData['vmwVmGuestOS'] = $vmData['vmwVmGuestOS'] ?: ($guest->guestFullName ?? '');
+                }
+
+                $vms[] = $vmData;
+            }
+
+            $this->destroyView($view);
+            $this->logout();
+
+            Log::debug('VCenter SOAP: Fetched VMs', [
+                'device_id' => $this->device->device_id,
+                'count' => count($vms),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('VCenter SOAP fetchVms failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vms;
+    }
+
+    /**
+     * Fetch hosts from vCenter
+     */
+    public function fetchHosts(Device $device): array
+    {
+        $hosts = [];
+
+        try {
+            if (!$this->login()) return [];
+
+            $sc = $this->getServiceContent();
+            if (!$sc) return [];
+
+            $view = $this->createContainerView($sc, ['HostSystem']);
+            if (!$view) {
+                $this->logout();
+                return [];
+            }
+
+            $hostProps = $this->retrieveProperties($sc, $view, 'HostSystem', [
+                'name', 'runtime', 'hardware', 'summary', 'config'
+            ]);
+
+            foreach ($hostProps as $host) {
+                $name = $host['name'] ?? 'Unknown';
+                $runtime = $host['runtime'] ?? null;
+                $hardware = $host['hardware'] ?? null;
+                $summary = $host['summary'] ?? null;
+
+                $connectionState = $runtime && is_object($runtime) ? ($runtime->connectionState ?? 'unknown') : 'unknown';
+
+                $hostData = [
+                    'name' => $name,
+                    'connection_state' => $connectionState,
+                    'model' => '',
+                    'vendor' => '',
+                    'serial' => '',
+                    'version' => '',
+                ];
+
+                if ($hardware && is_object($hardware)) {
+                    $systemInfo = $hardware->systemInfo ?? null;
+                    if ($systemInfo && is_object($systemInfo)) {
+                        $hostData['model'] = $systemInfo->model ?? '';
+                        $hostData['vendor'] = $systemInfo->vendor ?? '';
+                        $hostData['serial'] = $systemInfo->serialNumber ?? '';
+                    }
+                }
+
+                if ($summary && is_object($summary) && isset($summary->config)) {
+                    $hostData['version'] = $summary->config->product->fullName ?? '';
+                }
+
+                $hosts[] = $hostData;
+            }
+
+            $this->destroyView($view);
+            $this->logout();
+
+        } catch (\Throwable $e) {
+            Log::debug('VCenter SOAP fetchHosts failed: ' . $e->getMessage());
+        }
+
+        return $hosts;
+    }
+
+    /**
+     * Fetch datastores from vCenter
+     */
+    protected function fetchDatastores(): array
+    {
+        $datastores = [];
+
+        try {
+            if (!$this->login()) return [];
+
+            $sc = $this->getServiceContent();
+            if (!$sc) return [];
+
+            $view = $this->createContainerView($sc, ['Datastore']);
+            if (!$view) {
+                $this->logout();
+                return [];
+            }
+
+            $dsProps = $this->retrieveProperties($sc, $view, 'Datastore', [
+                'name', 'summary'
+            ]);
+
+            foreach ($dsProps as $ds) {
+                $name = $ds['name'] ?? 'Unknown';
+                $summary = $ds['summary'] ?? null;
+
+                if ($summary && is_object($summary)) {
+                    $datastores[] = [
+                        'name' => $name,
+                        'capacity' => $summary->capacity ?? 0,
+                        'freeSpace' => $summary->freeSpace ?? 0,
+                        'type' => $summary->type ?? 'unknown',
+                        'accessible' => $summary->accessible ?? false,
+                    ];
+                }
+            }
+
+            $this->destroyView($view);
+            $this->logout();
+
+        } catch (\Throwable $e) {
+            Log::debug('VCenter SOAP fetchDatastores failed: ' . $e->getMessage());
+        }
+
+        return $datastores;
+    }
+
+    public function fetchTransceivers(Device $device): array
+    {
+        return [];
+    }
+
+    public function isReachable(): bool
+    {
+        return $this->login();
+    }
+
+    public function getApiInfo(): array
+    {
+        return [
+            'vendor' => 'VMware',
+            'api_type' => 'vSphere SOAP API',
+            'version' => '6.5+',
+            'features' => ['vlans', 'clusters', 'vms', 'hosts', 'datastores', 'performance'],
+        ];
+    }
 }

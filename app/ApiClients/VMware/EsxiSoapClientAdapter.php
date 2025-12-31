@@ -5,6 +5,7 @@ namespace App\ApiClients\VMware;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
+use LibreNMS\Util\DeviceApiSettings;
 
 /**
  * Adapter for EsxiSoapClient to implement DeviceApiClientInterface
@@ -30,11 +31,11 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
             throw new \RuntimeException("No saved API configuration found for device {$device->device_id}");
         }
 
-        // Extract config values from attributes
+        // Extract config values from attributes (decrypt credentials if needed)
         $config = [
             'hostname' => parse_url($baseUrl, PHP_URL_HOST) ?: $device->hostname,
-            'username' => $device->getAttrib('api_credential_username'),
-            'password' => $device->getAttrib('api_credential_password'),
+            'username' => DeviceApiSettings::getCredential($device, 'api_credential_username'),
+            'password' => DeviceApiSettings::getCredential($device, 'api_credential_password'),
             'verify_ssl' => (bool) $device->getAttrib('api_verify_ssl', false),
         ];
 

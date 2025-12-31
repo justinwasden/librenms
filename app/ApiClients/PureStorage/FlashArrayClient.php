@@ -98,8 +98,9 @@ class FlashArrayClient implements DeviceApiClientInterface
 
     protected function resolveValues(): array
     {
-        // Read from device attributes
-        $apiToken = $this->device->getAttrib('api_credential_api_token') ?? $this->device->getAttrib('api_credential_api_key');
+        // Read from device attributes, decrypting credentials as needed
+        $apiToken = DeviceApiSettings::getCredential($this->device, 'api_credential_api_token')
+            ?? DeviceApiSettings::getCredential($this->device, 'api_credential_api_key');
         $authHeaderName = $this->device->getAttrib('api_credential_auth_header_name', 'X-Auth-Token');
         $loginPath = $this->device->getAttrib('api_credential_login_path', '/login');
 
@@ -439,26 +440,134 @@ class FlashArrayClient implements DeviceApiClientInterface
             $hwData = $this->get('/hardware');
             $items = $hwData['items'] ?? [];
 
-            foreach ($items as $idx => $hw) {
+            // First pass: find chassis items to use as container
+            $chassisIndex = null;
+            $chassisItems = [];
+            $controllerItems = [];
+            $otherItems = [];
+
+            foreach ($items as $hw) {
+                $type = $hw['type'] ?? '';
+                $name = $hw['name'] ?? 'Unknown';
+
+                if ($type === 'chassis') {
+                    $chassisItems[] = $hw;
+                } elseif ($type === 'controller') {
+                    $controllerItems[] = $hw;
+                } else {
+                    $otherItems[] = $hw;
+                }
+            }
+
+            $idx = 1;
+
+            // Add chassis first (top-level container)
+            foreach ($chassisItems as $hw) {
+                $chassisIndex = $idx;
                 $inventory[] = [
-                    'entPhysicalIndex' => $idx + 1,
-                    'entPhysicalDescr' => $hw['name'] ?? 'Unknown',
-                    'entPhysicalClass' => $hw['type'] ?? 'other',
-                    'entPhysicalName' => $hw['name'] ?? '',
+                    'entPhysicalIndex' => $idx,
+                    'entPhysicalDescr' => ($hw['model'] ?? 'Chassis') . ' Chassis',
+                    'entPhysicalClass' => 'chassis',
+                    'entPhysicalName' => $hw['name'] ?? 'CH0',
                     'entPhysicalModelName' => $hw['model'] ?? '',
                     'entPhysicalSerialNum' => $hw['serial'] ?? '',
                     'entPhysicalContainedIn' => 0,
                     'entPhysicalMfgName' => 'Pure Storage',
-                    'entPhysicalParentRelPos' => -1,
-                    'entPhysicalVendorType' => null,
-                    'entPhysicalHardwareRev' => $hw['version'] ?? '',
+                    'entPhysicalParentRelPos' => 1,
+                    'entPhysicalVendorType' => 'chassis',
+                    'entPhysicalHardwareRev' => '',
                     'entPhysicalFirmwareRev' => '',
                     'entPhysicalSoftwareRev' => '',
                     'entPhysicalIsFRU' => 'true',
+                    'entPhysicalAlias' => 'FlashArray Chassis',
+                    'entPhysicalAssetID' => '',
+                ];
+                $idx++;
+            }
+
+            // Add controllers (contained in chassis)
+            foreach ($controllerItems as $hw) {
+                $name = $hw['name'] ?? 'Controller';
+                $ctrlNumber = preg_replace('/[^0-9]/', '', $name) ?: '0';
+
+                $inventory[] = [
+                    'entPhysicalIndex' => $idx,
+                    'entPhysicalDescr' => ($hw['model'] ?? 'Controller') . " (Controller $ctrlNumber)",
+                    'entPhysicalClass' => 'module',
+                    'entPhysicalName' => $name,
+                    'entPhysicalModelName' => $hw['model'] ?? '',
+                    'entPhysicalSerialNum' => $hw['serial'] ?? '',
+                    'entPhysicalContainedIn' => $chassisIndex ?? 0,
+                    'entPhysicalMfgName' => 'Pure Storage',
+                    'entPhysicalParentRelPos' => (int) $ctrlNumber + 1,
+                    'entPhysicalVendorType' => 'controller',
+                    'entPhysicalHardwareRev' => '',
+                    'entPhysicalFirmwareRev' => '',
+                    'entPhysicalSoftwareRev' => $hw['version'] ?? '',
+                    'entPhysicalIsFRU' => 'true',
+                    'entPhysicalAlias' => "Storage Controller $ctrlNumber",
+                    'entPhysicalAssetID' => '',
+                ];
+                $idx++;
+            }
+
+            // Add other hardware components (only important ones like fans, PSUs, drives)
+            $importantTypes = ['fan', 'power_supply', 'drive_bay', 'nvram', 'ssd', 'eth', 'fc'];
+            foreach ($otherItems as $hw) {
+                $type = $hw['type'] ?? 'other';
+                $name = $hw['name'] ?? 'Unknown';
+
+                // Skip temp sensors, voltage sensors, etc. to avoid clutter
+                if (!in_array($type, $importantTypes)) {
+                    continue;
+                }
+
+                // Map Pure types to LibreNMS entPhysicalClass
+                $class = match ($type) {
+                    'fan' => 'fan',
+                    'power_supply' => 'powerSupply',
+                    'drive_bay', 'ssd' => 'container',
+                    'nvram' => 'module',
+                    'eth', 'fc' => 'port',
+                    default => 'other',
+                };
+
+                // Determine container (controller or chassis)
+                $containedIn = $chassisIndex ?? 0;
+                if (preg_match('/^CT(\d+)\./', $name, $matches)) {
+                    // Find the controller index
+                    $ctrlNum = $matches[1];
+                    foreach ($inventory as $inv) {
+                        if (preg_match("/CT$ctrlNum\$/", $inv['entPhysicalName'])) {
+                            $containedIn = $inv['entPhysicalIndex'];
+                            break;
+                        }
+                    }
+                }
+
+                $inventory[] = [
+                    'entPhysicalIndex' => $idx,
+                    'entPhysicalDescr' => $name,
+                    'entPhysicalClass' => $class,
+                    'entPhysicalName' => $name,
+                    'entPhysicalModelName' => $hw['model'] ?? '',
+                    'entPhysicalSerialNum' => $hw['serial'] ?? '',
+                    'entPhysicalContainedIn' => $containedIn,
+                    'entPhysicalMfgName' => 'Pure Storage',
+                    'entPhysicalParentRelPos' => -1,
+                    'entPhysicalVendorType' => $type,
+                    'entPhysicalHardwareRev' => '',
+                    'entPhysicalFirmwareRev' => '',
+                    'entPhysicalSoftwareRev' => '',
+                    'entPhysicalIsFRU' => in_array($type, ['fan', 'power_supply', 'ssd']) ? 'true' : 'false',
                     'entPhysicalAlias' => '',
                     'entPhysicalAssetID' => '',
                 ];
+                $idx++;
             }
+
+            \Log::info("PureStorage fetchInventory: Found " . count($chassisItems) . " chassis, " .
+                count($controllerItems) . " controllers, " . count($inventory) . " total items");
 
         } catch (\Exception $e) {
             \Log::warning('PureStorage fetchInventory failed', [

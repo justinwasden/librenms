@@ -1,0 +1,47 @@
+# VMware vCenter API Template
+# Edit this file to customize the endpoints polled for vCenter devices
+
+name: VMware vCenter
+description: VMware vCenter Server REST API
+os:
+  - vmware-vcsa
+auth_type: basic
+base_url_pattern: 'https://{hostname}'
+capabilities:
+  - clusters
+  - hypervisor_hosts
+  - vminfo
+  - vlans
+  - sensors
+  - inventory
+
+endpoints:
+  - capability: clusters
+    method: GET
+    path: /rest/vcenter/cluster
+    transform: 'LibreNMS\Util\Normalizers\VMware\Clusters::normalize'
+    enabled: true
+
+  - capability: hypervisor_hosts
+    method: GET
+    path: /rest/vcenter/host
+    transform: 'LibreNMS\Util\Normalizers\VMware\Hosts::normalize'
+    enabled: true
+
+  - capability: vminfo
+    method: GET
+    path: /rest/vcenter/vm
+    transform: 'LibreNMS\Util\Normalizers\VMware\VmInfo::normalize'
+    enabled: true
+
+  - capability: vlans
+    method: GET
+    path: /rest/vcenter/network
+    transform: 'LibreNMS\Util\Normalizers\VMware\Network::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: /rest/appliance/health
+    transform: 'LibreNMS\Util\Normalizers\VMware\ApplianceHealth::normalize'
+    enabled: true

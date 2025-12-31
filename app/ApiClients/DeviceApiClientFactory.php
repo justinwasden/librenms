@@ -16,12 +16,14 @@ class DeviceApiClientFactory
         'vmware_vcenter' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_vcenter_default' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_velocloud' => \App\ApiClients\VMware\VeloCloudClient::class,
+        'vmware_esxi' => \App\ApiClients\VMware\EsxiSoapClientAdapter::class,
+        'esxi_soap' => \App\ApiClients\VMware\EsxiSoapClientAdapter::class,
         'vcenter_soap' => \App\ApiClients\VMware\VCenterSoapClient::class,
         'fortinet_fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
         'netapp_ontap' => \App\ApiClients\NetApp\OntapClient::class,
         'cisco_ucsm_xml' => \App\ApiClients\Cisco\UcsmXmlClient::class,
+        'cisco_ucsm' => \App\ApiClients\Cisco\UcsmXmlClient::class,
         'cisco_ftd' => \App\ApiClients\Cisco\FtdApiClient::class,
-        // Note: esxi_soap uses GenericDeviceApiClient + SOAP endpoints via DeviceApiExecutor
     ];
 
     /**
@@ -33,7 +35,9 @@ class DeviceApiClientFactory
         \App\ApiClients\PureStorage\FlashArrayClient::class,
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         \App\ApiClients\VMware\VCenterClient::class,
+        \App\ApiClients\VMware\VCenterSoapClient::class,
         \App\ApiClients\VMware\VeloCloudClient::class,
+        \App\ApiClients\VMware\EsxiSoapClientAdapter::class,
         \App\ApiClients\Fortinet\FortiGateClient::class,
         \App\ApiClients\NetApp\OntapClient::class,
         \App\ApiClients\Cisco\UcsmXmlClient::class,

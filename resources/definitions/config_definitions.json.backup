@@ -33,9 +33,9 @@
         "alert.macros.rule": {
             "type": "array",
             "validate": {
-                "value": "array",
-                "value.*": "string"
-            }
+                 "value": "array",
+                 "value.*": "string"
+             }
         },
         "alert.scheduled_maintenance_default_behavior": {
             "default": "1",
@@ -385,9 +385,7 @@
             }
         },
         "api.cors.origin": {
-            "default": [
-                "*"
-            ],
+            "default": ["*"],
             "group": "api",
             "section": "cors",
             "order": 3,
@@ -510,10 +508,7 @@
             "validate": {
                 "value": "array|array_keys_not_empty",
                 "value.*": "array|array_keys_not_empty",
-                "value.*.listener": [
-                    "not_regex:/[:|@]/",
-                    "regex:/^\\\\SocialiteProviders\\\\[^\\\\]+\\\\[^\\\\]+ExtendSocialite$/"
-                ],
+                "value.*.listener": ["not_regex:/[:|@]/", "regex:/^\\\\SocialiteProviders\\\\[^\\\\]+\\\\[^\\\\]+ExtendSocialite$/"],
                 "value.*.redirect": "url",
                 "value.saml.metadata": "url_or_xml",
                 "value.saml.acs": "url",
@@ -532,15 +527,15 @@
             "order": 5,
             "type": "select",
             "default": "none",
-            "options": {
-                "none": "No Access",
-                "normal": "Normal Access",
-                "global-read": "Global Viewing Access",
-                "admin": "Global Administrative Access"
+            "options" : {
+                "none" : "No Access",
+                "normal" : "Normal Access",
+                "global-read" : "Global Viewing Access",
+                "admin" : "Global Administrative Access"
             }
         },
         "auth.socialite.claims": {
-            "default": [],
+            "default": {},
             "group": "auth",
             "section": "socialite",
             "order": 6,
@@ -582,7 +577,7 @@
             "type": "text"
         },
         "auth_ad_groups": {
-            "default": [],
+            "default": {},
             "group": "auth",
             "section": "ad",
             "order": 8,
@@ -628,9 +623,7 @@
             "order": 1,
             "type": "text",
             "validate": {
-                "value": [
-                    "regex:#^ldaps?://([-0-9a-zA-Z_.]+|\\[[a-fA-F0-9:]{3,39}\\])(:\\d+)?(\\s+ldaps?://([-0-9a-zA-Z_.]+|\\[[a-fA-F0-9:]{3,39}\\])(:\\d+)?)*$#"
-                ]
+                "value": ["regex:#^ldaps?://([-0-9a-zA-Z_.]+|\\[[a-fA-F0-9:]{3,39}\\])(:\\d+)?(\\s+ldaps?://([-0-9a-zA-Z_.]+|\\[[a-fA-F0-9:]{3,39}\\])(:\\d+)?)*$#"]
             }
         },
         "auth_ad_starttls": {
@@ -698,6 +691,7 @@
             "order": 23,
             "type": "boolean"
         },
+
         "auth_ldap_emailattr": {
             "default": "mail",
             "group": "auth",
@@ -739,7 +733,7 @@
             }
         },
         "auth_ldap_groups": {
-            "default": [],
+            "default": {},
             "group": "auth",
             "section": "ldap",
             "order": 4,
@@ -1084,7 +1078,7 @@
         },
         "branding": {
             "default": {
-                "default": []
+                "default": {}
             },
             "type": "array",
             "validate": {
@@ -1119,9 +1113,7 @@
             "order": 1
         },
         "core_descr": {
-            "default": [
-                "core"
-            ],
+            "default": ["core"],
             "type": "array",
             "group": "webui",
             "section": "port-descr",
@@ -1132,9 +1124,7 @@
             "type": "boolean"
         },
         "custom_descr": {
-            "default": [
-                ""
-            ],
+            "default": [""],
             "type": "array",
             "group": "webui",
             "section": "port-descr",
@@ -1183,9 +1173,9 @@
             "section": "custom-map",
             "order": 104,
             "options": {
-                "Streets": "Streets",
+                "Streets":  "Streets",
                 "Sattelite": "Sattelite",
-                "Topography": "Topography"
+                "Topography":  "Topography"
             },
             "when": {
                 "setting": "custom_map.background_type",
@@ -1269,9 +1259,9 @@
             "default": null,
             "type": "array",
             "validate": {
-                "value": "array",
-                "value.*": "string"
-            }
+                 "value": "array",
+                 "value.*": "string"
+             }
         },
         "custom_map.node_align": {
             "default": 10,
@@ -1361,9 +1351,7 @@
             "order": 1
         },
         "customers_descr": {
-            "default": [
-                "cust"
-            ],
+            "default": ["cust"],
             "type": "array",
             "group": "webui",
             "section": "port-descr",
@@ -1454,9 +1442,9 @@
             "type": "select",
             "options": {
                 "{{ $hostname }}": "hostname",
-                "{{ $sysName_fallback }}": "sysName_fallback",
-                "{{ $sysName }}": "sysName",
-                "{{ $ip }}": "ip"
+                "{{ $sysName_fallback }}":  "sysName_fallback",
+                "{{ $sysName }}":  "sysName",
+                "{{ $ip }}":  "ip"
             }
         },
         "device_traffic_descr": {
@@ -1920,6 +1908,48 @@
             "default": false,
             "type": "boolean"
         },
+        "discovery_modules.rest-ports": {
+            "order": 245,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-sensors": {
+            "order": 280,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-inventory": {
+            "order": 200,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-storage": {
+            "order": 360,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-transceivers": {
+            "order": 365,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "discovery_modules.rest-ipv4": {
+            "order": 175,
+            "group": "discovery",
+            "section": "discovery_modules",
+            "default": false,
+            "type": "boolean"
+        },
         "distributed_poller": {
             "default": false,
             "group": "poller",
@@ -2121,7 +2151,7 @@
             "order": 13,
             "type": "password",
             "when": {
-                "and": [
+                "and" : [
                     {
                         "setting": "email_backend",
                         "operator": "equals",
@@ -2457,9 +2487,9 @@
             "order": 7,
             "type": "select",
             "options": {
-                "Streets": "Streets",
+                "Streets":  "Streets",
                 "Sattelite": "Sattelite",
-                "Topography": "Topography"
+                "Topography":  "Topography"
             },
             "when": {
                 "setting": "geoloc.engine",
@@ -3782,7 +3812,7 @@
             },
             "type": "graph"
         },
-        "graph_types.device.purestorage_bandwidth": {
+	"graph_types.device.purestorage_bandwidth": {
             "default": {
                 "section": "storage",
                 "order": 0,
@@ -4263,70 +4293,70 @@
             "type": "graph"
         },
         "graph_types.device.purestorage_total_capacity": {
-            "default": {
-                "section": "storage",
-                "order": 0,
-                "descr": "Total Capacity"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_used_capacity": {
-            "default": {
-                "section": "storage",
-                "order": 1,
-                "descr": "Used Capacity"
-            },
-            "type": "graph"
-        },
+	    "default": {
+	        "section": "storage",
+  	        "order": 0,
+ 	        "descr": "Total Capacity"
+	    },
+	  "type": "graph"
+	},
+	"graph_types.device.purestorage_used_capacity": {
+  	    "default": {
+    		"section": "storage",
+    		"order": 1,
+    		"descr": "Used Capacity"
+  	    },
+  	  "type": "graph"
+	},
         "graph_types.device.purestorage_read_iops": {
-            "default": {
-                "section": "storage",
-                "order": 2,
-                "descr": "Read IOPS"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_write_iops": {
-            "default": {
-                "section": "storage",
-                "order": 3,
-                "descr": "Write IOPS"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_read_bandwidth": {
-            "default": {
-                "section": "storage",
-                "order": 4,
-                "descr": "Read Bandwidth"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_write_bandwidth": {
-            "default": {
-                "section": "storage",
-                "order": 5,
-                "descr": "Write Bandwidth"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_read_latency": {
-            "default": {
-                "section": "storage",
-                "order": 6,
-                "descr": "Read Latency"
-            },
-            "type": "graph"
-        },
-        "graph_types.device.purestorage_write_latency": {
-            "default": {
-                "section": "storage",
-                "order": 7,
-                "descr": "Write Latency"
-            },
-            "type": "graph"
-        },
-        "graphite.enable": {
+    	    "default": {
+      		"section": "storage",
+      		"order": 2,
+      		"descr": "Read IOPS"
+    	},
+    	  "type": "graph"
+  	},
+  	"graph_types.device.purestorage_write_iops": {
+    	    "default": {
+      		"section": "storage",
+      		"order": 3,
+      		"descr": "Write IOPS"
+    	},
+    	  "type": "graph"
+  	},
+  	"graph_types.device.purestorage_read_bandwidth": {
+    	    "default": {
+      		"section": "storage",
+      		"order": 4,
+      		"descr": "Read Bandwidth"
+    	},
+    	  "type": "graph"
+  	},
+  	"graph_types.device.purestorage_write_bandwidth": {
+    	    "default": {
+      		"section": "storage",
+      		"order": 5,
+      		"descr": "Write Bandwidth"
+    	},
+    	  "type": "graph"
+  	},
+  	"graph_types.device.purestorage_read_latency": {
+    	    "default": {
+      		"section": "storage",
+      		"order": 6,
+      		"descr": "Read Latency"
+    	},
+    	  "type": "graph"
+  	},
+  	"graph_types.device.purestorage_write_latency": {
+    	    "default": {
+      	   "section": "storage",
+           "order": 7,
+      	   "descr": "Write Latency"
+    	},
+    	   "type": "graph"
+  	},
+	"graphite.enable": {
             "default": false,
             "type": "boolean",
             "group": "poller",
@@ -4419,16 +4449,16 @@
             "group": "external",
             "section": "graylog",
             "order": 8,
-            "options": [
-                "0",
-                "1",
-                "2",
-                "3",
-                "4",
-                "5",
-                "6",
-                "7"
-            ]
+            "options": {
+                "0": "0",
+                "1": "1",
+                "2": "2",
+                "3": "3",
+                "4": "4",
+                "5": "5",
+                "6": "6",
+                "7": "7"
+            }
         },
         "graylog.device-page.rowCount": {
             "default": 10,
@@ -4592,14 +4622,16 @@
             "group": "discovery",
             "section": "storage",
             "order": 6,
-            "default": [],
+            "default": [
+            ],
             "type": "array"
         },
         "ignore_junos_os_drives": {
             "group": "discovery",
             "section": "storage",
             "order": 7,
-            "default": [],
+            "default": [
+            ],
             "type": "array"
         },
         "ignore_mount": {
@@ -4845,7 +4877,8 @@
             "section": "influxdbv2",
             "order": 10,
             "type": "array",
-            "default": []
+            "default": [
+            ]
         },
         "kafka.enable": {
             "default": false,
@@ -4859,9 +4892,9 @@
             "group": "poller",
             "section": "kafka",
             "validate": {
-                "value": "array",
-                "value.*": "int"
-            },
+                 "value": "array",
+                 "value.*": "int"
+             },
             "order": 1
         },
         "kafka.measurement-exclude": {
@@ -4869,9 +4902,9 @@
             "group": "poller",
             "section": "kafka",
             "validate": {
-                "value": "array",
-                "value.*": "string"
-            },
+                 "value": "array",
+                 "value.*": "string"
+             },
             "order": 2
         },
         "kafka.debug": {
@@ -5159,7 +5192,7 @@
             "type": "text"
         },
         "leaflet.default_lat": {
-            "default": 51.48,
+            "default": 51.4800,
             "type": "float"
         },
         "leaflet.default_lng": {
@@ -5450,17 +5483,17 @@
             "section": "nfsen",
             "order": 3,
             "type": "select",
-            "options": [
-                "0. flat layout",
-                "1. year/month/day",
-                "2. year/month/day/hour",
-                "3. year/week_of_year/day_of_week",
-                "4. year/week_of_year/day_of_week/hour",
-                "5. year/day-of-year",
-                "6. year/day-of-year/hour",
-                "7. year-month-day",
-                "8. year-month-day/hour"
-            ]
+            "options": {
+                "0": "0. flat layout",
+                "1": "1. year/month/day",
+                "2": "2. year/month/day/hour",
+                "3": "3. year/week_of_year/day_of_week",
+                "4": "4. year/week_of_year/day_of_week/hour",
+                "5": "5. year/day-of-year",
+                "6": "6. year/day-of-year/hour",
+                "7": "7. year-month-day",
+                "8": "8. year-month-day/hour"
+            }
         },
         "nfsen_last_max": {
             "default": 153600,
@@ -5679,7 +5712,7 @@
         },
         "oxidized.ignore_groups": {
             "default": [],
-            "type": "array",
+            "type" : "array",
             "group": "external",
             "section": "oxidized",
             "order": 5
@@ -5731,50 +5764,17 @@
             "default": {
                 "os": {
                     "os": [
-                        {
-                            "match": "airos-af-ltu",
-                            "value": "airfiber"
-                        },
-                        {
-                            "match": "airos-af",
-                            "value": "airfiber"
-                        },
-                        {
-                            "match": "arista_eos",
-                            "value": "eos"
-                        },
-                        {
-                            "match": "ciscosb",
-                            "value": "ciscosmb"
-                        },
-                        {
-                            "match": "f5",
-                            "value": "tmos"
-                        },
-                        {
-                            "match": "fireware",
-                            "value": "firewareos"
-                        },
-                        {
-                            "match": "fortigate",
-                            "value": "fortios"
-                        },
-                        {
-                            "match": "fortiswitch",
-                            "value": "fortios"
-                        },
-                        {
-                            "match": "vyos",
-                            "value": "vyatta"
-                        },
-                        {
-                            "match": "slms",
-                            "value": "zhoneolt"
-                        },
-                        {
-                            "match": "oneaccess",
-                            "value": "oneos"
-                        }
+                        {"match": "airos-af-ltu", "value": "airfiber"},
+                        {"match": "airos-af", "value": "airfiber"},
+                        {"match": "arista_eos", "value": "eos"},
+                        {"match": "ciscosb", "value": "ciscosmb"},
+                        {"match": "f5", "value": "tmos"},
+                        {"match": "fireware", "value": "firewareos"},
+                        {"match": "fortigate", "value": "fortios"},
+                        {"match": "fortiswitch", "value": "fortios"},
+                        {"match": "vyos", "value": "vyatta"},
+                        {"match": "slms", "value": "zhoneolt"},
+                        {"match": "oneaccess", "value": "oneos"}
                     ]
                 }
             },
@@ -6065,6 +6065,7 @@
         "poller_modules.customoid": {
             "default": true,
             "type": "boolean"
+
         },
         "poller_modules.bgp-peers": {
             "order": 30,
@@ -6117,6 +6118,55 @@
         },
         "poller_modules.device-api": {
             "order": 100,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ports": {
+            "order": 380,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-sensors": {
+            "order": 365,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-inventory": {
+            "order": 200,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-storage": {
+            "order": 375,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-transceivers": {
+            "order": 450,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ipv4": {
+            "order": 195,
+            "group": "poller",
+            "section": "poller_modules",
+            "default": false,
+            "type": "boolean"
+        },
+        "poller_modules.rest-ports-statistics": {
+            "order": 385,
             "group": "poller",
             "section": "poller_modules",
             "default": false,
@@ -6341,7 +6391,7 @@
         "ports_page_default": {
             "default": "details",
             "type": "select",
-            "options": {
+            "options":{
                 "basic": "Basic",
                 "details": "Details",
                 "arp": "ARP",
@@ -7122,9 +7172,7 @@
             "type": "executable"
         },
         "transit_descr": {
-            "default": [
-                "transit"
-            ],
+            "default": ["transit"],
             "type": "array",
             "group": "webui",
             "section": "port-descr",

@@ -4,7 +4,6 @@ namespace LibreNMS\Util;
 
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
-use LibreNMS\Modules\Support\RestNormalizers;
 use LibreNMS\Util\Normalizers\LegacyNormalizerAdapter;
 
 /**
@@ -13,7 +12,7 @@ use LibreNMS\Util\Normalizers\LegacyNormalizerAdapter;
  * Runs payload transforms to map API responses to normalized arrays suitable for persistence.
  * Supports:
  * - Fully-qualified transform strings: "\\Namespace\\Class::method"
- * - Vendor normalizers in RestNormalizers via short method names
+ * - Vendor normalizers via LegacyNormalizerAdapter (individual classes in LibreNMS\Util\Normalizers\)
  * - Generic field mapping via endpoint-provided "transform_map"
  */
 class TransformRunner
@@ -21,7 +20,7 @@ class TransformRunner
     /**
      * Run a transform and return mapped rows.
      *
-     * @param mixed  $transform Fully-qualified "Class::method" or short name in RestNormalizers, or null
+     * @param mixed  $transform Fully-qualified "Class::method" or short method name, or null
      * @param Device $device    The Device model
      * @param array  $payload   Raw payload from the endpoint (decoded JSON)
      * @param array  $endpoint  Endpoint definition (capability, method, path, transform, transform_map, headers, request_body)
@@ -34,36 +33,22 @@ class TransformRunner
             [$class, $method] = explode('::', $transform, 2);
             if (class_exists($class) && method_exists($class, $method)) {
                 try {
-                    // For RestNormalizers, try 2-param signature first: ($device, array $payload)
-                    // Then fall back to 1-param signature: (array $payload)
-                    if ($class === RestNormalizers::class || $class === '\\LibreNMS\\Modules\\Support\\RestNormalizers') {
-                        try {
-                            return call_user_func([$class, $method], $device, $payload);
-                        } catch (\ArgumentCountError $e) {
-                            // Fallback to old single-parameter signature
-                            return call_user_func([$class, $method], $payload);
-                        }
-                    }
-
-                    // For other classes, prefer new signature: ($device, $payload, $endpoint)
+                    // Prefer new signature: ($device, $payload, $endpoint)
                     return call_user_func([$class, $method], $device, $payload, $endpoint);
                 } catch (\ArgumentCountError $e) {
                     // Fallbacks for different signatures
                     try {
-                        return call_user_func([$class, $method], $payload);
+                        return call_user_func([$class, $method], $device, $payload);
                     } catch (\ArgumentCountError $e2) {
                         try {
-                            return call_user_func([$class, $method], $payload, 60); // e.g., poll interval fallback
+                            return call_user_func([$class, $method], $payload);
                         } catch (\Throwable $e3) {
                             Log::warning("Transform FQCN {$transform} failed: " . $e3->getMessage());
                             return [];
                         }
-                    } catch (\Throwable $e2t) {
-                        Log::warning("Transform FQCN {$transform} failed: " . $e2t->getMessage());
-                        return [];
                     }
                 } catch (\TypeError $e) {
-                    // Type errors (e.g., passing Device when array expected) - try payload-only signature
+                    // Type errors - try payload-only signature
                     try {
                         return call_user_func([$class, $method], $payload);
                     } catch (\Throwable $e2) {
@@ -71,10 +56,7 @@ class TransformRunner
                         return [];
                     }
                 } catch (\Throwable $e) {
-                    Log::warning("Transform FQCN {$transform} failed: " . $e->getMessage() . " | File: " . $e->getFile() . ":" . $e->getLine());
-                    if ($e instanceof \ParseError) {
-                        \Log::error("ParseError trace: " . $e->getTraceAsString());
-                    }
+                    Log::warning("Transform FQCN {$transform} failed: " . $e->getMessage());
                     return [];
                 }
             }
@@ -83,7 +65,6 @@ class TransformRunner
         // Case 2: Short method names - Use new normalizer classes via adapter
         if (is_string($transform)) {
             try {
-                // Try new normalizer architecture first (auto-falls back to RestNormalizers if needed)
                 return LegacyNormalizerAdapter::normalize($transform, $device, $payload);
             } catch (\Throwable $e) {
                 Log::warning("Transform {$transform} failed: " . $e->getMessage());

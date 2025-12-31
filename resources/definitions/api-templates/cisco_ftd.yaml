@@ -1,0 +1,27 @@
+# Cisco FTD (Firepower Threat Defense) API Template
+# Edit this file to customize the endpoints polled for Cisco FTD devices
+
+name: Cisco FTD
+description: Cisco Firepower Threat Defense API
+os:
+  - cisco-ftd
+  - ftd
+auth_type: oauth2
+base_url_pattern: 'https://{hostname}'
+capabilities:
+  - inventory
+  - ports
+  - sensors
+
+endpoints:
+  - capability: inventory
+    method: GET
+    path: /api/fdm/latest/devices/default
+    transform: 'LibreNMS\Util\Normalizers\Cisco\FtdInventory::normalize'
+    enabled: true
+
+  - capability: ports
+    method: GET
+    path: /api/fdm/latest/devices/default/interfaces
+    transform: 'LibreNMS\Util\Normalizers\Cisco\FtdInterfaces::normalize'
+    enabled: true

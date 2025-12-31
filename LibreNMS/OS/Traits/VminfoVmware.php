@@ -33,7 +33,7 @@ use LibreNMS\Enum\PowerState;
 
 trait VminfoVmware
 {
-    public function discoverVmInfo(): Collection
+    public function discoverVminfo(): Collection
     {
         Log::info('VMware VM: ');
 

@@ -1,10 +1,9 @@
 <?php
 
-namespace LibreNMS\Util;
+namespace App\Util;
 
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
-use LibreNMS\Modules\Support\RestNormalizers;
 use LibreNMS\Util\Normalizers\LegacyNormalizerAdapter;
 
 /**
@@ -13,7 +12,7 @@ use LibreNMS\Util\Normalizers\LegacyNormalizerAdapter;
  * Runs payload transforms to map API responses to normalized arrays suitable for persistence.
  * Supports:
  * - Fully-qualified transform strings: "\\Namespace\\Class::method"
- * - Vendor normalizers in RestNormalizers via short method names
+ * - Vendor normalizers via LegacyNormalizerAdapter (individual classes in LibreNMS\Util\Normalizers\)
  * - Generic field mapping via endpoint-provided "transform_map"
  */
 class TransformRunner
@@ -21,7 +20,7 @@ class TransformRunner
     /**
      * Run a transform and return mapped rows.
      *
-     * @param mixed  $transform Fully-qualified "Class::method" or short method name in RestNormalizers, or null
+     * @param mixed  $transform Fully-qualified "Class::method" or short method name, or null
      * @param Device $device    The Device model
      * @param array  $payload   Raw payload from the endpoint
      * @param array  $endpoint  Endpoint definition (capability, method, path, transform, transform_map, headers, request_body)
@@ -37,20 +36,16 @@ class TransformRunner
                     // Prefer normalizers that accept ($device, $payload, $endpoint)
                     return $class::$method($device, $payload, $endpoint);
                 } catch (\ArgumentCountError $e) {
-                    // Fallbacks for RestNormalizers that expect different signatures
+                    // Fallbacks for different signatures
                     try {
-                        return $class::$method($payload);
+                        return $class::$method($device, $payload);
                     } catch (\ArgumentCountError $e2) {
                         try {
-                            // Some rate normalizers take ($payload, pollIntervalSec)
-                            return $class::$method($payload, 60);
+                            return $class::$method($payload);
                         } catch (\Throwable $e3) {
                             Log::warning("Transform FQCN {$transform} failed: " . $e3->getMessage());
                             return [];
                         }
-                    } catch (\Throwable $e2t) {
-                        Log::warning("Transform FQCN {$transform} failed: " . $e2t->getMessage());
-                        return [];
                     }
                 } catch (\Throwable $e) {
                     Log::warning("Transform FQCN {$transform} failed: " . $e->getMessage());
@@ -62,7 +57,6 @@ class TransformRunner
         // Case 2: Short method names - Use new normalizer classes via adapter
         if (is_string($transform)) {
             try {
-                // Try new normalizer architecture first (auto-falls back to RestNormalizers if needed)
                 return LegacyNormalizerAdapter::normalize($transform, $device, $payload);
             } catch (\Throwable $e) {
                 Log::warning("Transform {$transform} failed: " . $e->getMessage());

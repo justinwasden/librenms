@@ -1,0 +1,112 @@
+# Pure Storage FlashArray API Template
+# Edit this file to customize the endpoints polled for Pure Storage devices
+
+name: Pure Storage FlashArray
+description: Login via API token to obtain session header and poll FlashArray endpoints.
+os:
+  - purestorage
+auth_type: purestorage_api_token_login
+base_url_pattern: 'https://{hostname}/api/2.26'
+capabilities:
+  - sensors
+  - inventory
+  - ports
+  - ipv4
+  - storage
+  - ports_statistics
+  - transceivers
+
+endpoints:
+  # Array-Level Information (sensors/storage)
+  - capability: sensors
+    method: GET
+    path: arrays
+    transform: 'LibreNMS\Util\Normalizers\Pure\ArraySensors::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: arrays/performance
+    transform: 'LibreNMS\Util\Normalizers\Pure\ArraySensors::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: controllers
+    transform: 'LibreNMS\Util\Normalizers\Pure\Hardware::normalize'
+    enabled: true
+
+  # Hardware and Inventory
+  - capability: inventory
+    method: GET
+    path: hardware
+    transform: 'LibreNMS\Util\Normalizers\Pure\Hardware::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: drives
+    transform: 'LibreNMS\Util\Normalizers\Pure\Hardware::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: alerts
+    transform: 'LibreNMS\Util\Normalizers\Pure\Alerts::normalize'
+    enabled: true
+
+  # Interface and Network
+  - capability: ports
+    method: GET
+    path: network-interfaces
+    transform: 'LibreNMS\Util\Normalizers\Pure\NetworkInterfaces::normalize'
+    enabled: true
+
+  - capability: ipv4
+    method: GET
+    path: network-interfaces
+    transform: 'LibreNMS\Util\Normalizers\Pure\Ipv4::normalize'
+    enabled: true
+
+  - capability: ports_statistics
+    method: GET
+    path: network-interfaces/performance
+    transform: 'LibreNMS\Util\Normalizers\Pure\NetworkPerformanceToPortsStats::normalize'
+    enabled: true
+
+  - capability: transceivers
+    method: GET
+    path: network-interfaces/port-details
+    transform: 'LibreNMS\Util\Normalizers\Pure\PortOptics::normalize'
+    enabled: true
+
+  # Volume and Connectivity
+  - capability: sensors
+    method: GET
+    path: volumes
+    transform: 'LibreNMS\Util\Normalizers\Pure\Volumes::normalize'
+    enabled: true
+
+  - capability: sensors
+    method: GET
+    path: volumes/performance
+    transform: 'LibreNMS\Util\Normalizers\Pure\Volumes::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: hosts
+    transform: 'LibreNMS\Util\Normalizers\Pure\Hosts::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: connections
+    transform: 'LibreNMS\Util\Normalizers\Pure\Connections::normalize'
+    enabled: true
+
+  - capability: storage
+    method: GET
+    path: arrays
+    transform: 'LibreNMS\Util\Normalizers\Pure\StorageDetails::normalize'
+    enabled: true

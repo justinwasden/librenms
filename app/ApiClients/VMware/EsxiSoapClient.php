@@ -28,7 +28,7 @@ class EsxiSoapClient
      * Initialize ESXi SOAP client
      *
      * @param Device $device
-     * @param array $config Configuration from device_api_configs
+     * @param array $config Configuration from device attributes (api_base_url, api_credential_*, etc.)
      */
     public function __construct(Device $device, array $config = [])
     {

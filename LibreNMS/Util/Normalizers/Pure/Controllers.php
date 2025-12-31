@@ -8,24 +8,28 @@ use LibreNMS\Util\Normalizers\BaseNormalizer;
 /**
  * Pure - Controllers Normalizer
  *
- * Capability: unknown
+ * Normalizes Pure Storage controller data into inventory, sensors, and processors.
+ * Controllers are the compute units of Pure Storage arrays.
+ *
+ * Capability: processors, inventory, sensors
  * Vendor: pure
  */
 class Controllers extends BaseNormalizer
 {
-    protected string $capability = 'unknown';
+    protected string $capability = 'processors';
     protected string $vendor = 'pure';
 
     protected function doNormalize(Device $device, array $payload): array
     {
-$inventory = [];
+        $inventory = [];
         $sensors = [];
+        $processors = [];
 
         if (!isset($payload['items']) || !is_array($payload['items'])) {
-            return ['inventory' => $inventory, 'sensors' => $sensors];
+            return ['inventory' => $inventory, 'sensors' => $sensors, 'processors' => $processors];
         }
 
-        foreach ($payload['items'] as $ctrl) {
+        foreach ($payload['items'] as $idx => $ctrl) {
             $name = $ctrl['name'] ?? 'controller';
             $index = $this->stableIndexFromName($name);
 
@@ -69,8 +73,18 @@ $inventory = [];
                     ],
                 ];
             }
+
+            // Processor entry for each controller
+            // Pure Storage controllers are the compute units - track them as processors
+            // Note: Pure doesn't expose CPU % via API, so we use status-based representation
+            $processors[] = [
+                'processor_index' => $idx,
+                'processor_type' => 'purestorage-ctrl',
+                'processor_descr' => 'Controller ' . $name . ($ctrl['model'] ? ' (' . $ctrl['model'] . ')' : ''),
+                'processor_usage' => null,  // Pure API doesn't expose CPU utilization
+            ];
         }
 
-        return ['inventory' => $inventory, 'sensors' => $sensors];
+        return ['inventory' => $inventory, 'sensors' => $sensors, 'processors' => $processors];
     }
 }

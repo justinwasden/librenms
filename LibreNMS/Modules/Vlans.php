@@ -84,7 +84,7 @@ class Vlans implements Module
         });
 
         ModuleModelObserver::observe(Vlan::class, 'VLANs');
-        $vlans = $this->syncModels($os->getDevice(), 'vlans', $vlans);
+        $vlans = $this->syncModels($os->getDevice(), 'vlans', $vlans, null, 'snmp');
         ModuleModelObserver::done();
 
         $ports = $os->discoverVlanPorts($vlans)->filter(function (PortVlan $data) {

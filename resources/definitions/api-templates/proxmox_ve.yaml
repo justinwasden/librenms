@@ -1,0 +1,60 @@
+# Proxmox VE API Template
+# Edit this file to customize the endpoints polled for Proxmox devices
+
+name: Proxmox VE Node
+description: Proxmox node endpoints for status, network, storage.
+os:
+  - proxmox
+auth_type: proxmox_token
+base_url_pattern: 'https://{hostname}:8006/api2/json'
+capabilities:
+  - sensors
+  - mempools
+  - processors
+  - ports
+  - inventory
+  - ipv4
+  - ports_statistics
+
+endpoints:
+  - capability: sensors
+    method: GET
+    path: 'nodes/{node}/status'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\NodeStatus::normalize'
+    enabled: true
+
+  - capability: mempools
+    method: GET
+    path: 'nodes/{node}/status'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\NodeStatus::normalize'
+    enabled: true
+
+  - capability: processors
+    method: GET
+    path: 'nodes/{node}/status'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\NodeStatus::normalize'
+    enabled: true
+
+  - capability: ports
+    method: GET
+    path: 'nodes/{node}/network'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\NodeNetwork::normalize'
+    enabled: true
+
+  - capability: inventory
+    method: GET
+    path: 'nodes/{node}/storage'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\StorageStatus::normalize'
+    enabled: true
+
+  - capability: ipv4
+    method: GET
+    path: 'nodes/{node}/network'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\Ipv4::normalize'
+    enabled: true
+
+  - capability: ports_statistics
+    method: GET
+    path: 'nodes/{node}/rrddata?timeframe=hour'
+    transform: 'LibreNMS\Util\Normalizers\Proxmox\NetworkStatistics::normalize'
+    enabled: true

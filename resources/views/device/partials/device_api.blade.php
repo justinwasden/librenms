@@ -7,7 +7,8 @@
 
     // API enabled state from existing config (unchecked by default if no config)
     $apiEnabled = (bool) ($apiConfig ? true : false);
-    $currentAuthType = $apiConfig?->schema?->key ?? '';
+    // Use defaultAuthType from controller if available (for auto-selection), otherwise fall back to saved config
+    $currentAuthType = $defaultAuthType ?? $apiConfig?->schema?->key ?? '';
 @endphp
 
 @if(!empty($device->getAttrib('rest_last_error_message')))

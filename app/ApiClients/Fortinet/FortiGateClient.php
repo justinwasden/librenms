@@ -30,10 +30,10 @@ class FortiGateClient implements DeviceApiClientInterface
             throw new \RuntimeException("No base URL configured for FortiGate device {$device->device_id}");
         }
 
-        // Get API token from device attributes (try multiple field names for compatibility)
-        $apiToken = $device->getAttrib('api_credential_api_token')
-                 ?? $device->getAttrib('api_credential_token')
-                 ?? $device->getAttrib('api_credential_access_token');
+        // Get API token from device attributes (try multiple field names for compatibility, decrypt if encrypted)
+        $apiToken = DeviceApiSettings::getCredential($device, 'api_credential_api_token')
+                 ?? DeviceApiSettings::getCredential($device, 'api_credential_token')
+                 ?? DeviceApiSettings::getCredential($device, 'api_credential_access_token');
 
         if (!$apiToken) {
             throw new \RuntimeException("API token required for FortiGate authentication");
@@ -164,13 +164,15 @@ class FortiGateClient implements DeviceApiClientInterface
             $response = $this->get('/monitor/system/interface/transceiver');
             $results = $response['results'] ?? [];
 
+            $numericIdx = 0;
             foreach ($results as $idx => $sfp) {
-                $portName = $sfp['name'] ?? "port-$idx";
+                $portName = $sfp['name'] ?? (is_string($idx) ? $idx : "port-$idx");
+                $numericIdx++;
 
                 // Only include if SFP is present
                 if (isset($sfp['present']) && $sfp['present']) {
                     $transceivers[] = [
-                        'ifIndex' => $idx + 1,
+                        'ifIndex' => $numericIdx,
                         'port_descr_type' => $sfp['type'] ?? 'SFP',
                         'port_descr_descr' => $portName,
                         'port_descr_speed' => $sfp['speed'] ?? '',
@@ -200,8 +202,10 @@ class FortiGateClient implements DeviceApiClientInterface
             $response = $this->get('/cmdb/system/interface');
             $interfaces = $response['results'] ?? [];
 
+            $numericIdx = 0;
             foreach ($interfaces as $idx => $iface) {
-                $ifName = $iface['name'] ?? "port$idx";
+                $ifName = $iface['name'] ?? (is_string($idx) ? $idx : "port$idx");
+                $numericIdx++;
                 $ip = $iface['ip'] ?? null;
 
                 if ($ip && strpos($ip, '/') !== false) {
@@ -210,7 +214,7 @@ class FortiGateClient implements DeviceApiClientInterface
 
                     if (filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                         $addresses[] = [
-                            'ifIndex' => $idx + 1,
+                            'ifIndex' => $numericIdx,
                             'ipv4_address' => $ipAddr,
                             'ipv4_prefixlen' => (int)$prefixLen,
                             'context_name' => 'fortigate',
@@ -219,7 +223,7 @@ class FortiGateClient implements DeviceApiClientInterface
                 } elseif ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                     // Just an IP without CIDR
                     $addresses[] = [
-                        'ifIndex' => $idx + 1,
+                        'ifIndex' => $numericIdx,
                         'ipv4_address' => $ip,
                         'ipv4_prefixlen' => 24, // Default
                         'context_name' => 'fortigate',
@@ -235,7 +239,7 @@ class FortiGateClient implements DeviceApiClientInterface
 
                             if (filter_var($secAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                                 $addresses[] = [
-                                    'ifIndex' => $idx + 1,
+                                    'ifIndex' => $numericIdx,
                                     'ipv4_address' => $secAddr,
                                     'ipv4_prefixlen' => (int)$secPrefix,
                                     'context_name' => 'fortigate',
@@ -265,12 +269,14 @@ class FortiGateClient implements DeviceApiClientInterface
             $response = $this->get('/monitor/system/interface');
             $interfaces = $response['results'] ?? [];
 
+            $numericIdx = 0;
             foreach ($interfaces as $idx => $iface) {
-                $ifName = $iface['name'] ?? "port$idx";
+                $ifName = $iface['name'] ?? (is_string($idx) ? $idx : "port$idx");
+                $numericIdx++;
 
                 // Extract statistics if available
                 $stats[] = [
-                    'ifIndex' => $idx + 1,
+                    'ifIndex' => $numericIdx,
                     'ifInOctets' => $iface['rx_bytes'] ?? 0,
                     'ifOutOctets' => $iface['tx_bytes'] ?? 0,
                     'ifInErrors' => $iface['rx_errors'] ?? 0,
