@@ -11,16 +11,22 @@ class DeviceApiClientFactory
      * Mapping of template keys to client classes
      */
     protected static array $templateToClient = [
+        'cisco_ftd' => \App\ApiClients\Cisco\FtdApiClient::class,
+        'cisco_ucsm' => \App\ApiClients\Cisco\UcsmXmlClient::class,
+        'fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
+        'fortinet_fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
+        'netapp' => \App\ApiClients\NetApp\OntapClient::class,
+        'netapp_ontap' => \App\ApiClients\NetApp\OntapClient::class,
+        'proxmox' => \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         'purestorage_flasharray' => \App\ApiClients\PureStorage\FlashArrayClient::class,
+        'purestorage' => \App\ApiClients\PureStorage\FlashArrayClient::class,
         'proxmox_ve' => \App\ApiClients\Proxmox\ProxmoxApiClient::class,
+        'velocloud' => \App\ApiClients\VMware\VeloCloudClient::class,
         'vmware_vcenter' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_vcenter_default' => \App\ApiClients\VMware\VCenterClient::class,
         'vmware_velocloud' => \App\ApiClients\VMware\VeloCloudClient::class,
+        'vmware_esxi' => \App\ApiClients\VMware\EsxiClient::class,
         'vcenter_soap' => \App\ApiClients\VMware\VCenterSoapClient::class,
-        'fortinet_fortigate' => \App\ApiClients\Fortinet\FortiGateClient::class,
-        'netapp_ontap' => \App\ApiClients\NetApp\OntapClient::class,
-        'cisco_ucsm_xml' => \App\ApiClients\Cisco\UcsmXmlClient::class,
-        'cisco_ftd' => \App\ApiClients\Cisco\FtdApiClient::class,
         // Note: esxi_soap uses GenericDeviceApiClient + SOAP endpoints via DeviceApiExecutor
     ];
 
@@ -34,6 +40,7 @@ class DeviceApiClientFactory
         \App\ApiClients\Proxmox\ProxmoxApiClient::class,
         \App\ApiClients\VMware\VCenterClient::class,
         \App\ApiClients\VMware\VeloCloudClient::class,
+        \App\ApiClients\VMware\EsxiClient::class,
         \App\ApiClients\Fortinet\FortiGateClient::class,
         \App\ApiClients\NetApp\OntapClient::class,
         \App\ApiClients\Cisco\UcsmXmlClient::class,
@@ -52,7 +59,7 @@ class DeviceApiClientFactory
         }
 
         // Get template key from device attributes
-        $templateKey = $device->getAttrib('api_template_key');
+        $templateKey = $device->getAttrib('api_template_key') ?: $device->getAttrib('api_template');
 
         if ($templateKey && isset(self::$templateToClient[$templateKey])) {
             $class = self::$templateToClient[$templateKey];

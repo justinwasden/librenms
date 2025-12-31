@@ -172,12 +172,15 @@ class PollDevice implements ShouldQueue
             // Check if REST API is enabled via device attributes
             $apiEnabled = (bool) $this->device->getAttrib('api_enabled');
             $baseUrl = $this->device->getAttrib('api_base_url');
+            $templateKey = $this->device->getAttrib('api_template_key') ?: $this->device->getAttrib('api_template');
 
-            if (!$apiEnabled || !$baseUrl) {
+            if (!$apiEnabled || !$baseUrl || !$templateKey) {
                 return;
             }
 
-            Log::info("REST API polling check: device={$this->device->device_id} enabled=true base_url={$baseUrl}");
+            Log::info(
+                "REST API polling check: device={$this->device->device_id} enabled=true base_url={$baseUrl} template={$templateKey}"
+            );
 
             // Construct API client from device attributes
             $client = \App\ApiClients\DeviceApiClientFactory::make($this->device);

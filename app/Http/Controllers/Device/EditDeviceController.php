@@ -52,15 +52,18 @@ class EditDeviceController
 
         // Handle API section
         if ($section === 'api') {
-            // Get templates and auth types
-            $templates = ApiTemplateManager::getAllTemplates();
+            // Get templates (filtered for this OS) and auth types
+            $allTemplates = ApiTemplateManager::getAllTemplates();
+            $templates = array_filter($allTemplates, function ($template) use ($device) {
+                return empty($template['os']) || in_array($device->os, $template['os'], true);
+            });
             $authTypes = ApiTemplateManager::getAuthTypes();
 
             // Get current API configuration from device attributes
             $apiEnabled = (bool) $device->getAttrib('api_enabled');
             $baseUrl = $device->getAttrib('api_base_url');
             $authType = $device->getAttrib('api_auth_type');
-            $selectedTemplate = $device->getAttrib('api_template');
+            $selectedTemplate = $device->getAttrib('api_template_key') ?: $device->getAttrib('api_template');
 
             // Create an apiConfig-like object for compatibility with the blade view
             // The blade view expects $apiConfig to have properties like base_url, verify_ssl, etc.
@@ -252,11 +255,17 @@ class EditDeviceController
         }
 
         $authType = $request->input('api_auth_type', 'token');
+        $templateKey = $this->resolveTemplateKey($device, $request);
+        if (!$templateKey) {
+            toast()->error(__('An API template is required to enable REST polling'));
+            return;
+        }
 
         // Save basic settings
         $device->setAttrib('api_enabled', true);
         $device->setAttrib('api_base_url', $baseUrl);
         $device->setAttrib('api_auth_type', $authType);
+        $device->setAttrib('api_template_key', $templateKey);
         $device->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
         $device->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
 
@@ -266,11 +275,81 @@ class EditDeviceController
         // Save vendor-specific fields if present
         $this->saveVendorSpecificFields($device, $request);
 
+        // Save endpoints (custom or template defaults)
+        $endpoints = $this->resolveEndpointsForDevice($templateKey, $request);
+        $device->setAttrib('api_endpoints', json_encode($endpoints));
+        $device->setAttrib('rest_endpoints', json_encode($endpoints));
+
         Log::info('API settings saved to device attributes', [
             'device_id' => $device->device_id,
             'base_url' => $baseUrl,
             'auth_type' => $authType,
+            'template_key' => $templateKey,
+            'endpoint_count' => count($endpoints),
         ]);
+    }
+
+    private function resolveTemplateKey(Device $device, ?Request $request = null): ?string
+    {
+        $templateKey = $request?->input('api_template_key', $request?->input('api_template'));
+        if ($templateKey) {
+            return $templateKey;
+        }
+
+        // Reuse any existing template selection when re-saving without changes
+        $existingTemplateKey = $device->getAttrib('api_template_key') ?: $device->getAttrib('api_template');
+        if ($existingTemplateKey) {
+            return $existingTemplateKey;
+        }
+
+        $allTemplates = ApiTemplateManager::getAllTemplates();
+        $templates = array_filter($allTemplates, function ($template) use ($device) {
+            return empty($template['os']) || in_array($device->os, $template['os'], true);
+        });
+
+        return count($templates) === 1 ? array_key_first($templates) : null;
+    }
+
+    private function resolveEndpointsForDevice(string $templateKey, Request $request): array
+    {
+        $rawJson = $request->input('rest_endpoints', '[]');
+        $decoded = json_decode($rawJson, true);
+
+        $endpoints = is_array($decoded) ? $decoded : [];
+
+        if (empty($endpoints)) {
+            $template = ApiTemplateManager::loadTemplate($templateKey) ?? [];
+            $templateEndpoints = $template['endpoints'] ?? [];
+
+            $endpoints = array_map(fn ($endpoint) => $this->normalizeEndpoint($endpoint), $templateEndpoints);
+        } else {
+            $endpoints = array_map(fn ($endpoint) => $this->normalizeEndpoint($endpoint), $endpoints);
+        }
+
+        // Remove any endpoints that failed normalization (e.g., missing path)
+        return array_values(array_filter($endpoints));
+    }
+
+    private function normalizeEndpoint(array $endpoint): ?array
+    {
+        $path = trim((string) ($endpoint['path'] ?? ''));
+        if ($path === '') {
+            return null;
+        }
+
+        $method = strtoupper((string) ($endpoint['method'] ?? 'GET'));
+
+        return [
+            'name' => $endpoint['name'] ?? ($endpoint['capability'] ?? 'endpoint') . ' ' . $path,
+            'path' => $path,
+            'method' => $method,
+            'category' => $endpoint['category'] ?? ($endpoint['capability'] ?? 'general'),
+            'poll_interval' => (int) ($endpoint['poll_interval'] ?? 300),
+            'enabled' => array_key_exists('enabled', $endpoint) ? (bool) $endpoint['enabled'] : true,
+            'transform' => $endpoint['transform'] ?? ($endpoint['transform_map'] ?? ''),
+            'headers' => $endpoint['headers'] ?? [],
+            'request_body' => $endpoint['request_body'] ?? null,
+        ];
     }
 
     /**
@@ -375,6 +454,8 @@ class EditDeviceController
         $apiAttributes = [
             'api_enabled',
             'api_base_url',
+            'api_template',
+            'api_template_key',
             'api_auth_type',
             'api_verify_ssl',
             'api_timeout_ms',
@@ -390,6 +471,8 @@ class EditDeviceController
             'api_credential_auth_header_name',
             'api_credential_login_path',
             'api_auth_schema',
+            'api_endpoints',
+            'rest_endpoints',
         ];
 
         foreach ($apiAttributes as $attr) {
@@ -407,6 +490,14 @@ class EditDeviceController
             $tempDevice = clone $device;
             $this->saveCredentials($tempDevice, $request->input('api_auth_type', 'token'), $request);
             $tempDevice->setAttrib('api_base_url', $request->input('api_base_url'));
+            $templateKey = $this->resolveTemplateKey($tempDevice, $request);
+            if (!$templateKey) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An API template is required to test the connection',
+                ]);
+            }
+            $tempDevice->setAttrib('api_template_key', $templateKey);
             $tempDevice->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
             $tempDevice->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
 

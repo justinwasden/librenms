@@ -20,6 +20,14 @@ class ApiTemplateManager
                 'os' => ['vmware-vcsa'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/api/vcenter/host', 'capability' => 'inventory', 'poll_interval' => 300],
+                    ['path' => '/api/vcenter/vm', 'capability' => 'inventory', 'poll_interval' => 300],
+                    ['path' => '/api/vcenter/datastore', 'capability' => 'storage', 'poll_interval' => 600],
+                    ['path' => '/api/vcenter/network', 'capability' => 'ports', 'poll_interval' => 600],
+                    ['path' => '/api/appliance/system/version', 'capability' => 'system', 'poll_interval' => 3600],
+                    ['path' => '/api/appliance/monitoring', 'capability' => 'sensors', 'poll_interval' => 300],
+                ],
             ],
             'vmware_esxi' => [
                 'name' => 'VMware ESXi',
@@ -27,6 +35,11 @@ class ApiTemplateManager
                 'os' => ['vmware-esxi'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/api/vcenter/host', 'capability' => 'inventory', 'poll_interval' => 600],
+                    ['path' => '/rest/appliance/system/version', 'capability' => 'system', 'poll_interval' => 3600],
+                    ['path' => '/rest/appliance/health/system', 'capability' => 'sensors', 'poll_interval' => 300],
+                ],
             ],
             'proxmox' => [
                 'name' => 'Proxmox VE',
@@ -34,6 +47,12 @@ class ApiTemplateManager
                 'os' => ['proxmox'],
                 'auth_type' => 'token',
                 'base_url_pattern' => 'https://{hostname}:8006',
+                'endpoints' => [
+                    ['path' => '/api2/json/cluster/resources', 'capability' => 'inventory', 'poll_interval' => 300],
+                    ['path' => '/api2/json/nodes', 'capability' => 'inventory', 'poll_interval' => 900],
+                    ['path' => '/api2/json/cluster/status', 'capability' => 'system', 'poll_interval' => 300],
+                    ['path' => '/api2/json/cluster/nextid', 'capability' => 'metrics', 'poll_interval' => 900],
+                ],
             ],
             'purestorage' => [
                 'name' => 'Pure Storage FlashArray',
@@ -41,6 +60,12 @@ class ApiTemplateManager
                 'os' => ['purestorage'],
                 'auth_type' => 'token',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/api/1.19/array', 'capability' => 'inventory', 'poll_interval' => 900],
+                    ['path' => '/api/1.19/host', 'capability' => 'inventory', 'poll_interval' => 900],
+                    ['path' => '/api/1.19/volume', 'capability' => 'storage', 'poll_interval' => 300],
+                    ['path' => '/api/1.19/drive', 'capability' => 'sensors', 'poll_interval' => 300],
+                ],
             ],
             'fortigate' => [
                 'name' => 'Fortinet FortiGate',
@@ -49,6 +74,13 @@ class ApiTemplateManager
                 'auth_type' => 'token',
                 'base_url_pattern' => 'https://{hostname}',
                 'capabilities' => ['dhcp-leases', 'vpn-ssl-stats'],
+                'endpoints' => [
+                    ['path' => '/api/v2/monitor/system/resource/usage', 'capability' => 'processors', 'poll_interval' => 300],
+                    ['path' => '/api/v2/monitor/system/interface', 'capability' => 'ports', 'poll_interval' => 300],
+                    ['path' => '/api/v2/monitor/system/firmware', 'capability' => 'inventory', 'poll_interval' => 3600],
+                    ['path' => '/api/v2/monitor/system/ha-statistics', 'capability' => 'system', 'poll_interval' => 600],
+                    ['path' => '/api/v2/monitor/firewall/session/select', 'capability' => 'metrics', 'poll_interval' => 300],
+                ],
             ],
             'netapp' => [
                 'name' => 'NetApp ONTAP',
@@ -56,6 +88,12 @@ class ApiTemplateManager
                 'os' => ['netapp'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/api/storage/volumes', 'capability' => 'storage', 'poll_interval' => 600],
+                    ['path' => '/api/storage/aggregates', 'capability' => 'storage', 'poll_interval' => 900],
+                    ['path' => '/api/cluster/nodes', 'capability' => 'inventory', 'poll_interval' => 900],
+                    ['path' => '/api/storage/luns', 'capability' => 'storage', 'poll_interval' => 900],
+                ],
             ],
             'cisco_ucsm' => [
                 'name' => 'Cisco UCS Manager',
@@ -63,6 +101,10 @@ class ApiTemplateManager
                 'os' => ['cisco-ucsm'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/nuova', 'capability' => 'inventory', 'method' => 'POST', 'poll_interval' => 600],
+                    ['path' => '/nuova', 'capability' => 'sensors', 'method' => 'POST', 'poll_interval' => 300],
+                ],
             ],
             'cisco_ftd' => [
                 'name' => 'Cisco FTD',
@@ -70,6 +112,11 @@ class ApiTemplateManager
                 'os' => ['cisco-ftd'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/api/fdm/latest/devices/default/status', 'capability' => 'system', 'poll_interval' => 300],
+                    ['path' => '/api/fdm/latest/devices/default/running/config/interfaces', 'capability' => 'ports', 'poll_interval' => 600],
+                    ['path' => '/api/fdm/latest/devices/default/monitoring/interfaces', 'capability' => 'ports_stats', 'poll_interval' => 300],
+                ],
             ],
             'velocloud' => [
                 'name' => 'VMware VeloCloud',
@@ -77,6 +124,12 @@ class ApiTemplateManager
                 'os' => ['velocloud'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
+                'endpoints' => [
+                    ['path' => '/portal/rest/enterprise/getEnterprise', 'capability' => 'inventory', 'method' => 'POST', 'poll_interval' => 900],
+                    ['path' => '/portal/rest/enterprise/getEnterpriseEdgeList', 'capability' => 'ports', 'method' => 'POST', 'poll_interval' => 600],
+                    ['path' => '/portal/rest/monitoring/getEdgeLinkMetrics', 'capability' => 'sensors', 'method' => 'POST', 'poll_interval' => 300],
+                    ['path' => '/portal/rest/monitoring/getAggregateEdgeLinkMetrics', 'capability' => 'metrics', 'method' => 'POST', 'poll_interval' => 300],
+                ],
             ],
         ];
     }
