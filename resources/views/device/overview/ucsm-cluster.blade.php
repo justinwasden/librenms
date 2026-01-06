@@ -65,6 +65,7 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Role</th>
                         <th>Model</th>
                         <th>Serial Number</th>
                         <th>Operability</th>
@@ -76,10 +77,17 @@
                     <tr>
                         <td>
                             <strong>{{ $fi['id'] }}</strong>
-                            @if ($fi['id'] === 'A')
+                        </td>
+                        <td>
+                            @php $role = $fi['role'] ?? null; @endphp
+                            @if (!empty($role))
+                                <span class="label label-default">{{ ucfirst($role) }}</span>
+                            @elseif ($fi['id'] === 'A')
                                 <span class="label label-primary">Primary</span>
                             @elseif ($fi['id'] === 'B')
                                 <span class="label label-info">Subordinate</span>
+                            @else
+                                <span class="text-muted">Unknown</span>
                             @endif
                         </td>
                         <td>{{ $fi['model'] }}</td>

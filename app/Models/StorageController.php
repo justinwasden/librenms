@@ -13,6 +13,7 @@ class StorageController extends Model
         'device_id',
         'controller_name',
         'model',
+        'serial',
         'status',
         'mode',
         'version',

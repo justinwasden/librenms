@@ -33,6 +33,7 @@ use App\Models\Ipv4Address;
 use App\Models\Ipv4Network;
 use App\Observers\ModuleModelObserver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\DB\SyncsModels;
 use LibreNMS\Exceptions\InvalidIpException;
@@ -90,9 +91,9 @@ class Ipv4Addresses implements Module
                 try {
                     // Expect entries with keys: ifIndex, ipv4_address, ipv4_prefixlen, context_name
                     $entries = $client->fetchIpv4Addresses($device) ?? [];
+                    $macMap = null;
                     foreach ($entries as $row) {
-                        $ifIndex = (int)($row['ifIndex'] ?? 0);
-                        $portId = $ifIndex ? PortCache::getIdFromIfIndex($ifIndex, $device) : null;
+                        $portId = $this->resolveRestPortId($device, $row, $macMap);
                         if (!$portId) {
                             // Skip if we can't map to a port; ports module should run first (dependency)
                             continue;
@@ -220,6 +221,71 @@ class Ipv4Addresses implements Module
                 ->orderBy('ipv4_address')->orderBy('ipv4_prefixlen')->orderBy('ifIndex')->orderBy('ipv4_addresses.context_name')
                 ->get()->map->makeHidden(['ipv4_address_id', 'ipv4_network_id', 'port_id', 'laravel_through_key']),
         ];
+    }
+
+    /**
+     * Resolve port_id for REST IPv4 rows using ifIndex, ifName, or MAC.
+     */
+    private function resolveRestPortId(Device $device, array $row, ?array &$macMap): ?int
+    {
+        if (isset($row['port_id'])) {
+            return (int) $row['port_id'];
+        }
+
+        if (isset($row['ifIndex'])) {
+            $portId = PortCache::getIdFromIfIndex((int) $row['ifIndex'], $device);
+            if ($portId) {
+                return $portId;
+            }
+        }
+
+        if (isset($row['ifName'])) {
+            $portId = PortCache::getIdFromIfName((string) $row['ifName'], $device);
+            if ($portId) {
+                return $portId;
+            }
+        }
+
+        $mac = $row['context_name'] ?? $row['ifPhysAddress'] ?? null;
+        if ($mac) {
+            if ($macMap === null) {
+                $macMap = $this->buildPortMacMap($device);
+            }
+
+            $normalized = $this->normalizeMac($mac);
+            if ($normalized !== '' && isset($macMap[$normalized])) {
+                return (int) $macMap[$normalized];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a map of normalized MAC => port_id for a device.
+     */
+    private function buildPortMacMap(Device $device): array
+    {
+        $rows = DB::table('ports')
+            ->where('device_id', $device->device_id)
+            ->whereNotNull('ifPhysAddress')
+            ->where('ifPhysAddress', '!=', '')
+            ->get(['port_id', 'ifPhysAddress']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            $normalized = $this->normalizeMac($row->ifPhysAddress ?? '');
+            if ($normalized !== '') {
+                $map[$normalized] = (int) $row->port_id;
+            }
+        }
+
+        return $map;
+    }
+
+    private function normalizeMac(string $mac): string
+    {
+        return strtolower(str_replace([':', '-', '.'], '', $mac));
     }
 
     private function discoverIpMib(Device $device): Collection

@@ -4,6 +4,7 @@ namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,12 +20,13 @@ class VCenterClient implements DeviceApiClientInterface
 
     public ?string $sessionId = null;
 
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected DeviceHttpClient $httpClient;
     protected string $apiRoot = '/api'; // Hardcoded for v7.x and v8.x
     protected string $baseUrl;
+    protected ?array $applianceInterfaces = null;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -163,7 +165,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         return in_array($device->os, ['vmware', 'vsphere', 'vmware-vcsa'], true)
             && $device->getAttrib('api_base_url');
@@ -203,10 +205,33 @@ class VCenterClient implements DeviceApiClientInterface
             // Get hostname from networking configuration
             $hostnameResp = $this->get('appliance/networking/dns/hostname');
             if (is_array($hostnameResp)) {
-                $info['hostname'] = $hostnameResp['value'] ?? $hostnameResp['hostname'] ?? null;
+                $hostname = $hostnameResp['value'] ?? $hostnameResp['hostname'] ?? null;
+                if ($hostname) {
+                    $info['hostname'] = $hostname;
+                    $info['sysName'] = $hostname;
+                }
             }
         } catch (\Throwable $e) {
             Log::debug('VCenterClient fetchDeviceInfo hostname failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            // Get appliance uptime in seconds
+            $uptimeResp = $this->get('appliance/system/uptime');
+            $uptimeValue = null;
+            if (is_array($uptimeResp)) {
+                $uptimeValue = $uptimeResp['value'] ?? $uptimeResp['uptime'] ?? null;
+            } elseif (is_numeric($uptimeResp)) {
+                $uptimeValue = $uptimeResp;
+            }
+            if (is_string($uptimeValue) && preg_match('/^\d+$/', $uptimeValue)) {
+                $uptimeValue = (int) $uptimeValue;
+            }
+            if (is_numeric($uptimeValue)) {
+                $info['uptime'] = (int) $uptimeValue;
+            }
+        } catch (\Throwable $e) {
+            Log::debug('VCenterClient fetchDeviceInfo uptime failed', ['error' => $e->getMessage()]);
         }
 
         return $info;
@@ -215,7 +240,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -346,7 +371,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
 
@@ -364,6 +389,37 @@ class VCenterClient implements DeviceApiClientInterface
                 'ifPhysAddress' => '',
                 'ifAlias' => 'Aggregate',
             ];
+
+            $interfaces = $this->getApplianceInterfaces();
+            foreach ($interfaces as $iface) {
+                $name = $iface['name'] ?? null;
+                if (!$name) {
+                    continue;
+                }
+
+                $status = strtolower((string) ($iface['status'] ?? ''));
+                $isUp = $status === 'up' || $status === 'connected' || $status === 'true' || $status === 'active';
+                $ipList = $iface['ipv4'] ?? [];
+                $aliasIps = [];
+                foreach ($ipList as $ipInfo) {
+                    if (!empty($ipInfo['address'])) {
+                        $aliasIps[] = $ipInfo['address'];
+                    }
+                }
+
+                $ports[] = [
+                    'ifIndex' => crc32($name) & 0x7FFFFFFF,
+                    'ifName' => $name,
+                    'ifDescr' => "vCenter Appliance {$name}",
+                    'ifType' => 'ethernetCsmacd',
+                    'ifOperStatus' => $isUp ? 'up' : 'down',
+                    'ifAdminStatus' => $isUp ? 'up' : 'down',
+                    'ifSpeed' => 0,
+                    'ifMtu' => $iface['mtu'] ?? 1500,
+                    'ifPhysAddress' => $iface['mac'] ?? '',
+                    'ifAlias' => $aliasIps ? implode(', ', $aliasIps) : '',
+                ];
+            }
 
             // REMOVED: VM network adapter collection
             // VM network adapters should not be listed as infrastructure ports.
@@ -385,7 +441,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
@@ -525,7 +581,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
@@ -648,7 +704,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
         $entPhysicalIndex = 1;
@@ -680,6 +736,44 @@ class VCenterClient implements DeviceApiClientInterface
                 ];
             } catch (\Exception $e) {
                 Log::debug('VCenterClient failed to get appliance version', ['error' => $e->getMessage()]);
+            }
+
+            // Get datacenters
+            $datacenterIndexMap = [];
+            try {
+                $dcResponse = $this->get('vcenter/datacenter');
+                $datacenters = $dcResponse['value'] ?? $dcResponse;
+                if (is_array($datacenters)) {
+                    foreach ($datacenters as $dc) {
+                        $dcId = is_array($dc) ? ($dc['datacenter'] ?? null) : $dc;
+                        $dcName = is_array($dc) ? ($dc['name'] ?? 'datacenter') : 'datacenter';
+
+                        if ($dcId) {
+                            $dcPhysicalIndex = $entPhysicalIndex++;
+                            $datacenterIndexMap[$dcId] = $dcPhysicalIndex;
+                            $inventory[] = [
+                                'entPhysicalIndex' => $dcPhysicalIndex,
+                                'entPhysicalDescr' => "Datacenter: {$dcName}",
+                                'entPhysicalClass' => 'container',
+                                'entPhysicalName' => $dcName,
+                                'entPhysicalModelName' => 'vSphere Datacenter',
+                                'entPhysicalSerialNum' => $dcId,
+                                'entPhysicalContainedIn' => $chassisIndex,
+                                'entPhysicalMfgName' => 'VMware',
+                                'entPhysicalParentRelPos' => -1,
+                                'entPhysicalVendorType' => 'vmware-datacenter',
+                                'entPhysicalHardwareRev' => '',
+                                'entPhysicalFirmwareRev' => '',
+                                'entPhysicalSoftwareRev' => '',
+                                'entPhysicalIsFRU' => 0,
+                                'entPhysicalAlias' => '',
+                                'entPhysicalAssetID' => '',
+                            ];
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('VCenterClient failed to get datacenters', ['error' => $e->getMessage()]);
             }
 
             // Get clusters first (if available)
@@ -721,6 +815,92 @@ class VCenterClient implements DeviceApiClientInterface
                 }
             } catch (\Exception $e) {
                 Log::debug('VCenterClient failed to get clusters', ['error' => $e->getMessage()]);
+            }
+
+            // Get datastores for inventory
+            try {
+                $dsResponse = $this->get('vcenter/datastore');
+                $datastores = $dsResponse['value'] ?? $dsResponse;
+
+                if (is_array($datastores)) {
+                    foreach ($datastores as $ds) {
+                        if (!is_array($ds)) {
+                            continue;
+                        }
+
+                        $dsId = $ds['datastore'] ?? null;
+                        $dsName = $ds['name'] ?? ($dsId ? "datastore-{$dsId}" : 'datastore');
+                        $parentIndex = $chassisIndex;
+                        $dcId = $ds['datacenter'] ?? null;
+                        if ($dcId && isset($datacenterIndexMap[$dcId])) {
+                            $parentIndex = $datacenterIndexMap[$dcId];
+                        }
+
+                        $inventory[] = [
+                            'entPhysicalIndex' => $entPhysicalIndex++,
+                            'entPhysicalDescr' => "Datastore: {$dsName}",
+                            'entPhysicalClass' => 'module',
+                            'entPhysicalName' => $dsName,
+                            'entPhysicalModelName' => 'vSphere Datastore',
+                            'entPhysicalSerialNum' => $dsId ?? '',
+                            'entPhysicalContainedIn' => $parentIndex,
+                            'entPhysicalMfgName' => 'VMware',
+                            'entPhysicalParentRelPos' => -1,
+                            'entPhysicalVendorType' => 'vmware-datastore',
+                            'entPhysicalHardwareRev' => '',
+                            'entPhysicalFirmwareRev' => '',
+                            'entPhysicalSoftwareRev' => '',
+                            'entPhysicalIsFRU' => 0,
+                            'entPhysicalAlias' => '',
+                            'entPhysicalAssetID' => '',
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('VCenterClient failed to get datastores', ['error' => $e->getMessage()]);
+            }
+
+            // Get networks for inventory
+            try {
+                $netResponse = $this->get('vcenter/network');
+                $networks = $netResponse['value'] ?? $netResponse;
+
+                if (is_array($networks)) {
+                    foreach ($networks as $net) {
+                        if (!is_array($net)) {
+                            continue;
+                        }
+
+                        $netId = $net['network'] ?? null;
+                        $netName = $net['name'] ?? ($netId ? "network-{$netId}" : 'network');
+                        $parentIndex = $chassisIndex;
+                        $dcId = $net['datacenter'] ?? null;
+                        if ($dcId && isset($datacenterIndexMap[$dcId])) {
+                            $parentIndex = $datacenterIndexMap[$dcId];
+                        }
+
+                        $inventory[] = [
+                            'entPhysicalIndex' => $entPhysicalIndex++,
+                            'entPhysicalDescr' => "Network: {$netName}",
+                            'entPhysicalClass' => 'module',
+                            'entPhysicalName' => $netName,
+                            'entPhysicalModelName' => 'vSphere Network',
+                            'entPhysicalSerialNum' => $netId ?? '',
+                            'entPhysicalContainedIn' => $parentIndex,
+                            'entPhysicalMfgName' => 'VMware',
+                            'entPhysicalParentRelPos' => -1,
+                            'entPhysicalVendorType' => 'vmware-network',
+                            'entPhysicalHardwareRev' => '',
+                            'entPhysicalFirmwareRev' => '',
+                            'entPhysicalSoftwareRev' => '',
+                            'entPhysicalIsFRU' => 0,
+                            'entPhysicalAlias' => '',
+                            'entPhysicalAssetID' => '',
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('VCenterClient failed to get networks', ['error' => $e->getMessage()]);
             }
 
             // Get hosts and map them to their clusters
@@ -833,11 +1013,57 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
         try {
+            // Get vCenter appliance storage
+            try {
+                $storageResp = $this->get('appliance/system/storage');
+                $storageItems = $storageResp['value'] ?? $storageResp;
+
+                if (is_array($storageItems)) {
+                    foreach ($storageItems as $idx => $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+
+                        $name = $item['name'] ?? $item['id'] ?? $item['path'] ?? $item['mount_point'] ?? "appliance-storage-{$idx}";
+                        $capacity = $item['total'] ?? $item['capacity'] ?? $item['size'] ?? null;
+                        $used = $item['used'] ?? $item['used_space'] ?? null;
+                        $free = $item['free'] ?? $item['free_space'] ?? null;
+
+                        if ($capacity === null && $used !== null && $free !== null) {
+                            $capacity = $used + $free;
+                        }
+                        if ($used === null && $capacity !== null && $free !== null) {
+                            $used = $capacity - $free;
+                        }
+
+                        if ($capacity === null) {
+                            continue;
+                        }
+
+                        $storage[] = [
+                            'storage_index' => "appliance-{$idx}",
+                            'storage_descr' => $name,
+                            'storage_type' => 'vmware-appliance',
+                            'storage_size' => (int) $capacity,
+                            'storage_used' => (int) ($used ?? 0),
+                            'storage_free' => (int) ($free ?? max(0, $capacity - ($used ?? 0))),
+                            'storage_units' => 1,
+                            'storage_perc' => $capacity > 0 ? round(((int) ($used ?? 0) / (int) $capacity) * 100, 2) : 0,
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('VCenterClient appliance storage not available', [
+                    'device_id' => $this->device->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Get datastores
             $response = $this->get('vcenter/datastore');
             $datastores = $response['value'] ?? $response;
@@ -890,7 +1116,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         // vCenter is a management platform, transceivers not applicable
         return [];
@@ -899,11 +1125,45 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
+        $aggregateIfIndex = 99999;
+        $aggregateIfName = 'vCenter Appliance';
+
+        $addIpv4 = function (?string $ipAddr, $prefix, ?string $ifName = null, ?int $ifIndex = null) use (&$addresses, $aggregateIfIndex, $aggregateIfName) {
+            if (!$ipAddr || !filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                return;
+            }
+
+            $prefixLen = null;
+            if (is_numeric($prefix)) {
+                $prefixLen = (int) $prefix;
+            } elseif (is_string($prefix) && preg_match('/^\d+$/', $prefix)) {
+                $prefixLen = (int) $prefix;
+            }
+
+            $addresses[] = [
+                'ifIndex' => $ifIndex ?? $aggregateIfIndex,
+                'ifName' => $ifName ?: $aggregateIfName,
+                'ipv4_address' => $ipAddr,
+                'ipv4_prefixlen' => $prefixLen ?? 24,
+                'context_name' => '',
+                'port_id' => null,
+            ];
+        };
 
         try {
+            // Get vCenter appliance interface IPs
+            $interfaces = $this->getApplianceInterfaces();
+            foreach ($interfaces as $iface) {
+                $ifName = $iface['name'] ?? $aggregateIfName;
+                $ifIndex = crc32($ifName) & 0x7FFFFFFF;
+                foreach ($iface['ipv4'] ?? [] as $ipInfo) {
+                    $addIpv4($ipInfo['address'] ?? null, $ipInfo['prefix'] ?? null, $ifName, $ifIndex);
+                }
+            }
+
             // Get VMs to extract their IP addresses
             $response = $this->get('vcenter/vm');
             $vms = $response['value'] ?? $response;
@@ -940,9 +1200,9 @@ class VCenterClient implements DeviceApiClientInterface
                                 continue;
                             }
 
-                            // Use MAC address to help match with port
-                            $context = $macAddress ?: $nicId;
                             $addresses[] = [
+                                'ifIndex' => $aggregateIfIndex,
+                                'ifName' => $aggregateIfName,
                                 'ipv4_address' => $ipAddr,
                                 'ipv4_prefixlen' => $prefixLen,
                                 'context_name' => $macAddress, // Use MAC to match with port
@@ -967,6 +1227,112 @@ class VCenterClient implements DeviceApiClientInterface
         }
 
         return $addresses;
+    }
+
+    protected function getApplianceInterfaces(): array
+    {
+        if ($this->applianceInterfaces !== null) {
+            return $this->applianceInterfaces;
+        }
+
+        $interfaces = [];
+
+        try {
+            $resp = $this->get('appliance/networking/interfaces');
+            $data = $resp['value'] ?? $resp;
+            $interfaces = $this->normalizeApplianceInterfaces($data);
+        } catch (\Throwable $e) {
+            Log::debug('VCenterClient appliance interfaces not available', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if (empty($interfaces)) {
+            try {
+                $resp = $this->get('appliance/networking');
+                $data = $resp['value'] ?? $resp;
+                $interfaces = $this->normalizeApplianceInterfaces($data);
+            } catch (\Throwable $e) {
+                Log::debug('VCenterClient appliance networking not available', [
+                    'device_id' => $this->device->device_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $this->applianceInterfaces = $interfaces;
+        return $interfaces;
+    }
+
+    protected function normalizeApplianceInterfaces($data): array
+    {
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $items = $data['interfaces'] ?? $data;
+        if (!is_array($items)) {
+            return [];
+        }
+
+        if (isset($items['name']) || isset($items['id'])) {
+            $items = [$items];
+        }
+
+        $normalized = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $name = $item['name'] ?? $item['id'] ?? $item['interface'] ?? null;
+            if (!$name) {
+                continue;
+            }
+
+            $ipv4Entries = [];
+            $ipv4 = $item['ipv4'] ?? $item['ipv4_config'] ?? null;
+            if (is_array($ipv4)) {
+                if (!empty($ipv4['address']) || !empty($ipv4['ip_address'])) {
+                    $ipv4Entries[] = [
+                        'address' => $ipv4['address'] ?? $ipv4['ip_address'],
+                        'prefix' => $ipv4['prefix'] ?? $ipv4['prefix_length'] ?? null,
+                    ];
+                }
+
+                if (!empty($ipv4['addresses']) && is_array($ipv4['addresses'])) {
+                    foreach ($ipv4['addresses'] as $addr) {
+                        if (!is_array($addr)) {
+                            continue;
+                        }
+                        $ipv4Entries[] = [
+                            'address' => $addr['address'] ?? $addr['ip_address'] ?? null,
+                            'prefix' => $addr['prefix'] ?? $addr['prefix_length'] ?? null,
+                        ];
+                    }
+                }
+
+                if (isset($ipv4[0]) && is_array($ipv4[0])) {
+                    foreach ($ipv4 as $addr) {
+                        $ipv4Entries[] = [
+                            'address' => $addr['address'] ?? $addr['ip_address'] ?? null,
+                            'prefix' => $addr['prefix'] ?? $addr['prefix_length'] ?? null,
+                        ];
+                    }
+                }
+            }
+
+            $normalized[] = [
+                'name' => $name,
+                'mac' => $item['mac'] ?? $item['mac_address'] ?? null,
+                'mtu' => $item['mtu'] ?? null,
+                'status' => $item['status'] ?? $item['state'] ?? $item['link_status'] ?? null,
+                'ipv4' => $ipv4Entries,
+            ];
+        }
+
+        return $normalized;
     }
 
     /**
@@ -1027,7 +1393,7 @@ class VCenterClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -1158,7 +1524,7 @@ class VCenterClient implements DeviceApiClientInterface
         }
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         $vms = [];
 
@@ -1273,12 +1639,14 @@ class VCenterClient implements DeviceApiClientInterface
                 return [];
             }
 
+            $datacenterMap = [];
             // Add datacenters as top-level clusters
             foreach ($datacenters as $dc) {
                 if (!is_array($dc) || !isset($dc['datacenter'], $dc['name'])) {
                     continue;
                 }
 
+                $datacenterMap[$dc['datacenter']] = $dc['name'];
                 $clusters[] = [
                     'cluster_type' => 'vmware',
                     'cluster_id' => $dc['datacenter'],
@@ -1313,14 +1681,18 @@ class VCenterClient implements DeviceApiClientInterface
                     if ($clusterDetails) {
                         $metadata['drs_enabled'] = $clusterDetails['drs_enabled'] ?? null;
                         $metadata['ha_enabled'] = $clusterDetails['ha_enabled'] ?? null;
+                        $metadata['vsan_enabled'] = $clusterDetails['vsan_enabled'] ?? null;
                     }
+
+                    $parentId = $cluster['datacenter'] ?? ($clusterDetails['datacenter'] ?? null);
+                    $parentName = $parentId && isset($datacenterMap[$parentId]) ? $datacenterMap[$parentId] : null;
 
                     $clusters[] = [
                         'cluster_type' => 'vmware',
                         'cluster_id' => $cluster['cluster'],
                         'cluster_name' => $cluster['name'],
-                        'parent_id' => null, // vCenter API doesn't directly expose DC-cluster relationship in cluster list
-                        'parent_name' => null,
+                        'parent_id' => $parentId,
+                        'parent_name' => $parentName,
                         'cluster_level' => 'cluster',
                         'metadata' => $metadata,
                     ];
@@ -1409,7 +1781,7 @@ class VCenterClient implements DeviceApiClientInterface
                     'host_type' => 'esxi',
                     'host_id' => $host['host'],
                     'host_name' => $host['name'],
-                    'cluster_id' => null, // Will be populated if we can determine cluster membership
+                    'cluster_id' => $host['cluster'] ?? ($hostDetails['cluster'] ?? null),
                     'role' => 'node', // ESXi hosts are typically cluster nodes
                     'status' => $status,
                     'version' => $version,

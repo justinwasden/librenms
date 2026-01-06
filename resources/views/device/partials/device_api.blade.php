@@ -122,6 +122,17 @@
     </div>
 
     {{-- Dynamic Auth Fields (rendered based on auth schemas from database) --}}
+    @php
+        $credAttrForField = function ($fieldName) {
+            if (str_starts_with($fieldName, 'api_credential_')) {
+                return $fieldName;
+            }
+            if (str_starts_with($fieldName, 'api_')) {
+                return 'api_credential_' . substr($fieldName, 4);
+            }
+            return 'api_credential_' . $fieldName;
+        };
+    @endphp
     @foreach($authTypes as $authKey => $authSchema)
         @if(isset($authSchema['fields']) && is_array($authSchema['fields']))
             @foreach($authSchema['fields'] as $field)
@@ -142,11 +153,11 @@
                                    value="">
                             @php
                                 // Check if a credential is stored for this field (from device attributes)
-                                $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                $credAttrName = $credAttrForField($field['name']);
                                 $hasStoredValue = $apiConfig && $apiConfig->schema?->key === $authKey && $device->getAttrib($credAttrName);
                             @endphp
                             @if($hasStoredValue)
-                                <small class="text-muted">A value is stored. Enter a new value to replace.</small>
+                                <small class="text-muted">Stored: ******** (enter a new value to replace)</small>
                             @endif
                         @elseif($field['type'] === 'select' && isset($field['options']))
                             <select id="{{ $field['name'] }}"
@@ -155,7 +166,7 @@
                                 @foreach($field['options'] as $optValue => $optLabel)
                                     @php
                                         // Read from device attributes instead of old model method
-                                        $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                        $credAttrName = $credAttrForField($field['name']);
                                         $storedValue = $apiConfig && $apiConfig->schema?->key === $authKey
                                             ? $device->getAttrib($credAttrName, $field['default'] ?? '')
                                             : ($field['default'] ?? '');
@@ -169,7 +180,7 @@
                         @else
                             @php
                                 // Read from device attributes instead of old model method
-                                $credAttrName = 'api_credential_' . str_replace('api_', '', $field['name']);
+                                $credAttrName = $credAttrForField($field['name']);
                                 $storedValue = $apiConfig && $apiConfig->schema?->key === $authKey
                                     ? $device->getAttrib($credAttrName, $field['default'] ?? '')
                                     : ($field['default'] ?? '');
@@ -1028,6 +1039,7 @@ $('#test-api-connection').on('click', function() {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -1042,7 +1054,31 @@ $('#test-api-connection').on('click', function() {
             ...authData
         })
     })
-    .then(r => r.json())
+    .then(async r => {
+        const contentType = r.headers.get('content-type') || '';
+        const bodyText = await r.text();
+        let data = null;
+
+        if (bodyText && contentType.includes('application/json')) {
+            try {
+                data = JSON.parse(bodyText);
+            } catch (e) {
+                throw new Error('Invalid JSON response');
+            }
+        }
+
+        if (!r.ok) {
+            const trimmed = bodyText ? bodyText.replace(/\s+/g, ' ').slice(0, 200) : '';
+            const message = (data && (data.message || data.error)) || trimmed || r.statusText || 'Request failed';
+            throw new Error(message);
+        }
+
+        if (!data && bodyText) {
+            console.warn('Non-JSON response from connection test:', bodyText);
+        }
+
+        return data;
+    })
     .then(d => {
         // Always log full response to console for debugging
         console.log('API Connection Test Response:', d);
@@ -1063,7 +1099,7 @@ $('#test-api-connection').on('click', function() {
 
             toastr.success(message);
         } else {
-            toastr.error('Connection failed: ' + ((d && d.error) || 'Unknown error'));
+            toastr.error('Connection failed: ' + ((d && (d.message || d.error)) || 'Unknown error'));
             if (d.details) {
                 console.error('Connection Failure Details:', d.details);
             }

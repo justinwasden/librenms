@@ -2,6 +2,7 @@
 
 namespace App\ApiClients\VMware;
 
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 
@@ -27,10 +28,10 @@ class EsxiSoapClient
     /**
      * Initialize ESXi SOAP client
      *
-     * @param Device $device
+     * @param Device|TestableDevice $device
      * @param array $config Configuration from device attributes (api_base_url, api_credential_*, etc.)
      */
-    public function __construct(Device $device, array $config = [])
+    public function __construct(Device|TestableDevice $device, array $config = [])
     {
         $this->hostname = $config['hostname'] ?? $device->hostname;
         $this->username = $config['username'] ?? '';
@@ -1083,7 +1084,7 @@ class EsxiSoapClient
      * @param Device $device
      * @return array IPv4 addresses
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         if (!$this->login()) {
             return [];
@@ -1177,7 +1178,7 @@ class EsxiSoapClient
      * @param Device $device
      * @return array Array of VM information
      */
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         if (!$this->login()) {
             return [];

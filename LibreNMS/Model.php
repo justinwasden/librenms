@@ -2,6 +2,7 @@
 
 namespace LibreNMS;
 
+#[\AllowDynamicProperties]
 abstract class Model
 {
     protected static $table;

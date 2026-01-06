@@ -2,6 +2,7 @@
 namespace App\ApiClients\Proxmox;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Http;
 use LibreNMS\Util\DeviceApiSettings;
@@ -9,7 +10,7 @@ use LibreNMS\Util\DeviceApiSettings;
 class ProxmoxApiClient implements DeviceApiClientInterface
 {
     public const VENDOR = 'proxmox';
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected string $base;
     protected int $timeout;
     protected bool $verifyTls;
@@ -18,7 +19,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
     protected array $headers = [];
     protected array $cookies = [];
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -149,7 +150,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
     public function getNodeNetwork(string $node): array { return $this->get("nodes/{$node}/network"); }
     public function getClusterStatus(): array { return $this->get('cluster/status'); }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         return $device->os === 'proxmox' && $device->getAttrib('api_base_url') !== null;
     }
@@ -159,7 +160,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return ['sensors', 'ports', 'processors', 'mempools', 'storage', 'ipv4', 'ports_stats', 'vminfo', 'clusters', 'hypervisor_hosts'];
     }
 
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -243,7 +244,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return $sensors;
     }
 
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
 
@@ -439,7 +440,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return abs(crc32($name)) % 2147483647;
     }
 
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
@@ -474,7 +475,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return $mempools;
     }
 
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
@@ -506,12 +507,12 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return $processors;
     }
 
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
@@ -552,13 +553,13 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return $storage;
     }
 
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         // Proxmox is a virtualization platform, transceivers not applicable
         return [];
     }
 
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -643,7 +644,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         return $addresses;
     }
 
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -679,7 +680,8 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                 $active = isset($interface['active']) && $interface['active'] ? 1 : 0;
 
                 $stats[] = [
-                    'ifIndex' => $idx + 1,
+                    'ifIndex' => $this->stableIndexFromName($ifName),
+                    'ifName' => $ifName,
                     'ifInOctets' => 0,  // Would need RRD data
                     'ifOutOctets' => 0, // Would need RRD data
                     'ifInErrors' => 0,
@@ -749,7 +751,7 @@ class ProxmoxApiClient implements DeviceApiClientInterface
         }
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         $vms = [];
 
@@ -766,13 +768,14 @@ class ProxmoxApiClient implements DeviceApiClientInterface
                     continue;
                 }
 
-                // Map Proxmox VM states to LibreNMS vminfo states
+                // Map Proxmox VM states to LibreNMS vminfo states (integer values)
+                // Database column is smallint: 0 = OFF, 1 = ON, 2 = SUSPENDED, 3 = UNKNOWN
                 $status = $resource['status'] ?? 'unknown';
                 $vmState = match($status) {
-                    'running' => 'running',
-                    'stopped' => 'poweredOff',
-                    'paused' => 'suspended',
-                    default => 'unknown',
+                    'running' => 1,     // ON
+                    'stopped' => 0,     // OFF
+                    'paused' => 2,      // SUSPENDED
+                    default => 3,       // UNKNOWN
                 };
 
                 // Extract VM details

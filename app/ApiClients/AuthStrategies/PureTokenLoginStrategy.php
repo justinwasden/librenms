@@ -3,13 +3,14 @@
 namespace App\ApiClients\AuthStrategies;
 
 use App\ApiClients\Contracts\AuthStrategyInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class PureTokenLoginStrategy implements AuthStrategyInterface
 {
-    public function authenticate(Device $device, array $options): AuthContext
+    public function authenticate(Device|TestableDevice $device, array $options): AuthContext
     {
         $baseUrl = rtrim((string) ($options['base_url'] ?? ''), '/');
         $loginUrl = (string) ($options['login_url'] ?? ($baseUrl . '/login'));

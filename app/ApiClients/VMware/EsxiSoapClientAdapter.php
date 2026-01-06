@@ -3,6 +3,7 @@
 namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Util\DeviceApiSettings;
@@ -18,9 +19,9 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
     public const VENDOR = 'vmware';
 
     protected EsxiSoapClient $soapClient;
-    protected Device $device;
+    protected Device|TestableDevice $device;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -42,7 +43,7 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
         $this->soapClient = new EsxiSoapClient($device, $config);
     }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         return $device->os === 'vmware-esxi' && $device->getAttrib('api_base_url') !== null;
     }
@@ -52,52 +53,52 @@ class EsxiSoapClientAdapter implements DeviceApiClientInterface
         return ['vminfo'];
     }
 
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         return $this->soapClient->fetchVms($device);
     }

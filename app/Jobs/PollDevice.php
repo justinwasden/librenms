@@ -22,6 +22,7 @@ use LibreNMS\Polling\ConnectivityHelper;
 use LibreNMS\RRD\RrdDefinition;
 use LibreNMS\Util\Dns;
 use LibreNMS\Util\Module;
+use App\Pollers\RestApiPoller;
 use Throwable;
 
 class PollDevice implements ShouldQueue
@@ -179,16 +180,10 @@ class PollDevice implements ShouldQueue
             }
 
             Log::info("REST API polling check: device={$this->device->device_id} enabled=true base_url={$baseUrl} template={$templateKey}");
-            // Construct API client from device attributes
-            $client = \App\ApiClients\DeviceApiClientFactory::make($this->device);
-            if (!$client) {
-                Log::warning("REST API polling skipped for device {$this->device->device_id}: no client");
-                return;
-            }
 
-            // API polling is now handled by the OS class discovery methods
-            // which are called during normal polling modules (processors, sensors, etc.)
-            // This method can be removed in future refactoring
+            // Use RestApiPoller to poll all capabilities
+            $poller = new RestApiPoller($this->device);
+            $poller->poll();
 
             Log::info("REST API polling successful for device {$this->device->device_id}");
         } catch (\Throwable $e) {

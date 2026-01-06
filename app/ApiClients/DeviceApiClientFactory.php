@@ -47,6 +47,38 @@ class DeviceApiClientFactory
 
     protected static array $cache = []; // device_id => class-string
 
+    /**
+     * Create a client for testing purposes with in-memory attributes
+     * This prevents any database modifications during connection tests
+     */
+    public static function makeForTest(Device $device, $testAttribs): ?DeviceApiClientInterface
+    {
+        // Create a TestableDevice wrapper that uses in-memory attributes
+        $testDevice = new TestableDevice($device, $testAttribs);
+
+        // Get template key from test attributes
+        $templateKey = $testDevice->getAttrib('api_template_key');
+
+        if ($templateKey && isset(self::$templateToClient[$templateKey])) {
+            $class = self::$templateToClient[$templateKey];
+            return new $class($testDevice);
+        }
+
+        // Try probe path
+        foreach (self::$clientClasses as $class) {
+            try {
+                $client = new $class($testDevice);
+                if ($client->supports($testDevice)) {
+                    return $client;
+                }
+            } catch (\Throwable $e) {
+                Log::debug("Test API client probe failed for $class: " . $e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
     public static function make(Device $device): ?DeviceApiClientInterface
     {
         $id = (int) ($device->device_id ?? 0);

@@ -48,29 +48,29 @@ class Netapp extends \LibreNMS\OS implements
     /**
      * Discover memory pools (via API)
      */
-    public function discoverMempools()
+    public function discoverMempools(): \Illuminate\Support\Collection
     {
         if (!$this->hasApiConfig()) {
-            return [];
+            return collect();
         }
 
         try {
             $client = DeviceApiClientFactory::make($this->getDevice());
             if (!$client) {
-                return [];
+                return collect();
             }
 
             // Fetch node metrics (includes memory utilization)
             $nodeData = $client->get('/api/cluster/nodes');
             $mempools = $this->normalizeData('NetApp\NodeMetricsToProcessorsMempools', $nodeData);
 
-            return $mempools ?? [];
+            return collect($mempools ?? []);
         } catch (\Exception $e) {
             \Log::warning('NetApp mempool discovery failed', [
                 'device_id' => $this->getDevice()->device_id,
                 'error' => $e->getMessage(),
             ]);
-            return [];
+            return collect();
         }
     }
 

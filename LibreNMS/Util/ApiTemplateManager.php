@@ -2,16 +2,22 @@
 
 namespace LibreNMS\Util;
 
+use App\Models\ApiAuthSchema;
+use App\Models\ApiTemplate;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Yaml\Yaml;
 
 /**
  * Manages API templates for vendor device connections
- * Templates are loaded from YAML files in resources/definitions/api-templates/
- * Users can edit these YAML files to customize endpoints without modifying PHP code
+ * Templates are loaded from:
+ * 1. Database tables (api_templates, api_auth_schemas) - primary source
+ * 2. YAML files in resources/definitions/api-templates/ (fallback)
+ * 3. Hardcoded defaults as last resort fallback
  */
 class ApiTemplateManager
 {
     private static ?array $templatesCache = null;
+    private static ?array $authTypesCache = null;
     private static string $templatesPath = '';
 
     /**
@@ -36,31 +42,122 @@ class ApiTemplateManager
     }
 
     /**
+     * Check if database tables exist and are accessible
+     */
+    private static function databaseAvailable(): bool
+    {
+        try {
+            if (! function_exists('app') || ! app()->bound('db')) {
+                return false;
+            }
+            return Schema::hasTable('api_templates') && Schema::hasTable('api_auth_schemas');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Load templates from database
+     */
+    private static function loadTemplatesFromDatabase(): array
+    {
+        if (! self::databaseAvailable()) {
+            return [];
+        }
+
+        try {
+            $templates = [];
+            $dbTemplates = ApiTemplate::with('endpoints')->where('enabled', true)->get();
+
+            foreach ($dbTemplates as $template) {
+                $templates[$template->key] = [
+                    'name' => $template->name,
+                    'description' => $template->description,
+                    'os' => $template->os_types ?? [],
+                    'auth_type' => $template->auth_type,
+                    'base_url_pattern' => $template->base_url_pattern,
+                    'capabilities' => $template->capabilities ?? [],
+                    'is_system' => $template->is_system,
+                    'endpoints' => $template->endpoints
+                        ->where('enabled', true)
+                        ->map(fn ($ep) => [
+                            'capability' => $ep->capability,
+                            'method' => $ep->method,
+                            'path' => $ep->path,
+                            'transform' => $ep->transform,
+                            'for_each' => $ep->for_each,
+                            'body' => $ep->body,
+                            'headers' => $ep->headers,
+                        ])
+                        ->values()
+                        ->toArray(),
+                ];
+            }
+
+            return $templates;
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to load API templates from database: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Load auth schemas from database
+     */
+    private static function loadAuthSchemasFromDatabase(): array
+    {
+        if (! self::databaseAvailable()) {
+            return [];
+        }
+
+        try {
+            $schemas = [];
+            $dbSchemas = ApiAuthSchema::all();
+
+            foreach ($dbSchemas as $schema) {
+                $schemas[$schema->key] = [
+                    'name' => $schema->name,
+                    'description' => $schema->description,
+                    'fields' => $schema->fields ?? [],
+                    'is_system' => $schema->is_system,
+                ];
+            }
+
+            return $schemas;
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to load API auth schemas from database: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Load a template from YAML file
      */
     private static function loadTemplateFromYaml(string $key): ?array
     {
         $path = self::getTemplatesPath() . '/' . $key . '.yaml';
 
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return null;
         }
 
         try {
             $template = Yaml::parseFile($path);
-            if (!is_array($template)) {
+            if (! is_array($template)) {
                 return null;
             }
+
             return $template;
         } catch (\Exception $e) {
             \Log::warning("Failed to parse API template YAML: $path - " . $e->getMessage());
+
             return null;
         }
     }
 
     /**
      * Get all available API templates with their endpoints
-     * Loads from YAML files first, falls back to hardcoded defaults
+     * Priority: Database > YAML files > Hardcoded defaults
      */
     public static function getAllTemplates(): array
     {
@@ -70,38 +167,45 @@ class ApiTemplateManager
 
         $templates = [];
 
-        // Scan for YAML template files
-        $yamlPath = self::getTemplatesPath();
-        if (is_dir($yamlPath)) {
-            $files = glob($yamlPath . '/*.yaml');
-            foreach ($files as $file) {
-                $key = basename($file, '.yaml');
-                $template = self::loadTemplateFromYaml($key);
-                if ($template) {
-                    $templates[$key] = $template;
+        // 1. Try to load from database first
+        $templates = self::loadTemplatesFromDatabase();
+
+        // 2. If no database templates, try YAML files
+        if (empty($templates)) {
+            $yamlPath = self::getTemplatesPath();
+            if (is_dir($yamlPath)) {
+                $files = glob($yamlPath . '/*.yaml');
+                foreach ($files as $file) {
+                    $key = basename($file, '.yaml');
+                    $template = self::loadTemplateFromYaml($key);
+                    if ($template) {
+                        $templates[$key] = $template;
+                    }
                 }
             }
         }
 
-        // If no YAML files found, use hardcoded defaults
+        // 3. If still no templates, use hardcoded defaults
         if (empty($templates)) {
             $templates = self::getHardcodedTemplates();
         }
 
         self::$templatesCache = $templates;
+
         return $templates;
     }
 
     /**
-     * Clear the template cache (useful after editing YAML files)
+     * Clear the template cache (useful after editing YAML files or database changes)
      */
     public static function clearCache(): void
     {
         self::$templatesCache = null;
+        self::$authTypesCache = null;
     }
 
     /**
-     * Get hardcoded default templates (fallback if no YAML files exist)
+     * Get hardcoded default templates (fallback if no database or YAML files exist)
      */
     private static function getHardcodedTemplates(): array
     {
@@ -116,7 +220,7 @@ class ApiTemplateManager
                 'endpoints' => [
                     ['capability' => 'sensors',   'method' => 'GET', 'path' => 'arrays',              'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\ArraySensors::normalize'],
                     ['capability' => 'sensors',   'method' => 'GET', 'path' => 'arrays/performance',  'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\ArraySensors::normalize'],
-                    ['capability' => 'inventory', 'method' => 'GET', 'path' => 'controllers',         'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\Hardware::normalize'],
+                    ['capability' => 'inventory', 'method' => 'GET', 'path' => 'hardware?filter=type%3D%27controller%27', 'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\Hardware::normalize'],
                     ['capability' => 'inventory', 'method' => 'GET', 'path' => 'hardware',            'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\Hardware::normalize'],
                     ['capability' => 'inventory', 'method' => 'GET', 'path' => 'drives',              'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\Hardware::normalize'],
                     ['capability' => 'sensors',   'method' => 'GET', 'path' => 'alerts',              'transform' => 'LibreNMS\\Util\\Normalizers\\Pure\\Alerts::normalize'],
@@ -246,7 +350,7 @@ class ApiTemplateManager
                 'os' => ['cisco-ucsm', 'cisco-usm'],
                 'auth_type' => 'basic',
                 'base_url_pattern' => 'https://{hostname}',
-                'capabilities' => ['inventory', 'sensors', 'ports', 'processors', 'mempools', 'storage', 'vlans'],
+                'capabilities' => ['inventory', 'sensors', 'ports', 'processors', 'mempools', 'vlans', 'ipv4'],
                 'endpoints' => [],
             ],
             'cisco_ftd' => [
@@ -306,8 +410,31 @@ class ApiTemplateManager
 
     /**
      * Get available authentication types
+     * Priority: Database > Hardcoded defaults
      */
     public static function getAuthTypes(): array
+    {
+        if (self::$authTypesCache !== null) {
+            return self::$authTypesCache;
+        }
+
+        // Try database first
+        $schemas = self::loadAuthSchemasFromDatabase();
+
+        // Fallback to hardcoded if no database schemas
+        if (empty($schemas)) {
+            $schemas = self::getHardcodedAuthTypes();
+        }
+
+        self::$authTypesCache = $schemas;
+
+        return self::$authTypesCache;
+    }
+
+    /**
+     * Get hardcoded auth types (fallback)
+     */
+    private static function getHardcodedAuthTypes(): array
     {
         return [
             'basic' => [

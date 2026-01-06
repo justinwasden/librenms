@@ -1,6 +1,7 @@
 <?php
 namespace App\ApiClients\Contracts;
 
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 
 interface DeviceApiClientInterface
@@ -9,38 +10,38 @@ interface DeviceApiClientInterface
     public const VENDOR = 'generic';
 
     // Fast eligibility check (attribute or quick probe)
-    public function supports(Device $device): bool;
+    public function supports(Device|TestableDevice $device): bool;
 
     // Advertise which data types the client can provide
     // e.g., ['sensors','ports','mempools','processors','inventory','ipv4']
     public function capabilities(): array;
 
     // Fetch normalized data structures Modules expect
-    public function fetchSensors(Device $device): array;
-    public function fetchPorts(Device $device): array;
-    public function fetchMempools(Device $device): array;
-    public function fetchProcessors(Device $device): array;
-    public function fetchInventory(Device $device): array;
+    public function fetchSensors(Device|TestableDevice $device): array;
+    public function fetchPorts(Device|TestableDevice $device): array;
+    public function fetchMempools(Device|TestableDevice $device): array;
+    public function fetchProcessors(Device|TestableDevice $device): array;
+    public function fetchInventory(Device|TestableDevice $device): array;
 
     // Storage (optional capability)
     // Return an array of entries with keys: storage_descr, storage_type, storage_index, storage_size, storage_used, storage_units
-    public function fetchStorage(Device $device): array;
+    public function fetchStorage(Device|TestableDevice $device): array;
 
     // Transceivers (optional capability)
     // Return an array of entries with keys: ifIndex or port_id, and optics fields
-    public function fetchTransceivers(Device $device): array;
+    public function fetchTransceivers(Device|TestableDevice $device): array;
 
     // IPv4 addresses (optional capability)
     // Return an array of entries with keys: ifIndex, ipv4_address, ipv4_prefixlen, context_name
-    public function fetchIpv4Addresses(Device $device): array;
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array;
 
     // Ports statistics (optional capability - for polling)
     // Return an array of entries with keys: ifIndex and counter fields (ifInOctets, ifOutOctets, etc.)
-    public function fetchPortsStatistics(Device $device): array;
+    public function fetchPortsStatistics(Device|TestableDevice $device): array;
 
     // Virtual machines (optional capability)
     // Return an array of entries with keys: vm_type, vmwVmVMID, vmwVmDisplayName, vmwVmGuestOS, vmwVmMemSize, vmwVmCpus, vmwVmState
-    public function fetchVms(Device $device): array;
+    public function fetchVms(Device|TestableDevice $device): array;
 
     /**
      * Low-level HTTP transport methods

@@ -8,7 +8,6 @@ use App\Models\Storage as StorageModel;
 use App\Models\Sensor;
 use App\Models\Component;
 use App\Models\Service;
-use App\Models\StorageController;
 use App\Models\StorageVolume;
 use App\Models\StorageHost;
 use App\Observers\ModuleModelObserver;
@@ -64,8 +63,12 @@ class StorageArrays implements Module
         $array->array_name = $device->sysName ?: $device->hostname;
         $array->software_version = $device->version ?: null;
 
-        // 4) Counts - Use dedicated storage detail tables if available, fallback to old methods
-        $array->controllers_count = StorageController::where('device_id', $device->device_id)->count();
+        // 4) Counts - Use native entPhysical for controllers, fallback to old methods
+        $array->controllers_count = \DB::table('entPhysical')
+            ->where('device_id', $device->device_id)
+            ->where('entPhysicalClass', 'module')
+            ->where('entPhysicalVendorType', 'controller')
+            ->count();
         if ($array->controllers_count === 0) {
             // Fallback: Check components table for legacy data
             $array->controllers_count = Component::where('device_id', $device->device_id)
@@ -126,8 +129,12 @@ class StorageArrays implements Module
             (int) $storages->sum('storage_free'),
         );
 
-        // Update counts from dedicated tables
-        $array->controllers_count = StorageController::where('device_id', $device->device_id)->count();
+        // Update counts from native entPhysical
+        $array->controllers_count = \DB::table('entPhysical')
+            ->where('device_id', $device->device_id)
+            ->where('entPhysicalClass', 'module')
+            ->where('entPhysicalVendorType', 'controller')
+            ->count();
         if ($array->controllers_count === 0) {
             $array->controllers_count = Component::where('device_id', $device->device_id)
                 ->where('type', 'like', '%controller%')->count();

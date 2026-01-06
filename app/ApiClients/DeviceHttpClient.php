@@ -19,14 +19,14 @@ class DeviceHttpClient
     protected ?string $proxy;
     protected int $maxRetries;
     protected int $retryInitialDelayMs;
-    protected ?Device $device;
+    protected Device|TestableDevice|null $device;
     protected ?RateLimiter $rateLimiter;
     protected int $rateLimitQps;
     protected bool $enableCircuitBreaker;
     protected int $circuitBreakerThreshold;
     protected array $curlOptions = [];
 
-    public function __construct(array $options, ?Device $device = null)
+    public function __construct(array $options, Device|TestableDevice|null $device = null)
     {
         $this->baseUrl = rtrim((string)($options['base_url'] ?? ''), '/');
         $this->headers = (array)($options['headers'] ?? []);
@@ -249,7 +249,7 @@ class DeviceHttpClient
         return $clone;
     }
 
-    public static function fromOptions(array $options, ?Device $device = null): self
+    public static function fromOptions(array $options, Device|TestableDevice|null $device = null): self
     {
         return new self($options, $device);
     }

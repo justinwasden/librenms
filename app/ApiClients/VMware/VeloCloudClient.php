@@ -4,6 +4,7 @@ namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Util\DeviceApiSettings;
@@ -19,7 +20,7 @@ class VeloCloudClient implements DeviceApiClientInterface
 {
     public const VENDOR = 'vmware';
 
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected DeviceHttpClient $httpClient;
     protected ?string $apiToken = null;
     protected ?string $username = null;
@@ -33,7 +34,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     protected bool $verifyTls;
     protected int $timeoutMs;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -319,7 +320,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Implement abstract method from DeviceApiClientInterface
      */
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         return in_array($device->os, ['velocloud', 'vmware-sdwan'], true)
             && !empty($device->getAttrib('api_base_url'));
@@ -337,7 +338,7 @@ class VeloCloudClient implements DeviceApiClientInterface
      * Fetch sensors from VeloCloud link metrics
      * Returns: latency, jitter, packet loss, bandwidth utilization, link state
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -463,54 +464,54 @@ class VeloCloudClient implements DeviceApiClientInterface
                 }
             }
 
-            // Get edge system metrics
-            $edgeInfo = $this->getEdgeInfo();
-            if (!empty($edgeInfo)) {
+            // Get edge system metrics from metrics/getEdgeStatusMetrics endpoint
+            $metrics = $this->getEdgeStatusMetrics();
+            if (!empty($metrics)) {
                 // CPU usage
-                if (isset($edgeInfo['systemCpuPercent'])) {
+                if (isset($metrics['systemCpuPercent']) && $metrics['systemCpuPercent'] !== null) {
                     $sensors[] = [
                         'sensor_class' => 'percent',
                         'sensor_type' => 'velocloud-system',
-                        'sensor_descr' => 'System CPU',
+                        'sensor_descr' => 'Edge CPU',
                         'sensor_index' => 'system-cpu',
-                        'sensor_current' => $edgeInfo['systemCpuPercent'],
+                        'sensor_current' => (float) $metrics['systemCpuPercent'],
                         'sensor_limit' => 90,
                         'sensor_limit_low' => 0,
                     ];
                 }
 
                 // Memory usage
-                if (isset($edgeInfo['systemMemoryPercent'])) {
+                if (isset($metrics['systemMemoryPercent']) && $metrics['systemMemoryPercent'] !== null) {
                     $sensors[] = [
                         'sensor_class' => 'percent',
                         'sensor_type' => 'velocloud-system',
-                        'sensor_descr' => 'System Memory',
+                        'sensor_descr' => 'Edge Memory',
                         'sensor_index' => 'system-memory',
-                        'sensor_current' => $edgeInfo['systemMemoryPercent'],
+                        'sensor_current' => (float) $metrics['systemMemoryPercent'],
                         'sensor_limit' => 90,
                         'sensor_limit_low' => 0,
                     ];
                 }
 
                 // Flow count
-                if (isset($edgeInfo['flowCount'])) {
+                if (isset($metrics['flowCount']) && $metrics['flowCount'] !== null) {
                     $sensors[] = [
                         'sensor_class' => 'count',
                         'sensor_type' => 'velocloud-system',
                         'sensor_descr' => 'Active Flows',
                         'sensor_index' => 'flow-count',
-                        'sensor_current' => $edgeInfo['flowCount'],
+                        'sensor_current' => (int) $metrics['flowCount'],
                     ];
                 }
 
                 // Tunnel count
-                if (isset($edgeInfo['tunnelCount'])) {
+                if (isset($metrics['tunnelCount']) && $metrics['tunnelCount'] !== null) {
                     $sensors[] = [
                         'sensor_class' => 'count',
                         'sensor_type' => 'velocloud-system',
                         'sensor_descr' => 'Active Tunnels',
                         'sensor_index' => 'tunnel-count',
-                        'sensor_current' => $edgeInfo['tunnelCount'],
+                        'sensor_current' => (int) $metrics['tunnelCount'],
                     ];
                 }
             }
@@ -533,7 +534,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch ports/links from VeloCloud
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
 
@@ -612,28 +613,28 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch memory pools from VeloCloud edge
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
         try {
-            $edgeInfo = $this->getEdgeInfo();
+            // Get system metrics from metrics/getEdgeStatusMetrics endpoint
+            $metrics = $this->getEdgeStatusMetrics();
 
-            if (!empty($edgeInfo)) {
+            if (!empty($metrics)) {
                 // System memory from percentage
-                $memPercent = $edgeInfo['systemMemoryPercent'] ?? null;
-                $memTotal = $edgeInfo['memoryTotal'] ?? 0;
-                $memUsed = $edgeInfo['memoryUsed'] ?? 0;
+                $memPercent = $metrics['systemMemoryPercent'] ?? null;
 
-                if ($memPercent !== null || $memTotal > 0) {
+                if ($memPercent !== null) {
+                    // VeloCloud only provides percentage, so we use 100 as the "total"
                     $mempools[] = [
                         'mempool_index' => 0,
                         'mempool_type' => 'velocloud',
-                        'mempool_descr' => 'System Memory',
-                        'mempool_total' => $memTotal ?: 100,
-                        'mempool_used' => $memUsed ?: ($memPercent ?? 0),
-                        'mempool_free' => $memTotal > 0 ? ($memTotal - $memUsed) : (100 - ($memPercent ?? 0)),
-                        'mempool_perc' => $memPercent ?? ($memTotal > 0 ? round(($memUsed / $memTotal) * 100, 2) : 0),
+                        'mempool_descr' => 'Edge Memory',
+                        'mempool_total' => 100,
+                        'mempool_used' => (float) $memPercent,
+                        'mempool_free' => 100 - (float) $memPercent,
+                        'mempool_perc' => (float) $memPercent,
                     ];
                 }
             }
@@ -656,19 +657,20 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch processors from VeloCloud edge
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
         try {
-            $edgeInfo = $this->getEdgeInfo();
+            // Get system metrics from metrics/getEdgeStatusMetrics endpoint
+            $metrics = $this->getEdgeStatusMetrics();
 
-            if (!empty($edgeInfo) && isset($edgeInfo['systemCpuPercent'])) {
+            if (!empty($metrics) && isset($metrics['systemCpuPercent']) && $metrics['systemCpuPercent'] !== null) {
                 $processors[] = [
                     'processor_index' => 0,
                     'processor_type' => 'velocloud',
-                    'processor_descr' => 'System CPU',
-                    'processor_usage' => $edgeInfo['systemCpuPercent'],
+                    'processor_descr' => 'Edge CPU',
+                    'processor_usage' => (float) $metrics['systemCpuPercent'],
                 ];
             }
 
@@ -690,7 +692,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch inventory from VeloCloud edge
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
 
@@ -703,7 +705,7 @@ class VeloCloudClient implements DeviceApiClientInterface
 
                 $inventory[] = [
                     'entPhysicalIndex' => 1,
-                    'entPhysicalDescr' => "VeloCloud Edge: {$edgeName} [{$state}]",
+                    'entPhysicalDescr' => "VeloCloud Edge: {$edgeName}",
                     'entPhysicalClass' => 'chassis',
                     'entPhysicalName' => $edgeName,
                     'entPhysicalModelName' => $edgeInfo['modelNumber'] ?? 'VeloCloud Edge',
@@ -734,7 +736,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch storage - VeloCloud doesn't expose storage metrics
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -742,7 +744,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch transceivers - VeloCloud doesn't expose transceiver metrics
      */
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -750,7 +752,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch IPv4 addresses from VeloCloud edge
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -852,7 +854,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch port statistics from VeloCloud link metrics
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -893,7 +895,7 @@ class VeloCloudClient implements DeviceApiClientInterface
     /**
      * Fetch VMs - VeloCloud doesn't have VMs
      */
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -922,16 +924,18 @@ class VeloCloudClient implements DeviceApiClientInterface
     protected function getAggregateLinkMetrics(): array
     {
         try {
+            // VeloCloud API expects millisecond timestamps
+            $nowMs = time() * 1000;
+            $fiveMinAgoMs = (time() - 300) * 1000;
+
             $body = [
                 'interval' => [
-                    'start' => time() - 300, // Last 5 minutes
-                    'end' => time(),
+                    'start' => $fiveMinAgoMs,
+                    'end' => $nowMs,
                 ],
             ];
 
-            if ($this->edgeId) {
-                $body['edgeId'] = (int) $this->edgeId;
-            }
+            // enterpriseId and edgeId are added by the post() method
 
             $response = $this->post('metrics/getAggregateEdgeLinkMetrics', $body);
 
@@ -963,6 +967,53 @@ class VeloCloudClient implements DeviceApiClientInterface
             return $response ?? [];
         } catch (\Throwable $e) {
             Log::warning('VeloCloud getEdgeInfo failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Get edge system metrics (CPU, memory, flow count, tunnel count)
+     * Uses metrics/getEdgeStatusMetrics endpoint
+     */
+    protected function getEdgeStatusMetrics(): array
+    {
+        try {
+            if (!$this->edgeId) {
+                return [];
+            }
+
+            // VeloCloud API expects millisecond timestamps
+            $nowMs = time() * 1000;
+            $fiveMinAgoMs = (time() - 300) * 1000;
+
+            $response = $this->httpClient->post('/portal/rest/metrics/getEdgeStatusMetrics', [
+                'enterpriseId' => (int) $this->enterpriseId,
+                'edgeId' => (int) $this->edgeId,
+                'interval' => [
+                    'start' => $fiveMinAgoMs,
+                    'end' => $nowMs,
+                ],
+            ]);
+
+            // Response is an array of metrics over time, get the latest
+            if (is_array($response) && count($response) > 0) {
+                // Get the most recent data point
+                $latest = end($response);
+                return [
+                    'systemCpuPercent' => $latest['cpuPct'] ?? null,
+                    'systemMemoryPercent' => $latest['memoryPct'] ?? null,
+                    'flowCount' => $latest['flowCount'] ?? null,
+                    'tunnelCount' => $latest['tunnelCount'] ?? null,
+                    'handoffQueueDrops' => $latest['handoffQueueDrops'] ?? null,
+                ];
+            }
+
+            return [];
+        } catch (\Throwable $e) {
+            Log::warning('VeloCloud getEdgeStatusMetrics failed', [
                 'device_id' => $this->device->device_id,
                 'error' => $e->getMessage(),
             ]);

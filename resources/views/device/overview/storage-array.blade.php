@@ -73,6 +73,7 @@
                 <thead>
                     <tr>
                         <th>Controller Name</th>
+                        <th>Serial Number</th>
                         <th>Model</th>
                         <th>Status</th>
                         <th>Mode</th>
@@ -82,6 +83,7 @@
                     @foreach ($controllers as $controller)
                     <tr>
                         <td>{{ $controller->controller_name }}</td>
+                        <td>{{ $controller->serial ?? 'N/A' }}</td>
                         <td>{{ $controller->model ?? 'N/A' }}</td>
                         <td>
                             <span class="label {{ $controller->status === 'ok' || $controller->status === 'healthy' || $controller->status === 'up'|| $controller->status === 'ready' ? 'label-success' : 'label-danger' }}">

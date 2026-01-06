@@ -79,9 +79,9 @@ class EditDeviceController
 
             // Auto-select template for known OSes if no configuration exists
             $autoSelectTemplate = false;
-            if (!$selectedTemplate && !$apiConfig && !empty($osTemplates)) {
+            if (!$selectedTemplate && !$apiConfig && !empty($templates)) {
                 // Auto-select the first matching template for this OS
-                $selectedTemplate = array_key_first($osTemplates);
+                $selectedTemplate = array_key_first($templates);
                 $autoSelectTemplate = true;
 
                 // Also set the auth type from the template for auto-selection
@@ -115,7 +115,7 @@ class EditDeviceController
             return view('device.edit', [
                 'device' => $device,
                 'section' => 'api',
-                'templates' => $osTemplates,
+                'templates' => $templates,
                 'authTypes' => $authTypes,
                 'apiConfig' => $apiConfig,
                 'selectedTemplate' => $selectedTemplate,
@@ -259,16 +259,19 @@ class EditDeviceController
      */
         private function updateApiSettings(Request $request, Device $device): void
     {
+        // Form uses rest_ prefix, check for either prefix for compatibility
+        $isEnabled = $request->boolean('rest_enabled') || $request->boolean('api_enabled');
+
         // Check if API is being disabled
-        if (!$request->boolean('api_enabled')) {
+        if (!$isEnabled) {
             // Clear all API-related attributes
             $this->clearApiAttributes($device);
             toast()->success(__('API configuration disabled'));
             return;
         }
 
-        // Validate required fields
-        $baseUrl = trim((string) $request->input('api_base_url'));
+        // Validate required fields - check both rest_ and api_ prefixes
+        $baseUrl = trim((string) ($request->input('rest_base_url') ?: $request->input('api_base_url')));
         if (empty($baseUrl)) {
             toast()->error(__('Base URL is required'));
             return;
@@ -280,20 +283,27 @@ class EditDeviceController
             return;
         }
 
-        $authType = $request->input('api_auth_type', 'token');
+        // Get auth type and template - check both prefixes
+        $authType = $request->input('rest_auth_type') ?: $request->input('api_auth_type', 'token');
         $templateKey = $this->resolveTemplateKey($device, $request);
         if (!$templateKey) {
             toast()->error(__('An API template is required to enable REST polling'));
             return;
         }
 
+        // Get verify SSL and timeout - check both prefixes
+        $verifySsl = $request->has('rest_verify_tls')
+            ? $request->boolean('rest_verify_tls')
+            : $request->boolean('api_verify_ssl', true);
+        $timeoutMs = (int) ($request->input('rest_timeout_ms') ?: $request->input('api_timeout_ms', 10000));
+
         // Save basic settings
         $device->setAttrib('api_enabled', true);
         $device->setAttrib('api_base_url', $baseUrl);
         $device->setAttrib('api_auth_type', $authType);
         $device->setAttrib('api_template_key', $templateKey);
-        $device->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
-        $device->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
+        $device->setAttrib('api_verify_ssl', $verifySsl);
+        $device->setAttrib('api_timeout_ms', $timeoutMs);
 
         // Save credentials based on auth type
         $this->saveCredentials($device, $authType, $request);
@@ -311,7 +321,11 @@ class EditDeviceController
 
     private function resolveTemplateKey(Device $device, ?Request $request = null): ?string
     {
-        $templateKey = $request?->input('api_template_key', $request?->input('api_template'));
+        // Check for template key with various field names used by different forms
+        $templateKey = $request?->input('rest_template')
+            ?: $request?->input('api_template_key')
+            ?: $request?->input('api_template');
+
         if ($templateKey) {
             return $templateKey;
         }
@@ -329,6 +343,7 @@ class EditDeviceController
      */
     private function saveCredentials(Device $device, string $authType, Request $request): void
     {
+
         // Clear all credential fields first
         $credentialFields = [
             'api_credential_username',
@@ -368,6 +383,7 @@ class EditDeviceController
         switch ($authType) {
             case 'basic':
             case 'session':
+            case 'vmware_session':
             case 'esxi_soap':
             case 'cisco_ucsm_xml':
                 $username = $getValue('username') ?: $getValue('credential_username');
@@ -382,6 +398,7 @@ class EditDeviceController
 
             case 'token':
             case 'bearer':
+            case 'pure_api_token':
             case 'purestorage_api_token_login':
                 // Try multiple field names for the token
                 $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('access_token') ?: $getValue('credential_api_token');
@@ -421,6 +438,7 @@ class EditDeviceController
                 break;
 
             case 'vmware_velocloud_token':
+            case 'velocloud':
                 $username = $getValue('username') ?: $getValue('credential_username');
                 $password = $getValue('password') ?: $getValue('credential_password');
                 $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('credential_api_token');
@@ -541,27 +559,48 @@ class EditDeviceController
 
     /**
      * Test API connection
+     * IMPORTANT: This method should NOT modify the device's saved credentials.
+     * It creates a temporary in-memory device for testing only.
      */
     public function testConnection(Request $request, Device $device): JsonResponse
     {
         try {
-            // Temporarily save credentials for testing
-            $tempDevice = clone $device;
-            $this->saveCredentials($tempDevice, $request->input('api_auth_type', 'token'), $request);
-            $tempDevice->setAttrib('api_base_url', $request->input('api_base_url'));
-            $templateKey = $this->resolveTemplateKey($tempDevice, $request);
+            // Get values from request (check both rest_ and api_ prefixes)
+            $authType = $request->input('rest_auth_type') ?: $request->input('api_auth_type', 'token');
+            $baseUrl = $request->input('rest_base_url') ?: $request->input('api_base_url');
+            $verifySsl = $request->has('rest_verify_tls')
+                ? $request->boolean('rest_verify_tls')
+                : $request->boolean('api_verify_ssl', true);
+            $timeoutMs = (int) ($request->input('rest_timeout_ms') ?: $request->input('api_timeout_ms', 10000));
+
+            // Get template key for testing
+            $templateKey = $request->input('rest_template') ?: $request->input('api_template_key') ?: $device->getAttrib('api_template_key');
             if (!$templateKey) {
                 return response()->json([
                     'success' => false,
                     'message' => 'An API template is required to test the connection',
                 ]);
             }
-            $tempDevice->setAttrib('api_template_key', $templateKey);
-            $tempDevice->setAttrib('api_verify_ssl', $request->boolean('api_verify_ssl', true));
-            $tempDevice->setAttrib('api_timeout_ms', (int) $request->input('api_timeout_ms', 10000));
 
-            // Try to create API client and test connection
-            $client = DeviceApiClientFactory::make($tempDevice);
+            // Create an in-memory attributes collection for testing
+            $testAttribs = collect();
+
+            // Set base configuration
+            $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => 'api_base_url', 'attrib_value' => $baseUrl]));
+            $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => 'api_template_key', 'attrib_value' => $templateKey]));
+            $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => 'api_auth_type', 'attrib_value' => $authType]));
+            $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => 'api_verify_ssl', 'attrib_value' => $verifySsl ? '1' : '0']));
+            $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => 'api_timeout_ms', 'attrib_value' => (string) $timeoutMs]));
+
+            // Extract credentials from request and add to test attribs
+            $credentials = $this->extractTestCredentials($authType, $request, $device);
+            foreach ($credentials as $key => $value) {
+                $testAttribs->push(new \App\Models\DeviceAttrib(['attrib_type' => $key, 'attrib_value' => $value]));
+            }
+
+            // Use a custom test client approach instead of the factory
+            // to avoid any database interaction
+            $client = DeviceApiClientFactory::makeForTest($device, $testAttribs);
 
             if (!$client) {
                 return response()->json([
@@ -594,6 +633,123 @@ class EditDeviceController
                 'message' => 'Connection test failed: ' . $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Extract credentials from request for testing (without encrypting or saving)
+     */
+    private function extractTestCredentials(string $authType, Request $request, Device $device): array
+    {
+        $credentials = [];
+
+        // Helper to get value from either api_ or rest_ or direct field name
+        $getValue = function (string $field) use ($request) {
+            $names = [
+                $field,
+                'api_' . $field,
+                'api_credential_' . $field,
+                str_replace('_', '', $field),
+            ];
+            foreach ($names as $name) {
+                if ($request->filled($name)) {
+                    return $request->input($name);
+                }
+            }
+            return null;
+        };
+
+        // Extract credentials based on auth type
+        switch ($authType) {
+            case 'basic':
+            case 'session':
+            case 'esxi_soap':
+            case 'cisco_ucsm_xml':
+            case 'vmware_session':
+                $username = $getValue('username') ?: $getValue('credential_username');
+                $password = $getValue('password') ?: $getValue('credential_password');
+                if ($username) {
+                    $credentials['api_credential_username'] = $username;
+                } elseif ($stored = $device->getAttrib('api_credential_username')) {
+                    $credentials['api_credential_username'] = $stored;
+                }
+                if ($password) {
+                    $credentials['api_credential_password'] = Crypt::encryptString($password);
+                } elseif ($stored = $device->getAttrib('api_credential_password')) {
+                    $credentials['api_credential_password'] = $stored;
+                }
+                break;
+
+            case 'token':
+            case 'bearer':
+            case 'pure_api_token':
+            case 'purestorage_api_token_login':
+                $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('access_token') ?: $getValue('credential_api_token');
+                if ($token) {
+                    $credentials['api_credential_api_token'] = Crypt::encryptString($token);
+                } elseif ($stored = $device->getAttrib('api_credential_api_token')) {
+                    $credentials['api_credential_api_token'] = $stored;
+                }
+                break;
+
+            case 'proxmox_token':
+                $tokenUser = $getValue('token_user') ?: $getValue('credential_token_user');
+                $tokenId = $getValue('token_id') ?: $getValue('credential_token_id');
+                $tokenSecret = $getValue('token_secret') ?: $getValue('credential_token_secret');
+                if ($tokenUser) {
+                    $credentials['api_credential_token_user'] = $tokenUser;
+                } elseif ($stored = $device->getAttrib('api_credential_token_user')) {
+                    $credentials['api_credential_token_user'] = $stored;
+                }
+                if ($tokenId) {
+                    $credentials['api_credential_token_id'] = $tokenId;
+                } elseif ($stored = $device->getAttrib('api_credential_token_id')) {
+                    $credentials['api_credential_token_id'] = $stored;
+                }
+                if ($tokenSecret) {
+                    $credentials['api_credential_token_secret'] = Crypt::encryptString($tokenSecret);
+                } elseif ($stored = $device->getAttrib('api_credential_token_secret')) {
+                    $credentials['api_credential_token_secret'] = $stored;
+                }
+                break;
+
+            case 'vmware_velocloud_token':
+            case 'velocloud':
+                $username = $getValue('username') ?: $getValue('credential_username');
+                $password = $getValue('password') ?: $getValue('credential_password');
+                $token = $getValue('token') ?: $getValue('api_token') ?: $getValue('credential_api_token');
+                $enterpriseId = $getValue('enterprise_id') ?: $getValue('credential_enterprise_id');
+                $edgeId = $getValue('edge_id') ?: $getValue('credential_edge_id');
+                if ($username) {
+                    $credentials['api_credential_username'] = $username;
+                }
+                if ($password) {
+                    $credentials['api_credential_password'] = Crypt::encryptString($password);
+                }
+                if ($token) {
+                    $credentials['api_credential_api_token'] = Crypt::encryptString($token);
+                }
+                if ($enterpriseId) {
+                    $credentials['api_credential_enterprise_id'] = $enterpriseId;
+                }
+                if ($edgeId) {
+                    $credentials['api_credential_edge_id'] = $edgeId;
+                }
+                break;
+
+            case 'cisco_ftd_oauth':
+            case 'oauth2':
+                $username = $getValue('username') ?: $getValue('credential_username') ?: $getValue('client_id');
+                $password = $getValue('password') ?: $getValue('credential_password') ?: $getValue('client_secret');
+                if ($username) {
+                    $credentials['api_credential_username'] = $username;
+                }
+                if ($password) {
+                    $credentials['api_credential_password'] = Crypt::encryptString($password);
+                }
+                break;
+        }
+
+        return $credentials;
     }
 
     /**

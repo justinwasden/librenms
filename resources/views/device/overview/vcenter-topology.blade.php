@@ -19,9 +19,15 @@
                                 <small class="text-muted">({{ $dc['id'] }})</small>
 
                                 {{-- Clusters under this datacenter --}}
-                                @if (!empty($topology['clusters']))
+                                @php
+                                    $dcClusters = array_filter($topology['clusters'], function($cluster) use ($dc) {
+                                        return !empty($cluster['parent_id']) && $cluster['parent_id'] === $dc['id'];
+                                    });
+                                @endphp
+
+                                @if (!empty($dcClusters))
                                     <ul class="list-unstyled" style="margin-left: 30px; margin-top: 10px;">
-                                        @foreach ($topology['clusters'] as $cluster)
+                                        @foreach ($dcClusters as $cluster)
                                             <li style="margin-bottom: 15px;">
                                                 <i class="fa fa-cubes text-primary"></i>
                                                 <strong>Cluster: {{ $cluster['name'] }}</strong>
@@ -39,6 +45,37 @@
                                                         <span class="label label-info">vSAN</span>
                                                     @endif
                                                 </div>
+
+                                                {{-- Hosts in this cluster --}}
+                                                @php
+                                                    $clusterHosts = array_filter($topology['hosts'] ?? [], function($host) use ($cluster) {
+                                                        return isset($host['cluster_id']) && $host['cluster_id'] === $cluster['id'];
+                                                    });
+                                                @endphp
+
+                                                @if (!empty($clusterHosts))
+                                                    <ul class="list-unstyled" style="margin-left: 30px; margin-top: 8px;">
+                                                        <li><small class="text-muted">Hosts ({{ count($clusterHosts) }})</small></li>
+                                                        @foreach ($clusterHosts as $host)
+                                                            @php
+                                                                $status = strtolower($host['status'] ?? 'unknown');
+                                                                $labelClass = match($status) {
+                                                                    'connected' => 'label-success',
+                                                                    'disconnected' => 'label-danger',
+                                                                    'not_responding' => 'label-warning',
+                                                                    'standby' => 'label-info',
+                                                                    default => 'label-default',
+                                                                };
+                                                            @endphp
+                                                            <li>
+                                                                <small>
+                                                                    <span class="label {{ $labelClass }}">{{ $status }}</span>
+                                                                    {{ $host['name'] }}
+                                                                </small>
+                                                            </li>
+                                                        @endforeach
+                                                    </ul>
+                                                @endif
 
                                                 {{-- VMs in this cluster (if we can determine cluster membership) --}}
                                                 @php
@@ -73,13 +110,20 @@
                                     <thead>
                                         <tr>
                                             <th>Name</th>
+                                            <th>Hosts</th>
                                             <th>Features</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach ($topology['clusters'] as $cluster)
+                                            @php
+                                                $clusterHosts = array_filter($topology['hosts'] ?? [], function($host) use ($cluster) {
+                                                    return isset($host['cluster_id']) && $host['cluster_id'] === $cluster['id'];
+                                                });
+                                            @endphp
                                             <tr>
                                                 <td>{{ $cluster['name'] }}</td>
+                                                <td>{{ count($clusterHosts) }}</td>
                                                 <td>
                                                     @if ($cluster['drs_enabled'])
                                                         <span class="label label-success">DRS</span>

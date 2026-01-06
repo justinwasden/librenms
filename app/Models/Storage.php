@@ -50,9 +50,11 @@ class Storage extends DeviceRelatedModel implements Keyable
 
     public function isValid(string $os): bool
     {
+        $storageDescr = $this->storage_descr;
+
         // filter by mounts ignores
         foreach (\App\Facades\LibrenmsConfig::getCombined($os, 'ignore_mount') as $im) {
-            if ($im == $this->storage_descr) {
+            if ($im == $storageDescr) {
                 Log::debug("ignored $this->storage_descr\n");
 
                 return false;
@@ -60,7 +62,7 @@ class Storage extends DeviceRelatedModel implements Keyable
         }
 
         foreach (\App\Facades\LibrenmsConfig::getCombined($os, 'ignore_mount_string') as $ims) {
-            if (str_contains($this->storage_descr, $ims)) {
+            if ($storageDescr !== null && str_contains($storageDescr, $ims)) {
                 Log::debug("ignored $this->storage_descr (matched: $ims)\n");
 
                 return false;
@@ -68,7 +70,7 @@ class Storage extends DeviceRelatedModel implements Keyable
         }
 
         foreach (\App\Facades\LibrenmsConfig::getCombined($os, 'ignore_mount_regexp') as $imr) {
-            if (preg_match($imr, $this->storage_descr)) {
+            if ($storageDescr !== null && preg_match($imr, $storageDescr)) {
                 Log::debug("ignored $this->storage_descr (matched: $imr)\n");
 
                 return false;

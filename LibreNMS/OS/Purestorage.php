@@ -194,19 +194,19 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery
             // Cast to integer, filtering out non-numeric values
             if (is_numeric($value)) {
                 $data[$name] = (int) $value;
-                echo "[Purestorage] $name = $value\n";
+                d_echo("[Purestorage] $name = $value\n");
             } else {
-                echo "[Purestorage] WARNING: $name has non-numeric value: $value\n";
+                d_echo("[Purestorage] WARNING: $name has non-numeric value: $value\n");
             }
         }
 
         if (empty($data)) {
-            echo "[Purestorage] No valid metrics returned from SNMP\n";
+            d_echo("[Purestorage] No valid metrics returned from SNMP\n");
 
             return;
         }
 
-        echo '[Purestorage] Polling ' . count($data) . " metrics\n";
+        d_echo('[Purestorage] Polling ' . count($data) . " metrics\n");
 
         // Store metrics in RRD files
         $this->storeBandwidth($datastore, $data);
@@ -239,11 +239,11 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery
             'write' => $write,
         ];
 
-        echo "[Purestorage] Bandwidth - read: $read, write: $write\n";
+        d_echo("[Purestorage] Bandwidth - read: $read, write: $write\n");
 
         $tags = ['rrd_def' => $rrd_def];
         $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
-        echo "[Purestorage] Stored bandwidth metrics\n";
+        d_echo("[Purestorage] Stored bandwidth metrics\n");
     }
 
     /**
@@ -266,11 +266,11 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery
             'write' => $write,
         ];
 
-        echo "[Purestorage] IOPS - read: $read, write: $write\n";
+        d_echo("[Purestorage] IOPS - read: $read, write: $write\n");
 
         $tags = ['rrd_def' => $rrd_def];
         $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
-        echo "[Purestorage] Stored IOPS metrics\n";
+        d_echo("[Purestorage] Stored IOPS metrics\n");
     }
 
     /**
@@ -293,10 +293,10 @@ class Purestorage extends \LibreNMS\OS implements OSPolling, ProcessorDiscovery
             'write' => $write,
         ];
 
-        echo "[Purestorage] Latency - read: $read, write: $write\n";
+        d_echo("[Purestorage] Latency - read: $read, write: $write\n");
 
         $tags = ['rrd_def' => $rrd_def];
         $datastore->put($this->getDeviceArray(), $rrd_name, $tags, $fields);
-        echo "[Purestorage] Stored latency metrics\n";
+        d_echo("[Purestorage] Stored latency metrics\n");
     }
 }

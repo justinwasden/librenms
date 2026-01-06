@@ -209,6 +209,37 @@ Route::middleware(['auth'])->group(function (): void {
         Route::get('validate', [ValidateController::class, 'index'])->name('validate');
         Route::get('validate/results', [ValidateController::class, 'runValidation'])->name('validate.results');
         Route::post('validate/fix', [ValidateController::class, 'runFixer'])->name('validate.fix');
+
+        // API Templates Management
+        Route::prefix('admin/api-templates')->name('admin.api-templates.')->group(function (): void {
+            Route::get('/', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'store'])->name('store');
+            Route::get('/{template}/edit', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'edit'])->name('edit');
+            Route::put('/{template}', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'update'])->name('update');
+            Route::delete('/{template}', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'destroy'])->name('destroy');
+            Route::post('/{template}/clone', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'clone'])->name('clone');
+            Route::get('/{template}/export', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'export'])->name('export');
+            Route::post('/import', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'import'])->name('import');
+
+            // Endpoint management
+            Route::post('/{template}/endpoints', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'storeEndpoint'])->name('endpoints.store');
+            Route::put('/endpoints/{endpoint}', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'updateEndpoint'])->name('endpoints.update');
+            Route::post('/endpoints/{endpoint}/toggle', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'toggleEndpoint'])->name('endpoints.toggle');
+            Route::delete('/endpoints/{endpoint}', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'destroyEndpoint'])->name('endpoints.destroy');
+            Route::post('/{template}/endpoints/reorder', [\App\Http\Controllers\Admin\ApiTemplateController::class, 'reorderEndpoints'])->name('endpoints.reorder');
+        });
+
+        // API Auth Schemas Management
+        Route::prefix('admin/api-auth-schemas')->name('admin.api-auth-schemas.')->group(function (): void {
+            Route::get('/', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'store'])->name('store');
+            Route::get('/{apiAuthSchema}/edit', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'edit'])->name('edit');
+            Route::put('/{apiAuthSchema}', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'update'])->name('update');
+            Route::delete('/{apiAuthSchema}', [\App\Http\Controllers\Admin\ApiAuthSchemaController::class, 'destroy'])->name('destroy');
+        });
+
     });
 
 

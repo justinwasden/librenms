@@ -71,7 +71,7 @@ class NormalizerFactory
     
         'normalizeFortigateInterfaceStats' => Fortinet\InterfaceStats::class,
     
-        'normalizeFortgateSensorInfo' => Fortinet\SensorInfo::class,
+        'normalizeFortigateSensorInfo' => Fortinet\SensorInfo::class,
     
         'normalizeFortigateVpnIpsec' => Fortinet\VpnIpsec::class,
     
@@ -79,9 +79,9 @@ class NormalizerFactory
 
         'normalizeFortigateVpnSslStats' => Fortinet\VpnSslStats::class,
     
-        'normalizeFortgateDhcp' => Fortinet\Dhcp::class,
+        'normalizeFortigateDhcp' => Fortinet\Dhcp::class,
     
-        'normalizeFortgateLicense' => Fortinet\License::class,
+        'normalizeFortigateLicense' => Fortinet\License::class,
     
         'normalizeFortigatePortsStatistics' => Fortinet\PortsStatistics::class,
     

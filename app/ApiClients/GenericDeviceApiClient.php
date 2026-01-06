@@ -5,14 +5,15 @@ namespace App\ApiClients;
 use App\Models\Device;
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\TestableDevice;
 use LibreNMS\Util\DeviceApiSettings;
 
 class GenericDeviceApiClient implements DeviceApiClientInterface
 {
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected DeviceHttpClient $httpClient;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -111,7 +112,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         $this->httpClient->setHeader('vmware-api-session-id', $sessionId);
     }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         // This is a fallback client - it supports any device with an API config
         return !empty($device->getAttrib('api_base_url'));
@@ -261,7 +262,7 @@ class GenericDeviceApiClient implements DeviceApiClientInterface
         return $headers;
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         // Generic clients don't support VM discovery by default
         return [];

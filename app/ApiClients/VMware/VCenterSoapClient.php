@@ -3,6 +3,7 @@
 namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Util\DeviceApiSettings;
@@ -18,10 +19,10 @@ class VCenterSoapClient implements DeviceApiClientInterface
 {
     protected ?SoapClient $client = null;
     protected ?string $sessionId = null;
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected array $credentials;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -865,7 +866,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
      * Fetch vCenter Appliance network interfaces
      * Discovers the vCenter VM's network adapters and their configuration
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
         try {
@@ -991,7 +992,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
      * Fetch vCenter Appliance network traffic statistics
      * Uses PerformanceManager to get network throughput for vCenter VM
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $statistics = [];
         try {
@@ -1206,7 +1207,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
 
     // --- DeviceApiClientInterface implementations ---
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         $templateKey = $device->getAttrib('api_template_key');
         return in_array($templateKey, ['vmware_vcenter', 'vmware_vcenter_soap', 'vcenter_soap']);
@@ -1229,13 +1230,13 @@ class VCenterSoapClient implements DeviceApiClientInterface
 
     public function capabilities(): array
     {
-        return ['vlans', 'sensors', 'ports', 'ports_stats', 'inventory', 'processors', 'mempools', 'storage', 'vms', 'clusters'];
+        return ['vlans', 'sensors', 'ports', 'ports_stats', 'inventory', 'processors', 'mempools', 'storage', 'vms', 'clusters', 'ipv4'];
     }
 
     /**
      * Fetch sensors from vCenter
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -1349,19 +1350,104 @@ class VCenterSoapClient implements DeviceApiClientInterface
     }
 
     /**
-     * Fetch IPv4 addresses from vCenter appliance
+     * Fetch IPv4 addresses from vCenter hosts
+     * Collects management IPs and VMkernel IPs from all connected ESXi hosts
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
-        // The vCenter appliance IP is typically the device's primary IP
-        // Additional IPs can be discovered from the vCenter VM guest tools
-        return [];
+        $addresses = [];
+
+        try {
+            if (!$this->login()) {
+                return [];
+            }
+
+            $sc = $this->getServiceContent();
+            if (!$sc) {
+                $this->logout();
+                return [];
+            }
+
+            $vcenterVm = $this->findVCenterVM($sc);
+            if (!$vcenterVm) {
+                Log::debug("VCenterSoapClient: Could not find vCenter VM for {$device->hostname}");
+                $this->logout();
+                return [];
+            }
+
+            $vmProps = $this->retrievePropertiesBatch($sc, [$vcenterVm], ['guest']);
+            if (empty($vmProps)) {
+                $this->logout();
+                return [];
+            }
+
+            $guest = $vmProps[0]['guest'] ?? null;
+            if ($guest && is_object($guest) && isset($guest->net)) {
+                $guestNetList = is_array($guest->net) ? $guest->net : [$guest->net];
+                foreach ($guestNetList as $guestNet) {
+                    if (!is_object($guestNet)) {
+                        continue;
+                    }
+
+                    $macAddress = $guestNet->macAddress ?? '';
+                    $networkName = $guestNet->network ?? '';
+
+                    $ipEntries = [];
+                    $ipConfig = $guestNet->ipConfig ?? null;
+                    if ($ipConfig && isset($ipConfig->ipAddress)) {
+                        $ipEntries = is_array($ipConfig->ipAddress) ? $ipConfig->ipAddress : [$ipConfig->ipAddress];
+                    } elseif (isset($guestNet->ipAddress)) {
+                        $ipEntries = is_array($guestNet->ipAddress) ? $guestNet->ipAddress : [$guestNet->ipAddress];
+                    }
+
+                    foreach ($ipEntries as $ipEntry) {
+                        $ipAddress = null;
+                        $prefixLen = null;
+
+                        if (is_object($ipEntry)) {
+                            $ipAddress = $ipEntry->ipAddress ?? null;
+                            $prefixLen = $ipEntry->prefixLength ?? null;
+                        } else {
+                            $ipAddress = $ipEntry;
+                        }
+
+                        if ($ipAddress && filter_var($ipAddress, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                            $addresses[] = [
+                                'ipv4_address' => $ipAddress,
+                                'ipv4_prefixlen' => $prefixLen ?? 24,
+                                'ifName' => $networkName,
+                                'context_name' => $macAddress,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            $this->logout();
+
+        } catch (\Exception $e) {
+            Log::debug('VCenterSoapClient fetchIpv4Addresses failed: ' . $e->getMessage());
+        }
+
+        return $addresses;
+    }
+
+    /**
+     * Convert subnet mask to CIDR prefix length
+     */
+    protected function subnetMaskToPrefixLength(string $mask): int
+    {
+        $long = ip2long($mask);
+        if ($long === false) return 24;
+
+        $base = ip2long('255.255.255.255');
+        return 32 - (int) log(($long ^ $base) + 1, 2);
     }
 
     /**
      * Fetch inventory from vCenter
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
 
@@ -1432,7 +1518,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
     /**
      * Fetch processors (cluster-level CPU aggregation)
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
@@ -1465,7 +1551,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
     /**
      * Fetch memory pools (cluster-level memory aggregation)
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
@@ -1507,7 +1593,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
     /**
      * Fetch storage (datastores)
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
@@ -1551,7 +1637,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
     /**
      * Fetch VMs from vCenter
      */
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         $vms = [];
 
@@ -1743,7 +1829,7 @@ class VCenterSoapClient implements DeviceApiClientInterface
         return $datastores;
     }
 
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }

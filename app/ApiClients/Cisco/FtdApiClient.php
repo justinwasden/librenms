@@ -4,6 +4,7 @@ namespace App\ApiClients\Cisco;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Util\DeviceApiSettings;
@@ -27,7 +28,7 @@ use LibreNMS\Util\DeviceApiSettings;
  */
 class FtdApiClient implements DeviceApiClientInterface
 {
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected DeviceHttpClient $httpClient;
     protected string $baseUrl;
     protected ?string $accessToken = null;
@@ -37,17 +38,12 @@ class FtdApiClient implements DeviceApiClientInterface
     protected string $tokenEndpoint = '/api/fdm/v6/fdm/token';
     protected string $apiVersion = 'v6';
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
-        // Read from device attributes first, then fall back to tables
+        // Read from device attributes
         $this->baseUrl = $device->getAttrib('api_base_url') ?? '';
-
-        // Fall back to device_api_configs table if no attribute
-        if (empty($this->baseUrl) && $device->apiConfig) {
-            $this->baseUrl = $device->apiConfig->base_url ?? '';
-        }
 
         // Initialize HTTP client
         $verifySsl = $device->getAttrib('api_verify_ssl');
@@ -77,7 +73,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Check if device is supported
      */
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         $templateKey = $device->getAttrib('api_template_key');
 
@@ -274,7 +270,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch sensors (CPU, memory, disk, connections, throughput)
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -319,7 +315,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch network interfaces/ports
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
         $ifIndex = 1;
@@ -359,7 +355,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch CPU/processor information
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
@@ -410,7 +406,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch memory pools
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
@@ -465,7 +461,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch device inventory
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
 
@@ -550,7 +546,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch storage/disk information
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
@@ -603,7 +599,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch transceivers (not typically available on FTD)
      */
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -611,7 +607,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch IPv4 addresses
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -662,7 +658,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch port/interface statistics
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -699,7 +695,7 @@ class FtdApiClient implements DeviceApiClientInterface
     /**
      * Fetch VMs (not applicable for FTD)
      */
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         return [];
     }

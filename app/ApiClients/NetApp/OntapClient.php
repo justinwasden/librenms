@@ -3,6 +3,7 @@
 namespace App\ApiClients\NetApp;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -18,14 +19,14 @@ class OntapClient implements DeviceApiClientInterface
 {
     public const VENDOR = 'netapp_ontap';
 
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected string $baseUrl;
     protected string $username;
     protected string $password;
     protected bool $verifyTls;
     protected int $timeout;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -74,7 +75,7 @@ class OntapClient implements DeviceApiClientInterface
         return $response->json() ?? [];
     }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         return $device->os === 'netapp' && $device->getAttrib('api_base_url') !== null;
     }
@@ -128,7 +129,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch sensors - combines multiple sources
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
@@ -248,7 +249,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch network ports
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
 
@@ -341,7 +342,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch processors (CPU metrics from nodes)
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         $processors = [];
 
@@ -390,7 +391,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch memory pools
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $mempools = [];
 
@@ -429,7 +430,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch inventory (chassis, nodes, shelves, disks)
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
         $containerIndex = 1;
@@ -508,7 +509,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch storage (volumes and aggregates)
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
@@ -578,7 +579,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch transceivers (not applicable for storage)
      */
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -586,7 +587,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch IPv4 addresses
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -644,7 +645,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch port statistics
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -683,7 +684,7 @@ class OntapClient implements DeviceApiClientInterface
     /**
      * Fetch VMs (not applicable for storage)
      */
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         return [];
     }

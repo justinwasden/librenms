@@ -3,11 +3,14 @@
 namespace App\ApiClients\Cisco;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
 use LibreNMS\Util\DeviceApiSettings;
+use LibreNMS\Util\IP;
+use LibreNMS\Util\Normalizers\UcsmXmlNormalizer;
 
 /**
  * Cisco UCS Manager XML API Client
@@ -18,12 +21,14 @@ use LibreNMS\Util\DeviceApiSettings;
 class UcsmXmlClient implements DeviceApiClientInterface
 {
     protected Client $client;
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected ?string $cookie = null;
     protected ?int $sessionTimeout = null;
     protected ?int $lastActivity = null;
 
-    public function __construct(Device $device)
+    private const UCSM_FI_ID_PATTERN = '/\b(?:fi|fabric|switch)[-_ ]*([ab])\b/i';
+
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -177,6 +182,42 @@ class UcsmXmlClient implements DeviceApiClientInterface
     {
         $json = json_encode($xml);
         return json_decode($json, true) ?? [];
+    }
+
+    /**
+     * Determine which FI to collect data for based on device target and UCSM FI attributes.
+     */
+    protected function resolveTargetFiId(array $fiList): ?string
+    {
+        $target = trim((string) $this->device->pollerTarget());
+        $hostname = trim((string) ($this->device->hostname ?? ''));
+
+        foreach ($fiList as $fi) {
+            $attrs = $fi['@attributes'] ?? $fi;
+            $id = (string) ($attrs['id'] ?? '');
+            $oob = (string) ($attrs['oobIfIp'] ?? '');
+            $inband = (string) ($attrs['inbandIfIp'] ?? '');
+            $name = (string) ($attrs['name'] ?? '');
+            $dn = (string) ($attrs['dn'] ?? '');
+
+            foreach ([$oob, $inband, $name, $dn] as $value) {
+                if ($value !== '' && ($value === $target || $value === $hostname)) {
+                    return $id !== '' ? $id : null;
+                }
+            }
+        }
+
+        foreach ([$target, $hostname] as $value) {
+            if ($value === '' || IP::isValid($value)) {
+                continue;
+            }
+
+            if (preg_match(self::UCSM_FI_ID_PATTERN, $value, $matches)) {
+                return strtoupper($matches[1]);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -425,9 +466,9 @@ class UcsmXmlClient implements DeviceApiClientInterface
      * Fetch port statistics (required by RestPortsStatisticsModule)
      * Alias for fetchEthernetTrafficStats
      */
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
-        return $this->fetchEthernetTrafficStats($device);
+        return [];
     }
 
     /**
@@ -466,7 +507,7 @@ class UcsmXmlClient implements DeviceApiClientInterface
     /**
      * DeviceApiClientInterface implementations (fallback to empty arrays)
      */
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         // Check if device has UCSM API config (from device attributes)
         $templateKey = $device->getAttrib('api_template_key');
@@ -475,189 +516,40 @@ class UcsmXmlClient implements DeviceApiClientInterface
 
     public function capabilities(): array
     {
-        return ['inventory', 'sensors', 'processors', 'mempools', 'ports', 'device_info', 'ports_stats'];
+        return ['inventory', 'sensors', 'processors', 'mempools', 'ports', 'ipv4', 'vlans'];
     }
 
     /**
      * Fetch sensors from various UCSM sources
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
 
         try {
-            // Temperature sensors from chassis stats
-            $chassisStats = $this->resolveClass('equipmentChassisStats');
-            if (!empty($chassisStats['outConfigs']['equipmentChassisStats'])) {
-                $items = $chassisStats['outConfigs']['equipmentChassisStats'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $stat) {
-                    $attrs = $stat['@attributes'] ?? $stat;
-                    $dn = $attrs['dn'] ?? "chassis-{$idx}";
-
-                    // Inlet temperature
-                    if (isset($attrs['inletTemp'])) {
-                        $sensors[] = [
-                            'sensor_class' => 'temperature',
-                            'sensor_type' => 'ucsm-chassis',
-                            'sensor_descr' => "Chassis Inlet Temperature ({$dn})",
-                            'sensor_index' => "chassis-inlet-{$idx}",
-                            'sensor_current' => (float) $attrs['inletTemp'],
-                            'sensor_limit' => 45,
-                            'sensor_limit_low' => 0,
-                        ];
-                    }
-
-                    // Input power
-                    if (isset($attrs['inputPower'])) {
-                        $sensors[] = [
-                            'sensor_class' => 'power',
-                            'sensor_type' => 'ucsm-chassis',
-                            'sensor_descr' => "Chassis Input Power ({$dn})",
-                            'sensor_index' => "chassis-power-{$idx}",
-                            'sensor_current' => (float) $attrs['inputPower'],
-                        ];
-                    }
+            $fiData = $this->fetchFabricInterconnects($device);
+            if (!empty($fiData)) {
+                $normalized = UcsmXmlNormalizer::normalizeFabricInterconnects($device, $fiData);
+                if (!empty($normalized['sensors'])) {
+                    $sensors = array_merge($sensors, $normalized['sensors']);
                 }
             }
 
-            // Processor env stats
-            $procStats = $this->resolveClass('processorEnvStats');
-            if (!empty($procStats['outConfigs']['processorEnvStats'])) {
-                $items = $procStats['outConfigs']['processorEnvStats'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $stat) {
-                    $attrs = $stat['@attributes'] ?? $stat;
-                    $dn = $attrs['dn'] ?? "proc-{$idx}";
-
-                    if (isset($attrs['temperature'])) {
-                        $sensors[] = [
-                            'sensor_class' => 'temperature',
-                            'sensor_type' => 'ucsm-processor',
-                            'sensor_descr' => "Processor Temperature ({$dn})",
-                            'sensor_index' => "proc-temp-{$idx}",
-                            'sensor_current' => (float) $attrs['temperature'],
-                            'sensor_limit' => 100,
-                            'sensor_limit_low' => 0,
-                        ];
-                    }
+            $topSystemData = $this->fetchTopSystem($device);
+            if (!empty($topSystemData)) {
+                $normalized = UcsmXmlNormalizer::normalizeTopSystem($device, $topSystemData);
+                if (!empty($normalized['sensors'])) {
+                    $sensors = array_merge($sensors, $normalized['sensors']);
                 }
             }
 
-            // Memory env stats
-            $memStats = $this->resolveClass('memoryUnitEnvStats');
-            if (!empty($memStats['outConfigs']['memoryUnitEnvStats'])) {
-                $items = $memStats['outConfigs']['memoryUnitEnvStats'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $stat) {
-                    $attrs = $stat['@attributes'] ?? $stat;
-                    $dn = $attrs['dn'] ?? "dimm-{$idx}";
-
-                    if (isset($attrs['temperature'])) {
-                        $sensors[] = [
-                            'sensor_class' => 'temperature',
-                            'sensor_type' => 'ucsm-memory',
-                            'sensor_descr' => "Memory Temperature ({$dn})",
-                            'sensor_index' => "mem-temp-{$idx}",
-                            'sensor_current' => (float) $attrs['temperature'],
-                            'sensor_limit' => 85,
-                            'sensor_limit_low' => 0,
-                        ];
-                    }
+            $faultData = $this->fetchFaults($device);
+            if (!empty($faultData)) {
+                $normalized = UcsmXmlNormalizer::normalizeFaults($device, $faultData);
+                if (!empty($normalized['sensors'])) {
+                    $sensors = array_merge($sensors, $normalized['sensors']);
                 }
             }
-
-            // Fan status
-            $fans = $this->resolveClass('equipmentFan');
-            if (!empty($fans['outConfigs']['equipmentFan'])) {
-                $items = $fans['outConfigs']['equipmentFan'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $fan) {
-                    $attrs = $fan['@attributes'] ?? $fan;
-                    $dn = $attrs['dn'] ?? "fan-{$idx}";
-                    $operState = strtolower($attrs['operState'] ?? 'unknown');
-
-                    $stateMap = [
-                        'operable' => 1,
-                        'ok' => 1,
-                        'inoperable' => 0,
-                        'degraded' => 2,
-                        'removed' => 3,
-                    ];
-
-                    $sensors[] = [
-                        'sensor_class' => 'state',
-                        'sensor_type' => 'ucsm-fan',
-                        'sensor_descr' => "Fan State ({$dn})",
-                        'sensor_index' => "fan-state-{$idx}",
-                        'sensor_current' => $stateMap[$operState] ?? 4,
-                        'states' => [
-                            ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'inoperable'],
-                            ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'operable'],
-                            ['value' => 2, 'generic' => 1, 'graph' => 0, 'descr' => 'degraded'],
-                            ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'removed'],
-                            ['value' => 4, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
-                        ],
-                    ];
-                }
-            }
-
-            // PSU status
-            $psus = $this->resolveClass('equipmentPsu');
-            if (!empty($psus['outConfigs']['equipmentPsu'])) {
-                $items = $psus['outConfigs']['equipmentPsu'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $psu) {
-                    $attrs = $psu['@attributes'] ?? $psu;
-                    $dn = $attrs['dn'] ?? "psu-{$idx}";
-                    $operState = strtolower($attrs['operState'] ?? 'unknown');
-
-                    $stateMap = [
-                        'operable' => 1,
-                        'ok' => 1,
-                        'inoperable' => 0,
-                        'degraded' => 2,
-                        'removed' => 3,
-                    ];
-
-                    $sensors[] = [
-                        'sensor_class' => 'state',
-                        'sensor_type' => 'ucsm-psu',
-                        'sensor_descr' => "PSU State ({$dn})",
-                        'sensor_index' => "psu-state-{$idx}",
-                        'sensor_current' => $stateMap[$operState] ?? 4,
-                        'states' => [
-                            ['value' => 0, 'generic' => 2, 'graph' => 0, 'descr' => 'inoperable'],
-                            ['value' => 1, 'generic' => 0, 'graph' => 1, 'descr' => 'operable'],
-                            ['value' => 2, 'generic' => 1, 'graph' => 0, 'descr' => 'degraded'],
-                            ['value' => 3, 'generic' => 3, 'graph' => 0, 'descr' => 'removed'],
-                            ['value' => 4, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
-                        ],
-                    ];
-
-                    // PSU wattage if available
-                    if (isset($attrs['wattage']) && (int) $attrs['wattage'] > 0) {
-                        $sensors[] = [
-                            'sensor_class' => 'power',
-                            'sensor_type' => 'ucsm-psu',
-                            'sensor_descr' => "PSU Wattage ({$dn})",
-                            'sensor_index' => "psu-watts-{$idx}",
-                            'sensor_current' => (float) $attrs['wattage'],
-                        ];
-                    }
-                }
-            }
-
-            Log::debug('UCSM: Fetched sensors', [
-                'device_id' => $this->device->device_id,
-                'count' => count($sensors),
-            ]);
-
         } catch (\Throwable $e) {
             Log::error('UCSM fetchSensors failed', [
                 'device_id' => $this->device->device_id,
@@ -671,11 +563,23 @@ class UcsmXmlClient implements DeviceApiClientInterface
     /**
      * Fetch ports from UCSM fabric interconnects
      */
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
     {
         $ports = [];
 
         try {
+            $fis = $this->resolveClass('networkElement');
+            $fiItems = $fis['outConfigs']['networkElement'] ?? [];
+            $fiItems = isset($fiItems['@attributes']) ? [$fiItems] : $fiItems;
+            $targetFiId = $this->resolveTargetFiId($fiItems);
+
+            if (!$targetFiId) {
+                Log::debug('UCSM: No matching FI for device target, skipping ports', [
+                    'device_id' => $this->device->device_id,
+                ]);
+                return [];
+            }
+
             // Get Ethernet ports from fabric interconnects
             $etherPorts = $this->resolveClass('etherPIo');
             if (!empty($etherPorts['outConfigs']['etherPIo'])) {
@@ -685,6 +589,11 @@ class UcsmXmlClient implements DeviceApiClientInterface
                 $ifIndex = 1;
                 foreach ($items as $port) {
                     $attrs = $port['@attributes'] ?? $port;
+                    $switchId = strtoupper((string) ($attrs['switchId'] ?? ''));
+                    if ($switchId !== $targetFiId) {
+                        continue;
+                    }
+
                     $dn = $attrs['dn'] ?? '';
                     $portId = $attrs['portId'] ?? $ifIndex;
                     $slotId = $attrs['slotId'] ?? '0';
@@ -716,6 +625,11 @@ class UcsmXmlClient implements DeviceApiClientInterface
                 $ifIndex = count($ports) + 1;
                 foreach ($items as $port) {
                     $attrs = $port['@attributes'] ?? $port;
+                    $switchId = strtoupper((string) ($attrs['switchId'] ?? ''));
+                    if ($switchId !== '' && $switchId !== $targetFiId) {
+                        continue;
+                    }
+
                     $dn = $attrs['dn'] ?? '';
                     $portId = $attrs['portId'] ?? $ifIndex;
 
@@ -755,34 +669,16 @@ class UcsmXmlClient implements DeviceApiClientInterface
     /**
      * Fetch processors from UCSM blades
      */
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
-        $processors = [];
-
         try {
-            $procStats = $this->resolveClass('processorUnit');
-            if (!empty($procStats['outConfigs']['processorUnit'])) {
-                $items = $procStats['outConfigs']['processorUnit'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $proc) {
-                    $attrs = $proc['@attributes'] ?? $proc;
-                    $dn = $attrs['dn'] ?? "processor-{$idx}";
-
-                    $processors[] = [
-                        'processor_index' => $idx,
-                        'processor_type' => 'ucsm',
-                        'processor_descr' => $attrs['model'] ?? "Processor {$idx}",
-                        'processor_usage' => null, // UCSM doesn't provide real-time CPU usage
-                    ];
-                }
+            $stats = $this->fetchSwitchStats($device);
+            if (empty($stats)) {
+                return [];
             }
 
-            Log::debug('UCSM: Fetched processors', [
-                'device_id' => $this->device->device_id,
-                'count' => count($processors),
-            ]);
-
+            $normalized = UcsmXmlNormalizer::normalizeSwitchStats($device, $stats);
+            return $normalized['processors'] ?? [];
         } catch (\Throwable $e) {
             Log::error('UCSM fetchProcessors failed', [
                 'device_id' => $this->device->device_id,
@@ -790,58 +686,22 @@ class UcsmXmlClient implements DeviceApiClientInterface
             ]);
         }
 
-        return $processors;
+        return [];
     }
 
     /**
      * Fetch memory pools from UCSM blades
      */
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
-        $mempools = [];
-
         try {
-            // Get memory units
-            $memUnits = $this->resolveClass('memoryUnit');
-            if (!empty($memUnits['outConfigs']['memoryUnit'])) {
-                $items = $memUnits['outConfigs']['memoryUnit'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                // Aggregate memory by blade
-                $bladeMemory = [];
-                foreach ($items as $mem) {
-                    $attrs = $mem['@attributes'] ?? $mem;
-                    $dn = $attrs['dn'] ?? '';
-                    $capacity = (int) ($attrs['capacity'] ?? 0);
-
-                    // Extract blade DN from memory DN
-                    if (preg_match('/(sys\/chassis-\d+\/blade-\d+)/', $dn, $m)) {
-                        $bladeDn = $m[1];
-                        $bladeMemory[$bladeDn] = ($bladeMemory[$bladeDn] ?? 0) + $capacity;
-                    }
-                }
-
-                $idx = 0;
-                foreach ($bladeMemory as $bladeDn => $totalMb) {
-                    if ($totalMb > 0) {
-                        $mempools[] = [
-                            'mempool_index' => $idx++,
-                            'mempool_type' => 'ucsm',
-                            'mempool_descr' => "Memory ({$bladeDn})",
-                            'mempool_total' => $totalMb * 1024 * 1024, // MB to bytes
-                            'mempool_used' => 0, // UCSM doesn't provide used memory
-                            'mempool_free' => $totalMb * 1024 * 1024,
-                            'mempool_perc' => 0,
-                        ];
-                    }
-                }
+            $stats = $this->fetchSwitchStats($device);
+            if (empty($stats)) {
+                return [];
             }
 
-            Log::debug('UCSM: Fetched mempools', [
-                'device_id' => $this->device->device_id,
-                'count' => count($mempools),
-            ]);
-
+            $normalized = UcsmXmlNormalizer::normalizeSwitchStats($device, $stats);
+            return $normalized['mempools'] ?? [];
         } catch (\Throwable $e) {
             Log::error('UCSM fetchMempools failed', [
                 'device_id' => $this->device->device_id,
@@ -849,118 +709,48 @@ class UcsmXmlClient implements DeviceApiClientInterface
             ]);
         }
 
-        return $mempools;
+        return [];
     }
 
     /**
      * Fetch storage from UCSM (local disks on blades)
      */
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
-        $storage = [];
-
-        try {
-            $disks = $this->resolveClass('storageLocalDisk');
-            if (!empty($disks['outConfigs']['storageLocalDisk'])) {
-                $items = $disks['outConfigs']['storageLocalDisk'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $idx => $disk) {
-                    $attrs = $disk['@attributes'] ?? $disk;
-                    $dn = $attrs['dn'] ?? "disk-{$idx}";
-                    $size = (int) ($attrs['size'] ?? 0);
-
-                    if ($size > 0) {
-                        $storage[] = [
-                            'storage_index' => $idx,
-                            'storage_type' => 'hrStorageFixedDisk',
-                            'storage_descr' => $attrs['model'] ?? "Local Disk ({$dn})",
-                            'storage_size' => $size * 1024 * 1024, // MB to bytes
-                            'storage_used' => 0,
-                            'storage_free' => $size * 1024 * 1024,
-                            'storage_perc' => 0,
-                            'storage_units' => 1,
-                        ];
-                    }
-                }
-            }
-
-            Log::debug('UCSM: Fetched storage', [
-                'device_id' => $this->device->device_id,
-                'count' => count($storage),
-            ]);
-
-        } catch (\Throwable $e) {
-            Log::error('UCSM fetchStorage failed', [
-                'device_id' => $this->device->device_id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return $storage;
+        return [];
     }
 
     /**
      * Fetch inventory from UCSM
      */
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         $inventory = [];
 
         try {
             $entIndex = 1;
 
-            // Chassis
-            $chassis = $this->resolveClass('equipmentChassis');
-            if (!empty($chassis['outConfigs']['equipmentChassis'])) {
-                $items = $chassis['outConfigs']['equipmentChassis'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $ch) {
-                    $attrs = $ch['@attributes'] ?? $ch;
-                    $inventory[] = [
-                        'entPhysicalIndex' => $entIndex++,
-                        'entPhysicalDescr' => 'UCS Chassis',
-                        'entPhysicalClass' => 'chassis',
-                        'entPhysicalName' => $attrs['dn'] ?? 'Chassis',
-                        'entPhysicalModelName' => $attrs['model'] ?? '',
-                        'entPhysicalSerialNum' => $attrs['serial'] ?? '',
-                        'entPhysicalContainedIn' => 0,
-                        'entPhysicalMfgName' => 'Cisco',
-                    ];
-                }
-            }
-
-            // Blades
-            $blades = $this->resolveClass('computeBlade');
-            if (!empty($blades['outConfigs']['computeBlade'])) {
-                $items = $blades['outConfigs']['computeBlade'];
-                $items = isset($items['@attributes']) ? [$items] : $items;
-
-                foreach ($items as $blade) {
-                    $attrs = $blade['@attributes'] ?? $blade;
-                    $inventory[] = [
-                        'entPhysicalIndex' => $entIndex++,
-                        'entPhysicalDescr' => 'UCS Blade Server',
-                        'entPhysicalClass' => 'module',
-                        'entPhysicalName' => $attrs['dn'] ?? 'Blade',
-                        'entPhysicalModelName' => $attrs['model'] ?? '',
-                        'entPhysicalSerialNum' => $attrs['serial'] ?? '',
-                        'entPhysicalContainedIn' => 1,
-                        'entPhysicalMfgName' => 'Cisco',
-                        'entPhysicalSoftwareRev' => $attrs['availableMemory'] ?? '',
-                    ];
-                }
-            }
-
             // Fabric Interconnects
             $fis = $this->resolveClass('networkElement');
             if (!empty($fis['outConfigs']['networkElement'])) {
                 $items = $fis['outConfigs']['networkElement'];
                 $items = isset($items['@attributes']) ? [$items] : $items;
+                $targetFiId = $this->resolveTargetFiId($items);
+
+                if (!$targetFiId) {
+                    Log::debug('UCSM: No matching FI for device target, skipping inventory', [
+                        'device_id' => $this->device->device_id,
+                    ]);
+                    return [];
+                }
 
                 foreach ($items as $fi) {
                     $attrs = $fi['@attributes'] ?? $fi;
+                    $fiId = strtoupper((string) ($attrs['id'] ?? ''));
+                    if ($fiId !== $targetFiId) {
+                        continue;
+                    }
+
                     $inventory[] = [
                         'entPhysicalIndex' => $entIndex++,
                         'entPhysicalDescr' => 'UCS Fabric Interconnect',
@@ -990,9 +780,50 @@ class UcsmXmlClient implements DeviceApiClientInterface
     }
 
     /**
+     * Fetch VLANs configured in UCSM
+     */
+    public function fetchVlans(Device|TestableDevice $device): array
+    {
+        $vlans = [];
+
+        try {
+            $data = $this->resolveClass('fabricVlan');
+            $items = $data['outConfigs']['fabricVlan'] ?? [];
+            $items = isset($items['@attributes']) ? [$items] : $items;
+
+            foreach ($items as $vlan) {
+                $attrs = $vlan['@attributes'] ?? $vlan;
+                $vlanIdRaw = $attrs['id'] ?? null;
+                if ($vlanIdRaw === null || $vlanIdRaw === '') {
+                    continue;
+                }
+
+                $vlanId = is_numeric($vlanIdRaw) ? (int) $vlanIdRaw : (int) preg_replace('/\D+/', '', (string) $vlanIdRaw);
+                if ($vlanId <= 0) {
+                    continue;
+                }
+
+                $vlans[] = [
+                    'vlan_vlan' => $vlanId,
+                    'vlan_domain' => 1,
+                    'vlan_name' => $attrs['name'] ?? "VLAN{$vlanId}",
+                    'vlan_type' => 'ethernet',
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::error('UCSM fetchVlans failed', [
+                'device_id' => $this->device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $vlans;
+    }
+
+    /**
      * Fetch IPv4 addresses from UCSM management interfaces
      */
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -1035,7 +866,7 @@ class UcsmXmlClient implements DeviceApiClientInterface
     /**
      * Fetch transceivers - UCSM doesn't expose transceiver details
      */
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         return [];
     }
@@ -1093,7 +924,7 @@ class UcsmXmlClient implements DeviceApiClientInterface
         ];
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         // UCSM manages physical infrastructure, not VMs directly
         // VMs would be managed by VMware/Hyper-V on the blades

@@ -3,15 +3,16 @@
 namespace App\ApiClients\VMware;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use RuntimeException;
 
 class EsxiClient implements DeviceApiClientInterface
 {
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected EsxiSoapClient $soapClient;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -20,15 +21,15 @@ class EsxiClient implements DeviceApiClientInterface
         $this->soapClient = new EsxiSoapClient($device);
     }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         // Supports 'vmware' if it's not a vCenter, or specifically 'esxi'
         return in_array($device->os, ['vmware', 'esxi']) && $device->sysObjectId !== '1.3.6.1.4.1.6876.4.1'; // Exclude vCenter OID if known
     }
 
-		public function capabilities(): array
+    public function capabilities(): array
     {
-        return ['device_info', 'processors', 'mempools', 'sensors', 'inventory', 'vlans'];
+        return ['device_info', 'processors', 'mempools', 'sensors', 'inventory', 'vlans', 'ipv4'];
     }
 
     public function isReachable(): bool
@@ -54,7 +55,7 @@ class EsxiClient implements DeviceApiClientInterface
         ];
     }
 
-    public function fetchProcessors(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         // Get Real-time CPU usage
         $perf = $this->soapClient->fetchHostPerformance();
@@ -73,7 +74,7 @@ class EsxiClient implements DeviceApiClientInterface
         return [];
     }
 
-    public function fetchMempools(Device $device): array
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         $perf = $this->soapClient->fetchHostPerformance();
 
@@ -96,7 +97,7 @@ class EsxiClient implements DeviceApiClientInterface
         return [];
     }
 
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         $sensors = [];
         $health = $this->soapClient->fetchHealthStatus();
@@ -119,7 +120,7 @@ class EsxiClient implements DeviceApiClientInterface
         return $sensors;
     }
 
-    public function fetchInventory(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         // Return physical chassis info
         $hw = $this->soapClient->fetchHostHardware();
@@ -152,13 +153,59 @@ class EsxiClient implements DeviceApiClientInterface
         return $vlans;
     }
 
-    // Unused
-    public function fetchPorts(Device $device): array { return []; }
-    public function fetchStorage(Device $device): array { return []; }
-    public function fetchTransceivers(Device $device): array { return []; }
-    public function fetchIpv4Addresses(Device $device): array { return []; }
-    public function fetchPortsStatistics(Device $device): array { return []; }
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
+    {
+        // Get network interfaces which include VMkernel IPs
+        $interfaces = $this->soapClient->fetchNetworkInterfaces($device);
+        $addresses = [];
+
+        foreach ($interfaces as $iface) {
+            $ip = $iface['ipv4_address'] ?? null;
+            if ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                $addresses[] = [
+                    'ipv4_address' => $ip,
+                    'ipv4_prefixlen' => $iface['ipv4_prefixlen'] ?? 24,
+                    'ifName' => $iface['ifName'] ?? 'vmk0',
+                    'context_name' => $iface['portgroup'] ?? '',
+                ];
+            }
+        }
+
+        return $addresses;
+    }
+
+    // Unused capabilities
+    public function fetchPorts(Device|TestableDevice $device): array
+    {
+        $interfaces = $this->soapClient->fetchNetworkInterfaces($device);
+        $ports = [];
+
+        foreach ($interfaces as $iface) {
+            $ifIndex = $iface['ifIndex'] ?? null;
+            $ifName = $iface['ifName'] ?? null;
+            if (!$ifIndex || !$ifName) {
+                continue;
+            }
+
+            $ports[] = [
+                'ifIndex' => (int) $ifIndex,
+                'ifName' => $ifName,
+                'ifDescr' => $iface['ifDescr'] ?? $ifName,
+                'ifType' => $iface['ifType'] ?? 'ethernetCsmacd',
+                'ifSpeed' => $iface['ifSpeed'] ?? 1000000000,
+                'ifPhysAddress' => $iface['ifPhysAddress'] ?? '',
+                'ifOperStatus' => $iface['ifOperStatus'] ?? 'up',
+                'ifAdminStatus' => $iface['ifAdminStatus'] ?? 'up',
+                'ifMtu' => $iface['ifMtu'] ?? 1500,
+            ];
+        }
+
+        return $ports;
+    }
+    public function fetchStorage(Device|TestableDevice $device): array { return []; }
+    public function fetchTransceivers(Device|TestableDevice $device): array { return []; }
+    public function fetchPortsStatistics(Device|TestableDevice $device): array { return []; }
     public function fetchClusters(Device $device): array { return []; }
     public function fetchHosts(Device $device): array { return []; }
-    public function fetchVms(Device $device): array { return []; }
+    public function fetchVms(Device|TestableDevice $device): array { return []; }
 }

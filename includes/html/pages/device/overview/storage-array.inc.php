@@ -37,8 +37,23 @@ if ($isStorageDevice) {
             ->orWhere('storage_descr', 'Array Capacity')
             ->first();
 
-        // Load detailed relationships
-        $controllers = $array->controllers()->get();
+        // Load controllers from entPhysical (native table)
+        $controllers = collect(DB::table('entPhysical')
+            ->where('device_id', $device_obj->device_id)
+            ->where('entPhysicalClass', 'module')
+            ->where('entPhysicalVendorType', 'controller')
+            ->get())
+            ->map(function ($ctrl) {
+                return (object) [
+                    'controller_name' => $ctrl->entPhysicalName,
+                    'serial' => $ctrl->entPhysicalSerialNum,
+                    'model' => $ctrl->entPhysicalModelName,
+                    'status' => 'ready',  // Default to ready since entPhysical doesn't track status
+                    'mode' => null,
+                ];
+            });
+
+        // Load volumes and hosts from legacy tables (if they exist)
         $volumes = $array->volumes()->get();
         $hosts = $array->hosts()->get();
 

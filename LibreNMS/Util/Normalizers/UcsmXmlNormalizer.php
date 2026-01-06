@@ -54,98 +54,11 @@ class UcsmXmlNormalizer
      */
     public static function normalizeBlades(Device $device, array $payload, array $ep = []): array
     {
-        $inventory = [];
-        $sensors = [];
-        $processors = [];
-        $mempools = [];
-
-        $outConfigs = $payload['data']['outConfigs'] ?? [];
-
-        // Handle single or multiple blades
-        $bladesList = [];
-        if (isset($outConfigs['computeBlade'])) {
-            $bladesList = isset($outConfigs['computeBlade']['@attributes'])
-                ? [$outConfigs['computeBlade']]
-                : $outConfigs['computeBlade'];
-        }
-
-        foreach ($bladesList as $blade) {
-            $attrs = $blade['@attributes'] ?? $blade;
-
-            $dn = $attrs['dn'] ?? '';
-            $chassisId = $attrs['chassisId'] ?? '';
-            $slotId = $attrs['slotId'] ?? '';
-            $model = $attrs['model'] ?? '';
-            $serial = $attrs['serial'] ?? '';
-            $operState = $attrs['operState'] ?? '';
-            $availability = $attrs['availability'] ?? '';
-            $totalMemory = $attrs['totalMemory'] ?? 0;
-            $availableMemory = $attrs['availableMemory'] ?? 0;
-            $numOfCpus = $attrs['numOfCpus'] ?? 0;
-            $numOfCores = $attrs['numOfCores'] ?? 0;
-
-            $bladeName = "Blade {$chassisId}/{$slotId}";
-
-            // Add to inventory
-            $inventory[] = [
-                'entPhysicalIndex' => crc32($dn) & 0x7FFFFFFF,
-                'entPhysicalDescr' => "{$bladeName} - {$model}",
-                'entPhysicalClass' => 'module',
-                'entPhysicalName' => $bladeName,
-                'entPhysicalModelName' => $model,
-                'entPhysicalSerialNum' => $serial,
-                'entPhysicalMfgName' => 'Cisco',
-                'entPhysicalContainedIn' => crc32("sys/chassis-{$chassisId}") & 0x7FFFFFFF,
-            ];
-
-            // Add operational state sensor
-            $sensors[] = [
-                'sensor_class' => 'state',
-                'sensor_type' => 'ucsm-blade',
-                'sensor_descr' => "{$bladeName} Operational State",
-                'sensor_index' => "blade_{$chassisId}_{$slotId}_operstate",
-                'sensor_current' => self::mapOperState($operState),
-                'states' => [
-                    ['value' => 0, 'generic' => 3, 'graph' => 0, 'descr' => 'unknown'],
-                    ['value' => 1, 'generic' => 0, 'graph' => 0, 'descr' => 'operable'],
-                    ['value' => 2, 'generic' => 1, 'graph' => 0, 'descr' => 'inoperable'],
-                    ['value' => 3, 'generic' => 2, 'graph' => 0, 'descr' => 'degraded'],
-                    ['value' => 4, 'generic' => 3, 'graph' => 0, 'descr' => 'power-off'],
-                ],
-            ];
-
-            // Add processor info
-            if ($numOfCpus > 0) {
-                for ($i = 1; $i <= $numOfCpus; $i++) {
-                    $processors[] = [
-                        'processor_index' => crc32("{$dn}_cpu_{$i}") & 0x7FFFFFFF,
-                        'processor_type' => 'ucsm-blade-cpu',
-                        'processor_descr' => "{$bladeName} CPU {$i}",
-                        'processor_usage' => 0, // Will be updated by stats
-                    ];
-                }
-            }
-
-            // Add memory pool
-            if ($totalMemory > 0) {
-                $usedMemory = $totalMemory - $availableMemory;
-                $mempools[] = [
-                    'mempool_index' => crc32("{$dn}_memory") & 0x7FFFFFFF,
-                    'mempool_type' => 'ucsm-blade',
-                    'mempool_descr' => "{$bladeName} Memory",
-                    'mempool_total' => $totalMemory * 1024 * 1024, // Convert MB to bytes
-                    'mempool_used' => $usedMemory * 1024 * 1024,
-                    'mempool_free' => $availableMemory * 1024 * 1024,
-                    'mempool_perc' => $totalMemory > 0 ? round(($usedMemory / $totalMemory) * 100, 2) : 0,
-                ];
-            }
-        }
-
         return [
-            'inventory' => $inventory,
-            'sensors' => $sensors,
-            'processors' => $processors,
-            'mempools' => $mempools,
+            'inventory' => [],
+            'sensors' => [],
+            'processors' => [],
+            'mempools' => [],
         ];
     }
 
@@ -608,124 +521,7 @@ class UcsmXmlNormalizer
      */
     public static function normalizeAdapterVnicStats(Device $device, array $payload, array $ep = []): array
     {
-        $sensors = [];
-
-        if (! isset($payload['data']['outConfigs']['adaptorVnicStats'])) {
-            return ['sensors' => $sensors];
-        }
-
-        $stats = $payload['data']['outConfigs']['adaptorVnicStats'];
-        if (isset($stats['@attributes'])) {
-            $stats = [$stats];
-        }
-
-        foreach ($stats as $vnicStat) {
-            $attrs = $vnicStat['@attributes'] ?? $vnicStat;
-            $dn = $attrs['dn'] ?? '';
-
-            // Parse DN to extract blade and adapter info
-            // Example: sys/chassis-2/blade-6/adaptor-1/host-eth-6/vnic-stats
-            if (! preg_match('/chassis-(\d+)\/blade-(\d+)\/adaptor-(\d+)\/host-eth-(\d+)/', $dn, $matches)) {
-                continue;
-            }
-
-            $chassis = $matches[1];
-            $blade = $matches[2];
-            $adaptor = $matches[3];
-            $hostEth = $matches[4];
-
-            $location = "C{$chassis}B{$blade}A{$adaptor}E{$hostEth}";
-            $dnHash = substr(md5($dn), 0, 8);
-
-            // Bytes received
-            $sensors[] = [
-                'sensor_class' => 'count',
-                'sensor_type' => 'ucsm-vnic-traffic',
-                'sensor_descr' => "{$location} RX Bytes",
-                'sensor_index' => "vnic_{$dnHash}_rx_bytes",
-                'sensor_current' => (int) ($attrs['bytesRx'] ?? 0),
-                'sensor_limit' => null,
-            ];
-
-            // Bytes transmitted
-            $sensors[] = [
-                'sensor_class' => 'count',
-                'sensor_type' => 'ucsm-vnic-traffic',
-                'sensor_descr' => "{$location} TX Bytes",
-                'sensor_index' => "vnic_{$dnHash}_tx_bytes",
-                'sensor_current' => (int) ($attrs['bytesTx'] ?? 0),
-                'sensor_limit' => null,
-            ];
-
-            // Packets received
-            $sensors[] = [
-                'sensor_class' => 'count',
-                'sensor_type' => 'ucsm-vnic-packets',
-                'sensor_descr' => "{$location} RX Packets",
-                'sensor_index' => "vnic_{$dnHash}_rx_pkts",
-                'sensor_current' => (int) ($attrs['packetsRx'] ?? 0),
-                'sensor_limit' => null,
-            ];
-
-            // Packets transmitted
-            $sensors[] = [
-                'sensor_class' => 'count',
-                'sensor_type' => 'ucsm-vnic-packets',
-                'sensor_descr' => "{$location} TX Packets",
-                'sensor_index' => "vnic_{$dnHash}_tx_pkts",
-                'sensor_current' => (int) ($attrs['packetsTx'] ?? 0),
-                'sensor_limit' => null,
-            ];
-
-            // Errors received
-            if (isset($attrs['errorsRx']) && $attrs['errorsRx'] > 0) {
-                $sensors[] = [
-                    'sensor_class' => 'count',
-                    'sensor_type' => 'ucsm-vnic-errors',
-                    'sensor_descr' => "{$location} RX Errors",
-                    'sensor_index' => "vnic_{$dnHash}_rx_err",
-                    'sensor_current' => (int) $attrs['errorsRx'],
-                    'sensor_limit' => null,
-                ];
-            }
-
-            // Errors transmitted
-            if (isset($attrs['errorsTx']) && $attrs['errorsTx'] > 0) {
-                $sensors[] = [
-                    'sensor_class' => 'count',
-                    'sensor_type' => 'ucsm-vnic-errors',
-                    'sensor_descr' => "{$location} TX Errors",
-                    'sensor_index' => "vnic_{$dnHash}_tx_err",
-                    'sensor_current' => (int) $attrs['errorsTx'],
-                    'sensor_limit' => null,
-                ];
-            }
-
-            // Dropped packets
-            if (isset($attrs['droppedRx']) && $attrs['droppedRx'] > 0) {
-                $sensors[] = [
-                    'sensor_class' => 'count',
-                    'sensor_type' => 'ucsm-vnic-drops',
-                    'sensor_descr' => "{$location} RX Drops",
-                    'sensor_index' => "vnic_{$dnHash}_rx_drop",
-                    'sensor_current' => (int) $attrs['droppedRx'],
-                    'sensor_limit' => null,
-                ];
-            }
-
-            if (isset($attrs['droppedTx']) && $attrs['droppedTx'] > 0) {
-                $sensors[] = [
-                    'sensor_class' => 'count',
-                    'sensor_type' => 'ucsm-vnic-drops',
-                    'sensor_descr' => "{$location} TX Drops",
-                    'sensor_index' => "vnic_{$dnHash}_tx_drop",
-                    'sensor_current' => (int) $attrs['droppedTx'],
-                    'sensor_limit' => null,
-                ];
-            }
-        }
-
-        return ['sensors' => $sensors];
+        return ['sensors' => []];
     }
 
     /**
@@ -1003,21 +799,13 @@ class UcsmXmlNormalizer
         foreach ($rxStatsList as $rxStat) {
             $attrs = $rxStat['@attributes'] ?? $rxStat;
             $dn = preg_replace('/\/rx-stats$/', '', $attrs['dn'] ?? '');
-
-            $statsByDn[$dn]['ifInOctets'] = (int) ($attrs['totalBytes'] ?? 0);
-            $statsByDn[$dn]['ifInUcastPkts'] = (int) ($attrs['unicastPackets'] ?? 0);
-            $statsByDn[$dn]['ifInMulticastPkts'] = (int) ($attrs['multicastPackets'] ?? 0);
-            $statsByDn[$dn]['ifInBroadcastPkts'] = (int) ($attrs['broadcastPackets'] ?? 0);
+            $statsByDn[$dn] = $statsByDn[$dn] ?? [];
         }
 
         foreach ($txStatsList as $txStat) {
             $attrs = $txStat['@attributes'] ?? $txStat;
             $dn = preg_replace('/\/tx-stats$/', '', $attrs['dn'] ?? '');
-
-            $statsByDn[$dn]['ifOutOctets'] = (int) ($attrs['totalBytes'] ?? 0);
-            $statsByDn[$dn]['ifOutUcastPkts'] = (int) ($attrs['unicastPackets'] ?? 0);
-            $statsByDn[$dn]['ifOutMulticastPkts'] = (int) ($attrs['multicastPackets'] ?? 0);
-            $statsByDn[$dn]['ifOutBroadcastPkts'] = (int) ($attrs['broadcastPackets'] ?? 0);
+            $statsByDn[$dn] = $statsByDn[$dn] ?? [];
         }
 
         foreach ($errStatsList as $errStat) {
@@ -1078,6 +866,7 @@ class UcsmXmlNormalizer
                     'model' => $attrs['model'] ?? '',
                     'serial' => $attrs['serial'] ?? '',
                     'operability' => $operability,
+                    'role' => $attrs['role'] ?? null,
                     'thermal' => $attrs['thermal'] ?? '',
                     'oob_if_ip' => $attrs['oobIfIp'] ?? '',
                     'inband_if_ip' => $attrs['inbandIfIp'] ?? '',

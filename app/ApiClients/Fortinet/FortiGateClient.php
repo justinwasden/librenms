@@ -4,6 +4,7 @@ namespace App\ApiClients\Fortinet;
 
 use App\ApiClients\Contracts\DeviceApiClientInterface;
 use App\ApiClients\DeviceHttpClient;
+use App\ApiClients\TestableDevice;
 use App\Models\Device;
 use LibreNMS\Util\DeviceApiSettings;
 use Illuminate\Support\Facades\Log;
@@ -17,10 +18,10 @@ class FortiGateClient implements DeviceApiClientInterface
 {
     public const VENDOR = 'fortinet';
 
-    protected Device $device;
+    protected Device|TestableDevice $device;
     protected DeviceHttpClient $httpClient;
 
-    public function __construct(Device $device)
+    public function __construct(Device|TestableDevice $device)
     {
         $this->device = $device;
 
@@ -64,7 +65,7 @@ class FortiGateClient implements DeviceApiClientInterface
         ]);
     }
 
-    public function supports(Device $device): bool
+    public function supports(Device|TestableDevice $device): bool
     {
         // Support FortiGate devices with API config
         if (!in_array($device->os, ['fortigate', 'fortinet'], true)) {
@@ -91,34 +92,82 @@ class FortiGateClient implements DeviceApiClientInterface
 
     /**
      * FortiGateClient uses template-driven polling via DeviceApiExecutor.
-     * These fetch methods are not used - they exist only to satisfy the interface.
+     * These fetch methods are also used as a REST fallback to keep IPv4 mapping consistent.
      */
-    public function fetchSensors(Device $device): array
+    public function fetchSensors(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchPorts(Device $device): array
+    public function fetchPorts(Device|TestableDevice $device): array
+    {
+        $ports = [];
+
+        try {
+            $response = $this->get('/cmdb/system/interface');
+            $interfaces = $response['results'] ?? [];
+
+            if (!is_array($interfaces)) {
+                return [];
+            }
+
+            foreach ($interfaces as $idx => $iface) {
+                $name = $iface['name'] ?? (is_string($idx) ? $idx : "port$idx");
+                $ifIndex = $this->stableIndexFromName($name);
+
+                $linkUp = $iface['link'] ?? false;
+                $status = $linkUp ? 'up' : 'down';
+                if (isset($iface['status'])) {
+                    $status = strtolower($iface['status']) === 'up' ? 'up' : 'down';
+                }
+
+                $speed = $iface['speed'] ?? 1000;
+                $speedBps = is_numeric($speed) ? ((int) $speed) * 1000000 : 1000000000;
+
+                $alias = $iface['alias'] ?? '';
+                $ifDescr = $alias !== '' ? $alias : $name;
+
+                $macAddr = $iface['mac'] ?? $iface['macaddr'] ?? '';
+
+                $ports[] = [
+                    'ifIndex' => $ifIndex,
+                    'ifName' => $name,
+                    'ifDescr' => $ifDescr,
+                    'ifType' => $iface['type'] ?? 'ethernetCsmacd',
+                    'ifSpeed' => $speedBps,
+                    'ifOperStatus' => $status,
+                    'ifAdminStatus' => $status,
+                    'ifMtu' => $iface['mtu'] ?? 1500,
+                    'ifPhysAddress' => $macAddr,
+                    'ifAlias' => $alias,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::warning('FortiGate fetchPorts failed', [
+                'device_id' => $device->device_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $ports;
+    }
+
+    public function fetchMempools(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchMempools(Device $device): array
+    public function fetchProcessors(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchProcessors(Device $device): array
+    public function fetchInventory(Device|TestableDevice $device): array
     {
         return [];
     }
 
-    public function fetchInventory(Device $device): array
-    {
-        return [];
-    }
-
-    public function fetchStorage(Device $device): array
+    public function fetchStorage(Device|TestableDevice $device): array
     {
         $storage = [];
 
@@ -155,7 +204,7 @@ class FortiGateClient implements DeviceApiClientInterface
         return $storage;
     }
 
-    public function fetchTransceivers(Device $device): array
+    public function fetchTransceivers(Device|TestableDevice $device): array
     {
         $transceivers = [];
 
@@ -193,7 +242,7 @@ class FortiGateClient implements DeviceApiClientInterface
         return $transceivers;
     }
 
-    public function fetchIpv4Addresses(Device $device): array
+    public function fetchIpv4Addresses(Device|TestableDevice $device): array
     {
         $addresses = [];
 
@@ -202,10 +251,9 @@ class FortiGateClient implements DeviceApiClientInterface
             $response = $this->get('/cmdb/system/interface');
             $interfaces = $response['results'] ?? [];
 
-            $numericIdx = 0;
             foreach ($interfaces as $idx => $iface) {
                 $ifName = $iface['name'] ?? (is_string($idx) ? $idx : "port$idx");
-                $numericIdx++;
+                $ifIndex = $this->stableIndexFromName($ifName);
                 $ip = $iface['ip'] ?? null;
 
                 if ($ip && strpos($ip, '/') !== false) {
@@ -214,7 +262,8 @@ class FortiGateClient implements DeviceApiClientInterface
 
                     if (filter_var($ipAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                         $addresses[] = [
-                            'ifIndex' => $numericIdx,
+                            'ifIndex' => $ifIndex,
+                            'ifName' => $ifName,
                             'ipv4_address' => $ipAddr,
                             'ipv4_prefixlen' => (int)$prefixLen,
                             'context_name' => 'fortigate',
@@ -223,7 +272,8 @@ class FortiGateClient implements DeviceApiClientInterface
                 } elseif ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                     // Just an IP without CIDR
                     $addresses[] = [
-                        'ifIndex' => $numericIdx,
+                        'ifIndex' => $ifIndex,
+                        'ifName' => $ifName,
                         'ipv4_address' => $ip,
                         'ipv4_prefixlen' => 24, // Default
                         'context_name' => 'fortigate',
@@ -239,7 +289,8 @@ class FortiGateClient implements DeviceApiClientInterface
 
                             if (filter_var($secAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                                 $addresses[] = [
-                                    'ifIndex' => $numericIdx,
+                                    'ifIndex' => $ifIndex,
+                                    'ifName' => $ifName,
                                     'ipv4_address' => $secAddr,
                                     'ipv4_prefixlen' => (int)$secPrefix,
                                     'context_name' => 'fortigate',
@@ -260,7 +311,7 @@ class FortiGateClient implements DeviceApiClientInterface
         return $addresses;
     }
 
-    public function fetchPortsStatistics(Device $device): array
+    public function fetchPortsStatistics(Device|TestableDevice $device): array
     {
         $stats = [];
 
@@ -269,14 +320,14 @@ class FortiGateClient implements DeviceApiClientInterface
             $response = $this->get('/monitor/system/interface');
             $interfaces = $response['results'] ?? [];
 
-            $numericIdx = 0;
             foreach ($interfaces as $idx => $iface) {
                 $ifName = $iface['name'] ?? (is_string($idx) ? $idx : "port$idx");
-                $numericIdx++;
+                $ifIndex = $this->stableIndexFromName($ifName);
 
                 // Extract statistics if available
                 $stats[] = [
-                    'ifIndex' => $numericIdx,
+                    'ifIndex' => $ifIndex,
+                    'ifName' => $ifName,
                     'ifInOctets' => $iface['rx_bytes'] ?? 0,
                     'ifOutOctets' => $iface['tx_bytes'] ?? 0,
                     'ifInErrors' => $iface['rx_errors'] ?? 0,
@@ -331,9 +382,14 @@ class FortiGateClient implements DeviceApiClientInterface
         }
     }
 
-    public function fetchVms(Device $device): array
+    public function fetchVms(Device|TestableDevice $device): array
     {
         // FortiGate firewalls do not host virtual machines
         return [];
+    }
+
+    protected function stableIndexFromName(string $name): int
+    {
+        return abs(crc32($name)) % 2147483647;
     }
 }
